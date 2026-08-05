@@ -197,7 +197,15 @@ def _pick_topic(queue: dict, history: dict) -> tuple[str, str, str]:
 def generate(slot: str) -> dict:
     ensure_runtime_data()
     genai.configure(api_key=os.environ["GEMINI_API_KEY"])
-    model = genai.GenerativeModel("gemini-1.5-flash")
+
+    preferred_model = os.environ.get("GEMINI_MODEL", "").strip()
+    model_candidates = [
+        preferred_model,
+        "gemini-2.5-flash",
+        "gemini-2.0-flash",
+        "gemini-1.5-flash",
+    ]
+    model_candidates = [m for m in model_candidates if m]
 
     queue = load_topic_queue()
     history = load_history()
@@ -269,7 +277,19 @@ Return ONLY valid JSON with these exact keys (no markdown, no code fences):
   "li_text": "180-260 words. Professional but not corporate. Open with a counterintuitive insight or bold statement. Build a tight logical argument. Include one specific data point. End with a direct, frictionless CTA — tell them exactly what the first step looks like."
 }}"""
 
-    response = model.generate_content(prompt)
+    response = None
+    last_error = None
+    for model_name in model_candidates:
+        try:
+            model = genai.GenerativeModel(model_name)
+            response = model.generate_content(prompt)
+            break
+        except Exception as e:
+            last_error = e
+            continue
+
+    if response is None:
+        raise RuntimeError(f"All Gemini model attempts failed: {last_error}")
     raw = response.text.strip()
 
     # Strip markdown code fences if Gemini wraps response

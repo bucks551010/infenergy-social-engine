@@ -49,24 +49,49 @@ def generate(slot: str) -> dict:
     history = load_history()
     pillar, topic, topic_hash = _pick_topic(queue, history)
 
-    post_type = {"morning": "educational", "midday": "proof", "evening": "cta"}.get(slot, "educational")
+    slot_guidance = {
+        "morning": (
+            "MORNING — EDUCATION. Open with a surprising or counterintuitive fact. "
+            "Teach one genuinely useful concept the reader can act on today. "
+            "Use real numbers, comparisons, or analogies. No fluff. End with a thought-provoking question."
+        ),
+        "midday": (
+            "MIDDAY — PROOF. Lead with a specific, believable result. "
+            "Include at least one concrete number (dollar amount, percentage, timeframe). "
+            "Tell a mini-story: situation → problem → solution → outcome. "
+            "Make the reader feel 'that could be me.' End with a credibility statement."
+        ),
+        "evening": (
+            "EVENING — CTA. Create genuine urgency around a real reason to act now "
+            "(limited slots, seasonal incentives, rising utility rates). "
+            "Be direct and specific about the next step. Tell them exactly what happens when they reach out. "
+            "One clear CTA only. No vague 'learn more.'"
+        ),
+    }.get(slot, "educational")
 
-    prompt = f"""You are a social media content writer for INF Energy Power (infenergypower.com), a solar and home energy solutions company.
-Brand voice: professional, confident, helpful, and results-focused. Never make unverifiable claims or guarantees.
-Topic: {topic}
-Post type today: {post_type}
-  - educational: teach something genuinely valuable, no hard sell
-  - proof: share a result, stat, or case study with credibility
-  - cta: clear, specific call to action driving leads or consultations
+    prompt = f"""You are an expert content strategist and copywriter for INF Energy Power (infenergypower.com), a solar and home energy solutions company.
+
+BRAND VOICE: Direct, credible, genuinely helpful. Speak like a trusted expert neighbor, not a salesperson.
+AUDIENCE: Homeowners and small business owners frustrated by rising energy bills, curious about solar but not yet convinced.
+TOPIC: {topic}
+CONTENT DIRECTIVE: {slot_guidance}
+
+QUALITY RULES — every piece must follow all of these:
+1. Open with a hook that creates immediate curiosity or challenges a common assumption.
+2. Include at least one specific number, stat, or real-world comparison that makes the content credible.
+3. Deliver a genuine insight the reader cannot easily Google — a specific angle they haven't considered.
+4. Write like a human expert, not a marketing team. Never use words like "revolutionize", "game-changer", or "unlock your potential."
+5. Never make unverifiable guarantees. Use language like "many homeowners", "up to", "in most cases" where appropriate.
+6. Every post must have a clear emotional payoff: relief, confidence, curiosity satisfied, or urgency to act.
 
 Return ONLY valid JSON with these exact keys (no markdown, no code fences):
 {{
-  "wp_title": "SEO blog post title under 65 characters",
-  "wp_content": "Full blog post as HTML paragraphs, 350-500 words, informative and engaging with subheadings",
-  "wp_excerpt": "One sentence excerpt under 160 characters",
-  "fb_caption": "Facebook post 100-200 words, conversational, ends with question or CTA, 3-5 hashtags",
-  "ig_caption": "Instagram caption 100-150 words, strong hook as first line, 6-8 hashtags at end",
-  "li_text": "LinkedIn post 150-250 words, professional and insight-driven, ends with CTA to schedule a free consultation"
+  "wp_title": "Specific, curiosity-driven SEO title under 65 characters — not generic",
+  "wp_content": "Full blog post as clean HTML with <h2> subheadings. 450-550 words. Open strong, build a logical case, end with a clear next step. Include at least 2 specific data points or examples.",
+  "wp_excerpt": "One punchy sentence under 160 characters that makes someone want to click",
+  "fb_caption": "150-220 words. Conversational and personal. Open with a surprising statement or question. Include one specific number or fact. End with a genuine question that invites comments. 4-5 targeted hashtags on the last line only.",
+  "ig_caption": "First line must be a scroll-stopping hook under 10 words. 120-160 words total. Specific, visual, and personal. 7-9 hashtags on the final line only — mix broad and niche.",
+  "li_text": "180-260 words. Professional but not corporate. Open with a counterintuitive insight or bold statement. Build a tight logical argument. Include one specific data point. End with a direct, frictionless CTA — tell them exactly what the first step looks like."
 }}"""
 
     response = model.generate_content(prompt)

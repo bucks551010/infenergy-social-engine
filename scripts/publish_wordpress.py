@@ -3,6 +3,8 @@ import base64
 import requests
 
 WP_URL = os.environ["WP_URL"].rstrip("/")
+if WP_URL.endswith("/wp-admin"):
+    WP_URL = WP_URL[:-9]
 WP_USERNAME = os.environ["WP_USERNAME"]
 WP_APP_PASSWORD = os.environ["WP_APP_PASSWORD"]
 

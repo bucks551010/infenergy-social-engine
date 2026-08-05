@@ -26,6 +26,7 @@ def check_secrets() -> None:
 
 def main() -> None:
     check_secrets()
+    generate_posts.ensure_runtime_data()
 
     slot = os.environ.get("POST_SLOT", "morning")
     dry_run = os.environ.get("SOCIAL_DRY_RUN", "true").lower() == "true"

@@ -45,6 +45,22 @@ DEFAULT_TOPIC_QUEUE = {
 }
 
 
+def ensure_runtime_data() -> None:
+    os.makedirs(DATA_DIR, exist_ok=True)
+
+    topic_primary = os.path.join(DATA_DIR, "topic_queue.json")
+    topic_fallback = os.path.join(BASE_DATA_DIR, "topic_queue.json")
+    if not os.path.exists(topic_primary) and not os.path.exists(topic_fallback):
+        with open(topic_primary, "w", encoding="utf-8") as f:
+            json.dump(DEFAULT_TOPIC_QUEUE, f, indent=2)
+
+    history_primary = os.path.join(DATA_DIR, "post_history.json")
+    history_fallback = os.path.join(BASE_DATA_DIR, "post_history.json")
+    if not os.path.exists(history_primary) and not os.path.exists(history_fallback):
+        with open(history_primary, "w", encoding="utf-8") as f:
+            json.dump({"posts": []}, f, indent=2)
+
+
 def _read_json_with_fallback(filename: str) -> dict:
     primary = os.path.join(DATA_DIR, filename)
     fallback = os.path.join(BASE_DATA_DIR, filename)
@@ -179,6 +195,7 @@ def _pick_topic(queue: dict, history: dict) -> tuple[str, str, str]:
 
 
 def generate(slot: str) -> dict:
+    ensure_runtime_data()
     genai.configure(api_key=os.environ["GEMINI_API_KEY"])
     model = genai.GenerativeModel("gemini-1.5-flash")
 

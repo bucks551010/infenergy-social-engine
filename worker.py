@@ -3,6 +3,8 @@ import sys
 import time
 import json
 import threading
+import traceback
+from urllib.parse import urlparse, parse_qs
 import schedule
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from datetime import datetime, timezone
@@ -11,17 +13,98 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "scripts"))
 
 import run_engine
 
+RUN_LOCK = threading.Lock()
+LAST_RUN = {
+    "status": "idle",
+    "slot": None,
+    "started_at_utc": None,
+    "finished_at_utc": None,
+    "error": None,
+}
+
+
+def _utc_now() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _start_slot_thread(slot: str) -> bool:
+    if RUN_LOCK.locked():
+        return False
+
+    thread = threading.Thread(target=run_slot, args=(slot,), daemon=True)
+    thread.start()
+    return True
+
 
 class HealthHandler(BaseHTTPRequestHandler):
     def do_GET(self):
-        if self.path in ("/", "/health", "/healthz"):
+        parsed = urlparse(self.path)
+
+        if parsed.path in ("/", "/health", "/healthz"):
             payload = {
                 "status": "ok",
                 "service": "infenergy-social-engine",
-                "time_utc": datetime.now(timezone.utc).isoformat(),
+                "time_utc": _utc_now(),
             }
             body = json.dumps(payload).encode("utf-8")
             self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
+        if parsed.path == "/status":
+            payload = {
+                "status": "ok",
+                "service": "infenergy-social-engine",
+                "time_utc": _utc_now(),
+                "last_run": LAST_RUN,
+                "dry_run": os.environ.get("SOCIAL_DRY_RUN", "true"),
+            }
+            body = json.dumps(payload).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
+        if parsed.path == "/run-now":
+            token = os.environ.get("MANUAL_RUN_TOKEN", "")
+            params = parse_qs(parsed.query)
+            provided = params.get("token", [""])[0]
+            slot = params.get("slot", ["morning"])[0]
+            if slot not in ("morning", "midday", "evening"):
+                slot = "morning"
+
+            if not token:
+                body = b'{"error":"MANUAL_RUN_TOKEN not configured"}'
+                self.send_response(403)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+                return
+
+            if provided != token:
+                body = b'{"error":"invalid token"}'
+                self.send_response(401)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+                return
+
+            started = _start_slot_thread(slot)
+            payload = {
+                "accepted": started,
+                "slot": slot,
+                "message": "run started" if started else "run already in progress",
+                "time_utc": _utc_now(),
+            }
+            body = json.dumps(payload).encode("utf-8")
+            self.send_response(202 if started else 409)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
@@ -44,12 +127,25 @@ def start_health_server() -> None:
 
 
 def run_slot(slot: str) -> None:
-    print(f"\n[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}] Starting {slot} run...")
-    os.environ["POST_SLOT"] = slot
-    try:
-        run_engine.main()
-    except Exception as e:
-        print(f"[ERROR] {slot} run failed: {e}")
+    with RUN_LOCK:
+        LAST_RUN["status"] = "running"
+        LAST_RUN["slot"] = slot
+        LAST_RUN["started_at_utc"] = _utc_now()
+        LAST_RUN["finished_at_utc"] = None
+        LAST_RUN["error"] = None
+
+        print(f"\n[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}] Starting {slot} run...")
+        os.environ["POST_SLOT"] = slot
+        try:
+            run_engine.main()
+            LAST_RUN["status"] = "success"
+        except BaseException as e:
+            LAST_RUN["status"] = "failed"
+            LAST_RUN["error"] = str(e)
+            print(f"[ERROR] {slot} run failed: {e}")
+            traceback.print_exc()
+        finally:
+            LAST_RUN["finished_at_utc"] = _utc_now()
 
 
 # All times in UTC — currently mapped to Central Time (CT)
@@ -68,7 +164,12 @@ start_health_server()
 print("=== INF Energy Social Engine — Railway Worker ===")
 print(f"Scheduled (UTC): morning={morning_utc}  midday={midday_utc}  evening={evening_utc}")
 print(f"Dry run: {os.environ.get('SOCIAL_DRY_RUN', 'true')}")
+print("Manual run endpoint: /run-now?slot=morning&token=... (requires MANUAL_RUN_TOKEN)")
 print("Waiting for next scheduled run...\n")
+
+if os.environ.get("RUN_ON_STARTUP", "false").lower() == "true":
+    print("RUN_ON_STARTUP=true, launching startup run for morning slot")
+    _start_slot_thread("morning")
 
 while True:
     schedule.run_pending()

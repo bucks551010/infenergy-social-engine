@@ -1,0 +1,79 @@
+name: INF Energy Social Engine
+
+on:
+  schedule:
+    - cron: '0 13 * * *'   # 8am CT (morning slot)
+    - cron: '0 17 * * *'   # 12pm CT (midday slot)
+    - cron: '0 23 * * *'   # 6pm CT (evening slot)
+  workflow_dispatch:
+    inputs:
+      slot:
+        description: 'Post slot'
+        required: true
+        default: 'morning'
+        type: choice
+        options: [morning, midday, evening]
+      dry_run:
+        description: 'Dry run - generate only, do not publish'
+        required: false
+        default: 'true'
+        type: choice
+        options: ['true', 'false']
+
+permissions:
+  contents: write
+
+jobs:
+  post:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Determine post slot from schedule
+        id: slot
+        run: |
+          if [ -n "${{ github.event.inputs.slot }}" ]; then
+            echo "slot=${{ github.event.inputs.slot }}" >> $GITHUB_OUTPUT
+          else
+            HOUR=$(date -u +%H)
+            if [ "$HOUR" = "13" ]; then
+              echo "slot=morning" >> $GITHUB_OUTPUT
+            elif [ "$HOUR" = "17" ]; then
+              echo "slot=midday" >> $GITHUB_OUTPUT
+            else
+              echo "slot=evening" >> $GITHUB_OUTPUT
+            fi
+          fi
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run social engine
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          WP_URL: ${{ secrets.WP_URL }}
+          WP_USERNAME: ${{ secrets.WP_USERNAME }}
+          WP_APP_PASSWORD: ${{ secrets.WP_APP_PASSWORD }}
+          META_PAGE_ID: ${{ secrets.META_PAGE_ID }}
+          META_PAGE_ACCESS_TOKEN: ${{ secrets.META_PAGE_ACCESS_TOKEN }}
+          META_IG_USER_ID: ${{ secrets.META_IG_USER_ID }}
+          IG_DEFAULT_IMAGE_URL: ${{ secrets.IG_DEFAULT_IMAGE_URL }}
+          LINKEDIN_ACCESS_TOKEN: ${{ secrets.LINKEDIN_ACCESS_TOKEN }}
+          LINKEDIN_AUTHOR_URN: ${{ secrets.LINKEDIN_AUTHOR_URN }}
+          SOCIAL_DRY_RUN: ${{ github.event.inputs.dry_run || vars.SOCIAL_DRY_RUN || 'true' }}
+          POST_SLOT: ${{ steps.slot.outputs.slot }}
+        run: python scripts/run_engine.py
+
+      - name: Save post history back to repo
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/post_history.json
+          git diff --staged --quiet || git commit -m "chore: post history [${{ steps.slot.outputs.slot }}] [skip ci]"
+          git push

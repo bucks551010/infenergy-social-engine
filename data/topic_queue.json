@@ -1,0 +1,80 @@
+{
+  "pillars": [
+    "solar_savings",
+    "energy_independence",
+    "battery_storage",
+    "product_highlights",
+    "case_studies",
+    "myth_busting",
+    "promotions",
+    "industry_news"
+  ],
+  "topics": {
+    "solar_savings": [
+      "How solar panels can reduce your electricity bill by up to 90%",
+      "The real ROI of going solar in 2026",
+      "Federal and state solar tax credits available right now",
+      "How net metering puts money back in your pocket",
+      "Solar financing options that require $0 down",
+      "How to read your utility bill and find hidden savings",
+      "What affects how much you save with solar"
+    ],
+    "energy_independence": [
+      "Why energy independence matters more than ever in 2026",
+      "How to protect your home from rising utility rates",
+      "The real cost of grid dependency over 10 years",
+      "Your home as its own power plant",
+      "What happens to your solar during a grid outage",
+      "How homeowners are escaping unpredictable energy bills"
+    ],
+    "battery_storage": [
+      "Why battery storage is the missing piece of your solar system",
+      "How home batteries keep your lights on during outages",
+      "Battery storage vs whole-home generator: which is right for you?",
+      "The best times of day to use stored solar energy",
+      "How battery backup pays for itself in 3 years",
+      "Understanding battery capacity and what it powers"
+    ],
+    "product_highlights": [
+      "Our top-rated solar panel installation process explained",
+      "Smart home energy monitoring: see every watt in real time",
+      "EV charging solutions designed for your home",
+      "Commercial solar solutions that scale with your business",
+      "Our 25-year warranty and what it actually covers",
+      "The brands we trust and why we chose them"
+    ],
+    "case_studies": [
+      "How one family cut their energy bill to under $20 per month",
+      "Commercial client eliminates $50,000 in annual energy costs",
+      "From grid-dependent to energy independent in 45 days",
+      "Before and after: a residential solar installation story",
+      "5 years of solar ownership: what one customer learned",
+      "Small business owner powers his shop entirely with solar"
+    ],
+    "myth_busting": [
+      "Myth: Solar panels do not work on cloudy days",
+      "Myth: Solar installation damages your roof",
+      "Myth: Solar is only for wealthy homeowners",
+      "Myth: Solar panels require constant maintenance",
+      "Myth: Solar is not worth it in my state",
+      "Myth: Going solar means going off-grid",
+      "Myth: Solar panels look bad on a home"
+    ],
+    "promotions": [
+      "Schedule your free home energy audit today",
+      "Get a no-obligation solar savings estimate",
+      "Refer a neighbor and earn a $500 credit",
+      "Limited slots: free consultation this month",
+      "How to get started with solar in under a week",
+      "What to expect on your first call with our team"
+    ],
+    "industry_news": [
+      "Solar adoption hits record highs in 2026",
+      "New utility rate increases and what it means for homeowners",
+      "How the IRA solar incentives affect your installation cost",
+      "The future of home energy storage technology",
+      "Why more businesses are choosing solar in 2026",
+      "Grid reliability concerns driving solar demand nationwide"
+    ]
+  }
+}

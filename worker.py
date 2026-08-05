@@ -27,11 +27,11 @@ def _utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def _start_slot_thread(slot: str) -> bool:
+def _start_slot_thread(slot: str, force_live: bool = False) -> bool:
     if RUN_LOCK.locked():
         return False
 
-    thread = threading.Thread(target=run_slot, args=(slot,), daemon=True)
+    thread = threading.Thread(target=run_slot, args=(slot, force_live), daemon=True)
     thread.start()
     return True
 
@@ -75,6 +75,7 @@ class HealthHandler(BaseHTTPRequestHandler):
             params = parse_qs(parsed.query)
             provided = params.get("token", [""])[0]
             slot = params.get("slot", ["morning"])[0]
+            force_live = params.get("live", ["false"])[0].lower() in ("1", "true", "yes")
             if slot not in ("morning", "midday", "evening"):
                 slot = "morning"
 
@@ -96,10 +97,11 @@ class HealthHandler(BaseHTTPRequestHandler):
                 self.wfile.write(body)
                 return
 
-            started = _start_slot_thread(slot)
+            started = _start_slot_thread(slot, force_live=force_live)
             payload = {
                 "accepted": started,
                 "slot": slot,
+                "force_live": force_live,
                 "message": "run started" if started else "run already in progress",
                 "time_utc": _utc_now(),
             }
@@ -126,7 +128,7 @@ def start_health_server() -> None:
     print(f"Health endpoint listening on 0.0.0.0:{port}")
 
 
-def run_slot(slot: str) -> None:
+def run_slot(slot: str, force_live: bool = False) -> None:
     with RUN_LOCK:
         LAST_RUN["status"] = "running"
         LAST_RUN["slot"] = slot
@@ -135,7 +137,10 @@ def run_slot(slot: str) -> None:
         LAST_RUN["error"] = None
 
         print(f"\n[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}] Starting {slot} run...")
+        previous_dry_run = os.environ.get("SOCIAL_DRY_RUN", "true")
         os.environ["POST_SLOT"] = slot
+        if force_live:
+            os.environ["SOCIAL_DRY_RUN"] = "false"
         try:
             run_engine.main()
             LAST_RUN["status"] = "success"
@@ -145,6 +150,7 @@ def run_slot(slot: str) -> None:
             print(f"[ERROR] {slot} run failed: {e}")
             traceback.print_exc()
         finally:
+            os.environ["SOCIAL_DRY_RUN"] = previous_dry_run
             LAST_RUN["finished_at_utc"] = _utc_now()
 
 

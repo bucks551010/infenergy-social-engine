@@ -13,13 +13,53 @@ SITE_URL = os.environ.get("WP_URL", "https://www.infenergypower.com")
 BASE_DATA_DIR = os.path.join(os.path.dirname(__file__), "..", "data")
 DATA_DIR = os.environ.get("DATA_DIR", BASE_DATA_DIR)
 
+DEFAULT_TOPIC_QUEUE = {
+    "pillars": [
+        "solar_savings",
+        "battery_storage",
+        "energy_independence",
+        "promotions",
+    ],
+    "topics": {
+        "solar_savings": [
+            "How solar panels can reduce monthly utility costs",
+            "The real ROI of residential solar in 2026",
+            "How net metering can offset electricity bills",
+        ],
+        "battery_storage": [
+            "How home batteries keep essentials running during outages",
+            "Battery capacity basics: what can 1kWh actually power?",
+            "When battery backup beats a traditional generator",
+        ],
+        "energy_independence": [
+            "How to protect your home from rising energy rates",
+            "Why energy resilience matters in severe weather seasons",
+            "How solar plus storage reduces grid dependency",
+        ],
+        "promotions": [
+            "Book a free energy consultation and savings estimate",
+            "How to start your solar evaluation in under 15 minutes",
+            "What to expect from your first energy strategy call",
+        ],
+    },
+}
+
 
 def _read_json_with_fallback(filename: str) -> dict:
     primary = os.path.join(DATA_DIR, filename)
     fallback = os.path.join(BASE_DATA_DIR, filename)
-    path = primary if os.path.exists(primary) else fallback
-    with open(path, "r", encoding="utf-8") as f:
-        return json.load(f)
+    for path in (primary, fallback):
+        if os.path.exists(path):
+            with open(path, "r", encoding="utf-8") as f:
+                return json.load(f)
+
+    if filename == "post_history.json":
+        return {"posts": []}
+
+    if filename == "topic_queue.json":
+        return DEFAULT_TOPIC_QUEUE
+
+    raise FileNotFoundError(f"Missing required JSON file: {filename}")
 
 
 def load_topic_queue() -> dict:

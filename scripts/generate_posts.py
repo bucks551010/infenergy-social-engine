@@ -194,6 +194,76 @@ def _pick_topic(queue: dict, history: dict) -> tuple[str, str, str]:
     return pillar, topic, hashlib.md5(topic.encode()).hexdigest()
 
 
+def _build_fallback_content(slot: str, topic: str, product: dict | None) -> dict:
+    name = (product or {}).get("name", "INF Energy Power solution")
+    sku = (product or {}).get("sku", "")
+    price = (product or {}).get("price", "")
+    sale_price = (product or {}).get("sale_price", "")
+    metrics = (product or {}).get("metrics", [])
+    m1 = metrics[0] if len(metrics) > 0 else "high-capacity output"
+    m2 = metrics[1] if len(metrics) > 1 else "fast charging performance"
+
+    price_line = ""
+    if sale_price:
+        price_line = f" Current sale price is ${sale_price}."
+    elif price:
+        price_line = f" Current listed price is ${price}."
+
+    wp_title = f"{name}: What To Know Before You Buy"
+    if len(wp_title) > 64:
+        wp_title = f"{name[:52]}: Buyer Guide"
+
+    wp_content = (
+        f"<p>Choosing backup power is not just about watts on a label. It is about reliability, runtime, and how well a product matches your real daily use. Today we are breaking down <strong>{name}</strong> and where it fits for homeowners and small business owners.</p>"
+        f"<h2>Start With Your Real Use Case</h2>"
+        f"<p>Before buying any power solution, list the devices you need to run first. Most buyers overestimate occasional loads and underestimate frequent loads. The smarter move is to match your frequent loads to verified product specs. For this model, key published specs include <strong>{m1}</strong> and <strong>{m2}</strong>. These two data points are usually the best first filter when comparing options.</p>"
+        f"<h2>How This Product Compares In Practical Terms</h2>"
+        f"<p>When evaluating alternatives, focus on three things: usable output, charging speed, and portability. A product that looks cheaper can cost more over time if charging is slow or output is limited for the devices you use most. {name} is positioned for buyers who want consistent performance without overcomplicating setup.{price_line}</p>"
+        f"<h2>Avoid The Most Common Buying Mistakes</h2>"
+        f"<p>The biggest mistake is buying only on headline capacity. The second is ignoring how and where the unit will be used. A better approach is to map your top 3 devices, compare real specs, and confirm compatibility up front. This avoids returns, downtime, and frustration.</p>"
+        f"<h2>Next Step</h2>"
+        f"<p>If you want a tailored recommendation, book a free consultation with INF Energy Power. We can help you compare your options and select the right system for your actual usage, not generic assumptions.</p>"
+    )
+
+    fb_caption = (
+        f"Most people buy backup power by guesswork and marketing hype. That is exactly why they end up with the wrong unit.\n\n"
+        f"If you are comparing options like {name}, start with what actually matters: published specs and your real daily devices. This product lists {m1} and {m2}, which are the kinds of details that should drive your decision, not just brand name."
+        f"{price_line}\n\n"
+        f"If you want help matching the right system to your usage, we can walk you through it in a free consultation.\n\n"
+        f"What device is non-negotiable for you during an outage?\n"
+        f"#BackupPower #EnergyResilience #SmartBuying #InfEnergyPower #PortablePower"
+    )
+
+    ig_caption = (
+        f"Stop buying backup power blind.\n"
+        f"If you are considering {name}, do not pick based on marketing alone. Compare real specs to your actual daily devices.\n\n"
+        f"Two key published details on this model are {m1} and {m2}. Those numbers matter more than hype because they affect runtime, compatibility, and reliability when you need power most."
+        f"{price_line}\n\n"
+        f"Want help choosing the right setup for your home or business? We offer a free consultation.\n"
+        f"#PortablePower #EnergyBackup #PowerOutagePrep #SolarReady #EmergencyPower #SmartHomeEnergy #InfEnergyPower #BatteryBackup"
+    )
+
+    li_text = (
+        f"Most backup power purchases fail for one reason: buyers optimize for headline numbers instead of real-world usage.\n\n"
+        f"When evaluating products like {name}{' (' + sku + ')' if sku else ''}, the better framework is simple:\n"
+        f"1) Map your top 3 critical loads\n"
+        f"2) Validate published output and charging specs\n"
+        f"3) Compare portability and recharge practicality\n\n"
+        f"For this model, two important published specs are {m1} and {m2}. These are the details that determine whether a unit helps in a real outage or just looks good on a product page."
+        f"{price_line}\n\n"
+        f"If you want a practical recommendation based on your exact use case, INF Energy Power offers a free consultation with a clear side-by-side comparison."
+    )
+
+    return {
+        "wp_title": wp_title,
+        "wp_content": wp_content,
+        "wp_excerpt": f"{name}: practical buying guidance, key specs, and what to compare before you purchase.",
+        "fb_caption": fb_caption,
+        "ig_caption": ig_caption,
+        "li_text": li_text,
+    }
+
+
 def generate(slot: str) -> dict:
     ensure_runtime_data()
     genai.configure(api_key=os.environ["GEMINI_API_KEY"])
@@ -289,7 +359,19 @@ Return ONLY valid JSON with these exact keys (no markdown, no code fences):
             continue
 
     if response is None:
-        raise RuntimeError(f"All Gemini model attempts failed: {last_error}")
+        content = _build_fallback_content(slot, topic, product)
+        content["topic"] = topic
+        content["pillar"] = pillar
+        content["topic_hash"] = topic_hash
+        content["product_name"] = product_name
+        content["product_sku"] = product_sku
+        content["product_price"] = product_price
+        content["product_sale_price"] = product_sale_price
+        content["product_image_url"] = product.get("image_url", "") if product else ""
+        content["date"] = str(date.today())
+        content["slot"] = slot
+        return content
+
     raw = response.text.strip()
 
     # Strip markdown code fences if Gemini wraps response

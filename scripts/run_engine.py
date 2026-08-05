@@ -41,18 +41,40 @@ def main() -> None:
         print(f"Product: {content['product_name']} ({content.get('product_sku', 'N/A')})")
     print(f"WP Title: {content['wp_title']}\n")
 
+    errors = []
+    wp_result = {"id": "failed", "link": os.environ.get("WP_URL", "https://www.infenergypower.com")}
+    fb_result = {"id": "failed"}
+    ig_result = {"id": "failed"}
+    li_result = {"id": "failed"}
+
     print("[2/5] WordPress...")
-    wp_result = publish_wordpress.publish(content, dry_run=dry_run)
+    try:
+        wp_result = publish_wordpress.publish(content, dry_run=dry_run)
+    except Exception as e:
+        errors.append(f"WordPress: {e}")
+        print(f"[ERROR] WordPress publish failed: {e}")
     wp_link = wp_result.get("link", os.environ.get("WP_URL", "https://www.infenergypower.com"))
 
     print("[3/5] Facebook...")
-    fb_result = publish_facebook.publish(content, wp_link, dry_run=dry_run)
+    try:
+        fb_result = publish_facebook.publish(content, wp_link, dry_run=dry_run)
+    except Exception as e:
+        errors.append(f"Facebook: {e}")
+        print(f"[ERROR] Facebook publish failed: {e}")
 
     print("[4/5] Instagram...")
-    ig_result = publish_instagram.publish(content, dry_run=dry_run)
+    try:
+        ig_result = publish_instagram.publish(content, dry_run=dry_run)
+    except Exception as e:
+        errors.append(f"Instagram: {e}")
+        print(f"[ERROR] Instagram publish failed: {e}")
 
     print("[5/5] LinkedIn...")
-    li_result = publish_linkedin.publish(content, wp_link, dry_run=dry_run)
+    try:
+        li_result = publish_linkedin.publish(content, wp_link, dry_run=dry_run)
+    except Exception as e:
+        errors.append(f"LinkedIn: {e}")
+        print(f"[ERROR] LinkedIn publish failed: {e}")
 
     # Persist history so the next run picks a fresh topic
     history = generate_posts.load_history()
@@ -72,6 +94,9 @@ def main() -> None:
     })
     history["posts"] = history["posts"][-200:]
     generate_posts.save_history(history)
+
+    if errors:
+        raise RuntimeError(" | ".join(errors))
 
     print("\n=== Done ===\n")
 

@@ -36,6 +36,8 @@ def main() -> None:
     print("[1/5] Generating content with Gemini...")
     content = generate_posts.generate(slot)
     print(f"Topic: {content['topic']}")
+    if content.get("product_name"):
+        print(f"Product: {content['product_name']} ({content.get('product_sku', 'N/A')})")
     print(f"WP Title: {content['wp_title']}\n")
 
     print("[2/5] WordPress...")
@@ -59,6 +61,8 @@ def main() -> None:
         "topic": content["topic"],
         "pillar": content["pillar"],
         "topic_hash": content["topic_hash"],
+        "product_name": content.get("product_name", ""),
+        "product_sku": content.get("product_sku", ""),
         "dry_run": dry_run,
         "wp_id": wp_result.get("id"),
         "fb_id": fb_result.get("id"),

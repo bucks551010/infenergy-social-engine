@@ -9,8 +9,9 @@ GRAPH_BASE = "https://graph.facebook.com/v26.0"
 
 
 def publish(content: dict, dry_run: bool = False) -> dict:
-    if not IG_DEFAULT_IMAGE_URL:
-        print("[Instagram] Skipped: set IG_DEFAULT_IMAGE_URL secret to a public branded image URL")
+    image_url = content.get("product_image_url") or IG_DEFAULT_IMAGE_URL
+    if not image_url:
+        print("[Instagram] Skipped: no product image and no IG_DEFAULT_IMAGE_URL configured")
         return {"id": "skipped"}
 
     caption = content["ig_caption"]
@@ -23,7 +24,7 @@ def publish(content: dict, dry_run: bool = False) -> dict:
     resp = requests.post(
         f"{GRAPH_BASE}/{META_IG_USER_ID}/media",
         data={
-            "image_url": IG_DEFAULT_IMAGE_URL,
+            "image_url": image_url,
             "caption": caption,
             "access_token": META_PAGE_ACCESS_TOKEN,
         },

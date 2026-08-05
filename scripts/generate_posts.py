@@ -2,27 +2,123 @@ import os
 import json
 import random
 import hashlib
+import csv
+import glob
+import re
 from datetime import date
 import google.generativeai as genai
 
 SITE_URL = os.environ.get("WP_URL", "https://www.infenergypower.com")
 # DATA_DIR can be overridden by Railway volume mount (set DATA_DIR=/app/data in Railway Variables)
-DATA_DIR = os.environ.get("DATA_DIR", os.path.join(os.path.dirname(__file__), "..", "data"))
+BASE_DATA_DIR = os.path.join(os.path.dirname(__file__), "..", "data")
+DATA_DIR = os.environ.get("DATA_DIR", BASE_DATA_DIR)
+
+
+def _read_json_with_fallback(filename: str) -> dict:
+    primary = os.path.join(DATA_DIR, filename)
+    fallback = os.path.join(BASE_DATA_DIR, filename)
+    path = primary if os.path.exists(primary) else fallback
+    with open(path, "r", encoding="utf-8") as f:
+        return json.load(f)
 
 
 def load_topic_queue() -> dict:
-    with open(os.path.join(DATA_DIR, "topic_queue.json"), "r") as f:
-        return json.load(f)
+    return _read_json_with_fallback("topic_queue.json")
 
 
 def load_history() -> dict:
-    with open(os.path.join(DATA_DIR, "post_history.json"), "r") as f:
-        return json.load(f)
+    return _read_json_with_fallback("post_history.json")
 
 
 def save_history(history: dict) -> None:
-    with open(os.path.join(DATA_DIR, "post_history.json"), "w") as f:
+    os.makedirs(DATA_DIR, exist_ok=True)
+    with open(os.path.join(DATA_DIR, "post_history.json"), "w", encoding="utf-8") as f:
         json.dump(history, f, indent=2)
+
+
+def _strip_html(text: str) -> str:
+    text = re.sub(r"<!--.*?-->", " ", text or "", flags=re.DOTALL)
+    text = re.sub(r"<[^>]+>", " ", text)
+    text = text.replace("\\n", " ")
+    text = re.sub(r"\s+", " ", text).strip()
+    return text
+
+
+def _extract_metrics(text: str) -> list[str]:
+    if not text:
+        return []
+    pattern = re.compile(
+        r"\b\d{1,3}(?:,\d{3})*(?:\.\d+)?\s?(?:Wh|mAh|W|kW|V|A|lbs|lb|in|mm|g|hours|hour|%|PD\s?\d+W|QC\s?\d+\.\d+)\b",
+        flags=re.IGNORECASE,
+    )
+    seen = set()
+    out = []
+    for m in pattern.findall(text):
+        k = m.lower()
+        if k not in seen:
+            seen.add(k)
+            out.append(m)
+    return out[:8]
+
+
+def load_products() -> list[dict]:
+    products_dir = os.path.join(BASE_DATA_DIR, "products")
+    csv_paths = sorted(glob.glob(os.path.join(products_dir, "*.csv")))
+    products = []
+
+    for csv_path in csv_paths:
+        with open(csv_path, "r", encoding="utf-8", newline="") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                if row.get("Published", "").strip() != "1":
+                    continue
+
+                name = (row.get("Name") or "").strip()
+                if not name:
+                    continue
+
+                sku = (row.get("SKU") or "").strip()
+                short_text = _strip_html(row.get("Short description") or "")
+                long_text = _strip_html(row.get("Description") or "")
+                merged_text = f"{short_text} {long_text}".strip()
+                metrics = _extract_metrics(merged_text)
+                categories = [c.strip() for c in (row.get("Categories") or "").split(",") if c.strip()]
+                image_urls = [u.strip() for u in (row.get("Images") or "").split(",") if u.strip()]
+
+                products.append(
+                    {
+                        "id": (row.get("ID") or "").strip(),
+                        "name": name,
+                        "sku": sku,
+                        "price": (row.get("Regular price") or "").strip(),
+                        "sale_price": (row.get("Sale price") or "").strip(),
+                        "categories": categories[:4],
+                        "metrics": metrics,
+                        "fact_snippet": merged_text[:500],
+                        "image_url": image_urls[0] if image_urls else "",
+                    }
+                )
+
+    return products
+
+
+def _pick_product(products: list[dict], history: dict) -> dict | None:
+    if not products:
+        return None
+
+    recent_keys = {
+        f"{p.get('product_name', '')}|{p.get('product_sku', '')}".lower()
+        for p in history.get("posts", [])[-40:]
+        if p.get("product_name")
+    }
+
+    random.shuffle(products)
+    for product in products:
+        key = f"{product.get('name', '')}|{product.get('sku', '')}".lower()
+        if key not in recent_keys:
+            return product
+
+    return random.choice(products)
 
 
 def _pick_topic(queue: dict, history: dict) -> tuple[str, str, str]:
@@ -49,6 +145,16 @@ def generate(slot: str) -> dict:
     queue = load_topic_queue()
     history = load_history()
     pillar, topic, topic_hash = _pick_topic(queue, history)
+    products = load_products()
+    product = _pick_product(products, history)
+
+    product_name = product.get("name", "") if product else ""
+    product_sku = product.get("sku", "") if product else ""
+    product_price = product.get("price", "") if product else ""
+    product_sale_price = product.get("sale_price", "") if product else ""
+    product_metrics = ", ".join(product.get("metrics", [])[:5]) if product else ""
+    product_categories = ", ".join(product.get("categories", [])[:3]) if product else ""
+    product_facts = product.get("fact_snippet", "") if product else ""
 
     slot_guidance = {
         "morning": (
@@ -77,6 +183,15 @@ AUDIENCE: Homeowners and small business owners frustrated by rising energy bills
 TOPIC: {topic}
 CONTENT DIRECTIVE: {slot_guidance}
 
+PRODUCT CONTEXT (ground your content in these details when relevant):
+- Product name: {product_name or 'N/A'}
+- SKU: {product_sku or 'N/A'}
+- Regular price: {product_price or 'N/A'}
+- Sale price: {product_sale_price or 'N/A'}
+- Categories: {product_categories or 'N/A'}
+- Key measurable specs: {product_metrics or 'N/A'}
+- Product facts excerpt: {product_facts or 'N/A'}
+
 QUALITY RULES — every piece must follow all of these:
 1. Open with a hook that creates immediate curiosity or challenges a common assumption.
 2. Include at least one specific number, stat, or real-world comparison that makes the content credible.
@@ -84,6 +199,8 @@ QUALITY RULES — every piece must follow all of these:
 4. Write like a human expert, not a marketing team. Never use words like "revolutionize", "game-changer", or "unlock your potential."
 5. Never make unverifiable guarantees. Use language like "many homeowners", "up to", "in most cases" where appropriate.
 6. Every post must have a clear emotional payoff: relief, confidence, curiosity satisfied, or urgency to act.
+7. If product context is available, use at least two concrete product facts or measurable specs naturally in the copy.
+8. Do not invent model names, specs, prices, or warranties not present in the provided product context.
 
 Return ONLY valid JSON with these exact keys (no markdown, no code fences):
 {{
@@ -109,6 +226,11 @@ Return ONLY valid JSON with these exact keys (no markdown, no code fences):
     content["topic"] = topic
     content["pillar"] = pillar
     content["topic_hash"] = topic_hash
+    content["product_name"] = product_name
+    content["product_sku"] = product_sku
+    content["product_price"] = product_price
+    content["product_sale_price"] = product_sale_price
+    content["product_image_url"] = product.get("image_url", "") if product else ""
     content["date"] = str(date.today())
     content["slot"] = slot
     return content

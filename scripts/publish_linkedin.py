@@ -8,6 +8,18 @@ LINKEDIN_AUTHOR_URN = os.environ.get("LINKEDIN_AUTHOR_URN", "")
 LI_API = "https://api.linkedin.com/v2"
 
 
+def _raise_with_body(resp: requests.Response) -> None:
+    try:
+        resp.raise_for_status()
+    except requests.HTTPError as e:
+        body = ""
+        try:
+            body = resp.text[:1000]
+        except Exception:
+            body = "<unavailable>"
+        raise requests.HTTPError(f"{e} | response={body}") from e
+
+
 def _resolve_author_urn() -> str:
     if LINKEDIN_AUTHOR_URN:
         return LINKEDIN_AUTHOR_URN
@@ -17,7 +29,7 @@ def _resolve_author_urn() -> str:
         headers={"Authorization": f"Bearer {LINKEDIN_ACCESS_TOKEN}"},
         timeout=15,
     )
-    resp.raise_for_status()
+    _raise_with_body(resp)
     sub = resp.json()["sub"]
     return f"urn:li:person:{sub}"
 
@@ -54,7 +66,7 @@ def publish(content: dict, wp_link: str, dry_run: bool = False) -> dict:
         json=payload,
         timeout=30,
     )
-    resp.raise_for_status()
+    _raise_with_body(resp)
     post_id = resp.headers.get("x-restli-id", "posted")
     print(f"[LinkedIn] Posted: {post_id}")
     return {"id": post_id}

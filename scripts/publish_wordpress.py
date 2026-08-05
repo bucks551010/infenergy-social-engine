@@ -9,6 +9,18 @@ WP_USERNAME = os.environ["WP_USERNAME"]
 WP_APP_PASSWORD = os.environ["WP_APP_PASSWORD"]
 
 
+def _raise_with_body(resp: requests.Response) -> None:
+    try:
+        resp.raise_for_status()
+    except requests.HTTPError as e:
+        body = ""
+        try:
+            body = resp.text[:1000]
+        except Exception:
+            body = "<unavailable>"
+        raise requests.HTTPError(f"{e} | response={body}") from e
+
+
 def _auth_header() -> dict:
     token = base64.b64encode(f"{WP_USERNAME}:{WP_APP_PASSWORD}".encode()).decode()
     return {"Authorization": f"Basic {token}", "Content-Type": "application/json"}
@@ -31,7 +43,7 @@ def publish(content: dict, dry_run: bool = False) -> dict:
         json=payload,
         timeout=30,
     )
-    resp.raise_for_status()
+    _raise_with_body(resp)
     data = resp.json()
     print(f"[WordPress] Published: {data['link']}")
     return {"id": data["id"], "link": data["link"]}

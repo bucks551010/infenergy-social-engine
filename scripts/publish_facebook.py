@@ -6,6 +6,18 @@ META_PAGE_ACCESS_TOKEN = os.environ["META_PAGE_ACCESS_TOKEN"]
 GRAPH_BASE = "https://graph.facebook.com/v26.0"
 
 
+def _raise_with_body(resp: requests.Response) -> None:
+    try:
+        resp.raise_for_status()
+    except requests.HTTPError as e:
+        body = ""
+        try:
+            body = resp.text[:1000]
+        except Exception:
+            body = "<unavailable>"
+        raise requests.HTTPError(f"{e} | response={body}") from e
+
+
 def publish(content: dict, wp_link: str, dry_run: bool = False) -> dict:
     message = f"{content['fb_caption']}\n\n{wp_link}"
 
@@ -21,7 +33,7 @@ def publish(content: dict, wp_link: str, dry_run: bool = False) -> dict:
         },
         timeout=30,
     )
-    resp.raise_for_status()
+    _raise_with_body(resp)
     data = resp.json()
     print(f"[Facebook] Posted: {data['id']}")
     return {"id": data["id"]}

@@ -6,7 +6,8 @@ from datetime import date
 import google.generativeai as genai
 
 SITE_URL = os.environ.get("WP_URL", "https://www.infenergypower.com")
-DATA_DIR = os.path.join(os.path.dirname(__file__), "..", "data")
+# DATA_DIR can be overridden by Railway volume mount (set DATA_DIR=/app/data in Railway Variables)
+DATA_DIR = os.environ.get("DATA_DIR", os.path.join(os.path.dirname(__file__), "..", "data"))
 
 
 def load_topic_queue() -> dict:

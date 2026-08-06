@@ -73,6 +73,8 @@ Optional environment variables:
 - `MARKETING_OUTPUT_DIR` (default: data/marketing)
 - `GEMINI_API_KEY` (enables AI refinement in copy agent)
 - `GEMINI_MODEL` (default: gemini-2.5-flash)
+- `IG_CATEGORY_FALLBACKS_JSON` (optional JSON map for category-level image fallbacks)
+- `IG_VALIDATE_IMAGE_URLS` (default: true; preflight-check image URLs before Instagram publish)
 
 ## Notes
 

@@ -45,6 +45,15 @@ DEFAULT_TOPIC_QUEUE = {
     },
 }
 
+DEFAULT_CATEGORY_IMAGE_FALLBACKS = {
+    "portable power": "https://infenergypower.com/wp-content/uploads/2024/11/IMG_4214.png",
+    "travel power": "https://infenergypower.com/wp-content/uploads/2024/12/IMG_4806.jpg",
+    "solar generators": "https://infenergypower.com/wp-content/uploads/2024/08/1.png",
+    "solar panels": "https://infenergypower.com/wp-content/uploads/2025/08/AF-S400A1-1.jpg",
+    "home backup": "https://infenergypower.com/wp-content/uploads/2025/06/a0fc14752770c414bd090fa2f986454-scaled.png",
+    "emergency power": "https://infenergypower.com/wp-content/uploads/2022/05/1642710505878.png",
+}
+
 
 def ensure_runtime_data() -> None:
     os.makedirs(DATA_DIR, exist_ok=True)
@@ -120,6 +129,53 @@ def _is_usable_image_url(url: str) -> bool:
     if any(x in u for x in ("placeholder", "no-image", "default")):
         return False
     return True
+
+
+def _load_category_image_fallbacks() -> dict[str, str]:
+    custom = os.environ.get("IG_CATEGORY_FALLBACKS_JSON", "").strip()
+    merged = dict(DEFAULT_CATEGORY_IMAGE_FALLBACKS)
+    if custom:
+        try:
+            parsed = json.loads(custom)
+            if isinstance(parsed, dict):
+                for k, v in parsed.items():
+                    key = str(k).strip().lower()
+                    val = str(v).strip()
+                    if key and _is_usable_image_url(val):
+                        merged[key] = val
+        except Exception:
+            pass
+    return merged
+
+
+def _category_tokens(categories: list[str]) -> list[str]:
+    tokens = []
+    for c in categories:
+        raw = (c or "").strip().lower()
+        if not raw:
+            continue
+        tokens.append(raw)
+        if ">" in raw:
+            tokens.append(raw.split(">", 1)[0].strip())
+    out = []
+    seen = set()
+    for t in tokens:
+        if t and t not in seen:
+            seen.add(t)
+            out.append(t)
+    return out
+
+
+def _fallback_images_for_categories(categories: list[str]) -> list[str]:
+    mapping = _load_category_image_fallbacks()
+    out = []
+    seen = set()
+    for token in _category_tokens(categories):
+        url = mapping.get(token, "")
+        if _is_usable_image_url(url) and url not in seen:
+            seen.add(url)
+            out.append(url)
+    return out[:4]
 
 
 def _score_image_url(url: str) -> int:
@@ -215,6 +271,7 @@ def load_products() -> list[dict]:
                         "fact_snippet": merged_text[:500],
                         "image_url": primary_image,
                         "image_candidates": image_candidates,
+                        "category_image_candidates": _fallback_images_for_categories(categories),
                     }
                 )
 
@@ -478,6 +535,7 @@ Return ONLY valid JSON with these exact keys (no markdown, no code fences):
         content["product_sale_price"] = product_sale_price
         content["product_image_url"] = product.get("image_url", "") if product else ""
         content["product_image_candidates"] = product.get("image_candidates", []) if product else []
+        content["category_image_candidates"] = product.get("category_image_candidates", []) if product else []
         content["marketing_strategy_used"] = bool(marketing_strategy)
         content["marketing_bundle_used"] = bool(marketing_strategy)
         content["date"] = str(date.today())
@@ -493,6 +551,7 @@ Return ONLY valid JSON with these exact keys (no markdown, no code fences):
     content["product_sale_price"] = product_sale_price
     content["product_image_url"] = product.get("image_url", "") if product else ""
     content["product_image_candidates"] = product.get("image_candidates", []) if product else []
+    content["category_image_candidates"] = product.get("category_image_candidates", []) if product else []
     content["marketing_strategy_used"] = bool(marketing_strategy)
     content["marketing_bundle_used"] = bool(marketing_strategy)
     content["date"] = str(date.today())

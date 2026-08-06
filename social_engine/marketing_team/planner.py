@@ -27,6 +27,14 @@ def _weekly_slots() -> list[dict[str, str]]:
     return [{"day": day, "slot": slot} for day in days for slot in slots]
 
 
+def _content_goal(slot: str) -> str:
+    if slot == "morning":
+        return "education"
+    if slot == "midday":
+        return "proof"
+    return "conversion"
+
+
 def build_weekly_plan(output_dir: str) -> dict[str, Any]:
     bundle = _load_latest_bundle(output_dir)
     if not bundle:
@@ -42,6 +50,9 @@ def build_weekly_plan(output_dir: str) -> dict[str, Any]:
     ctas = copy.get("cta_bank", [])
     offers = offer.get("core_offers", [])
     categories = profile.get("top_categories", [])
+    ad_angles = copy.get("ad_angles", [])
+    segments = audience.get("segments", [])
+    experiments = bundle.get("experiments", {}).get("experiments", [])
 
     if not hooks:
         hooks = ["What fails first in your home during an outage?"]
@@ -51,28 +62,78 @@ def build_weekly_plan(output_dir: str) -> dict[str, Any]:
         offers = ["Device-by-device runtime planning"]
     if not categories:
         categories = ["Portable Power"]
+    if not ad_angles:
+        ad_angles = ["Fear-to-control framing"]
 
     sequence = []
     slots = _weekly_slots()
+    used = set()
     for i, slot_info in enumerate(slots):
         segment = segments[i % max(1, len(segments))] if segments else {}
+        hook = hooks[i % len(hooks)]
+        if hook in used:
+            hook = hooks[(i + 1) % len(hooks)]
+        used.add(hook)
+
         sequence.append(
             {
                 "day": slot_info["day"],
                 "slot": slot_info["slot"],
                 "theme": categories[i % len(categories)],
                 "segment": segment.get("name", "Prepared Buyer"),
-                "hook": hooks[i % len(hooks)],
+                "hook": hook,
                 "offer_angle": offers[i % len(offers)],
                 "primary_cta": ctas[i % len(ctas)],
-                "content_type": "education" if slot_info["slot"] == "morning" else ("proof" if slot_info["slot"] == "midday" else "cta"),
+                "ad_angle": ad_angles[i % len(ad_angles)],
+                "content_type": _content_goal(slot_info["slot"]),
+                "proof_requirement": "Include one measurable spec or scenario metric",
+                "kpi_target": "engagement" if slot_info["slot"] != "evening" else "conversion",
             }
         )
+
+    campaign_arcs = [
+        {
+            "name": "Outage Readiness Week",
+            "primary_objective": "Increase preparedness consult bookings",
+            "hero_offer": ctas[0],
+            "narrative": [
+                "Day 1-2: expose hidden outage risk",
+                "Day 3-4: prove spec-to-outcome mapping",
+                "Day 5-7: convert with clear next-step CTA",
+            ],
+        },
+        {
+            "name": "Solar Independence Week",
+            "primary_objective": "Increase solar-storage interest and trust",
+            "hero_offer": offers[0],
+            "narrative": [
+                "Day 1-2: rate-volatility pain",
+                "Day 3-4: modular pathway and costs",
+                "Day 5-7: practical consultation CTA",
+            ],
+        },
+    ]
+
+    test_queue = [
+        {
+            "experiment": e.get("name", "Experiment"),
+            "hypothesis": e.get("hypothesis", ""),
+            "window": "7 days",
+        }
+        for e in experiments[:3]
+    ]
 
     plan = {
         "generated_at_utc": datetime.now(timezone.utc).isoformat(),
         "source_bundle_generated_at": bundle.get("generated_at_utc"),
-        "objective": "Rotate categories and audience segments across 7-day, 3-slot cadence with strong hooks and single-CTA assets.",
+        "objective": "Run a structured weekly growth sprint with education-proof-conversion sequencing and measurable tests.",
+        "campaign_arcs": campaign_arcs,
+        "test_queue": test_queue,
+        "ops_guardrails": [
+            "Never repeat identical hooks on consecutive posts",
+            "Every post has one proof element and one clear CTA",
+            "Evening slots prioritize conversion CTAs",
+        ],
         "sequence": sequence,
     }
 
@@ -87,10 +148,18 @@ def build_weekly_plan(output_dir: str) -> dict[str, Any]:
     lines.append("## Objective")
     lines.append(plan["objective"])
     lines.append("")
+    lines.append("## Campaign Arcs")
+    for arc in campaign_arcs:
+        lines.append(f"- {arc['name']}: {arc['primary_objective']}")
+    lines.append("")
+    lines.append("## Test Queue")
+    for test in test_queue:
+        lines.append(f"- {test['experiment']}: {test['hypothesis']}")
+    lines.append("")
     lines.append("## Sequence")
     for item in sequence:
         lines.append(
-            f"- {item['day']} {item['slot']}: [{item['content_type']}] {item['theme']} | Segment: {item['segment']} | Hook: {item['hook']} | CTA: {item['primary_cta']}"
+            f"- {item['day']} {item['slot']}: [{item['content_type']}] {item['theme']} | Segment: {item['segment']} | Hook: {item['hook']} | Angle: {item['ad_angle']} | CTA: {item['primary_cta']}"
         )
 
     with open(out_md, "w", encoding="utf-8") as f:

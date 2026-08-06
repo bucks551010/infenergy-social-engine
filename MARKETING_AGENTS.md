@@ -9,9 +9,18 @@ This repo now includes a collaborative marketing-agent system built around your 
 - Offer strategy and value stack
 - Conversion copy pack (hero, hooks, CTA bank, ad angles)
 - Creative direction (image prompts + short video concepts)
-- Channel operations plan and QA checklist
+- Channel operations playbooks and message matrix
+- SEO pillar clusters and internal-link strategy
+- Lifecycle email flow blueprint
+- Growth experimentation queue (weekly tests)
+- Execution pack for direct handoff to posting systems
+- QA score with improvement actions
 
-Outputs are written to `data/marketing/` as timestamped JSON + Markdown.
+Outputs are written to `data/marketing/` as timestamped JSON + Markdown, including:
+
+- `marketing_bundle_*.json` (full strategy graph)
+- `execution_pack_*.json` (operator-ready payload)
+- `marketing_summary_*.md` (human summary)
 
 It also supports a weekly planner that builds a 7-day, 3-slot campaign sequence from the latest bundle.
 
@@ -38,7 +47,16 @@ It also supports a weekly planner that builds a 7-day, 3-slot campaign sequence 
 7. `channel_editor_agent`:
 - Adapts messaging for Facebook, Instagram, LinkedIn, and email.
 
-8. `conversion_qa_agent`:
+8. `seo_content_agent`:
+- Creates pillar clusters and metadata strategy.
+
+9. `lifecycle_email_agent`:
+- Designs lead nurture and reactivation flows.
+
+10. `growth_experimentation_agent`:
+- Produces test hypotheses, variants, and success metrics.
+
+11. `conversion_qa_agent`:
 - Runs quality checks before publishing.
 
 ## Run

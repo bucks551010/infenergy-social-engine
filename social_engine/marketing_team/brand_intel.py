@@ -5,6 +5,7 @@ import glob
 import json
 import os
 import re
+from collections import Counter
 from dataclasses import dataclass
 from typing import Any
 
@@ -19,6 +20,18 @@ class ProductFact:
     metrics: list[str]
     price: str
     image_url: str
+
+
+def _to_float(value: str) -> float | None:
+    try:
+        if value is None:
+            return None
+        cleaned = str(value).replace("$", "").replace(",", "").strip()
+        if not cleaned:
+            return None
+        return float(cleaned)
+    except Exception:
+        return None
 
 
 def _strip_html(text: str) -> str:
@@ -93,12 +106,57 @@ def infer_brand_profile(site_url: str, products_dir: str) -> dict[str, Any]:
     products = load_products(products_dir)
 
     names = [p.name for p in products[:25]]
-    categories: dict[str, int] = {}
+    category_counter: Counter[str] = Counter()
+    metric_counter: Counter[str] = Counter()
+    prices: list[float] = []
     for p in products:
         for c in p.categories:
-            categories[c] = categories.get(c, 0) + 1
+            category_counter[c] += 1
+        for m in p.metrics:
+            metric_counter[m.lower()] += 1
+        f = _to_float(p.price)
+        if f is not None and f > 0:
+            prices.append(f)
 
-    top_categories = [k for k, _ in sorted(categories.items(), key=lambda x: x[1], reverse=True)[:8]]
+    top_categories = [k for k, _ in category_counter.most_common(8)]
+    top_metrics = [k for k, _ in metric_counter.most_common(12)]
+
+    if prices:
+        prices_sorted = sorted(prices)
+        median = prices_sorted[len(prices_sorted) // 2]
+        price_summary = {
+            "min": round(min(prices), 2),
+            "max": round(max(prices), 2),
+            "median": round(median, 2),
+            "count": len(prices),
+        }
+    else:
+        price_summary = {"min": None, "max": None, "median": None, "count": 0}
+
+    value_tier = "mid_to_premium"
+    if price_summary["median"] is not None:
+        med = price_summary["median"]
+        if med < 120:
+            value_tier = "entry_to_mid"
+        elif med > 1200:
+            value_tier = "premium"
+
+    keyword_groups = {
+        "preparedness": ["outage", "emergency", "backup", "ready", "storm"],
+        "independence": ["independence", "freedom", "grid", "resilience"],
+        "sustainability": ["solar", "clean energy", "sustainable", "green"],
+    }
+
+    lower_site = site_text.lower()
+    messaging_signals: dict[str, int] = {}
+    for group, words in keyword_groups.items():
+        messaging_signals[group] = sum(lower_site.count(w) for w in words)
+
+    site_sentences = [s.strip() for s in re.split(r"[.!?]", site_text) if s.strip()]
+    claim_snippets = [
+        s for s in site_sentences
+        if any(w in s.lower() for w in ("outage", "power", "solar", "independence", "ready", "backup"))
+    ][:10]
 
     # Derived from visible brand language and offer catalog.
     brand_voice = {
@@ -121,6 +179,7 @@ def infer_brand_profile(site_url: str, products_dir: str) -> dict[str, Any]:
         "primary": "Homeowners and families in outage-prone regions",
         "secondary": "Small businesses, travelers, RV/camping users, and remote workers",
         "price_sensitivity": "Mid to premium with value framing around reliability and total cost of downtime",
+        "value_tier": value_tier,
     }
 
     psychographics = {
@@ -158,9 +217,13 @@ def infer_brand_profile(site_url: str, products_dir: str) -> dict[str, Any]:
     return {
         "site_url": site_url,
         "site_excerpt": site_text[:2500],
+        "site_claim_snippets": claim_snippets,
         "product_count": len(products),
         "product_examples": names,
+        "price_summary": price_summary,
         "top_categories": top_categories,
+        "top_metrics": top_metrics,
+        "messaging_signals": messaging_signals,
         "products": [
             {
                 "name": p.name,

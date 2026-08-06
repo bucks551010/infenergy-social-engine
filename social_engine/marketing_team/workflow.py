@@ -10,9 +10,12 @@ from .agents import (
     channel_ops_agent,
     copy_agent,
     creative_agent,
+    experimentation_agent,
+    lifecycle_email_agent,
     offer_agent,
     qa_agent,
     research_agent,
+    seo_agent,
     voice_agent,
 )
 from .brand_intel import infer_brand_profile, save_brand_profile
@@ -24,17 +27,33 @@ def _utc_stamp() -> str:
 
 def _markdown_summary(bundle: dict[str, Any]) -> str:
     profile = bundle["brand_profile"]
+    research = bundle["research"]
+    audience = bundle["audience"]
     voice = bundle["voice"]
     copy = bundle["copy"]
     creative = bundle["creative"]
+    experiments = bundle["experiments"]
+    seo = bundle["seo"]
 
     lines = []
-    lines.append("# INF Energy Marketing Team Output")
+    lines.append("# INF Energy Growth System Output")
     lines.append("")
     lines.append("## Brand Snapshot")
     lines.append(f"- Product count: {profile.get('product_count', 0)}")
     lines.append(f"- Top categories: {', '.join(profile.get('top_categories', [])[:6])}")
+    lines.append(f"- Price tier: {profile.get('demographics', {}).get('value_tier', 'n/a')}")
     lines.append(f"- Authority: {profile.get('brand_voice', {}).get('authority_position', '')}")
+    lines.append("")
+    lines.append("## Positioning")
+    lines.append(f"- Market position: {research.get('market_position', '')}")
+    for edge in research.get("competitive_edges", [])[:3]:
+        lines.append(f"- Edge: {edge}")
+    lines.append("")
+    lines.append("## Audience Priorities")
+    for segment in audience.get("segments", [])[:3]:
+        lines.append(
+            f"- {segment.get('name', '')}: trigger={segment.get('trigger', '')} | offer={segment.get('best_offer', '')}"
+        )
     lines.append("")
     lines.append("## Voice System")
     for rule in voice.get("voice_rules", []):
@@ -44,13 +63,44 @@ def _markdown_summary(bundle: dict[str, Any]) -> str:
     lines.append(f"- Hero: {copy.get('hero', '')}")
     lines.append(f"- Subhero: {copy.get('subhero', '')}")
     lines.append("")
+    lines.append("## SEO Pillars")
+    for pillar in seo.get("pillar_clusters", [])[:2]:
+        lines.append(f"- {pillar.get('pillar', '')}: {', '.join(pillar.get('topics', [])[:3])}")
+    lines.append("")
     lines.append("## Creative Prompts")
     for prompt in creative.get("image_prompts", []):
         lines.append(f"- {prompt}")
     lines.append("")
+    lines.append("## Experiments")
+    for exp in experiments.get("experiments", [])[:3]:
+        lines.append(f"- {exp.get('name', '')}: {exp.get('hypothesis', '')}")
+    lines.append("")
     lines.append("## QA")
+    lines.append(f"- Score: {bundle['qa'].get('score', 0)}")
     lines.append(f"- Status: {bundle['qa'].get('status', 'unknown')}")
     return "\n".join(lines)
+
+
+def _build_execution_pack(bundle: dict[str, Any]) -> dict[str, Any]:
+    copy = bundle.get("copy", {})
+    channels = bundle.get("channel_ops", {}).get("channels", {})
+    audience = bundle.get("audience", {}).get("segments", [])
+    return {
+        "hero": copy.get("hero", ""),
+        "subhero": copy.get("subhero", ""),
+        "top_hooks": copy.get("social_hooks", [])[:5],
+        "top_ctas": copy.get("cta_bank", [])[:5],
+        "channel_frameworks": channels,
+        "priority_segments": [
+            {
+                "name": s.get("name", ""),
+                "trigger": s.get("trigger", ""),
+                "best_offer": s.get("best_offer", ""),
+            }
+            for s in audience[:3]
+        ],
+        "publish_rule": "One clear CTA per post, one measurable proof point per asset.",
+    }
 
 
 def run_marketing_team(
@@ -70,6 +120,8 @@ def run_marketing_team(
     copy = copy_agent(profile, audience, voice, offer)
     creative = creative_agent(profile, voice, copy)
     channel_ops = channel_ops_agent(copy, creative)
+    seo = seo_agent(profile, copy)
+    lifecycle = lifecycle_email_agent(copy, audience)
 
     bundle = {
         "generated_at_utc": datetime.now(timezone.utc).isoformat(),
@@ -81,8 +133,12 @@ def run_marketing_team(
         "copy": copy,
         "creative": creative,
         "channel_ops": channel_ops,
+        "seo": seo,
+        "lifecycle": lifecycle,
     }
+    bundle["experiments"] = experimentation_agent(bundle)
     bundle["qa"] = qa_agent(bundle)
+    bundle["execution_pack"] = _build_execution_pack(bundle)
 
     stamp = _utc_stamp()
     os.makedirs(output_dir, exist_ok=True)
@@ -94,6 +150,10 @@ def run_marketing_team(
     with open(bundle_path, "w", encoding="utf-8") as f:
         json.dump(bundle, f, indent=2)
 
+    execution_path = os.path.join(output_dir, f"execution_pack_{stamp}.json")
+    with open(execution_path, "w", encoding="utf-8") as f:
+        json.dump(bundle["execution_pack"], f, indent=2)
+
     summary_path = os.path.join(output_dir, f"marketing_summary_{stamp}.md")
     with open(summary_path, "w", encoding="utf-8") as f:
         f.write(_markdown_summary(bundle))
@@ -101,6 +161,7 @@ def run_marketing_team(
     bundle["artifacts"] = {
         "brand_profile": profile_path,
         "bundle": bundle_path,
+        "execution_pack": execution_path,
         "summary": summary_path,
     }
     return bundle

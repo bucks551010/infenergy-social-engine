@@ -93,9 +93,11 @@ def save_history(history: dict) -> None:
         json.dump(history, f, indent=2)
 
 
-def _load_latest_marketing_bundle() -> dict:
+def _load_latest_marketing_strategy() -> dict:
     paths = []
     for base in (DATA_DIR, BASE_DATA_DIR):
+        paths.extend(glob.glob(os.path.join(base, "marketing", "marketing_strategy_*.json")))
+        # Backward compatibility with older artifact name.
         paths.extend(glob.glob(os.path.join(base, "marketing", "marketing_bundle_*.json")))
 
     if not paths:
@@ -107,6 +109,48 @@ def _load_latest_marketing_bundle() -> dict:
             return json.load(f)
     except Exception:
         return {}
+
+
+def _is_usable_image_url(url: str) -> bool:
+    if not url or not isinstance(url, str):
+        return False
+    u = url.strip().lower()
+    if not u.startswith("http"):
+        return False
+    if any(x in u for x in ("placeholder", "no-image", "default")):
+        return False
+    return True
+
+
+def _score_image_url(url: str) -> int:
+    score = 0
+    u = url.lower()
+    if "-300x300" in u or "-150x150" in u:
+        score -= 3
+    if "scaled" in u:
+        score += 2
+    if u.endswith(".jpg") or u.endswith(".jpeg"):
+        score += 2
+    if u.endswith(".png"):
+        score += 1
+    if "wp-content/uploads" in u:
+        score += 1
+    return score
+
+
+def _pick_best_image_urls(image_urls: list[str]) -> tuple[str, list[str]]:
+    usable = [u for u in image_urls if _is_usable_image_url(u)]
+    if not usable:
+        return "", []
+    ranked = sorted(usable, key=_score_image_url, reverse=True)
+    primary = ranked[0]
+    candidates = []
+    seen = set()
+    for u in ranked:
+        if u not in seen:
+            seen.add(u)
+            candidates.append(u)
+    return primary, candidates[:4]
 
 
 def _strip_html(text: str) -> str:
@@ -157,6 +201,7 @@ def load_products() -> list[dict]:
                 metrics = _extract_metrics(merged_text)
                 categories = [c.strip() for c in (row.get("Categories") or "").split(",") if c.strip()]
                 image_urls = [u.strip() for u in (row.get("Images") or "").split(",") if u.strip()]
+                primary_image, image_candidates = _pick_best_image_urls(image_urls)
 
                 products.append(
                     {
@@ -168,7 +213,8 @@ def load_products() -> list[dict]:
                         "categories": categories[:4],
                         "metrics": metrics,
                         "fact_snippet": merged_text[:500],
-                        "image_url": image_urls[0] if image_urls else "",
+                        "image_url": primary_image,
+                        "image_candidates": image_candidates,
                     }
                 )
 
@@ -211,9 +257,9 @@ def _pick_topic(queue: dict, history: dict) -> tuple[str, str, str]:
     return pillar, topic, hashlib.md5(topic.encode()).hexdigest()
 
 
-def _build_fallback_content(slot: str, topic: str, product: dict | None, marketing_bundle: dict | None) -> dict:
-    marketing_bundle = marketing_bundle or {}
-    marketing_copy = marketing_bundle.get("copy", {})
+def _build_fallback_content(slot: str, topic: str, product: dict | None, marketing_strategy: dict | None) -> dict:
+    marketing_strategy = marketing_strategy or {}
+    marketing_copy = marketing_strategy.get("copy", {})
     name = (product or {}).get("name", "INF Energy Power solution")
     sku = (product or {}).get("sku", "")
     price = (product or {}).get("price", "")
@@ -334,7 +380,7 @@ def generate(slot: str) -> dict:
     pillar, topic, topic_hash = _pick_topic(queue, history)
     products = load_products()
     product = _pick_product(products, history)
-    marketing_bundle = _load_latest_marketing_bundle()
+    marketing_strategy = _load_latest_marketing_strategy()
 
     product_name = product.get("name", "") if product else ""
     product_sku = product.get("sku", "") if product else ""
@@ -345,12 +391,12 @@ def generate(slot: str) -> dict:
     product_facts = product.get("fact_snippet", "") if product else ""
 
     marketing_context = ""
-    if marketing_bundle:
-        voice_rules = marketing_bundle.get("voice", {}).get("voice_rules", [])
-        segments = marketing_bundle.get("audience", {}).get("segments", [])
-        core_offers = marketing_bundle.get("offer", {}).get("core_offers", [])
-        social_hooks = marketing_bundle.get("copy", {}).get("social_hooks", [])
-        cta_bank = marketing_bundle.get("copy", {}).get("cta_bank", [])
+    if marketing_strategy:
+        voice_rules = marketing_strategy.get("voice", {}).get("voice_rules", [])
+        segments = marketing_strategy.get("audience", {}).get("segments", [])
+        core_offers = marketing_strategy.get("offer", {}).get("core_offers", [])
+        social_hooks = marketing_strategy.get("copy", {}).get("social_hooks", [])
+        cta_bank = marketing_strategy.get("copy", {}).get("cta_bank", [])
         marketing_context = (
             "MARKETING TEAM DIRECTIVES:\n"
             f"- Voice rules: {voice_rules[:5]}\n"
@@ -422,7 +468,7 @@ Return ONLY valid JSON with these exact keys (no markdown, no code fences):
     content = _generate_json_with_gemini(prompt, model_candidates)
 
     if content is None:
-        content = _build_fallback_content(slot, topic, product, marketing_bundle)
+        content = _build_fallback_content(slot, topic, product, marketing_strategy)
         content["topic"] = topic
         content["pillar"] = pillar
         content["topic_hash"] = topic_hash
@@ -431,7 +477,9 @@ Return ONLY valid JSON with these exact keys (no markdown, no code fences):
         content["product_price"] = product_price
         content["product_sale_price"] = product_sale_price
         content["product_image_url"] = product.get("image_url", "") if product else ""
-        content["marketing_bundle_used"] = bool(marketing_bundle)
+        content["product_image_candidates"] = product.get("image_candidates", []) if product else []
+        content["marketing_strategy_used"] = bool(marketing_strategy)
+        content["marketing_bundle_used"] = bool(marketing_strategy)
         content["date"] = str(date.today())
         content["slot"] = slot
         return content
@@ -444,7 +492,9 @@ Return ONLY valid JSON with these exact keys (no markdown, no code fences):
     content["product_price"] = product_price
     content["product_sale_price"] = product_sale_price
     content["product_image_url"] = product.get("image_url", "") if product else ""
-    content["marketing_bundle_used"] = bool(marketing_bundle)
+    content["product_image_candidates"] = product.get("image_candidates", []) if product else []
+    content["marketing_strategy_used"] = bool(marketing_strategy)
+    content["marketing_bundle_used"] = bool(marketing_strategy)
     content["date"] = str(date.today())
     content["slot"] = slot
     return content

@@ -15,10 +15,10 @@ def main() -> None:
     products_dir = os.environ.get("MARKETING_PRODUCTS_DIR", os.path.join(ROOT, "data", "products"))
     output_dir = os.environ.get("MARKETING_OUTPUT_DIR", os.path.join(ROOT, "data", "marketing"))
 
-    bundle = run_marketing_team(site_url=site_url, products_dir=products_dir, output_dir=output_dir)
+    strategy = run_marketing_team(site_url=site_url, products_dir=products_dir, output_dir=output_dir)
 
     print("Marketing team run complete.")
-    print(json.dumps(bundle.get("artifacts", {}), indent=2))
+    print(json.dumps(strategy.get("artifacts", {}), indent=2))
 
 
 if __name__ == "__main__":

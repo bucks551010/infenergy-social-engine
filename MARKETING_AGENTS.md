@@ -18,11 +18,11 @@ This repo now includes a collaborative marketing-agent system built around your 
 
 Outputs are written to `data/marketing/` as timestamped JSON + Markdown, including:
 
-- `marketing_bundle_*.json` (full strategy graph)
+- `marketing_strategy_*.json` (full strategy graph)
 - `execution_pack_*.json` (operator-ready payload)
 - `marketing_summary_*.md` (human summary)
 
-It also supports a weekly planner that builds a 7-day, 3-slot campaign sequence from the latest bundle.
+It also supports a weekly planner that builds a 7-day, 3-slot campaign sequence from the latest strategy snapshot.
 
 ## Agent Roles
 

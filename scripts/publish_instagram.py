@@ -34,9 +34,30 @@ def _post_with_retry(url: str, data: dict, timeout: int = 30) -> requests.Respon
     return last if last is not None else requests.Response()
 
 
+def _is_valid_public_image(url: str) -> bool:
+    if not url:
+        return False
+    u = str(url).strip().lower()
+    if not u.startswith("http"):
+        return False
+    if any(x in u for x in ("placeholder", "no-image", "default")):
+        return False
+    return True
+
+
 def publish(content: dict, dry_run: bool = False) -> dict:
     ig_default_image = _env("IG_DEFAULT_IMAGE_URL")
-    image_url = content.get("product_image_url") or ig_default_image
+    candidates = []
+    for c in content.get("product_image_candidates", []) or []:
+        if _is_valid_public_image(c):
+            candidates.append(c)
+    product_image = content.get("product_image_url", "")
+    if _is_valid_public_image(product_image):
+        candidates.insert(0, product_image)
+    if _is_valid_public_image(ig_default_image):
+        candidates.append(ig_default_image)
+
+    image_url = candidates[0] if candidates else ""
     if not image_url:
         print("[Instagram] Skipped: no product image and no IG_DEFAULT_IMAGE_URL configured")
         return {"id": "skipped"}

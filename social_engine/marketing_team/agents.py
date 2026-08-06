@@ -189,7 +189,7 @@ def offer_agent(profile: dict[str, Any], audience: dict[str, Any]) -> dict[str, 
         "core_offers": [
             "Free Power Readiness Assessment",
             "Device-by-device runtime planning",
-            "Emergency kit + power bundle recommendations",
+            "Emergency kit + right-sized power recommendations",
             "Modular system upgrade roadmap",
         ],
         "entry_points": [
@@ -198,9 +198,9 @@ def offer_agent(profile: dict[str, Any], audience: dict[str, Any]) -> dict[str, 
             "Storm season readiness consult",
         ],
         "package_architecture": {
-            "good": "Portable essentials bundle",
-            "better": "Home continuity bundle",
-            "best": "Modular solar-resilience stack",
+            "starter_path": "Portable essentials setup",
+            "expanded_path": "Home continuity setup",
+            "resilience_path": "Modular solar-resilience stack",
             "anchor_categories": categories,
         },
         "risk_reversal": [

@@ -25,15 +25,15 @@ def _utc_stamp() -> str:
     return datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
 
 
-def _markdown_summary(bundle: dict[str, Any]) -> str:
-    profile = bundle["brand_profile"]
-    research = bundle["research"]
-    audience = bundle["audience"]
-    voice = bundle["voice"]
-    copy = bundle["copy"]
-    creative = bundle["creative"]
-    experiments = bundle["experiments"]
-    seo = bundle["seo"]
+def _markdown_summary(strategy: dict[str, Any]) -> str:
+    profile = strategy["brand_profile"]
+    research = strategy["research"]
+    audience = strategy["audience"]
+    voice = strategy["voice"]
+    copy = strategy["copy"]
+    creative = strategy["creative"]
+    experiments = strategy["experiments"]
+    seo = strategy["seo"]
 
     lines = []
     lines.append("# INF Energy Growth System Output")
@@ -76,15 +76,15 @@ def _markdown_summary(bundle: dict[str, Any]) -> str:
         lines.append(f"- {exp.get('name', '')}: {exp.get('hypothesis', '')}")
     lines.append("")
     lines.append("## QA")
-    lines.append(f"- Score: {bundle['qa'].get('score', 0)}")
-    lines.append(f"- Status: {bundle['qa'].get('status', 'unknown')}")
+    lines.append(f"- Score: {strategy['qa'].get('score', 0)}")
+    lines.append(f"- Status: {strategy['qa'].get('status', 'unknown')}")
     return "\n".join(lines)
 
 
-def _build_execution_pack(bundle: dict[str, Any]) -> dict[str, Any]:
-    copy = bundle.get("copy", {})
-    channels = bundle.get("channel_ops", {}).get("channels", {})
-    audience = bundle.get("audience", {}).get("segments", [])
+def _build_execution_pack(strategy: dict[str, Any]) -> dict[str, Any]:
+    copy = strategy.get("copy", {})
+    channels = strategy.get("channel_ops", {}).get("channels", {})
+    audience = strategy.get("audience", {}).get("segments", [])
     return {
         "hero": copy.get("hero", ""),
         "subhero": copy.get("subhero", ""),
@@ -123,7 +123,7 @@ def run_marketing_team(
     seo = seo_agent(profile, copy)
     lifecycle = lifecycle_email_agent(copy, audience)
 
-    bundle = {
+    strategy = {
         "generated_at_utc": datetime.now(timezone.utc).isoformat(),
         "brand_profile": profile,
         "research": research,
@@ -136,9 +136,9 @@ def run_marketing_team(
         "seo": seo,
         "lifecycle": lifecycle,
     }
-    bundle["experiments"] = experimentation_agent(bundle)
-    bundle["qa"] = qa_agent(bundle)
-    bundle["execution_pack"] = _build_execution_pack(bundle)
+    strategy["experiments"] = experimentation_agent(strategy)
+    strategy["qa"] = qa_agent(strategy)
+    strategy["execution_pack"] = _build_execution_pack(strategy)
 
     stamp = _utc_stamp()
     os.makedirs(output_dir, exist_ok=True)
@@ -146,22 +146,22 @@ def run_marketing_team(
     profile_path = os.path.join(output_dir, f"brand_profile_{stamp}.json")
     save_brand_profile(profile, profile_path)
 
-    bundle_path = os.path.join(output_dir, f"marketing_bundle_{stamp}.json")
-    with open(bundle_path, "w", encoding="utf-8") as f:
-        json.dump(bundle, f, indent=2)
+    strategy_path = os.path.join(output_dir, f"marketing_strategy_{stamp}.json")
+    with open(strategy_path, "w", encoding="utf-8") as f:
+        json.dump(strategy, f, indent=2)
 
     execution_path = os.path.join(output_dir, f"execution_pack_{stamp}.json")
     with open(execution_path, "w", encoding="utf-8") as f:
-        json.dump(bundle["execution_pack"], f, indent=2)
+        json.dump(strategy["execution_pack"], f, indent=2)
 
     summary_path = os.path.join(output_dir, f"marketing_summary_{stamp}.md")
     with open(summary_path, "w", encoding="utf-8") as f:
-        f.write(_markdown_summary(bundle))
+        f.write(_markdown_summary(strategy))
 
-    bundle["artifacts"] = {
+    strategy["artifacts"] = {
         "brand_profile": profile_path,
-        "bundle": bundle_path,
+        "strategy": strategy_path,
         "execution_pack": execution_path,
         "summary": summary_path,
     }
-    return bundle
+    return strategy

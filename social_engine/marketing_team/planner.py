@@ -11,8 +11,11 @@ def _utc_stamp() -> str:
     return datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
 
 
-def _load_latest_bundle(output_dir: str) -> dict[str, Any]:
-    paths = glob.glob(os.path.join(output_dir, "marketing_bundle_*.json"))
+def _load_latest_strategy(output_dir: str) -> dict[str, Any]:
+    paths = glob.glob(os.path.join(output_dir, "marketing_strategy_*.json"))
+    if not paths:
+        # Backward compatibility with older artifacts.
+        paths = glob.glob(os.path.join(output_dir, "marketing_bundle_*.json"))
     if not paths:
         return {}
 
@@ -36,14 +39,14 @@ def _content_goal(slot: str) -> str:
 
 
 def build_weekly_plan(output_dir: str) -> dict[str, Any]:
-    bundle = _load_latest_bundle(output_dir)
-    if not bundle:
-        raise FileNotFoundError("No marketing bundle found. Run scripts/run_marketing_team.py first.")
+    strategy = _load_latest_strategy(output_dir)
+    if not strategy:
+        raise FileNotFoundError("No marketing strategy found. Run scripts/run_marketing_team.py first.")
 
-    profile = bundle.get("brand_profile", {})
-    audience = bundle.get("audience", {})
-    copy = bundle.get("copy", {})
-    offer = bundle.get("offer", {})
+    profile = strategy.get("brand_profile", {})
+    audience = strategy.get("audience", {})
+    copy = strategy.get("copy", {})
+    offer = strategy.get("offer", {})
 
     segments = audience.get("segments", [])
     hooks = copy.get("social_hooks", [])
@@ -52,7 +55,7 @@ def build_weekly_plan(output_dir: str) -> dict[str, Any]:
     categories = profile.get("top_categories", [])
     ad_angles = copy.get("ad_angles", [])
     segments = audience.get("segments", [])
-    experiments = bundle.get("experiments", {}).get("experiments", [])
+    experiments = strategy.get("experiments", {}).get("experiments", [])
 
     if not hooks:
         hooks = ["What fails first in your home during an outage?"]
@@ -125,7 +128,7 @@ def build_weekly_plan(output_dir: str) -> dict[str, Any]:
 
     plan = {
         "generated_at_utc": datetime.now(timezone.utc).isoformat(),
-        "source_bundle_generated_at": bundle.get("generated_at_utc"),
+        "source_strategy_generated_at": strategy.get("generated_at_utc"),
         "objective": "Run a structured weekly growth sprint with education-proof-conversion sequencing and measurable tests.",
         "campaign_arcs": campaign_arcs,
         "test_queue": test_queue,

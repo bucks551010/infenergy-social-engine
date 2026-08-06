@@ -51,7 +51,7 @@ def check_secrets(dry_run: bool, channels: dict) -> None:
         sys.exit(1)
 
 
-def _latest_marketing_bundle_info() -> tuple[str, str]:
+def _latest_marketing_strategy_info() -> tuple[str, str]:
     data_dir = os.environ.get("DATA_DIR", os.path.join(os.path.dirname(__file__), "..", "data"))
     marketing_dir = os.path.join(data_dir, "marketing")
     if not os.path.isdir(marketing_dir):
@@ -60,7 +60,10 @@ def _latest_marketing_bundle_info() -> tuple[str, str]:
     files = [
         os.path.join(marketing_dir, f)
         for f in os.listdir(marketing_dir)
-        if f.startswith("marketing_bundle_") and f.endswith(".json")
+        if (
+            (f.startswith("marketing_strategy_") or f.startswith("marketing_bundle_"))
+            and f.endswith(".json")
+        )
     ]
     if not files:
         return "none", "not found"
@@ -78,7 +81,7 @@ def main() -> None:
     channels = get_channel_config()
     check_secrets(dry_run=dry_run, channels=channels)
     generate_posts.ensure_runtime_data()
-    bundle_name, bundle_freshness = _latest_marketing_bundle_info()
+    strategy_name, strategy_freshness = _latest_marketing_strategy_info()
 
     print(f"\n=== INF Energy Social Engine ===")
     print(f"Slot: {slot} | Dry run: {dry_run} | UTC: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M')}\n")
@@ -89,12 +92,15 @@ def main() -> None:
         f"instagram={channels['instagram']} "
         f"linkedin={channels['linkedin']}\n"
     )
-    print(f"Marketing bundle: {bundle_name} ({bundle_freshness})\n")
+    print(f"Marketing strategy: {strategy_name} ({strategy_freshness})\n")
 
     print("[1/5] Generating content with Gemini...")
     content = generate_posts.generate(slot)
     print(f"Topic: {content['topic']}")
-    print(f"Marketing strategy bundle: {'loaded' if content.get('marketing_bundle_used') else 'not loaded'}")
+    print(
+        "Marketing strategy loaded: "
+        f"{'yes' if content.get('marketing_strategy_used') or content.get('marketing_bundle_used') else 'no'}"
+    )
     if content.get("product_name"):
         print(f"Product: {content['product_name']} ({content.get('product_sku', 'N/A')})")
     print(f"WP Title: {content['wp_title']}\n")

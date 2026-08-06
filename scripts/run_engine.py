@@ -10,15 +10,36 @@ import publish_facebook
 import publish_instagram
 import publish_linkedin
 
-REQUIRED_SECRETS = [
-    "GEMINI_API_KEY", "WP_URL", "WP_USERNAME", "WP_APP_PASSWORD",
-    "META_PAGE_ID", "META_PAGE_ACCESS_TOKEN", "META_IG_USER_ID",
-    "LINKEDIN_ACCESS_TOKEN",
-]
+
+def _env_flag(name: str, default: bool) -> bool:
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def get_channel_config() -> dict:
+    return {
+        "wordpress": _env_flag("ENABLE_WORDPRESS", False),
+        "facebook": _env_flag("ENABLE_FACEBOOK", True),
+        "instagram": _env_flag("ENABLE_INSTAGRAM", True),
+        "linkedin": _env_flag("ENABLE_LINKEDIN", True),
+    }
 
 
 def check_secrets() -> None:
-    missing = [k for k in REQUIRED_SECRETS if not os.environ.get(k)]
+    required = ["GEMINI_API_KEY"]
+    channels = get_channel_config()
+    if channels["wordpress"]:
+        required.extend(["WP_URL", "WP_USERNAME", "WP_APP_PASSWORD"])
+    if channels["facebook"]:
+        required.extend(["META_PAGE_ID", "META_PAGE_ACCESS_TOKEN"])
+    if channels["instagram"]:
+        required.extend(["META_IG_USER_ID", "META_PAGE_ACCESS_TOKEN"])
+    if channels["linkedin"]:
+        required.extend(["LINKEDIN_ACCESS_TOKEN"])
+
+    missing = [k for k in required if not os.environ.get(k)]
     if missing:
         print(f"[ERROR] Missing required secrets: {', '.join(missing)}")
         sys.exit(1)
@@ -27,12 +48,20 @@ def check_secrets() -> None:
 def main() -> None:
     check_secrets()
     generate_posts.ensure_runtime_data()
+    channels = get_channel_config()
 
     slot = os.environ.get("POST_SLOT", "morning")
     dry_run = os.environ.get("SOCIAL_DRY_RUN", "true").lower() == "true"
 
     print(f"\n=== INF Energy Social Engine ===")
     print(f"Slot: {slot} | Dry run: {dry_run} | UTC: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M')}\n")
+    print(
+        "Channels: "
+        f"wordpress={channels['wordpress']} "
+        f"facebook={channels['facebook']} "
+        f"instagram={channels['instagram']} "
+        f"linkedin={channels['linkedin']}\n"
+    )
 
     print("[1/5] Generating content with Gemini...")
     content = generate_posts.generate(slot)
@@ -42,39 +71,51 @@ def main() -> None:
     print(f"WP Title: {content['wp_title']}\n")
 
     errors = []
-    wp_result = {"id": "failed", "link": os.environ.get("WP_URL", "https://www.infenergypower.com")}
-    fb_result = {"id": "failed"}
-    ig_result = {"id": "failed"}
-    li_result = {"id": "failed"}
+    wp_result = {"id": "skipped", "link": os.environ.get("WP_URL", "https://www.infenergypower.com")}
+    fb_result = {"id": "skipped"}
+    ig_result = {"id": "skipped"}
+    li_result = {"id": "skipped"}
 
     print("[2/5] WordPress...")
-    try:
-        wp_result = publish_wordpress.publish(content, dry_run=dry_run)
-    except Exception as e:
-        errors.append(f"WordPress: {e}")
-        print(f"[ERROR] WordPress publish failed: {e}")
+    if channels["wordpress"]:
+        try:
+            wp_result = publish_wordpress.publish(content, dry_run=dry_run)
+        except Exception as e:
+            errors.append(f"WordPress: {e}")
+            print(f"[ERROR] WordPress publish failed: {e}")
+    else:
+        print("[SKIP] WordPress disabled")
     wp_link = wp_result.get("link", os.environ.get("WP_URL", "https://www.infenergypower.com"))
 
     print("[3/5] Facebook...")
-    try:
-        fb_result = publish_facebook.publish(content, wp_link, dry_run=dry_run)
-    except Exception as e:
-        errors.append(f"Facebook: {e}")
-        print(f"[ERROR] Facebook publish failed: {e}")
+    if channels["facebook"]:
+        try:
+            fb_result = publish_facebook.publish(content, wp_link, dry_run=dry_run)
+        except Exception as e:
+            errors.append(f"Facebook: {e}")
+            print(f"[ERROR] Facebook publish failed: {e}")
+    else:
+        print("[SKIP] Facebook disabled")
 
     print("[4/5] Instagram...")
-    try:
-        ig_result = publish_instagram.publish(content, dry_run=dry_run)
-    except Exception as e:
-        errors.append(f"Instagram: {e}")
-        print(f"[ERROR] Instagram publish failed: {e}")
+    if channels["instagram"]:
+        try:
+            ig_result = publish_instagram.publish(content, dry_run=dry_run)
+        except Exception as e:
+            errors.append(f"Instagram: {e}")
+            print(f"[ERROR] Instagram publish failed: {e}")
+    else:
+        print("[SKIP] Instagram disabled")
 
     print("[5/5] LinkedIn...")
-    try:
-        li_result = publish_linkedin.publish(content, wp_link, dry_run=dry_run)
-    except Exception as e:
-        errors.append(f"LinkedIn: {e}")
-        print(f"[ERROR] LinkedIn publish failed: {e}")
+    if channels["linkedin"]:
+        try:
+            li_result = publish_linkedin.publish(content, wp_link, dry_run=dry_run)
+        except Exception as e:
+            errors.append(f"LinkedIn: {e}")
+            print(f"[ERROR] LinkedIn publish failed: {e}")
+    else:
+        print("[SKIP] LinkedIn disabled")
 
     # Persist history so the next run picks a fresh topic
     history = generate_posts.load_history()

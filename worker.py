@@ -161,22 +161,28 @@ morning_utc = os.environ.get("POST_SCHEDULE_MORNING", "13:00")
 midday_utc  = os.environ.get("POST_SCHEDULE_MIDDAY",  "17:00")
 evening_utc = os.environ.get("POST_SCHEDULE_EVENING", "23:00")
 
-schedule.every().day.at(morning_utc).do(run_slot, "morning")
-schedule.every().day.at(midday_utc).do(run_slot, "midday")
-schedule.every().day.at(evening_utc).do(run_slot, "evening")
+def main() -> None:
+    schedule.clear()
+    schedule.every().day.at(morning_utc).do(run_slot, "morning")
+    schedule.every().day.at(midday_utc).do(run_slot, "midday")
+    schedule.every().day.at(evening_utc).do(run_slot, "evening")
 
-start_health_server()
+    start_health_server()
 
-print("=== INF Energy Social Engine — Railway Worker ===")
-print(f"Scheduled (UTC): morning={morning_utc}  midday={midday_utc}  evening={evening_utc}")
-print(f"Dry run: {os.environ.get('SOCIAL_DRY_RUN', 'true')}")
-print("Manual run endpoint: /run-now?slot=morning&token=... (requires MANUAL_RUN_TOKEN)")
-print("Waiting for next scheduled run...\n")
+    print("=== INF Energy Social Engine — Railway Worker ===")
+    print(f"Scheduled (UTC): morning={morning_utc}  midday={midday_utc}  evening={evening_utc}")
+    print(f"Dry run: {os.environ.get('SOCIAL_DRY_RUN', 'true')}")
+    print("Manual run endpoint: /run-now?slot=morning&token=... (requires MANUAL_RUN_TOKEN)")
+    print("Waiting for next scheduled run...\n")
 
-if os.environ.get("RUN_ON_STARTUP", "false").lower() == "true":
-    print("RUN_ON_STARTUP=true, launching startup run for morning slot")
-    _start_slot_thread("morning")
+    if os.environ.get("RUN_ON_STARTUP", "false").lower() == "true":
+        print("RUN_ON_STARTUP=true, launching startup run for morning slot")
+        _start_slot_thread("morning")
 
-while True:
-    schedule.run_pending()
-    time.sleep(30)
+    while True:
+        schedule.run_pending()
+        time.sleep(30)
+
+
+if __name__ == "__main__":
+    main()

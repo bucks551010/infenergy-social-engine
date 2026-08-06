@@ -3,6 +3,7 @@ import sys
 import time
 import json
 import threading
+import subprocess
 import traceback
 from urllib.parse import urlparse, parse_qs
 import schedule
@@ -21,6 +22,31 @@ LAST_RUN = {
     "finished_at_utc": None,
     "error": None,
 }
+STARTED_AT = datetime.now(timezone.utc)
+
+
+def _uptime_seconds() -> int:
+    return int((datetime.now(timezone.utc) - STARTED_AT).total_seconds())
+
+
+def _run_script(script_name: str) -> tuple[bool, str]:
+    scripts_dir = os.path.join(os.path.dirname(__file__), "scripts")
+    script_path = os.path.join(scripts_dir, script_name)
+    try:
+        completed = subprocess.run(
+            [sys.executable, script_path],
+            cwd=os.path.dirname(__file__),
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=600,
+        )
+        output = (completed.stdout or "") + (completed.stderr or "")
+        if completed.returncode == 0:
+            return True, output[-3000:]
+        return False, output[-3000:]
+    except Exception as e:
+        return False, str(e)
 
 
 def _utc_now() -> str:
@@ -45,6 +71,7 @@ class HealthHandler(BaseHTTPRequestHandler):
                 "status": "ok",
                 "service": "infenergy-social-engine",
                 "time_utc": _utc_now(),
+                "uptime_seconds": _uptime_seconds(),
             }
             body = json.dumps(payload).encode("utf-8")
             self.send_response(200)
@@ -59,11 +86,84 @@ class HealthHandler(BaseHTTPRequestHandler):
                 "status": "ok",
                 "service": "infenergy-social-engine",
                 "time_utc": _utc_now(),
+                "uptime_seconds": _uptime_seconds(),
                 "last_run": LAST_RUN,
                 "dry_run": os.environ.get("SOCIAL_DRY_RUN", "true"),
             }
             body = json.dumps(payload).encode("utf-8")
             self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
+        if parsed.path == "/run-marketing":
+            token = os.environ.get("MANUAL_RUN_TOKEN", "")
+            params = parse_qs(parsed.query)
+            provided = params.get("token", [""])[0]
+            if not token:
+                body = b'{"error":"MANUAL_RUN_TOKEN not configured"}'
+                self.send_response(403)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+                return
+            if provided != token:
+                body = b'{"error":"invalid token"}'
+                self.send_response(401)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+                return
+
+            ok, output = _run_script("run_marketing_team.py")
+            payload = {
+                "ok": ok,
+                "message": "marketing team run complete" if ok else "marketing team run failed",
+                "time_utc": _utc_now(),
+                "output_tail": output,
+            }
+            body = json.dumps(payload).encode("utf-8")
+            self.send_response(200 if ok else 500)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
+        if parsed.path == "/run-weekly":
+            token = os.environ.get("MANUAL_RUN_TOKEN", "")
+            params = parse_qs(parsed.query)
+            provided = params.get("token", [""])[0]
+            if not token:
+                body = b'{"error":"MANUAL_RUN_TOKEN not configured"}'
+                self.send_response(403)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+                return
+            if provided != token:
+                body = b'{"error":"invalid token"}'
+                self.send_response(401)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+                return
+
+            ok, output = _run_script("run_marketing_weekly.py")
+            payload = {
+                "ok": ok,
+                "message": "weekly planner run complete" if ok else "weekly planner run failed",
+                "time_utc": _utc_now(),
+                "output_tail": output,
+            }
+            body = json.dumps(payload).encode("utf-8")
+            self.send_response(200 if ok else 500)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()

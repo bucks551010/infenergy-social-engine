@@ -1,9 +1,19 @@
 import os
+import time
 import requests
 
-META_PAGE_ID = os.environ["META_PAGE_ID"]
-META_PAGE_ACCESS_TOKEN = os.environ["META_PAGE_ACCESS_TOKEN"]
 GRAPH_BASE = "https://graph.facebook.com/v26.0"
+
+
+def _env(name: str, default: str = "") -> str:
+    return os.environ.get(name, default).strip()
+
+
+def _required_env(name: str) -> str:
+    value = _env(name)
+    if not value:
+        raise RuntimeError(f"Missing required environment variable: {name}")
+    return value
 
 
 def _raise_with_body(resp: requests.Response) -> None:
@@ -18,7 +28,7 @@ def _raise_with_body(resp: requests.Response) -> None:
         raise requests.HTTPError(f"{e} | response={body}") from e
 
 
-def _resolve_page_access_token(token: str) -> str:
+def _resolve_page_access_token(token: str, page_id: str) -> str:
     """Resolve a page access token from /me/accounts when a user token is provided."""
     try:
         resp = requests.get(
@@ -38,7 +48,7 @@ def _resolve_page_access_token(token: str) -> str:
 
         # Prefer the configured page id.
         for page in data:
-            if str(page.get("id", "")) == str(META_PAGE_ID) and page.get("access_token"):
+            if str(page.get("id", "")) == str(page_id) and page.get("access_token"):
                 return page["access_token"]
 
         # Fallback to first managed page token if explicit match is not found.
@@ -51,6 +61,24 @@ def _resolve_page_access_token(token: str) -> str:
     return token
 
 
+def _post_with_retry(url: str, data: dict, timeout: int = 30) -> requests.Response:
+    attempts = [0.7, 1.5, 3.0]
+    last: requests.Response | None = None
+    for idx, wait_s in enumerate(attempts, start=1):
+        resp = requests.post(url, data=data, timeout=timeout)
+        last = resp
+        if resp.ok:
+            return resp
+
+        if resp.status_code not in (429, 500, 502, 503, 504):
+            return resp
+
+        if idx < len(attempts):
+            time.sleep(wait_s)
+
+    return last if last is not None else requests.Response()
+
+
 def publish(content: dict, wp_link: str, dry_run: bool = False) -> dict:
     message = f"{content['fb_caption']}\n\n{wp_link}"
 
@@ -58,11 +86,12 @@ def publish(content: dict, wp_link: str, dry_run: bool = False) -> dict:
         print(f"[DRY RUN] Facebook: would post:\n{message[:150]}...\n")
         return {"id": "dry-run"}
 
-    token = _resolve_page_access_token(META_PAGE_ACCESS_TOKEN)
+    page_id = _required_env("META_PAGE_ID")
+    token = _resolve_page_access_token(_required_env("META_PAGE_ACCESS_TOKEN"), page_id)
 
-    resp = requests.post(
-        f"{GRAPH_BASE}/{META_PAGE_ID}/feed",
-        data={
+    resp = _post_with_retry(
+        f"{GRAPH_BASE}/{page_id}/feed",
+        {
             "message": message,
             "access_token": token,
         },

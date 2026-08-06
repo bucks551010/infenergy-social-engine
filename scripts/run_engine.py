@@ -27,9 +27,15 @@ def get_channel_config() -> dict:
     }
 
 
-def check_secrets() -> None:
-    required = ["GEMINI_API_KEY"]
-    channels = get_channel_config()
+def check_secrets(dry_run: bool, channels: dict) -> None:
+    required: list[str] = []
+    # AI key is optional because generator has deterministic fallback content.
+    if not os.environ.get("GEMINI_API_KEY"):
+        print("[WARN] GEMINI_API_KEY is not set. Using deterministic fallback content.")
+
+    if dry_run:
+        return
+
     if channels["wordpress"]:
         required.extend(["WP_URL", "WP_USERNAME", "WP_APP_PASSWORD"])
     if channels["facebook"]:
@@ -45,13 +51,34 @@ def check_secrets() -> None:
         sys.exit(1)
 
 
-def main() -> None:
-    check_secrets()
-    generate_posts.ensure_runtime_data()
-    channels = get_channel_config()
+def _latest_marketing_bundle_info() -> tuple[str, str]:
+    data_dir = os.environ.get("DATA_DIR", os.path.join(os.path.dirname(__file__), "..", "data"))
+    marketing_dir = os.path.join(data_dir, "marketing")
+    if not os.path.isdir(marketing_dir):
+        return "none", "not found"
 
+    files = [
+        os.path.join(marketing_dir, f)
+        for f in os.listdir(marketing_dir)
+        if f.startswith("marketing_bundle_") and f.endswith(".json")
+    ]
+    if not files:
+        return "none", "not found"
+
+    latest = max(files, key=os.path.getmtime)
+    ts = datetime.fromtimestamp(os.path.getmtime(latest), tz=timezone.utc)
+    age_hours = (datetime.now(timezone.utc) - ts).total_seconds() / 3600.0
+    freshness = "fresh" if age_hours <= 48 else "stale"
+    return os.path.basename(latest), freshness
+
+
+def main() -> None:
     slot = os.environ.get("POST_SLOT", "morning")
     dry_run = os.environ.get("SOCIAL_DRY_RUN", "true").lower() == "true"
+    channels = get_channel_config()
+    check_secrets(dry_run=dry_run, channels=channels)
+    generate_posts.ensure_runtime_data()
+    bundle_name, bundle_freshness = _latest_marketing_bundle_info()
 
     print(f"\n=== INF Energy Social Engine ===")
     print(f"Slot: {slot} | Dry run: {dry_run} | UTC: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M')}\n")
@@ -62,10 +89,12 @@ def main() -> None:
         f"instagram={channels['instagram']} "
         f"linkedin={channels['linkedin']}\n"
     )
+    print(f"Marketing bundle: {bundle_name} ({bundle_freshness})\n")
 
     print("[1/5] Generating content with Gemini...")
     content = generate_posts.generate(slot)
     print(f"Topic: {content['topic']}")
+    print(f"Marketing strategy bundle: {'loaded' if content.get('marketing_bundle_used') else 'not loaded'}")
     if content.get("product_name"):
         print(f"Product: {content['product_name']} ({content.get('product_sku', 'N/A')})")
     print(f"WP Title: {content['wp_title']}\n")

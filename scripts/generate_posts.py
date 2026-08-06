@@ -6,7 +6,8 @@ import csv
 import glob
 import re
 from datetime import date
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 
 SITE_URL = os.environ.get("WP_URL", "https://www.infenergypower.com")
 # DATA_DIR can be overridden by Railway volume mount (set DATA_DIR=/app/data in Railway Variables)
@@ -90,6 +91,22 @@ def save_history(history: dict) -> None:
     os.makedirs(DATA_DIR, exist_ok=True)
     with open(os.path.join(DATA_DIR, "post_history.json"), "w", encoding="utf-8") as f:
         json.dump(history, f, indent=2)
+
+
+def _load_latest_marketing_bundle() -> dict:
+    paths = []
+    for base in (DATA_DIR, BASE_DATA_DIR):
+        paths.extend(glob.glob(os.path.join(base, "marketing", "marketing_bundle_*.json")))
+
+    if not paths:
+        return {}
+
+    latest = max(paths, key=os.path.getmtime)
+    try:
+        with open(latest, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {}
 
 
 def _strip_html(text: str) -> str:
@@ -194,7 +211,9 @@ def _pick_topic(queue: dict, history: dict) -> tuple[str, str, str]:
     return pillar, topic, hashlib.md5(topic.encode()).hexdigest()
 
 
-def _build_fallback_content(slot: str, topic: str, product: dict | None) -> dict:
+def _build_fallback_content(slot: str, topic: str, product: dict | None, marketing_bundle: dict | None) -> dict:
+    marketing_bundle = marketing_bundle or {}
+    marketing_copy = marketing_bundle.get("copy", {})
     name = (product or {}).get("name", "INF Energy Power solution")
     sku = (product or {}).get("sku", "")
     price = (product or {}).get("price", "")
@@ -209,9 +228,15 @@ def _build_fallback_content(slot: str, topic: str, product: dict | None) -> dict
     elif price:
         price_line = f" Current listed price is ${price}."
 
+    hero = (marketing_copy.get("hero") or "").strip()
+    cta_bank = marketing_copy.get("cta_bank") or []
+    cta = cta_bank[0] if cta_bank else "Book your free power readiness assessment"
+
     wp_title = f"{name}: What To Know Before You Buy"
     if len(wp_title) > 64:
         wp_title = f"{name[:52]}: Buyer Guide"
+    if hero and len(hero) <= 62:
+        wp_title = hero
 
     wp_content = (
         f"<p>Choosing backup power is not just about watts on a label. It is about reliability, runtime, and how well a product matches your real daily use. Today we are breaking down <strong>{name}</strong> and where it fits for homeowners and small business owners.</p>"
@@ -222,14 +247,14 @@ def _build_fallback_content(slot: str, topic: str, product: dict | None) -> dict
         f"<h2>Avoid The Most Common Buying Mistakes</h2>"
         f"<p>The biggest mistake is buying only on headline capacity. The second is ignoring how and where the unit will be used. A better approach is to map your top 3 devices, compare real specs, and confirm compatibility up front. This avoids returns, downtime, and frustration.</p>"
         f"<h2>Next Step</h2>"
-        f"<p>If you want a tailored recommendation, book a free consultation with INF Energy Power. We can help you compare your options and select the right system for your actual usage, not generic assumptions.</p>"
+        f"<p>If you want a tailored recommendation, {cta.lower()}. We can help you compare your options and select the right system for your actual usage, not generic assumptions.</p>"
     )
 
     fb_caption = (
         f"Most people buy backup power by guesswork and marketing hype. That is exactly why they end up with the wrong unit.\n\n"
         f"If you are comparing options like {name}, start with what actually matters: published specs and your real daily devices. This product lists {m1} and {m2}, which are the kinds of details that should drive your decision, not just brand name."
         f"{price_line}\n\n"
-        f"If you want help matching the right system to your usage, we can walk you through it in a free consultation.\n\n"
+        f"If you want help matching the right system to your usage, {cta.lower()}.\n\n"
         f"What device is non-negotiable for you during an outage?\n"
         f"#BackupPower #EnergyResilience #SmartBuying #InfEnergyPower #PortablePower"
     )
@@ -239,7 +264,7 @@ def _build_fallback_content(slot: str, topic: str, product: dict | None) -> dict
         f"If you are considering {name}, do not pick based on marketing alone. Compare real specs to your actual daily devices.\n\n"
         f"Two key published details on this model are {m1} and {m2}. Those numbers matter more than hype because they affect runtime, compatibility, and reliability when you need power most."
         f"{price_line}\n\n"
-        f"Want help choosing the right setup for your home or business? We offer a free consultation.\n"
+        f"Want help choosing the right setup for your home or business? {cta}.\n"
         f"#PortablePower #EnergyBackup #PowerOutagePrep #SolarReady #EmergencyPower #SmartHomeEnergy #InfEnergyPower #BatteryBackup"
     )
 
@@ -251,7 +276,7 @@ def _build_fallback_content(slot: str, topic: str, product: dict | None) -> dict
         f"3) Compare portability and recharge practicality\n\n"
         f"For this model, two important published specs are {m1} and {m2}. These are the details that determine whether a unit helps in a real outage or just looks good on a product page."
         f"{price_line}\n\n"
-        f"If you want a practical recommendation based on your exact use case, INF Energy Power offers a free consultation with a clear side-by-side comparison."
+        f"If you want a practical recommendation based on your exact use case, {cta.lower()} with a clear side-by-side comparison."
     )
 
     return {
@@ -264,10 +289,37 @@ def _build_fallback_content(slot: str, topic: str, product: dict | None) -> dict
     }
 
 
+def _generate_json_with_gemini(prompt: str, model_candidates: list[str]) -> dict | None:
+    api_key = os.environ.get("GEMINI_API_KEY", "").strip()
+    if not api_key:
+        return None
+
+    client = genai.Client(api_key=api_key)
+
+    for model_name in model_candidates:
+        try:
+            response = client.models.generate_content(
+                model=model_name,
+                contents=prompt,
+                config=types.GenerateContentConfig(response_mime_type="application/json"),
+            )
+            raw = (response.text or "").strip()
+            if not raw:
+                continue
+            if raw.startswith("```"):
+                parts = raw.split("```")
+                raw = parts[1]
+                if raw.lower().startswith("json"):
+                    raw = raw[4:]
+            return json.loads(raw.strip())
+        except Exception:
+            continue
+
+    return None
+
+
 def generate(slot: str) -> dict:
     ensure_runtime_data()
-    genai.configure(api_key=os.environ["GEMINI_API_KEY"])
-
     preferred_model = os.environ.get("GEMINI_MODEL", "").strip()
     model_candidates = [
         preferred_model,
@@ -282,6 +334,7 @@ def generate(slot: str) -> dict:
     pillar, topic, topic_hash = _pick_topic(queue, history)
     products = load_products()
     product = _pick_product(products, history)
+    marketing_bundle = _load_latest_marketing_bundle()
 
     product_name = product.get("name", "") if product else ""
     product_sku = product.get("sku", "") if product else ""
@@ -290,6 +343,23 @@ def generate(slot: str) -> dict:
     product_metrics = ", ".join(product.get("metrics", [])[:5]) if product else ""
     product_categories = ", ".join(product.get("categories", [])[:3]) if product else ""
     product_facts = product.get("fact_snippet", "") if product else ""
+
+    marketing_context = ""
+    if marketing_bundle:
+        voice_rules = marketing_bundle.get("voice", {}).get("voice_rules", [])
+        segments = marketing_bundle.get("audience", {}).get("segments", [])
+        core_offers = marketing_bundle.get("offer", {}).get("core_offers", [])
+        social_hooks = marketing_bundle.get("copy", {}).get("social_hooks", [])
+        cta_bank = marketing_bundle.get("copy", {}).get("cta_bank", [])
+        marketing_context = (
+            "MARKETING TEAM DIRECTIVES:\n"
+            f"- Voice rules: {voice_rules[:5]}\n"
+            f"- Priority audience segments: {segments[:3]}\n"
+            f"- Core offers: {core_offers[:4]}\n"
+            f"- Proven hook styles: {social_hooks[:3]}\n"
+            f"- Preferred CTAs: {cta_bank[:3]}\n"
+            "Use this as strategy guidance while still tailoring to the specific topic and product.\n"
+        )
 
     slot_guidance = {
         "morning": (
@@ -327,6 +397,8 @@ PRODUCT CONTEXT (ground your content in these details when relevant):
 - Key measurable specs: {product_metrics or 'N/A'}
 - Product facts excerpt: {product_facts or 'N/A'}
 
+{marketing_context}
+
 QUALITY RULES — every piece must follow all of these:
 1. Open with a hook that creates immediate curiosity or challenges a common assumption.
 2. Include at least one specific number, stat, or real-world comparison that makes the content credible.
@@ -347,19 +419,10 @@ Return ONLY valid JSON with these exact keys (no markdown, no code fences):
   "li_text": "180-260 words. Professional but not corporate. Open with a counterintuitive insight or bold statement. Build a tight logical argument. Include one specific data point. End with a direct, frictionless CTA — tell them exactly what the first step looks like."
 }}"""
 
-    response = None
-    last_error = None
-    for model_name in model_candidates:
-        try:
-            model = genai.GenerativeModel(model_name)
-            response = model.generate_content(prompt)
-            break
-        except Exception as e:
-            last_error = e
-            continue
+    content = _generate_json_with_gemini(prompt, model_candidates)
 
-    if response is None:
-        content = _build_fallback_content(slot, topic, product)
+    if content is None:
+        content = _build_fallback_content(slot, topic, product, marketing_bundle)
         content["topic"] = topic
         content["pillar"] = pillar
         content["topic_hash"] = topic_hash
@@ -368,20 +431,11 @@ Return ONLY valid JSON with these exact keys (no markdown, no code fences):
         content["product_price"] = product_price
         content["product_sale_price"] = product_sale_price
         content["product_image_url"] = product.get("image_url", "") if product else ""
+        content["marketing_bundle_used"] = bool(marketing_bundle)
         content["date"] = str(date.today())
         content["slot"] = slot
         return content
 
-    raw = response.text.strip()
-
-    # Strip markdown code fences if Gemini wraps response
-    if raw.startswith("```"):
-        parts = raw.split("```")
-        raw = parts[1]
-        if raw.lower().startswith("json"):
-            raw = raw[4:]
-
-    content = json.loads(raw.strip())
     content["topic"] = topic
     content["pillar"] = pillar
     content["topic_hash"] = topic_hash
@@ -390,6 +444,7 @@ Return ONLY valid JSON with these exact keys (no markdown, no code fences):
     content["product_price"] = product_price
     content["product_sale_price"] = product_sale_price
     content["product_image_url"] = product.get("image_url", "") if product else ""
+    content["marketing_bundle_used"] = bool(marketing_bundle)
     content["date"] = str(date.today())
     content["slot"] = slot
     return content

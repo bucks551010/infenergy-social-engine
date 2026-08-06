@@ -1,11 +1,24 @@
 import os
 import requests
+from datetime import datetime, timezone
 
 LINKEDIN_ACCESS_TOKEN = os.environ["LINKEDIN_ACCESS_TOKEN"]
 # Set LINKEDIN_AUTHOR_URN to urn:li:person:ID (personal) or urn:li:organization:ID (company page)
 LINKEDIN_AUTHOR_URN = os.environ.get("LINKEDIN_AUTHOR_URN", "")
 
 LI_API = "https://api.linkedin.com/v2"
+LINKEDIN_VERSION = os.environ.get("LINKEDIN_VERSION", datetime.now(timezone.utc).strftime("%Y%m"))
+
+
+def _headers(include_json: bool = False) -> dict:
+    headers = {
+        "Authorization": f"Bearer {LINKEDIN_ACCESS_TOKEN}",
+        "X-Restli-Protocol-Version": "2.0.0",
+        "LinkedIn-Version": LINKEDIN_VERSION,
+    }
+    if include_json:
+        headers["Content-Type"] = "application/json"
+    return headers
 
 
 def _raise_with_body(resp: requests.Response) -> None:
@@ -32,7 +45,7 @@ def _resolve_author_urn() -> str:
     if urn:
         return urn
 
-    headers = {"Authorization": f"Bearer {LINKEDIN_ACCESS_TOKEN}"}
+    headers = _headers()
     errors = []
 
     # First try OpenID userinfo (works when openid/profile scopes are granted).
@@ -85,11 +98,7 @@ def publish(content: dict, wp_link: str, dry_run: bool = False) -> dict:
 
     resp = requests.post(
         f"{LI_API}/ugcPosts",
-        headers={
-            "Authorization": f"Bearer {LINKEDIN_ACCESS_TOKEN}",
-            "Content-Type": "application/json",
-            "X-Restli-Protocol-Version": "2.0.0",
-        },
+        headers=_headers(include_json=True),
         json=payload,
         timeout=30,
     )

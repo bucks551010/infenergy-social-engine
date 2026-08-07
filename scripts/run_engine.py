@@ -224,6 +224,7 @@ def main() -> None:
         for x in os.environ.get("POST_PLATFORMS", "").split(",")
         if x.strip()
     ]
+    manual_duplicate_mode = os.environ.get("MANUAL_DUPLICATE_MODE", "exact_only").strip().lower()
     channels = get_channel_config()
     schedule = load_channel_schedule()
     now_utc = datetime.now(timezone.utc)
@@ -288,6 +289,15 @@ def main() -> None:
         validation = validate_generated_content(content)
         scoring = score_content(content)
         duplicates = check_duplicates(content, generate_posts.load_history(), windows=windows)
+        if manual_platforms and manual_duplicate_mode == "exact_only":
+            reasons = [str(r) for r in duplicates.get("reasons", [])]
+            exact_reasons = [
+                r for r in reasons if r in {"duplicate_exact_caption_within_window", "duplicate_opening_sentence_within_window"}
+            ]
+            if len(exact_reasons) != len(reasons):
+                content.setdefault("quality_warnings", []).append("manual_duplicate_mode:exact_only")
+            duplicates["reasons"] = exact_reasons
+            duplicates["ok"] = len(exact_reasons) == 0
         content["validation_status"] = "passed" if validation.get("passed") else "failed"
         content["validation_errors"] = validation.get("errors", [])
         content["validation_warnings"] = validation.get("warnings", [])

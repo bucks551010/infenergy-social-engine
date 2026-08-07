@@ -1,0 +1,288 @@
+from __future__ import annotations
+
+import os
+import sys
+import unittest
+from copy import deepcopy
+from unittest.mock import patch
+
+ROOT = os.path.dirname(os.path.dirname(__file__))
+SCRIPTS = os.path.join(ROOT, "scripts")
+sys.path.insert(0, ROOT)
+sys.path.insert(0, SCRIPTS)
+
+import generate_posts  # noqa: E402
+import run_engine  # noqa: E402
+from agent_control_plane import evaluate_global_gates, validate_agent_output  # noqa: E402
+from anti_repeat import check_duplicates  # noqa: E402
+from build_utm_url import build_utm_url  # noqa: E402
+from validate_product_claims import validate_generated_content  # noqa: E402
+
+
+def _base_content() -> dict:
+    return {
+        "date": "2026-08-06",
+        "topic": "Why resilience planning matters",
+        "pillar": "energy_independence",
+        "topic_hash": "topic123",
+        "selected_hook": "Most homes miss this outage planning step?",
+        "selected_hook_type": "question",
+        "selected_cta": "Save this checklist.",
+        "hook_hash": "hook123",
+        "cta_hash": "cta123",
+        "funnel_stage": "EDUCATION",
+        "audience_segment": "Prepared Buyer",
+        "campaign_id": "camp_123",
+        "destination_url": "https://example.com/product?ref=base",
+        "product_id": "prod_1",
+        "product_name": "PowerFlex",
+        "product_sku": "PF-1",
+        "wp_title": "What a stronger home power plan looks like",
+        "wp_content": "<p>Useful 200W guidance repeated. </p>" * 40,
+        "fb_caption": "Most homes miss this outage planning step? Use 200W planning logic. #Energy #Backup #Home",
+        "ig_caption": "Plan smarter\nUse 200W guidance. #Energy #Backup #Home #Prep #Solar",
+        "li_text": "A practical resilience model with 200W planning details.",
+        "platform_posts": {
+            "facebook": {
+                "platform": "facebook",
+                "cta": "Save this checklist.",
+                "content_format": "community_story",
+                "visual_direction": "single_image",
+            },
+            "instagram": {
+                "platform": "instagram",
+                "cta": "Save this checklist.",
+                "content_format": "short_caption",
+                "visual_direction": "carousel",
+            },
+            "linkedin": {
+                "platform": "linkedin",
+                "cta": "Review the framework.",
+                "content_format": "authority_post",
+                "visual_direction": "insight_graphic",
+            },
+        },
+    }
+
+
+class PhaseThirteenFourteenTests(unittest.TestCase):
+    def test_phase2_creative_stack_fallback_is_schema_valid(self) -> None:
+        stack = generate_posts._run_phase2_creative_stack(
+            [],
+            topic="Why resilience planning matters",
+            funnel_stage="EDUCATION",
+            stage_objective="Teach a practical framework",
+            selected_hook="Most homes miss this outage planning step?",
+            selected_cta="Save this checklist.",
+            audience_segment="Prepared Buyer",
+            product_name="PowerFlex",
+            product_categories="home backup",
+            product_metrics="200W",
+            recent_hooks=["Older hook"],
+            recent_topics=["Older topic"],
+        )
+
+        for agent_name in (
+            "ideation_divergence",
+            "audience_psychographics",
+            "narrative_architect",
+            "platform_voice_calibrator",
+            "hook_stress_test",
+        ):
+            _, errors = validate_agent_output(agent_name, stack.get(agent_name, {}))
+            self.assertEqual(errors, [], msg=f"schema errors for {agent_name}: {errors}")
+
+    def test_control_plane_schema_validation_rejects_bad_pregen_shape(self) -> None:
+        payload = {
+            "recommended_hook": "Fresh angle",
+            "recommended_cta": "Book a call",
+            # Missing required fields on purpose.
+        }
+        _, errors = validate_agent_output("pre_generation_conference", payload)
+        self.assertGreater(len(errors), 0)
+
+    def test_control_plane_global_gate_fails_on_error_gate(self) -> None:
+        result = evaluate_global_gates(
+            [
+                {"gate_id": "a", "passed": True, "severity": "error", "reasons": []},
+                {"gate_id": "b", "passed": False, "severity": "error", "reasons": ["bad_shape"]},
+            ]
+        )
+        self.assertFalse(result["passed"])
+        self.assertEqual(result["status"], "fail")
+
+    def test_build_utm_url_preserves_query_and_term(self) -> None:
+        result = build_utm_url(
+            "https://example.com/product?ref=base&x=1",
+            source="instagram",
+            campaign="outage_readiness_2026_w32",
+            content="power_station_reel_desire",
+            term="remote_workers",
+        )
+        self.assertTrue(result["ok"])
+        self.assertIn("ref=base", result["utm_url"])
+        self.assertIn("x=1", result["utm_url"])
+        self.assertIn("utm_medium=organic_social", result["utm_url"])
+        self.assertIn("utm_term=remote_workers", result["utm_url"])
+
+    def test_duplicate_detection_flags_recent_repeat(self) -> None:
+        content = _base_content()
+        history = {
+            "posts": [
+                {
+                    "run_started_at_utc": "2099-01-01T00:00:00+00:00",
+                    "topic_hash": "topic123",
+                    "hook_hash": "hook123",
+                    "cta_hash": "cta123",
+                    "product_id": "prod_1",
+                    "product_name": "PowerFlex",
+                    "product_sku": "PF-1",
+                    "opening_signature": "abc",
+                }
+            ]
+        }
+        result = check_duplicates(content, history)
+        self.assertFalse(result["ok"])
+        self.assertIn("duplicate_topic_within_window", result["reasons"])
+        self.assertIn("duplicate_hook_within_window", result["reasons"])
+        self.assertIn("duplicate_cta_within_window", result["reasons"])
+        self.assertIn("duplicate_product_within_window", result["reasons"])
+
+    def test_duplicate_detection_accepts_old_history_records(self) -> None:
+        content = _base_content()
+        history = {
+            "posts": [
+                {"date": "2026-01-01", "topic": "Older entry only", "wp_id": "123"},
+                {"date": "2026-01-02", "slot": "midday"},
+            ]
+        }
+        result = check_duplicates(content, history)
+        self.assertIn("ok", result)
+        self.assertIn("signatures", result)
+
+    def test_claim_validator_rejects_unavailable_product(self) -> None:
+        content = {
+            "product_name": "PowerFlex",
+            "product_metrics": ["200W"],
+            "product_facts": "Published 200W spec.",
+            "product_price": "499",
+            "product_url": "https://example.com/product",
+            "product_in_stock": "false",
+            "wp_content": "<p>Uses verified 200W specs.</p>",
+            "fb_caption": "",
+            "ig_caption": "",
+            "li_text": "",
+        }
+        result = validate_generated_content(content)
+        self.assertFalse(result["passed"])
+        self.assertIn("product_unavailable_or_out_of_stock", result["errors"])
+
+    def test_missing_image_fallback_uses_category_defaults(self) -> None:
+        urls = generate_posts._fallback_images_for_categories(["Solar Panels"])
+        self.assertGreaterEqual(len(urls), 1)
+        self.assertTrue(urls[0].startswith("https://"))
+
+    def test_run_engine_regeneration_limit_is_two_attempts(self) -> None:
+        save_calls: list[dict] = []
+        first = deepcopy(_base_content())
+        second = deepcopy(_base_content())
+        second["topic_hash"] = "topic456"
+
+        with patch.object(run_engine.generate_posts, "ensure_runtime_data", return_value=None), \
+            patch.object(run_engine.generate_posts, "generate", side_effect=[first, second]) as mock_generate, \
+            patch.object(run_engine.generate_posts, "load_history", return_value={"posts": []}), \
+            patch.object(run_engine.generate_posts, "save_history", side_effect=lambda history: save_calls.append(history)), \
+            patch.object(run_engine, "load_channel_schedule", return_value={}), \
+            patch.object(
+                run_engine,
+                "eligible_channels_for_slot",
+                return_value={
+                    "wordpress": (False, "disabled_env"),
+                    "facebook": (False, "not_scheduled"),
+                    "instagram": (False, "not_scheduled"),
+                    "linkedin": (False, "not_scheduled"),
+                },
+            ), \
+            patch.object(run_engine, "validate_generated_content", return_value={"passed": True, "errors": [], "warnings": []}), \
+            patch.object(
+                run_engine,
+                "score_content",
+                side_effect=[
+                    {"total": 78, "decision": "regenerate_once", "component_scores": {}},
+                    {"total": 74, "decision": "reject", "component_scores": {}},
+                ],
+            ), \
+            patch.object(run_engine, "load_anti_repeat_windows", return_value={}), \
+            patch.object(run_engine, "check_duplicates", return_value={"ok": True, "reasons": [], "signatures": {}}), \
+            patch.dict(os.environ, {"SOCIAL_DRY_RUN": "true", "POST_SLOT": "morning"}, clear=False):
+            run_engine.main()
+
+        self.assertEqual(mock_generate.call_count, 2)
+        self.assertEqual(save_calls[-1]["posts"][-1]["status"], "skipped_validation_or_quality")
+        self.assertEqual(len(save_calls[-1]["posts"][-1]["generation_attempts"]), 2)
+
+    def test_run_engine_records_skipped_no_eligible_platforms(self) -> None:
+        save_calls: list[dict] = []
+        content = deepcopy(_base_content())
+
+        with patch.object(run_engine.generate_posts, "ensure_runtime_data", return_value=None), \
+            patch.object(run_engine.generate_posts, "generate", return_value=content), \
+            patch.object(run_engine.generate_posts, "load_history", return_value={"posts": []}), \
+            patch.object(run_engine.generate_posts, "save_history", side_effect=lambda history: save_calls.append(history)), \
+            patch.object(run_engine, "load_channel_schedule", return_value={}), \
+            patch.object(
+                run_engine,
+                "eligible_channels_for_slot",
+                return_value={
+                    "wordpress": (False, "disabled_env"),
+                    "facebook": (False, "not_scheduled"),
+                    "instagram": (False, "not_scheduled"),
+                    "linkedin": (False, "not_scheduled"),
+                },
+            ), \
+            patch.object(run_engine, "validate_generated_content", return_value={"passed": True, "errors": [], "warnings": []}), \
+            patch.object(run_engine, "score_content", return_value={"total": 90, "decision": "approve", "component_scores": {}}), \
+            patch.object(run_engine, "load_anti_repeat_windows", return_value={}), \
+            patch.object(run_engine, "check_duplicates", return_value={"ok": True, "reasons": [], "signatures": {}}), \
+            patch.dict(os.environ, {"SOCIAL_DRY_RUN": "true", "POST_SLOT": "morning"}, clear=False):
+            run_engine.main()
+
+        saved_post = save_calls[-1]["posts"][-1]
+        self.assertEqual(saved_post["status"], "skipped_no_eligible_platforms")
+        self.assertIn("platform_records", saved_post)
+        self.assertEqual(len(saved_post["platform_records"]), 4)
+
+    def test_run_engine_blocks_when_orchestration_control_plane_fails(self) -> None:
+        save_calls: list[dict] = []
+        content = deepcopy(_base_content())
+        content["orchestration_blocked"] = True
+
+        with patch.object(run_engine.generate_posts, "ensure_runtime_data", return_value=None), \
+            patch.object(run_engine.generate_posts, "generate", return_value=content), \
+            patch.object(run_engine.generate_posts, "load_history", return_value={"posts": []}), \
+            patch.object(run_engine.generate_posts, "save_history", side_effect=lambda history: save_calls.append(history)), \
+            patch.object(run_engine, "load_channel_schedule", return_value={}), \
+            patch.object(
+                run_engine,
+                "eligible_channels_for_slot",
+                return_value={
+                    "wordpress": (False, "disabled_env"),
+                    "facebook": (False, "not_scheduled"),
+                    "instagram": (False, "not_scheduled"),
+                    "linkedin": (False, "not_scheduled"),
+                },
+            ), \
+            patch.object(run_engine, "validate_generated_content", return_value={"passed": True, "errors": [], "warnings": []}), \
+            patch.object(run_engine, "score_content", return_value={"total": 90, "decision": "approve", "component_scores": {}}), \
+            patch.object(run_engine, "load_anti_repeat_windows", return_value={}), \
+            patch.object(run_engine, "check_duplicates", return_value={"ok": True, "reasons": [], "signatures": {}}), \
+            patch.dict(os.environ, {"SOCIAL_DRY_RUN": "true", "POST_SLOT": "morning"}, clear=False):
+            run_engine.main()
+
+        saved_post = save_calls[-1]["posts"][-1]
+        self.assertEqual(saved_post["status"], "skipped_validation_or_quality")
+        self.assertIn("orchestration_control_plane_blocked", saved_post.get("validation_errors", []))
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -25,6 +25,13 @@ from generate_hooks import select_hook
 from anti_repeat import load_anti_repeat_windows
 from build_utm_url import build_utm_url
 from social_visuals import generate_visuals, normalize_brand_content, normalize_brand_text
+from agent_control_plane import (
+    SCHEMAS_VERSION,
+    build_gate_record,
+    build_run_context,
+    evaluate_global_gates,
+    validate_agent_output,
+)
 
 FUNNEL_STAGES = {"ATTENTION", "EDUCATION", "DESIRE", "TRUST", "CONVERSION"}
 
@@ -154,6 +161,252 @@ Constraints:
 - Keep recommendations practical, specific, and conversion-oriented.
 - Return only JSON in the requested shape.
 """.strip()
+
+IDEATION_DIVERGENCE_BRIEF = """
+You are the Ideation Divergence Agent.
+
+Goal:
+- Produce fresh, genuinely distinct creative angles for this run.
+- Avoid repeating recent hooks and topics.
+- Return only JSON in the requested shape.
+""".strip()
+
+AUDIENCE_PSYCHOGRAPHICS_BRIEF = """
+You are the Audience Psychographics Agent.
+
+Goal:
+- Translate the chosen angle into emotional drivers, objections, trust triggers, and CTA framing.
+- Keep language practical and directly actionable for copy generation.
+- Return only JSON in the requested shape.
+""".strip()
+
+NARRATIVE_ARCHITECT_BRIEF = """
+You are the Narrative Architect Agent.
+
+Goal:
+- Define the narrative sequence and mandatory proof elements.
+- Keep structure conversion-oriented and platform-ready.
+- Return only JSON in the requested shape.
+""".strip()
+
+PLATFORM_VOICE_CALIBRATOR_BRIEF = """
+You are the Platform Voice Calibrator Agent.
+
+Goal:
+- Provide platform-native voice directives for Facebook, Instagram, and LinkedIn.
+- Keep each directive concise, practical, and distinct.
+- Return only JSON in the requested shape.
+""".strip()
+
+HOOK_STRESS_TEST_BRIEF = """
+You are the Hook Stress-Test Agent.
+
+Goal:
+- Evaluate candidate hooks for clarity, specificity, credibility, and curiosity.
+- Select one best hook for this run.
+- Return only JSON in the requested shape.
+""".strip()
+
+
+def _default_phase2_stack(
+    *,
+    selected_hook: str,
+    selected_cta: str,
+    audience_segment: str,
+    topic: str,
+    funnel_stage: str,
+) -> dict:
+    return {
+        "ideation_divergence": {
+            "concepts": [
+                {
+                    "angle": f"Practical decision framework for {topic.lower()}",
+                    "hook_candidate": selected_hook,
+                    "narrative_focus": "problem to practical framework to clear next step",
+                    "risk_note": "avoid unsupported performance guarantees",
+                }
+            ],
+            "winner_angle": f"Practical decision framework for {topic.lower()}",
+            "winner_hook": selected_hook,
+            "novelty_rationale": "Chosen for practical specificity and low repetition risk.",
+        },
+        "audience_psychographics": {
+            "primary_segment": audience_segment,
+            "emotional_driver": "confidence in making a smart and safe power decision",
+            "core_objection": "fear of buying the wrong system for real-world usage",
+            "trust_trigger": "specific verifiable specs tied to everyday use",
+            "cta_framing": selected_cta,
+        },
+        "narrative_architect": {
+            "narrative_sequence": ["attention", "pain", "education", "product_fit", "proof", "cta"],
+            "must_include": [
+                "one practical scenario",
+                "at least one verifiable metric",
+                "one objection handling line",
+            ],
+            "proof_style": "specific and verifiable without overclaiming",
+            "close_style": "single direct call to action",
+        },
+        "platform_voice_calibrator": {
+            "facebook": "conversational community educator with practical examples",
+            "instagram": "short visual-first lines with concrete benefit and urgency",
+            "linkedin": "professional advisory tone with clear framework and business relevance",
+        },
+        "hook_stress_test": {
+            "candidate_hooks": [selected_hook],
+            "recommended_hook": selected_hook,
+            "reason": f"Best fit for {funnel_stage.lower()} stage clarity and credibility.",
+        },
+    }
+
+
+def _run_phase2_creative_stack(
+    model_candidates: list[str],
+    *,
+    topic: str,
+    funnel_stage: str,
+    stage_objective: str,
+    selected_hook: str,
+    selected_cta: str,
+    audience_segment: str,
+    product_name: str,
+    product_categories: str,
+    product_metrics: str,
+    recent_hooks: list[str],
+    recent_topics: list[str],
+) -> dict:
+    stack = _default_phase2_stack(
+        selected_hook=selected_hook,
+        selected_cta=selected_cta,
+        audience_segment=audience_segment,
+        topic=topic,
+        funnel_stage=funnel_stage,
+    )
+
+    ideation_prompt = f"""{IDEATION_DIVERGENCE_BRIEF}
+
+Run context:
+- Topic: {topic}
+- Funnel stage: {funnel_stage}
+- Stage objective: {stage_objective}
+- Audience segment: {audience_segment}
+- Product: {product_name or 'N/A'}
+- Product categories: {product_categories or 'N/A'}
+- Product measurable specs: {product_metrics or 'N/A'}
+- Current hook candidate: {selected_hook}
+- Recent hooks to avoid: {recent_hooks}
+- Recent topics to avoid: {recent_topics}
+
+Return ONLY valid JSON with this exact shape:
+{{
+  "concepts": [
+    {{"angle": "string", "hook_candidate": "string", "narrative_focus": "string", "risk_note": "string"}},
+    {{"angle": "string", "hook_candidate": "string", "narrative_focus": "string", "risk_note": "string"}}
+  ],
+  "winner_angle": "string",
+  "winner_hook": "string",
+  "novelty_rationale": "string"
+}}"""
+    ideation = _generate_json_with_gemini(ideation_prompt, model_candidates)
+    if isinstance(ideation, dict):
+        stack["ideation_divergence"] = ideation
+
+    winner_angle = str(stack["ideation_divergence"].get("winner_angle", "")).strip() or topic
+    winner_hook = str(stack["ideation_divergence"].get("winner_hook", "")).strip() or selected_hook
+
+    psychographics_prompt = f"""{AUDIENCE_PSYCHOGRAPHICS_BRIEF}
+
+Run context:
+- Topic: {topic}
+- Chosen angle: {winner_angle}
+- Chosen hook: {winner_hook}
+- Funnel stage: {funnel_stage}
+- Audience segment: {audience_segment}
+
+Return ONLY valid JSON with this exact shape:
+{{
+  "primary_segment": "string",
+  "emotional_driver": "string",
+  "core_objection": "string",
+  "trust_trigger": "string",
+  "cta_framing": "string"
+}}"""
+    psychographics = _generate_json_with_gemini(psychographics_prompt, model_candidates)
+    if isinstance(psychographics, dict):
+        stack["audience_psychographics"] = psychographics
+
+    narrative_prompt = f"""{NARRATIVE_ARCHITECT_BRIEF}
+
+Run context:
+- Topic: {topic}
+- Chosen angle: {winner_angle}
+- Hook: {winner_hook}
+- Funnel stage: {funnel_stage}
+- Stage objective: {stage_objective}
+- CTA direction: {selected_cta}
+
+Return ONLY valid JSON with this exact shape:
+{{
+  "narrative_sequence": ["string", "string", "string"],
+  "must_include": ["string", "string"],
+  "proof_style": "string",
+  "close_style": "string"
+}}"""
+    narrative = _generate_json_with_gemini(narrative_prompt, model_candidates)
+    if isinstance(narrative, dict):
+        stack["narrative_architect"] = narrative
+
+    voice_prompt = f"""{PLATFORM_VOICE_CALIBRATOR_BRIEF}
+
+Run context:
+- Topic: {topic}
+- Chosen angle: {winner_angle}
+- Hook: {winner_hook}
+- Funnel stage: {funnel_stage}
+
+Return ONLY valid JSON with this exact shape:
+{{
+  "facebook": "string",
+  "instagram": "string",
+  "linkedin": "string"
+}}"""
+    voice = _generate_json_with_gemini(voice_prompt, model_candidates)
+    if isinstance(voice, dict):
+        stack["platform_voice_calibrator"] = voice
+
+    hook_candidates = [winner_hook, selected_hook] + [
+        str(row.get("hook_candidate", "")).strip()
+        for row in stack.get("ideation_divergence", {}).get("concepts", [])
+        if isinstance(row, dict)
+    ]
+    hook_candidates = [h for h in hook_candidates if h]
+    unique_hook_candidates: list[str] = []
+    seen = set()
+    for hook in hook_candidates:
+        k = hook.lower().strip()
+        if not k or k in seen:
+            continue
+        seen.add(k)
+        unique_hook_candidates.append(hook)
+
+    hook_test_prompt = f"""{HOOK_STRESS_TEST_BRIEF}
+
+Run context:
+- Topic: {topic}
+- Funnel stage: {funnel_stage}
+- Candidate hooks: {unique_hook_candidates[:6]}
+
+Return ONLY valid JSON with this exact shape:
+{{
+  "candidate_hooks": ["string", "string"],
+  "recommended_hook": "string",
+  "reason": "string"
+}}"""
+    hook_test = _generate_json_with_gemini(hook_test_prompt, model_candidates)
+    if isinstance(hook_test, dict):
+        stack["hook_stress_test"] = hook_test
+
+    return stack
 
 
 def ensure_runtime_data() -> None:
@@ -1049,6 +1302,27 @@ Return ONLY valid JSON with this exact shape:
         return result if isinstance(result, dict) else {}
 
 
+def _apply_control_plane_metadata(content: dict, run_context: dict, gate_records: list[dict]) -> dict:
+    global_gate = evaluate_global_gates(gate_records)
+    content["agent_control_plane"] = {
+        "schema_version": SCHEMAS_VERSION,
+        "run_context": run_context,
+        "gates": gate_records,
+        "global_gate": global_gate,
+    }
+    blocked = not bool(global_gate.get("passed", False))
+    content["orchestration_blocked"] = blocked
+    if blocked:
+        for gate in global_gate.get("blocking_failures", []):
+            gate_id = str(gate.get("gate_id", "unknown_gate"))
+            reasons = gate.get("reasons", [])
+            if isinstance(reasons, list):
+                for reason in reasons:
+                    content.setdefault("validation_errors", []).append(f"{gate_id}:{reason}")
+            content.setdefault("quality_warnings", []).append(f"orchestration_gate_failed:{gate_id}")
+    return content
+
+
 def generate(slot: str, *, funnel_stage_override: str = "", product_id_override: str = "") -> dict:
     ensure_runtime_data()
     preferred_model = os.environ.get("GEMINI_MODEL", "").strip()
@@ -1190,6 +1464,84 @@ def generate(slot: str, *, funnel_stage_override: str = "", product_id_override:
     recent_products = _recent_unique_values(history, "product_name", limit=6)
     recent_ctas = _recent_unique_values(history, "selected_cta", limit=8)
     recent_topics = _recent_unique_values(history, "topic", limit=8)
+    run_context = build_run_context(
+        slot=slot,
+        topic=topic,
+        funnel_stage=funnel_stage,
+        stage_objective=str(stage_meta.get("objective", "")),
+        audience_segment=audience_segment,
+        campaign_id=campaign_id,
+        destination_url=destination_url,
+        product_id=product_id,
+        product_name=product_name,
+        selected_hook=selected_hook,
+        selected_cta=selected_cta,
+        recent_hooks=recent_hooks,
+        recent_topics=recent_topics,
+        recent_ctas=recent_ctas,
+    )
+    gate_records: list[dict] = []
+
+    phase2_enabled = os.environ.get("ENABLE_PHASE2_CREATIVE_STACK", "true").strip().lower() not in {"0", "false", "no"}
+    phase2_stack = _default_phase2_stack(
+        selected_hook=selected_hook,
+        selected_cta=selected_cta,
+        audience_segment=audience_segment,
+        topic=topic,
+        funnel_stage=funnel_stage,
+    )
+    if phase2_enabled:
+        phase2_candidates = [preferred_model, conference_model if "conference_model" in locals() else "", "gemini-2.5-pro", "gemini-2.5-flash"]
+        phase2_candidates = [m for m in phase2_candidates if m]
+        phase2_raw = _run_phase2_creative_stack(
+            phase2_candidates,
+            topic=topic,
+            funnel_stage=funnel_stage,
+            stage_objective=str(stage_meta.get("objective", "")),
+            selected_hook=selected_hook,
+            selected_cta=selected_cta,
+            audience_segment=audience_segment,
+            product_name=product_name,
+            product_categories=product_categories,
+            product_metrics=product_metrics,
+            recent_hooks=recent_hooks,
+            recent_topics=recent_topics,
+        )
+        validated_ideation, ideation_errors = validate_agent_output("ideation_divergence", phase2_raw.get("ideation_divergence", {}))
+        validated_psycho, psycho_errors = validate_agent_output("audience_psychographics", phase2_raw.get("audience_psychographics", {}))
+        validated_narrative, narrative_errors = validate_agent_output("narrative_architect", phase2_raw.get("narrative_architect", {}))
+        validated_voice, voice_errors = validate_agent_output("platform_voice_calibrator", phase2_raw.get("platform_voice_calibrator", {}))
+        validated_hook_test, hook_test_errors = validate_agent_output("hook_stress_test", phase2_raw.get("hook_stress_test", {}))
+
+        gate_records.append(build_gate_record(gate_id="phase2_ideation_divergence_schema", passed=len(ideation_errors) == 0, severity="error", reasons=ideation_errors, details={"enabled": True}))
+        gate_records.append(build_gate_record(gate_id="phase2_audience_psychographics_schema", passed=len(psycho_errors) == 0, severity="error", reasons=psycho_errors, details={"enabled": True}))
+        gate_records.append(build_gate_record(gate_id="phase2_narrative_architect_schema", passed=len(narrative_errors) == 0, severity="error", reasons=narrative_errors, details={"enabled": True}))
+        gate_records.append(build_gate_record(gate_id="phase2_platform_voice_calibrator_schema", passed=len(voice_errors) == 0, severity="error", reasons=voice_errors, details={"enabled": True}))
+        gate_records.append(build_gate_record(gate_id="phase2_hook_stress_test_schema", passed=len(hook_test_errors) == 0, severity="error", reasons=hook_test_errors, details={"enabled": True}))
+
+        if not ideation_errors:
+            phase2_stack["ideation_divergence"] = validated_ideation
+        if not psycho_errors:
+            phase2_stack["audience_psychographics"] = validated_psycho
+        if not narrative_errors:
+            phase2_stack["narrative_architect"] = validated_narrative
+        if not voice_errors:
+            phase2_stack["platform_voice_calibrator"] = validated_voice
+        if not hook_test_errors:
+            phase2_stack["hook_stress_test"] = validated_hook_test
+    else:
+        gate_records.append(build_gate_record(gate_id="phase2_ideation_divergence_schema", passed=True, severity="warning", reasons=[], details={"enabled": False}))
+        gate_records.append(build_gate_record(gate_id="phase2_audience_psychographics_schema", passed=True, severity="warning", reasons=[], details={"enabled": False}))
+        gate_records.append(build_gate_record(gate_id="phase2_narrative_architect_schema", passed=True, severity="warning", reasons=[], details={"enabled": False}))
+        gate_records.append(build_gate_record(gate_id="phase2_platform_voice_calibrator_schema", passed=True, severity="warning", reasons=[], details={"enabled": False}))
+        gate_records.append(build_gate_record(gate_id="phase2_hook_stress_test_schema", passed=True, severity="warning", reasons=[], details={"enabled": False}))
+
+    selected_hook = str(phase2_stack.get("hook_stress_test", {}).get("recommended_hook", "")).strip() or selected_hook
+    selected_cta = str(phase2_stack.get("audience_psychographics", {}).get("cta_framing", "")).strip() or selected_cta
+    audience_segment = str(phase2_stack.get("audience_psychographics", {}).get("primary_segment", "")).strip() or audience_segment
+    run_context["draft_direction"]["selected_hook"] = selected_hook
+    run_context["draft_direction"]["selected_cta"] = selected_cta
+    run_context["audience_segment"] = audience_segment
 
     conference_model = os.environ.get("GEMINI_CONFERENCE_MODEL", "").strip()
     conference_candidates = [conference_model, preferred_visual_director_model, preferred_model, "gemini-2.5-pro", "gemini-2.5-flash"]
@@ -1197,7 +1549,7 @@ def generate(slot: str, *, funnel_stage_override: str = "", product_id_override:
     pregen_enabled = os.environ.get("ENABLE_PREGEN_CONFERENCE", "true").strip().lower() not in {"0", "false", "no"}
     pre_generation_conference = {}
     if pregen_enabled:
-        pre_generation_conference = _run_pre_generation_conference(
+        pre_generation_conference_raw = _run_pre_generation_conference(
             conference_candidates,
             topic=topic,
             funnel_stage=funnel_stage,
@@ -1211,8 +1563,28 @@ def generate(slot: str, *, funnel_stage_override: str = "", product_id_override:
             recent_topics=recent_topics,
             recent_ctas=recent_ctas,
         )
+        pre_generation_conference, pregen_errors = validate_agent_output("pre_generation_conference", pre_generation_conference_raw)
+        gate_records.append(
+            build_gate_record(
+                gate_id="pre_generation_conference_schema",
+                passed=len(pregen_errors) == 0,
+                severity="error",
+                reasons=pregen_errors,
+                details={"enabled": True},
+            )
+        )
         selected_hook = str(pre_generation_conference.get("recommended_hook", "")).strip() or selected_hook
         selected_cta = str(pre_generation_conference.get("recommended_cta", "")).strip() or selected_cta
+    else:
+        gate_records.append(
+            build_gate_record(
+                gate_id="pre_generation_conference_schema",
+                passed=True,
+                severity="warning",
+                reasons=[],
+                details={"enabled": False},
+            )
+        )
 
     pregen_context = ""
     if isinstance(pre_generation_conference, dict) and pre_generation_conference:
@@ -1224,6 +1596,19 @@ def generate(slot: str, *, funnel_stage_override: str = "", product_id_override:
             f"- Risk checks: {pre_generation_conference.get('risk_checks', [])}\n"
             f"- Platform notes: {pre_generation_conference.get('platform_notes', {})}\n"
         )
+
+    phase2_context = (
+        "PHASE 2 CREATIVE INTELLIGENCE OUTPUTS:\n"
+        f"- Ideation winner angle: {phase2_stack.get('ideation_divergence', {}).get('winner_angle', '')}\n"
+        f"- Ideation novelty rationale: {phase2_stack.get('ideation_divergence', {}).get('novelty_rationale', '')}\n"
+        f"- Psychographics emotional driver: {phase2_stack.get('audience_psychographics', {}).get('emotional_driver', '')}\n"
+        f"- Psychographics core objection: {phase2_stack.get('audience_psychographics', {}).get('core_objection', '')}\n"
+        f"- Psychographics trust trigger: {phase2_stack.get('audience_psychographics', {}).get('trust_trigger', '')}\n"
+        f"- Narrative sequence: {phase2_stack.get('narrative_architect', {}).get('narrative_sequence', [])}\n"
+        f"- Narrative must include: {phase2_stack.get('narrative_architect', {}).get('must_include', [])}\n"
+        f"- Platform voice notes: {phase2_stack.get('platform_voice_calibrator', {})}\n"
+        f"- Hook stress-test reason: {phase2_stack.get('hook_stress_test', {}).get('reason', '')}\n"
+    )
 
     visual_plan = _build_visual_plan_with_gemini(
         visual_director_candidates,
@@ -1238,6 +1623,18 @@ def generate(slot: str, *, funnel_stage_override: str = "", product_id_override:
         has_product_image=bool((product or {}).get("image_url")),
     )
     if not isinstance(visual_plan, dict):
+        visual_plan = {}
+    visual_plan, visual_errors = validate_agent_output("visual_director", visual_plan)
+    gate_records.append(
+        build_gate_record(
+            gate_id="visual_director_schema",
+            passed=len(visual_errors) == 0,
+            severity="error",
+            reasons=visual_errors,
+            details={"agent": "visual_director"},
+        )
+    )
+    if visual_errors:
         visual_plan = _build_default_visual_plan(topic, funnel_stage, selected_hook, selected_cta, product)
 
     prompt = f"""You are an expert content strategist and copywriter for Infenergy Power (infenergypower.com), a solar and home energy solutions company.
@@ -1261,6 +1658,8 @@ PRODUCT CONTEXT (ground your content in these details when relevant):
 {marketing_context}
 
 {pregen_context}
+
+{phase2_context}
 
 CAMPAIGN EXECUTION CONTEXT:
 - Selected hook for this post: {selected_hook}
@@ -1378,18 +1777,34 @@ Return ONLY valid JSON with these exact keys (no markdown, no code fences):
         content["generated_visuals"] = generate_visuals(content, visual_plan=visual_plan)
         content["visual_plan"] = visual_plan
         content["pre_generation_conference"] = pre_generation_conference
+        content["phase2_creative_stack"] = phase2_stack
         content["creative_agents"] = {
             "copywriter": preferred_model or "gemini-2.5-flash",
             "visual_director": (preferred_visual_director_model or "gemini-2.5-pro"),
+            "ideation_divergence": (preferred_model or "gemini-2.5-flash"),
+            "audience_psychographics": (preferred_model or "gemini-2.5-flash"),
+            "narrative_architect": (preferred_model or "gemini-2.5-flash"),
+            "platform_voice_calibrator": (preferred_model or "gemini-2.5-flash"),
+            "hook_stress_test": (preferred_model or "gemini-2.5-flash"),
             "pre_generation_conference": (conference_model or preferred_visual_director_model or "gemini-2.5-pro"),
             "image_model": os.environ.get("GEMINI_IMAGE_MODEL", "gemini-2.5-flash-image"),
         }
+        gate_records.append(
+            build_gate_record(
+                gate_id="copywriter_payload_minimum",
+                passed=True,
+                severity="error",
+                reasons=[],
+                details={"source": "fallback_builder"},
+            )
+        )
         quality = score_generated_content(content)
         content["quality_score"] = quality.score
         content["quality_checks"] = quality.checks
         content["quality_warnings"] = quality.warnings
         for p in content["platform_posts"].values():
             p["quality_score"] = float(quality.score)
+        content = _apply_control_plane_metadata(content, run_context, gate_records)
         return content
 
     content["topic"] = topic
@@ -1450,7 +1865,7 @@ Return ONLY valid JSON with these exact keys (no markdown, no code fences):
     conference_enabled = os.environ.get("ENABLE_AGENT_CONFERENCE", "true").strip().lower() not in {"0", "false", "no"}
     conference_summary = {}
     if conference_enabled:
-        conference_summary = _run_agent_conference(
+        conference_summary_raw = _run_agent_conference(
             conference_candidates,
             topic=topic,
             funnel_stage=funnel_stage,
@@ -1461,6 +1876,16 @@ Return ONLY valid JSON with these exact keys (no markdown, no code fences):
             product_name=product_name,
             product_metrics=product_metrics,
         )
+        conference_summary, conference_errors = validate_agent_output("agent_conference", conference_summary_raw)
+        gate_records.append(
+            build_gate_record(
+                gate_id="agent_conference_schema",
+                passed=len(conference_errors) == 0,
+                severity="error",
+                reasons=conference_errors,
+                details={"enabled": True},
+            )
+        )
         content, visual_plan = _apply_conference_refinements(content, visual_plan, conference_summary)
         # Re-apply guardrails after conference-driven refinements.
         for key in ("wp_content", "fb_caption", "ig_caption", "li_text"):
@@ -1468,6 +1893,16 @@ Return ONLY valid JSON with these exact keys (no markdown, no code fences):
             content[key] = cleaned
             if replaced:
                 content.setdefault("claim_guardrail_replacements", []).extend(replaced)
+    else:
+        gate_records.append(
+            build_gate_record(
+                gate_id="agent_conference_schema",
+                passed=True,
+                severity="warning",
+                reasons=[],
+                details={"enabled": False},
+            )
+        )
 
     post_id = uuid.uuid4().hex[:12]
     selected_hook = str(content.get("selected_hook", selected_hook))
@@ -1501,18 +1936,34 @@ Return ONLY valid JSON with these exact keys (no markdown, no code fences):
     content["generated_visuals"] = generate_visuals(content, visual_plan=visual_plan)
     content["visual_plan"] = visual_plan
     content["pre_generation_conference"] = pre_generation_conference
+    content["phase2_creative_stack"] = phase2_stack
     content["agent_conference"] = conference_summary
     content["creative_agents"] = {
         "copywriter": preferred_model or "gemini-2.5-flash",
         "visual_director": (preferred_visual_director_model or "gemini-2.5-pro"),
+        "ideation_divergence": (preferred_model or "gemini-2.5-flash"),
+        "audience_psychographics": (preferred_model or "gemini-2.5-flash"),
+        "narrative_architect": (preferred_model or "gemini-2.5-flash"),
+        "platform_voice_calibrator": (preferred_model or "gemini-2.5-flash"),
+        "hook_stress_test": (preferred_model or "gemini-2.5-flash"),
         "pre_generation_conference": (conference_model or preferred_visual_director_model or "gemini-2.5-pro"),
         "conference": (conference_model or preferred_visual_director_model or "gemini-2.5-pro"),
         "image_model": os.environ.get("GEMINI_IMAGE_MODEL", "gemini-2.5-flash-image"),
     }
+    gate_records.append(
+        build_gate_record(
+            gate_id="copywriter_payload_minimum",
+            passed=all(bool(str(content.get(k, "")).strip()) for k in ("wp_title", "wp_content", "fb_caption", "ig_caption", "li_text")),
+            severity="error",
+            reasons=[] if all(bool(str(content.get(k, "")).strip()) for k in ("wp_title", "wp_content", "fb_caption", "ig_caption", "li_text")) else ["missing_required_copy_field"],
+            details={"fields": ["wp_title", "wp_content", "fb_caption", "ig_caption", "li_text"]},
+        )
+    )
     quality = score_generated_content(content)
     content["quality_score"] = quality.score
     content["quality_checks"] = quality.checks
     content["quality_warnings"] = quality.warnings
     for p in content["platform_posts"].values():
         p["quality_score"] = float(quality.score)
+    content = _apply_control_plane_metadata(content, run_context, gate_records)
     return content

@@ -16,6 +16,13 @@ def _required_env(name: str) -> str:
     return value
 
 
+def _env_flag(name: str, default: bool) -> bool:
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
 def _raise_with_body(resp: requests.Response) -> None:
     try:
         resp.raise_for_status()
@@ -81,6 +88,9 @@ def _post_with_retry(url: str, data: dict, timeout: int = 30) -> requests.Respon
 
 def publish(content: dict, wp_link: str, dry_run: bool = False) -> dict:
     message = f"{content['fb_caption']}\n\n{wp_link}"
+    image_path = str((content.get("generated_visuals") or {}).get("facebook", "")).strip()
+    image_url = str(content.get("product_image_url", "")).strip()
+    require_image = _env_flag("FB_REQUIRE_IMAGE", True)
 
     if dry_run:
         print(f"[DRY RUN] Facebook: would post:\n{message[:150]}...\n")
@@ -89,14 +99,42 @@ def publish(content: dict, wp_link: str, dry_run: bool = False) -> dict:
     page_id = _required_env("META_PAGE_ID")
     token = _resolve_page_access_token(_required_env("META_PAGE_ACCESS_TOKEN"), page_id)
 
-    resp = _post_with_retry(
-        f"{GRAPH_BASE}/{page_id}/feed",
-        {
-            "message": message,
-            "access_token": token,
-        },
-        timeout=30,
-    )
+    if image_path and os.path.exists(image_path):
+        with open(image_path, "rb") as f:
+            resp = requests.post(
+                f"{GRAPH_BASE}/{page_id}/photos",
+                data={
+                    "caption": message,
+                    "published": "true",
+                    "access_token": token,
+                },
+                files={"source": (os.path.basename(image_path), f, "image/png")},
+                timeout=60,
+            )
+    elif image_url.startswith("http"):
+        resp = requests.post(
+            f"{GRAPH_BASE}/{page_id}/photos",
+            data={
+                "caption": message,
+                "published": "true",
+                "url": image_url,
+                "access_token": token,
+            },
+            timeout=60,
+        )
+    else:
+        if require_image:
+            raise RuntimeError(
+                "Facebook image is required but no generated visual or product image URL was available"
+            )
+        resp = _post_with_retry(
+            f"{GRAPH_BASE}/{page_id}/feed",
+            {
+                "message": message,
+                "access_token": token,
+            },
+            timeout=30,
+        )
     _raise_with_body(resp)
     data = resp.json()
     print(f"[Facebook] Posted: {data['id']}")

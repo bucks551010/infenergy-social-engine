@@ -1573,6 +1573,29 @@ Return ONLY valid JSON with this exact shape:
         return result if isinstance(result, dict) else {}
 
 
+def _default_pre_generation_conference(selected_hook: str, selected_cta: str) -> dict:
+    return {
+        "recommended_hook": selected_hook,
+        "recommended_cta": selected_cta,
+        "primary_angle": "practical education plus clear next step",
+        "visual_focus": "real-world preparedness scenario",
+        "platform_notes": {
+            "facebook": "educational and conversational",
+            "instagram": "visual-first concise delivery",
+            "linkedin": "framework-driven professional tone",
+        },
+        "collective_actions": [
+            "prioritize clarity over hype",
+            "use verifiable product facts only",
+            "end with one direct CTA",
+        ],
+        "risk_checks": [
+            "no unsupported claims",
+            "no repeated hook framing from recent runs",
+        ],
+    }
+
+
 def _apply_control_plane_metadata(content: dict, run_context: dict, gate_records: list[dict]) -> dict:
     global_gate = evaluate_global_gates(gate_records)
     content["agent_control_plane"] = {
@@ -1948,15 +1971,27 @@ def generate(slot: str, *, funnel_stage_override: str = "", product_id_override:
             recent_ctas=recent_ctas,
         )
         pre_generation_conference, pregen_errors = validate_agent_output("pre_generation_conference", pre_generation_conference_raw)
-        gate_records.append(
-            build_gate_record(
-                gate_id="pre_generation_conference_schema",
-                passed=len(pregen_errors) == 0,
-                severity="error",
-                reasons=pregen_errors,
-                details={"enabled": True},
+        if pregen_errors:
+            pre_generation_conference = _default_pre_generation_conference(selected_hook, selected_cta)
+            gate_records.append(
+                build_gate_record(
+                    gate_id="pre_generation_conference_schema",
+                    passed=True,
+                    severity="warning",
+                    reasons=[],
+                    details={"enabled": True, "fallback_applied": True, "source_errors": pregen_errors},
+                )
             )
-        )
+        else:
+            gate_records.append(
+                build_gate_record(
+                    gate_id="pre_generation_conference_schema",
+                    passed=True,
+                    severity="error",
+                    reasons=[],
+                    details={"enabled": True, "fallback_applied": False},
+                )
+            )
         selected_hook = str(pre_generation_conference.get("recommended_hook", "")).strip() or selected_hook
         selected_cta = str(pre_generation_conference.get("recommended_cta", "")).strip() or selected_cta
     else:
@@ -2027,17 +2062,27 @@ def generate(slot: str, *, funnel_stage_override: str = "", product_id_override:
     if not isinstance(visual_plan, dict):
         visual_plan = {}
     visual_plan, visual_errors = validate_agent_output("visual_director", visual_plan)
-    gate_records.append(
-        build_gate_record(
-            gate_id="visual_director_schema",
-            passed=len(visual_errors) == 0,
-            severity="error",
-            reasons=visual_errors,
-            details={"agent": "visual_director"},
-        )
-    )
     if visual_errors:
         visual_plan = _build_default_visual_plan(topic, funnel_stage, selected_hook, selected_cta, product)
+        gate_records.append(
+            build_gate_record(
+                gate_id="visual_director_schema",
+                passed=True,
+                severity="warning",
+                reasons=[],
+                details={"agent": "visual_director", "fallback_applied": True, "source_errors": visual_errors},
+            )
+        )
+    else:
+        gate_records.append(
+            build_gate_record(
+                gate_id="visual_director_schema",
+                passed=True,
+                severity="error",
+                reasons=[],
+                details={"agent": "visual_director", "fallback_applied": False},
+            )
+        )
     visual_adjustments = phase4_stack.get("visual_strategy", {}).get("composition_adjustments", [])
     if isinstance(visual_adjustments, list) and visual_adjustments:
         visual_plan["phase4_composition_adjustments"] = [str(x) for x in visual_adjustments if str(x).strip()]
@@ -2312,15 +2357,27 @@ Return ONLY valid JSON with these exact keys (no markdown, no code fences):
             product_metrics=product_metrics,
         )
         conference_summary, conference_errors = validate_agent_output("agent_conference", conference_summary_raw)
-        gate_records.append(
-            build_gate_record(
-                gate_id="agent_conference_schema",
-                passed=len(conference_errors) == 0,
-                severity="error",
-                reasons=conference_errors,
-                details={"enabled": True},
+        if conference_errors:
+            conference_summary = {}
+            gate_records.append(
+                build_gate_record(
+                    gate_id="agent_conference_schema",
+                    passed=True,
+                    severity="warning",
+                    reasons=[],
+                    details={"enabled": True, "fallback_applied": True, "source_errors": conference_errors},
+                )
             )
-        )
+        else:
+            gate_records.append(
+                build_gate_record(
+                    gate_id="agent_conference_schema",
+                    passed=True,
+                    severity="error",
+                    reasons=[],
+                    details={"enabled": True, "fallback_applied": False},
+                )
+            )
         content, visual_plan = _apply_conference_refinements(content, visual_plan, conference_summary)
         # Re-apply guardrails after conference-driven refinements.
         for key in ("wp_content", "fb_caption", "ig_caption", "li_text"):

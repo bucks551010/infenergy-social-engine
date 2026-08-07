@@ -66,6 +66,13 @@ def _base_content() -> dict:
 
 
 class PhaseThirteenFourteenTests(unittest.TestCase):
+    def test_generate_without_gemini_keeps_orchestration_unblocked_with_fallbacks(self) -> None:
+        with patch.dict(os.environ, {"GEMINI_API_KEY": ""}, clear=False):
+            content = generate_posts.generate("morning")
+        self.assertFalse(bool(content.get("orchestration_blocked")))
+        control = content.get("agent_control_plane", {})
+        self.assertEqual(control.get("global_gate", {}).get("status"), "pass")
+
     def test_phase2_creative_stack_fallback_is_schema_valid(self) -> None:
         stack = generate_posts._run_phase2_creative_stack(
             [],

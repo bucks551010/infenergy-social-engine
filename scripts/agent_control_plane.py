@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from typing import Any
 
 
-SCHEMAS_VERSION = "phase2.v1"
+SCHEMAS_VERSION = "phase8.v1"
 
 
 AGENT_IO_SCHEMAS: dict[str, dict[str, Any]] = {

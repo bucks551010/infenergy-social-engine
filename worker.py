@@ -275,11 +275,11 @@ def _utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def _start_slot_thread(slot: str, force_live: bool = False, platforms_override: str = "") -> bool:
+def _start_slot_thread(slot: str, force_live: bool = False, platforms_override: str = "", duplicate_mode: str = "") -> bool:
     if RUN_LOCK.locked():
         return False
 
-    thread = threading.Thread(target=run_slot, args=(slot, force_live, platforms_override), daemon=True)
+    thread = threading.Thread(target=run_slot, args=(slot, force_live, platforms_override, duplicate_mode), daemon=True)
     thread.start()
     return True
 
@@ -536,6 +536,9 @@ class HealthHandler(BaseHTTPRequestHandler):
             slot = params.get("slot", ["morning"])[0]
             force_live = params.get("live", ["false"])[0].lower() in ("1", "true", "yes")
             platforms_override = params.get("platforms", [""])[0]
+            duplicate_mode = params.get("duplicate_mode", [""])[0].strip().lower()
+            if duplicate_mode and duplicate_mode not in ("strict", "exact_only", "allow_all"):
+                duplicate_mode = ""
             if slot not in ("morning", "midday", "evening"):
                 slot = "morning"
 
@@ -557,12 +560,18 @@ class HealthHandler(BaseHTTPRequestHandler):
                 self.wfile.write(body)
                 return
 
-            started = _start_slot_thread(slot, force_live=force_live, platforms_override=platforms_override)
+            started = _start_slot_thread(
+                slot,
+                force_live=force_live,
+                platforms_override=platforms_override,
+                duplicate_mode=duplicate_mode,
+            )
             payload = {
                 "accepted": started,
                 "slot": slot,
                 "force_live": force_live,
                 "platforms": platforms_override,
+                "duplicate_mode": duplicate_mode or "env_default",
                 "message": "run started" if started else "run already in progress",
                 "time_utc": _utc_now(),
             }
@@ -589,7 +598,7 @@ def start_health_server() -> None:
     print(f"Health endpoint listening on 0.0.0.0:{port}")
 
 
-def run_slot(slot: str, force_live: bool = False, platforms_override: str = "") -> None:
+def run_slot(slot: str, force_live: bool = False, platforms_override: str = "", duplicate_mode: str = "") -> None:
     with RUN_LOCK:
         LAST_RUN["status"] = "running"
         LAST_RUN["slot"] = slot
@@ -600,8 +609,11 @@ def run_slot(slot: str, force_live: bool = False, platforms_override: str = "") 
         print(f"\n[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}] Starting {slot} run...")
         previous_dry_run = os.environ.get("SOCIAL_DRY_RUN", "true")
         previous_platforms = os.environ.get("POST_PLATFORMS", "")
+        previous_duplicate_mode = os.environ.get("MANUAL_DUPLICATE_MODE", "")
         os.environ["POST_SLOT"] = slot
         os.environ["POST_PLATFORMS"] = platforms_override
+        if duplicate_mode:
+            os.environ["MANUAL_DUPLICATE_MODE"] = duplicate_mode
         if force_live:
             os.environ["SOCIAL_DRY_RUN"] = "false"
         try:
@@ -643,6 +655,10 @@ def run_slot(slot: str, force_live: bool = False, platforms_override: str = "") 
         finally:
             os.environ["SOCIAL_DRY_RUN"] = previous_dry_run
             os.environ["POST_PLATFORMS"] = previous_platforms
+            if previous_duplicate_mode:
+                os.environ["MANUAL_DUPLICATE_MODE"] = previous_duplicate_mode
+            elif "MANUAL_DUPLICATE_MODE" in os.environ:
+                del os.environ["MANUAL_DUPLICATE_MODE"]
             LAST_RUN["finished_at_utc"] = _utc_now()
 
 

@@ -289,7 +289,12 @@ def main() -> None:
         validation = validate_generated_content(content)
         scoring = score_content(content)
         duplicates = check_duplicates(content, generate_posts.load_history(), windows=windows)
-        if manual_platforms and manual_duplicate_mode == "exact_only":
+        if manual_platforms and manual_duplicate_mode == "allow_all":
+            if duplicates.get("reasons"):
+                content.setdefault("quality_warnings", []).append("manual_duplicate_mode:allow_all")
+            duplicates["reasons"] = []
+            duplicates["ok"] = True
+        elif manual_platforms and manual_duplicate_mode == "exact_only":
             reasons = [str(r) for r in duplicates.get("reasons", [])]
             exact_reasons = [
                 r for r in reasons if r in {"duplicate_exact_caption_within_window", "duplicate_opening_sentence_within_window"}
@@ -526,12 +531,15 @@ def main() -> None:
     if effective_channels["facebook"]:
         if (not dry_run) and was_recent_channel_success(history, "fb", slot, skip_success_hours):
             print("[SKIP] Facebook recent successful publish within configured window")
-        elif (not dry_run) and _recent_duplicate_platform_caption(
+        elif (
+            (not dry_run)
+            and not (manual_platforms and manual_duplicate_mode == "allow_all")
+            and _recent_duplicate_platform_caption(
             history,
             "facebook",
             str(content.get("fb_caption", "")),
             days=fb_duplicate_days,
-        ):
+        )):
             msg = f"duplicate_facebook_caption_within_{fb_duplicate_days}d"
             errors.append(f"Facebook: {msg}")
             error_map["facebook"] = msg

@@ -1,6 +1,10 @@
 import os
 import sys
+import time
+import json
 from datetime import datetime, timezone
+
+import requests
 
 sys.path.insert(0, os.path.dirname(__file__))
 
@@ -142,6 +146,177 @@ def _latest_marketing_strategy_info() -> tuple[str, str]:
     return os.path.basename(latest), freshness
 
 
+def _refresh_linkedin_access_token_if_configured() -> tuple[bool, str]:
+    refresh_token = str(os.environ.get("LINKEDIN_REFRESH_TOKEN", "")).strip()
+    client_id = str(os.environ.get("LINKEDIN_CLIENT_ID", "")).strip()
+    client_secret = str(os.environ.get("LINKEDIN_CLIENT_SECRET", "")).strip()
+    if not (refresh_token and client_id and client_secret):
+        return False, "refresh_not_configured"
+
+    try:
+        resp = requests.post(
+            "https://www.linkedin.com/oauth/v2/accessToken",
+            data={
+                "grant_type": "refresh_token",
+                "refresh_token": refresh_token,
+                "client_id": client_id,
+                "client_secret": client_secret,
+            },
+            timeout=20,
+        )
+        if not resp.ok:
+            return False, f"refresh_failed_http_{resp.status_code}"
+        payload = resp.json() if resp.content else {}
+        new_token = str(payload.get("access_token", "")).strip()
+        if not new_token:
+            return False, "refresh_missing_access_token"
+        os.environ["LINKEDIN_ACCESS_TOKEN"] = new_token
+        return True, "refreshed"
+    except Exception as e:
+        return False, f"refresh_exception:{e}"
+
+
+def _build_phase5_channel_readiness(effective_channels: dict[str, bool], dry_run: bool) -> dict:
+    checks: dict[str, dict] = {}
+
+    def mark(platform: str, status: str, reason: str, details: dict | None = None) -> None:
+        checks[platform] = {
+            "status": status,
+            "reason": reason,
+            "details": details or {},
+        }
+
+    if not effective_channels.get("wordpress", False):
+        mark("wordpress", "yellow", "channel_disabled")
+    else:
+        wp_url = str(os.environ.get("WP_URL", "")).strip()
+        wp_user = str(os.environ.get("WP_USERNAME", "")).strip()
+        wp_pw = str(os.environ.get("WP_APP_PASSWORD", "")).strip()
+        if not (wp_url and wp_user and wp_pw):
+            mark("wordpress", "red", "missing_credentials")
+        else:
+            mark("wordpress", "green", "credentials_present")
+
+    fb_token = str(os.environ.get("META_PAGE_ACCESS_TOKEN", "")).strip()
+    if not effective_channels.get("facebook", False):
+        mark("facebook", "yellow", "channel_disabled")
+    elif not fb_token:
+        mark("facebook", "red", "missing_page_access_token")
+    else:
+        try:
+            resp = requests.get(
+                "https://graph.facebook.com/v26.0/me/accounts",
+                params={"fields": "id,name", "access_token": fb_token},
+                timeout=15,
+            )
+            if resp.ok:
+                mark("facebook", "green", "token_valid")
+            else:
+                mark("facebook", "red", f"token_check_failed_http_{resp.status_code}")
+        except Exception as e:
+            mark("facebook", "red", f"token_check_exception:{e}")
+
+    if not effective_channels.get("instagram", False):
+        mark("instagram", "yellow", "channel_disabled")
+    else:
+        ig_user = str(os.environ.get("META_IG_USER_ID", "")).strip()
+        if not (ig_user and fb_token):
+            mark("instagram", "red", "missing_ig_or_page_token")
+        else:
+            try:
+                resp = requests.get(
+                    f"https://graph.facebook.com/v26.0/{ig_user}",
+                    params={"fields": "id,username", "access_token": fb_token},
+                    timeout=15,
+                )
+                if resp.ok:
+                    mark("instagram", "green", "token_valid")
+                else:
+                    mark("instagram", "red", f"token_check_failed_http_{resp.status_code}")
+            except Exception as e:
+                mark("instagram", "red", f"token_check_exception:{e}")
+
+    if not effective_channels.get("linkedin", False):
+        mark("linkedin", "yellow", "channel_disabled")
+    else:
+        token = str(os.environ.get("LINKEDIN_ACCESS_TOKEN", "")).strip()
+        if not token:
+            mark("linkedin", "red", "missing_access_token")
+        else:
+            try:
+                resp = requests.get(
+                    "https://api.linkedin.com/v2/userinfo",
+                    headers={"Authorization": f"Bearer {token}", "LinkedIn-Version": datetime.now(timezone.utc).strftime("%Y%m")},
+                    timeout=15,
+                )
+                if resp.ok:
+                    mark("linkedin", "green", "token_valid")
+                elif resp.status_code in (401, 403) and not dry_run:
+                    refreshed, reason = _refresh_linkedin_access_token_if_configured()
+                    if refreshed:
+                        mark("linkedin", "yellow", "token_refreshed_retry_next_call", {"refresh": reason})
+                    else:
+                        mark("linkedin", "red", f"token_invalid:{reason}")
+                else:
+                    mark("linkedin", "red", f"token_check_failed_http_{resp.status_code}")
+            except Exception as e:
+                mark("linkedin", "red", f"token_check_exception:{e}")
+
+    blocking = [p for p, v in checks.items() if str(v.get("status", "")).lower() == "red" and effective_channels.get(p, False)]
+    return {
+        "checks": checks,
+        "blocking_channels": blocking,
+        "overall": "pass" if not blocking else "fail",
+    }
+
+
+def _build_phase6_learning(
+    *,
+    content: dict,
+    platform_records: list[dict],
+    errors: list[str],
+    status: str,
+) -> dict:
+    published = [r for r in platform_records if str(r.get("status", "")).lower() == "published"]
+    failed = [r for r in platform_records if str(r.get("status", "")).lower() == "error"]
+    skipped = [r for r in platform_records if str(r.get("status", "")).lower().startswith("skipped")]
+
+    hypotheses = []
+    if published:
+        hypotheses.append("Replicate angle and CTA framing on next matching funnel stage.")
+    if failed:
+        hypotheses.append("Run channel-specific failure drill and token validity recheck before next live run.")
+    if skipped:
+        hypotheses.append("Rebalance scheduling/eligibility constraints to reduce avoidable skips.")
+
+    return {
+        "status": status,
+        "postmortem": {
+            "topic": str(content.get("topic", "")),
+            "hook": str(content.get("selected_hook", "")),
+            "cta": str(content.get("selected_cta", "")),
+            "published_count": len(published),
+            "failed_count": len(failed),
+            "skipped_count": len(skipped),
+            "errors": errors,
+        },
+        "experiment_plan": {
+            "active_hypotheses": hypotheses[:3],
+            "next_test": "A/B test hook opening line while keeping CTA constant",
+        },
+        "attribution": {
+            "driver": "creative_and_channel_readiness",
+            "notes": "Attribution based on per-platform status and gate outcomes from this run.",
+        },
+    }
+
+
+def _apply_phase8_budget(metrics: dict, key: str, elapsed: float, budget: float) -> None:
+    metrics.setdefault("durations_sec", {})[key] = round(elapsed, 3)
+    if budget > 0 and elapsed > budget:
+        metrics.setdefault("warnings", []).append(f"budget_exceeded:{key}:{round(elapsed, 3)}>{budget}")
+
+
 def _platform_status(
     platform: str,
     effective_channels: dict[str, bool],
@@ -230,10 +405,21 @@ def main() -> None:
     now_utc = datetime.now(timezone.utc)
     effective_channels = dict(channels)
     channel_reasons: dict[str, str] = {}
+    runtime_metrics: dict = {
+        "started_at_utc": datetime.now(timezone.utc).isoformat(),
+        "durations_sec": {},
+        "warnings": [],
+    }
+    generation_budget = float(os.environ.get("PHASE8_BUDGET_GENERATION_SEC", "180"))
+    publish_budget = float(os.environ.get("PHASE8_BUDGET_PUBLISH_SEC", "120"))
+    total_budget = float(os.environ.get("PHASE8_BUDGET_TOTAL_SEC", "420"))
+    t_total = time.perf_counter()
 
     # Compute a stage first so schedule rules can enforce stage eligibility.
     generate_posts.ensure_runtime_data()
+    t_preview = time.perf_counter()
     preview_content = generate_posts.generate(slot)
+    _apply_phase8_budget(runtime_metrics, "preview_generation", time.perf_counter() - t_preview, generation_budget)
     funnel_stage = str(preview_content.get("funnel_stage", "EDUCATION"))
 
     eligibility = eligible_channels_for_slot(
@@ -255,6 +441,8 @@ def main() -> None:
         channel_reasons[name] = reason
 
     check_secrets(dry_run=dry_run, channels=effective_channels)
+    phase5_readiness = _build_phase5_channel_readiness(effective_channels, dry_run)
+    readiness_block_on_red = os.environ.get("CHANNEL_READINESS_BLOCK_ON_RED", "true").strip().lower() in {"1", "true", "yes", "on"}
     strategy_name, strategy_freshness = _latest_marketing_strategy_info()
 
     print(f"\n=== INF Energy Social Engine ===")
@@ -276,17 +464,85 @@ def main() -> None:
     if manual_platforms:
         print(f"Manual platform override: {manual_platforms}\n")
     print(f"Marketing strategy: {strategy_name} ({strategy_freshness})\n")
+    print(f"Phase5 readiness: {json.dumps(phase5_readiness, ensure_ascii=True)}\n")
+
+    if (not dry_run) and readiness_block_on_red and phase5_readiness.get("overall") != "pass":
+        print("[SKIP] Channel readiness check failed; blocking live publish")
+        history = generate_posts.load_history()
+        run_started = datetime.now(timezone.utc).isoformat()
+        tracked_links = {"facebook": None, "instagram": None, "linkedin": None, "wordpress": None}
+        platform_ids = {"wordpress": "skipped", "facebook": "skipped", "instagram": "skipped", "linkedin": "skipped"}
+        platform_records = _build_platform_history_records(
+            content=preview_content,
+            run_started=run_started,
+            effective_channels=effective_channels,
+            dry_run=dry_run,
+            ids=platform_ids,
+            tracked_links=tracked_links,
+            error_map={},
+        )
+        phase6_learning = _build_phase6_learning(
+            content=preview_content,
+            platform_records=platform_records,
+            errors=["channel_readiness_failed"],
+            status="skipped_channel_readiness",
+        )
+        _apply_phase8_budget(runtime_metrics, "total", time.perf_counter() - t_total, total_budget)
+        history["posts"].append({
+            "post_id": preview_content.get("post_id", ""),
+            "platform_post_id": None,
+            "campaign_id": preview_content.get("campaign_id", ""),
+            "platform": "multi",
+            "published_at": run_started,
+            "audience_segment": preview_content.get("audience_segment", ""),
+            "product_id": preview_content.get("product_id") or None,
+            "hook": preview_content.get("selected_hook", ""),
+            "cta": preview_content.get("selected_cta", ""),
+            "content_format": "multi",
+            "destination_url": preview_content.get("destination_url") or None,
+            "utm_url": None,
+            "error": "channel_readiness_failed",
+            "date": preview_content.get("date"),
+            "slot": slot,
+            "run_started_at_utc": run_started,
+            "topic": preview_content.get("topic"),
+            "pillar": preview_content.get("pillar"),
+            "topic_hash": preview_content.get("topic_hash"),
+            "funnel_stage": preview_content.get("funnel_stage", "EDUCATION"),
+            "quality_score": preview_content.get("quality_score"),
+            "status": "skipped_channel_readiness",
+            "channel_reasons": channel_reasons,
+            "phase5_channel_readiness": phase5_readiness,
+            "phase6_learning": phase6_learning,
+            "phase8_runtime": runtime_metrics,
+            "platform_records": platform_records,
+            "wp_id": "skipped",
+            "fb_id": "skipped",
+            "ig_id": "skipped",
+            "li_id": "skipped",
+        })
+        history["posts"] = history["posts"][-200:]
+        generate_posts.save_history(history)
+        print("\n=== Done (skipped) ===\n")
+        return
 
     print("[1/5] Generating content with Gemini...")
     # Phase 8: max two generation attempts with score/validation gating.
     attempts: list[dict] = []
     windows = load_anti_repeat_windows()
     content = preview_content
+    t_generation = time.perf_counter()
     for idx in range(2):
         if idx > 0:
             content = generate_posts.generate(slot)
 
         validation = validate_generated_content(content)
+        if content.get("orchestration_blocked"):
+            validation = {
+                "passed": False,
+                "errors": list(validation.get("errors", [])) + ["orchestration_control_plane_blocked"],
+                "warnings": list(validation.get("warnings", [])),
+            }
         scoring = score_content(content)
         duplicates = check_duplicates(content, generate_posts.load_history(), windows=windows)
         if manual_platforms and manual_duplicate_mode == "allow_all":
@@ -333,6 +589,7 @@ def main() -> None:
         # Otherwise stop on second attempt or hard rejection.
         if idx == 1 or scoring.get("decision") == "reject":
             break
+    _apply_phase8_budget(runtime_metrics, "generation", time.perf_counter() - t_generation, generation_budget)
 
     final_validation_ok = content.get("validation_status") == "passed"
     final_score = float(content.get("quality_score") or 0)
@@ -390,6 +647,14 @@ def main() -> None:
             "dry_run": dry_run,
             "status": "skipped_validation_or_quality",
             "channel_reasons": channel_reasons,
+            "phase5_channel_readiness": phase5_readiness,
+            "phase6_learning": _build_phase6_learning(
+                content=content,
+                platform_records=platform_records,
+                errors=["failed_quality_or_validation_or_duplicate"],
+                status="skipped_validation_or_quality",
+            ),
+            "phase8_runtime": runtime_metrics,
             "platform_records": platform_records,
             "wp_id": "skipped",
             "fb_id": "skipped",
@@ -397,6 +662,7 @@ def main() -> None:
             "li_id": "skipped",
         })
         history["posts"] = history["posts"][-200:]
+        _apply_phase8_budget(runtime_metrics, "total", time.perf_counter() - t_total, total_budget)
         generate_posts.save_history(history)
         print("\n=== Done (skipped) ===\n")
         return
@@ -477,6 +743,14 @@ def main() -> None:
             "dry_run": dry_run,
             "status": "skipped_no_eligible_platforms",
             "channel_reasons": channel_reasons,
+            "phase5_channel_readiness": phase5_readiness,
+            "phase6_learning": _build_phase6_learning(
+                content=content,
+                platform_records=platform_records,
+                errors=[],
+                status="skipped_no_eligible_platforms",
+            ),
+            "phase8_runtime": runtime_metrics,
             "platform_records": platform_records,
             "wp_id": "skipped",
             "fb_id": "skipped",
@@ -484,11 +758,13 @@ def main() -> None:
             "li_id": "skipped",
         })
         history["posts"] = history["posts"][-200:]
+        _apply_phase8_budget(runtime_metrics, "total", time.perf_counter() - t_total, total_budget)
         generate_posts.save_history(history)
         print("\n=== Done (skipped) ===\n")
         return
 
     print("[2/5] WordPress...")
+    t_wp = time.perf_counter()
     if effective_channels["wordpress"]:
         try:
             wp_result = publish_wordpress.publish(content, dry_run=dry_run)
@@ -498,6 +774,7 @@ def main() -> None:
             print(f"[ERROR] WordPress publish failed: {e}")
     else:
         print("[SKIP] WordPress disabled")
+    _apply_phase8_budget(runtime_metrics, "publish_wordpress", time.perf_counter() - t_wp, publish_budget)
     wp_link = wp_result.get("link", os.environ.get("WP_URL", "https://www.infenergypower.com"))
     campaign_name = os.environ.get("UTM_CAMPAIGN_NAME", "infenergy_engine")
     audience_term = str(content.get("audience_segment", "general")).lower().replace(" ", "_")
@@ -528,6 +805,7 @@ def main() -> None:
     fb_duplicate_days = int(os.environ.get("FB_DUPLICATE_CAPTION_DAYS", "14"))
 
     print("[3/5] Facebook...")
+    t_fb = time.perf_counter()
     if effective_channels["facebook"]:
         if (not dry_run) and was_recent_channel_success(history, "fb", slot, skip_success_hours):
             print("[SKIP] Facebook recent successful publish within configured window")
@@ -553,8 +831,10 @@ def main() -> None:
                 print(f"[ERROR] Facebook publish failed: {e}")
     else:
         print("[SKIP] Facebook disabled")
+    _apply_phase8_budget(runtime_metrics, "publish_facebook", time.perf_counter() - t_fb, publish_budget)
 
     print("[4/5] Instagram...")
+    t_ig = time.perf_counter()
     if effective_channels["instagram"]:
         if (not dry_run) and was_recent_channel_success(history, "ig", slot, skip_success_hours):
             print("[SKIP] Instagram recent successful publish within configured window")
@@ -568,8 +848,10 @@ def main() -> None:
                 print(f"[ERROR] Instagram publish failed: {e}")
     else:
         print("[SKIP] Instagram disabled")
+    _apply_phase8_budget(runtime_metrics, "publish_instagram", time.perf_counter() - t_ig, publish_budget)
 
     print("[5/5] LinkedIn...")
+    t_li = time.perf_counter()
     if effective_channels["linkedin"]:
         if (not dry_run) and was_recent_channel_success(history, "li", slot, skip_success_hours):
             print("[SKIP] LinkedIn recent successful publish within configured window")
@@ -582,6 +864,7 @@ def main() -> None:
                 print(f"[ERROR] LinkedIn publish failed: {e}")
     else:
         print("[SKIP] LinkedIn disabled")
+    _apply_phase8_budget(runtime_metrics, "publish_linkedin", time.perf_counter() - t_li, publish_budget)
 
     # Persist history so the next run picks a fresh topic
     run_started = datetime.now(timezone.utc).isoformat()
@@ -606,6 +889,13 @@ def main() -> None:
         tracked_links=tracked_links,
         error_map=error_map,
     )
+    phase6_learning = _build_phase6_learning(
+        content=content,
+        platform_records=platform_records,
+        errors=errors,
+        status="success" if not errors else "partial_error",
+    )
+    _apply_phase8_budget(runtime_metrics, "total", time.perf_counter() - t_total, total_budget)
     history["posts"].append({
         "post_id": content.get("post_id", ""),
         "platform_post_id": None,
@@ -650,6 +940,9 @@ def main() -> None:
         "generation_attempts": attempts,
         "dry_run": dry_run,
         "channel_reasons": channel_reasons,
+        "phase5_channel_readiness": phase5_readiness,
+        "phase6_learning": phase6_learning,
+        "phase8_runtime": runtime_metrics,
         "platform_records": platform_records,
         "tracked_links": {
             "facebook": wp_link_fb,

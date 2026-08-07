@@ -111,6 +111,55 @@ class PhaseThirteenFourteenTests(unittest.TestCase):
         self.assertFalse(result["passed"])
         self.assertEqual(result["status"], "fail")
 
+    def test_phase3_phase4_phase7_schema_payloads_validate(self) -> None:
+        phase3 = {
+            "precision_claims_verifier": {"passed": True, "issues": [], "required_fixes": []},
+            "compliance_policy_sentinel": {"risk_level": "low", "blocked_terms": [], "required_actions": []},
+            "semantic_novelty": {"novelty_score": 0.8, "signal": "high", "rewrite_guidance": []},
+        }
+        phase4 = {
+            "visual_strategy": {
+                "visual_objective": "Test objective",
+                "composition_adjustments": ["Adjust focus"],
+                "platform_focus": {"facebook": "a", "instagram": "b", "linkedin": "c"},
+            },
+            "cta_optimization": {
+                "recommended_cta": "Book now",
+                "alternates": ["Try this"],
+                "friction_note": "shorten first step",
+            },
+        }
+        phase7 = {
+            "pre_generation_packet": {"topic": "x"},
+            "pre_publish_packet": {"safety": "ok"},
+            "post_run_packet": {"notes": "ok"},
+        }
+
+        for agent_name, payload in (
+            ("precision_claims_verifier", phase3["precision_claims_verifier"]),
+            ("compliance_policy_sentinel", phase3["compliance_policy_sentinel"]),
+            ("semantic_novelty", phase3["semantic_novelty"]),
+            ("visual_strategy", phase4["visual_strategy"]),
+            ("cta_optimization", phase4["cta_optimization"]),
+            ("phase7_conference_packets", phase7),
+        ):
+            _, errors = validate_agent_output(agent_name, payload)
+            self.assertEqual(errors, [], msg=f"schema errors for {agent_name}: {errors}")
+
+    def test_phase5_readiness_reports_disabled_channels(self) -> None:
+        readiness = run_engine._build_phase5_channel_readiness(
+            {
+                "wordpress": False,
+                "facebook": False,
+                "instagram": False,
+                "linkedin": False,
+            },
+            dry_run=True,
+        )
+        self.assertEqual(readiness["overall"], "pass")
+        self.assertEqual(readiness["checks"]["facebook"]["status"], "yellow")
+        self.assertEqual(readiness["checks"]["linkedin"]["status"], "yellow")
+
     def test_build_utm_url_preserves_query_and_term(self) -> None:
         result = build_utm_url(
             "https://example.com/product?ref=base&x=1",

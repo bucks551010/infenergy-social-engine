@@ -127,6 +127,54 @@ AGENT_IO_SCHEMAS: dict[str, dict[str, Any]] = {
             "reason": "str",
         }
     },
+    "precision_claims_verifier": {
+        "required": {
+            "passed": "bool",
+            "issues": {"list_of": "str"},
+            "required_fixes": {"list_of": "str"},
+        }
+    },
+    "compliance_policy_sentinel": {
+        "required": {
+            "risk_level": {"enum": ["low", "medium", "high"]},
+            "blocked_terms": {"list_of": "str"},
+            "required_actions": {"list_of": "str"},
+        }
+    },
+    "semantic_novelty": {
+        "required": {
+            "novelty_score": "number",
+            "signal": "str",
+            "rewrite_guidance": {"list_of": "str"},
+        }
+    },
+    "visual_strategy": {
+        "required": {
+            "visual_objective": "str",
+            "composition_adjustments": {"list_of": "str"},
+            "platform_focus": {
+                "required": {
+                    "facebook": "str",
+                    "instagram": "str",
+                    "linkedin": "str",
+                }
+            },
+        }
+    },
+    "cta_optimization": {
+        "required": {
+            "recommended_cta": "str",
+            "alternates": {"list_of": "str"},
+            "friction_note": "str",
+        }
+    },
+    "phase7_conference_packets": {
+        "required": {
+            "pre_generation_packet": "dict",
+            "pre_publish_packet": "dict",
+            "post_run_packet": "dict",
+        }
+    },
 }
 
 
@@ -198,6 +246,8 @@ def _type_ok(value: Any, expected: str) -> bool:
         return isinstance(value, dict)
     if expected == "list":
         return isinstance(value, list)
+    if expected == "number":
+        return isinstance(value, (int, float)) and not isinstance(value, bool)
     return False
 
 

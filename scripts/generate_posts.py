@@ -207,6 +207,51 @@ Goal:
 - Return only JSON in the requested shape.
 """.strip()
 
+PRECISION_CLAIMS_VERIFIER_BRIEF = """
+You are the Precision Claims Verifier Agent.
+
+Goal:
+- Validate claim precision and factual grounding.
+- Flag unsupported, absolute, or unverifiable statements.
+- Return only JSON in the requested shape.
+""".strip()
+
+COMPLIANCE_POLICY_SENTINEL_BRIEF = """
+You are the Compliance and Policy Sentinel Agent.
+
+Goal:
+- Detect compliance and policy risk in social copy.
+- Assign a risk level and required remediation actions.
+- Return only JSON in the requested shape.
+""".strip()
+
+SEMANTIC_NOVELTY_BRIEF = """
+You are the Semantic Novelty Agent.
+
+Goal:
+- Evaluate novelty versus recent posts.
+- Provide rewrite guidance if the concept is too similar.
+- Return only JSON in the requested shape.
+""".strip()
+
+VISUAL_STRATEGY_BRIEF = """
+You are the Visual Strategy Agent.
+
+Goal:
+- Improve visual intent, composition, and per-platform emphasis.
+- Keep recommendations practical for immediate generation.
+- Return only JSON in the requested shape.
+""".strip()
+
+CTA_OPTIMIZATION_BRIEF = """
+You are the CTA Optimization Agent.
+
+Goal:
+- Optimize CTA wording for funnel stage and audience friction.
+- Provide one recommended CTA plus alternates.
+- Return only JSON in the requested shape.
+""".strip()
+
 
 def _default_phase2_stack(
     *,
@@ -407,6 +452,232 @@ Return ONLY valid JSON with this exact shape:
         stack["hook_stress_test"] = hook_test
 
     return stack
+
+
+def _default_phase3_safety_stack(*, selected_hook: str, selected_cta: str, recent_topics: list[str]) -> dict:
+    novelty_signal = "high" if selected_hook not in recent_topics else "medium"
+    novelty_score = 0.82 if novelty_signal == "high" else 0.66
+    return {
+        "precision_claims_verifier": {
+            "passed": True,
+            "issues": [],
+            "required_fixes": [],
+        },
+        "compliance_policy_sentinel": {
+            "risk_level": "low",
+            "blocked_terms": [],
+            "required_actions": [],
+        },
+        "semantic_novelty": {
+            "novelty_score": novelty_score,
+            "signal": novelty_signal,
+            "rewrite_guidance": [] if novelty_signal == "high" else ["Use a less familiar opening scenario."],
+        },
+    }
+
+
+def _run_phase3_safety_stack(
+    model_candidates: list[str],
+    *,
+    topic: str,
+    funnel_stage: str,
+    selected_hook: str,
+    selected_cta: str,
+    recent_hooks: list[str],
+    recent_topics: list[str],
+    content_preview: str,
+) -> dict:
+    stack = _default_phase3_safety_stack(
+        selected_hook=selected_hook,
+        selected_cta=selected_cta,
+        recent_topics=recent_topics,
+    )
+
+    precision_prompt = f"""{PRECISION_CLAIMS_VERIFIER_BRIEF}
+
+Run context:
+- Topic: {topic}
+- Funnel stage: {funnel_stage}
+- Hook: {selected_hook}
+- CTA: {selected_cta}
+
+Draft preview:
+{content_preview}
+
+Return ONLY valid JSON with this exact shape:
+{{
+  "passed": true,
+  "issues": ["string"],
+  "required_fixes": ["string"]
+}}"""
+    precision = _generate_json_with_gemini(precision_prompt, model_candidates)
+    if isinstance(precision, dict):
+        stack["precision_claims_verifier"] = precision
+
+    compliance_prompt = f"""{COMPLIANCE_POLICY_SENTINEL_BRIEF}
+
+Run context:
+- Topic: {topic}
+- Funnel stage: {funnel_stage}
+- Hook: {selected_hook}
+- CTA: {selected_cta}
+
+Draft preview:
+{content_preview}
+
+Return ONLY valid JSON with this exact shape:
+{{
+  "risk_level": "low",
+  "blocked_terms": ["string"],
+  "required_actions": ["string"]
+}}"""
+    compliance = _generate_json_with_gemini(compliance_prompt, model_candidates)
+    if isinstance(compliance, dict):
+        stack["compliance_policy_sentinel"] = compliance
+
+    novelty_prompt = f"""{SEMANTIC_NOVELTY_BRIEF}
+
+Run context:
+- Topic: {topic}
+- Hook: {selected_hook}
+- Recent hooks: {recent_hooks}
+- Recent topics: {recent_topics}
+
+Return ONLY valid JSON with this exact shape:
+{{
+  "novelty_score": 0.75,
+  "signal": "high|medium|low",
+  "rewrite_guidance": ["string"]
+}}"""
+    novelty = _generate_json_with_gemini(novelty_prompt, model_candidates)
+    if isinstance(novelty, dict):
+        stack["semantic_novelty"] = novelty
+
+    return stack
+
+
+def _default_phase4_optimization_stack(*, selected_cta: str, funnel_stage: str) -> dict:
+    return {
+        "visual_strategy": {
+            "visual_objective": f"Reinforce {funnel_stage.lower()} intent with practical context.",
+            "composition_adjustments": [
+                "Show one concrete real-world use case.",
+                "Keep product visibility natural and not over-styled.",
+            ],
+            "platform_focus": {
+                "facebook": "education-first composition with readable focal hierarchy",
+                "instagram": "high-contrast focal point and depth",
+                "linkedin": "clean credibility composition",
+            },
+        },
+        "cta_optimization": {
+            "recommended_cta": selected_cta,
+            "alternates": [
+                "Get a practical system match for your setup.",
+                "Compare options based on your real daily loads.",
+            ],
+            "friction_note": "Reduce effort language and specify the first step.",
+        },
+    }
+
+
+def _run_phase4_optimization_stack(
+    model_candidates: list[str],
+    *,
+    topic: str,
+    funnel_stage: str,
+    selected_hook: str,
+    selected_cta: str,
+    audience_segment: str,
+) -> dict:
+    stack = _default_phase4_optimization_stack(
+        selected_cta=selected_cta,
+        funnel_stage=funnel_stage,
+    )
+
+    visual_prompt = f"""{VISUAL_STRATEGY_BRIEF}
+
+Run context:
+- Topic: {topic}
+- Funnel stage: {funnel_stage}
+- Hook: {selected_hook}
+- Audience: {audience_segment}
+
+Return ONLY valid JSON with this exact shape:
+{{
+  "visual_objective": "string",
+  "composition_adjustments": ["string", "string"],
+  "platform_focus": {{
+    "facebook": "string",
+    "instagram": "string",
+    "linkedin": "string"
+  }}
+}}"""
+    visual = _generate_json_with_gemini(visual_prompt, model_candidates)
+    if isinstance(visual, dict):
+        stack["visual_strategy"] = visual
+
+    cta_prompt = f"""{CTA_OPTIMIZATION_BRIEF}
+
+Run context:
+- Topic: {topic}
+- Funnel stage: {funnel_stage}
+- Hook: {selected_hook}
+- Current CTA: {selected_cta}
+- Audience: {audience_segment}
+
+Return ONLY valid JSON with this exact shape:
+{{
+  "recommended_cta": "string",
+  "alternates": ["string", "string"],
+  "friction_note": "string"
+}}"""
+    cta = _generate_json_with_gemini(cta_prompt, model_candidates)
+    if isinstance(cta, dict):
+        stack["cta_optimization"] = cta
+
+    return stack
+
+
+def _build_phase7_conference_packets(
+    *,
+    run_context: dict,
+    pre_generation_conference: dict,
+    phase2_stack: dict,
+    phase3_stack: dict,
+    phase4_stack: dict,
+    conference_summary: dict,
+) -> dict:
+    return {
+        "pre_generation_packet": {
+            "topic": run_context.get("topic", ""),
+            "funnel_stage": run_context.get("funnel_stage", ""),
+            "hook_direction": run_context.get("draft_direction", {}).get("selected_hook", ""),
+            "cta_direction": run_context.get("draft_direction", {}).get("selected_cta", ""),
+            "inputs": {
+                "pre_generation_conference": pre_generation_conference,
+                "phase2": phase2_stack,
+            },
+        },
+        "pre_publish_packet": {
+            "safety": phase3_stack,
+            "optimization": phase4_stack,
+            "conference_refinement": conference_summary,
+        },
+        "post_run_packet": {
+            "expected_next_actions": [
+                "record outcomes",
+                "compare channel-level performance",
+                "feed lessons into next prompt context",
+            ],
+            "trace": {
+                "schema_version": SCHEMAS_VERSION,
+                "phase2_keys": sorted(list((phase2_stack or {}).keys())),
+                "phase3_keys": sorted(list((phase3_stack or {}).keys())),
+                "phase4_keys": sorted(list((phase4_stack or {}).keys())),
+            },
+        },
+    }
 
 
 def ensure_runtime_data() -> None:
@@ -1481,6 +1752,7 @@ def generate(slot: str, *, funnel_stage_override: str = "", product_id_override:
         recent_ctas=recent_ctas,
     )
     gate_records: list[dict] = []
+    conference_model = os.environ.get("GEMINI_CONFERENCE_MODEL", "").strip()
 
     phase2_enabled = os.environ.get("ENABLE_PHASE2_CREATIVE_STACK", "true").strip().lower() not in {"0", "false", "no"}
     phase2_stack = _default_phase2_stack(
@@ -1543,9 +1815,121 @@ def generate(slot: str, *, funnel_stage_override: str = "", product_id_override:
     run_context["draft_direction"]["selected_cta"] = selected_cta
     run_context["audience_segment"] = audience_segment
 
-    conference_model = os.environ.get("GEMINI_CONFERENCE_MODEL", "").strip()
     conference_candidates = [conference_model, preferred_visual_director_model, preferred_model, "gemini-2.5-pro", "gemini-2.5-flash"]
     conference_candidates = [m for m in conference_candidates if m]
+
+    phase3_enabled = os.environ.get("ENABLE_PHASE3_SAFETY_STACK", "true").strip().lower() not in {"0", "false", "no"}
+    phase3_stack = _default_phase3_safety_stack(
+        selected_hook=selected_hook,
+        selected_cta=selected_cta,
+        recent_topics=recent_topics,
+    )
+    if phase3_enabled:
+        phase3_candidates = [preferred_model, conference_model, "gemini-2.5-pro", "gemini-2.5-flash"]
+        phase3_candidates = [m for m in phase3_candidates if m]
+        preview_for_safety = (
+            f"Topic: {topic}\n"
+            f"Hook: {selected_hook}\n"
+            f"CTA: {selected_cta}\n"
+            f"Funnel stage: {funnel_stage}\n"
+            f"Objective: {stage_meta.get('objective', '')}\n"
+        )
+        phase3_raw = _run_phase3_safety_stack(
+            phase3_candidates,
+            topic=topic,
+            funnel_stage=funnel_stage,
+            selected_hook=selected_hook,
+            selected_cta=selected_cta,
+            recent_hooks=recent_hooks,
+            recent_topics=recent_topics,
+            content_preview=preview_for_safety,
+        )
+        precision, precision_errors = validate_agent_output("precision_claims_verifier", phase3_raw.get("precision_claims_verifier", {}))
+        compliance, compliance_errors = validate_agent_output("compliance_policy_sentinel", phase3_raw.get("compliance_policy_sentinel", {}))
+        novelty, novelty_errors = validate_agent_output("semantic_novelty", phase3_raw.get("semantic_novelty", {}))
+
+        gate_records.append(build_gate_record(gate_id="phase3_precision_claims_schema", passed=len(precision_errors) == 0, severity="error", reasons=precision_errors, details={"enabled": True}))
+        gate_records.append(build_gate_record(gate_id="phase3_compliance_sentinel_schema", passed=len(compliance_errors) == 0, severity="error", reasons=compliance_errors, details={"enabled": True}))
+        gate_records.append(build_gate_record(gate_id="phase3_semantic_novelty_schema", passed=len(novelty_errors) == 0, severity="error", reasons=novelty_errors, details={"enabled": True}))
+
+        if not precision_errors:
+            phase3_stack["precision_claims_verifier"] = precision
+        if not compliance_errors:
+            phase3_stack["compliance_policy_sentinel"] = compliance
+        if not novelty_errors:
+            phase3_stack["semantic_novelty"] = novelty
+
+        if not bool(phase3_stack.get("precision_claims_verifier", {}).get("passed", True)):
+            gate_records.append(
+                build_gate_record(
+                    gate_id="phase3_precision_claims_pass",
+                    passed=False,
+                    severity="error",
+                    reasons=list(phase3_stack.get("precision_claims_verifier", {}).get("issues", [])) or ["precision_claims_failed"],
+                    details={},
+                )
+            )
+
+        risk_level = str(phase3_stack.get("compliance_policy_sentinel", {}).get("risk_level", "low")).strip().lower()
+        if risk_level == "high":
+            gate_records.append(
+                build_gate_record(
+                    gate_id="phase3_compliance_risk",
+                    passed=False,
+                    severity="error",
+                    reasons=list(phase3_stack.get("compliance_policy_sentinel", {}).get("required_actions", [])) or ["high_compliance_risk"],
+                    details={"risk_level": risk_level},
+                )
+            )
+
+        novelty_min = float(os.environ.get("NOVELTY_MIN_SCORE", "0.62"))
+        novelty_score = float(phase3_stack.get("semantic_novelty", {}).get("novelty_score", 1.0) or 1.0)
+        if novelty_score < novelty_min:
+            gate_records.append(
+                build_gate_record(
+                    gate_id="phase3_semantic_novelty_min",
+                    passed=False,
+                    severity="error",
+                    reasons=list(phase3_stack.get("semantic_novelty", {}).get("rewrite_guidance", [])) or ["low_semantic_novelty"],
+                    details={"novelty_score": novelty_score, "min": novelty_min},
+                )
+            )
+    else:
+        gate_records.append(build_gate_record(gate_id="phase3_precision_claims_schema", passed=True, severity="warning", reasons=[], details={"enabled": False}))
+        gate_records.append(build_gate_record(gate_id="phase3_compliance_sentinel_schema", passed=True, severity="warning", reasons=[], details={"enabled": False}))
+        gate_records.append(build_gate_record(gate_id="phase3_semantic_novelty_schema", passed=True, severity="warning", reasons=[], details={"enabled": False}))
+
+    phase4_enabled = os.environ.get("ENABLE_PHASE4_OPTIMIZATION_STACK", "true").strip().lower() not in {"0", "false", "no"}
+    phase4_stack = _default_phase4_optimization_stack(
+        selected_cta=selected_cta,
+        funnel_stage=funnel_stage,
+    )
+    if phase4_enabled:
+        phase4_candidates = [preferred_model, conference_model, preferred_visual_director_model, "gemini-2.5-pro", "gemini-2.5-flash"]
+        phase4_candidates = [m for m in phase4_candidates if m]
+        phase4_raw = _run_phase4_optimization_stack(
+            phase4_candidates,
+            topic=topic,
+            funnel_stage=funnel_stage,
+            selected_hook=selected_hook,
+            selected_cta=selected_cta,
+            audience_segment=audience_segment,
+        )
+        visual_opt, visual_opt_errors = validate_agent_output("visual_strategy", phase4_raw.get("visual_strategy", {}))
+        cta_opt, cta_opt_errors = validate_agent_output("cta_optimization", phase4_raw.get("cta_optimization", {}))
+        gate_records.append(build_gate_record(gate_id="phase4_visual_strategy_schema", passed=len(visual_opt_errors) == 0, severity="error", reasons=visual_opt_errors, details={"enabled": True}))
+        gate_records.append(build_gate_record(gate_id="phase4_cta_optimization_schema", passed=len(cta_opt_errors) == 0, severity="error", reasons=cta_opt_errors, details={"enabled": True}))
+        if not visual_opt_errors:
+            phase4_stack["visual_strategy"] = visual_opt
+        if not cta_opt_errors:
+            phase4_stack["cta_optimization"] = cta_opt
+    else:
+        gate_records.append(build_gate_record(gate_id="phase4_visual_strategy_schema", passed=True, severity="warning", reasons=[], details={"enabled": False}))
+        gate_records.append(build_gate_record(gate_id="phase4_cta_optimization_schema", passed=True, severity="warning", reasons=[], details={"enabled": False}))
+
+    selected_cta = str(phase4_stack.get("cta_optimization", {}).get("recommended_cta", "")).strip() or selected_cta
+    run_context["draft_direction"]["selected_cta"] = selected_cta
+
     pregen_enabled = os.environ.get("ENABLE_PREGEN_CONFERENCE", "true").strip().lower() not in {"0", "false", "no"}
     pre_generation_conference = {}
     if pregen_enabled:
@@ -1609,6 +1993,24 @@ def generate(slot: str, *, funnel_stage_override: str = "", product_id_override:
         f"- Platform voice notes: {phase2_stack.get('platform_voice_calibrator', {})}\n"
         f"- Hook stress-test reason: {phase2_stack.get('hook_stress_test', {}).get('reason', '')}\n"
     )
+    phase3_context = (
+        "PHASE 3 PRECISION AND SAFETY OUTPUTS:\n"
+        f"- Precision passed: {phase3_stack.get('precision_claims_verifier', {}).get('passed', True)}\n"
+        f"- Precision issues: {phase3_stack.get('precision_claims_verifier', {}).get('issues', [])}\n"
+        f"- Compliance risk: {phase3_stack.get('compliance_policy_sentinel', {}).get('risk_level', 'low')}\n"
+        f"- Compliance actions: {phase3_stack.get('compliance_policy_sentinel', {}).get('required_actions', [])}\n"
+        f"- Novelty score: {phase3_stack.get('semantic_novelty', {}).get('novelty_score', 1.0)}\n"
+        f"- Novelty guidance: {phase3_stack.get('semantic_novelty', {}).get('rewrite_guidance', [])}\n"
+    )
+    phase4_context = (
+        "PHASE 4 VISUAL AND CTA OPTIMIZATION OUTPUTS:\n"
+        f"- Visual objective: {phase4_stack.get('visual_strategy', {}).get('visual_objective', '')}\n"
+        f"- Visual composition adjustments: {phase4_stack.get('visual_strategy', {}).get('composition_adjustments', [])}\n"
+        f"- Visual platform focus: {phase4_stack.get('visual_strategy', {}).get('platform_focus', {})}\n"
+        f"- CTA recommendation: {phase4_stack.get('cta_optimization', {}).get('recommended_cta', selected_cta)}\n"
+        f"- CTA alternates: {phase4_stack.get('cta_optimization', {}).get('alternates', [])}\n"
+        f"- CTA friction note: {phase4_stack.get('cta_optimization', {}).get('friction_note', '')}\n"
+    )
 
     visual_plan = _build_visual_plan_with_gemini(
         visual_director_candidates,
@@ -1636,6 +2038,9 @@ def generate(slot: str, *, funnel_stage_override: str = "", product_id_override:
     )
     if visual_errors:
         visual_plan = _build_default_visual_plan(topic, funnel_stage, selected_hook, selected_cta, product)
+    visual_adjustments = phase4_stack.get("visual_strategy", {}).get("composition_adjustments", [])
+    if isinstance(visual_adjustments, list) and visual_adjustments:
+        visual_plan["phase4_composition_adjustments"] = [str(x) for x in visual_adjustments if str(x).strip()]
 
     prompt = f"""You are an expert content strategist and copywriter for Infenergy Power (infenergypower.com), a solar and home energy solutions company.
 
@@ -1660,6 +2065,10 @@ PRODUCT CONTEXT (ground your content in these details when relevant):
 {pregen_context}
 
 {phase2_context}
+
+{phase3_context}
+
+{phase4_context}
 
 CAMPAIGN EXECUTION CONTEXT:
 - Selected hook for this post: {selected_hook}
@@ -1778,6 +2187,27 @@ Return ONLY valid JSON with these exact keys (no markdown, no code fences):
         content["visual_plan"] = visual_plan
         content["pre_generation_conference"] = pre_generation_conference
         content["phase2_creative_stack"] = phase2_stack
+        content["phase3_safety_stack"] = phase3_stack
+        content["phase4_optimization_stack"] = phase4_stack
+        phase7_packets = _build_phase7_conference_packets(
+            run_context=run_context,
+            pre_generation_conference=pre_generation_conference,
+            phase2_stack=phase2_stack,
+            phase3_stack=phase3_stack,
+            phase4_stack=phase4_stack,
+            conference_summary={},
+        )
+        phase7_packets_validated, phase7_errors = validate_agent_output("phase7_conference_packets", phase7_packets)
+        gate_records.append(
+            build_gate_record(
+                gate_id="phase7_conference_packets_schema",
+                passed=len(phase7_errors) == 0,
+                severity="error",
+                reasons=phase7_errors,
+                details={"enabled": True},
+            )
+        )
+        content["phase7_conference_packets"] = phase7_packets_validated if not phase7_errors else phase7_packets
         content["creative_agents"] = {
             "copywriter": preferred_model or "gemini-2.5-flash",
             "visual_director": (preferred_visual_director_model or "gemini-2.5-pro"),
@@ -1786,6 +2216,11 @@ Return ONLY valid JSON with these exact keys (no markdown, no code fences):
             "narrative_architect": (preferred_model or "gemini-2.5-flash"),
             "platform_voice_calibrator": (preferred_model or "gemini-2.5-flash"),
             "hook_stress_test": (preferred_model or "gemini-2.5-flash"),
+            "precision_claims_verifier": (preferred_model or "gemini-2.5-flash"),
+            "compliance_policy_sentinel": (preferred_model or "gemini-2.5-flash"),
+            "semantic_novelty": (preferred_model or "gemini-2.5-flash"),
+            "visual_strategy": (preferred_model or "gemini-2.5-flash"),
+            "cta_optimization": (preferred_model or "gemini-2.5-flash"),
             "pre_generation_conference": (conference_model or preferred_visual_director_model or "gemini-2.5-pro"),
             "image_model": os.environ.get("GEMINI_IMAGE_MODEL", "gemini-2.5-flash-image"),
         }
@@ -1904,6 +2339,25 @@ Return ONLY valid JSON with these exact keys (no markdown, no code fences):
             )
         )
 
+    phase7_packets = _build_phase7_conference_packets(
+        run_context=run_context,
+        pre_generation_conference=pre_generation_conference,
+        phase2_stack=phase2_stack,
+        phase3_stack=phase3_stack,
+        phase4_stack=phase4_stack,
+        conference_summary=conference_summary,
+    )
+    phase7_packets_validated, phase7_errors = validate_agent_output("phase7_conference_packets", phase7_packets)
+    gate_records.append(
+        build_gate_record(
+            gate_id="phase7_conference_packets_schema",
+            passed=len(phase7_errors) == 0,
+            severity="error",
+            reasons=phase7_errors,
+            details={"enabled": True},
+        )
+    )
+
     post_id = uuid.uuid4().hex[:12]
     selected_hook = str(content.get("selected_hook", selected_hook))
     selected_cta = str(content.get("selected_cta", selected_cta))
@@ -1937,6 +2391,9 @@ Return ONLY valid JSON with these exact keys (no markdown, no code fences):
     content["visual_plan"] = visual_plan
     content["pre_generation_conference"] = pre_generation_conference
     content["phase2_creative_stack"] = phase2_stack
+    content["phase3_safety_stack"] = phase3_stack
+    content["phase4_optimization_stack"] = phase4_stack
+    content["phase7_conference_packets"] = phase7_packets_validated if not phase7_errors else phase7_packets
     content["agent_conference"] = conference_summary
     content["creative_agents"] = {
         "copywriter": preferred_model or "gemini-2.5-flash",
@@ -1946,6 +2403,11 @@ Return ONLY valid JSON with these exact keys (no markdown, no code fences):
         "narrative_architect": (preferred_model or "gemini-2.5-flash"),
         "platform_voice_calibrator": (preferred_model or "gemini-2.5-flash"),
         "hook_stress_test": (preferred_model or "gemini-2.5-flash"),
+        "precision_claims_verifier": (preferred_model or "gemini-2.5-flash"),
+        "compliance_policy_sentinel": (preferred_model or "gemini-2.5-flash"),
+        "semantic_novelty": (preferred_model or "gemini-2.5-flash"),
+        "visual_strategy": (preferred_model or "gemini-2.5-flash"),
+        "cta_optimization": (preferred_model or "gemini-2.5-flash"),
         "pre_generation_conference": (conference_model or preferred_visual_director_model or "gemini-2.5-pro"),
         "conference": (conference_model or preferred_visual_director_model or "gemini-2.5-pro"),
         "image_model": os.environ.get("GEMINI_IMAGE_MODEL", "gemini-2.5-flash-image"),

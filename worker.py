@@ -502,11 +502,21 @@ def _utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def _start_slot_thread(slot: str, force_live: bool = False, platforms_override: str = "", duplicate_mode: str = "") -> bool:
+def _start_slot_thread(
+    slot: str,
+    force_live: bool = False,
+    platforms_override: str = "",
+    duplicate_mode: str = "",
+    readiness_block_override: str = "",
+) -> bool:
     if RUN_LOCK.locked():
         return False
 
-    thread = threading.Thread(target=run_slot, args=(slot, force_live, platforms_override, duplicate_mode), daemon=True)
+    thread = threading.Thread(
+        target=run_slot,
+        args=(slot, force_live, platforms_override, duplicate_mode, readiness_block_override),
+        daemon=True,
+    )
     thread.start()
     return True
 
@@ -764,8 +774,11 @@ class HealthHandler(BaseHTTPRequestHandler):
             force_live = params.get("live", ["false"])[0].lower() in ("1", "true", "yes")
             platforms_override = params.get("platforms", [""])[0]
             duplicate_mode = params.get("duplicate_mode", [""])[0].strip().lower()
+            readiness_block_override = params.get("readiness_block", [""])[0].strip().lower()
             if duplicate_mode and duplicate_mode not in ("strict", "exact_only", "allow_all"):
                 duplicate_mode = ""
+            if readiness_block_override and readiness_block_override not in ("true", "false", "1", "0", "yes", "no"):
+                readiness_block_override = ""
             if slot not in ("morning", "midday", "evening"):
                 slot = "morning"
 
@@ -792,6 +805,7 @@ class HealthHandler(BaseHTTPRequestHandler):
                 force_live=force_live,
                 platforms_override=platforms_override,
                 duplicate_mode=duplicate_mode,
+                readiness_block_override=readiness_block_override,
             )
             payload = {
                 "accepted": started,
@@ -799,6 +813,7 @@ class HealthHandler(BaseHTTPRequestHandler):
                 "force_live": force_live,
                 "platforms": platforms_override,
                 "duplicate_mode": duplicate_mode or "env_default",
+                "readiness_block": readiness_block_override or "env_default",
                 "message": "run started" if started else "run already in progress",
                 "time_utc": _utc_now(),
             }
@@ -860,7 +875,13 @@ def start_health_server() -> None:
     print(f"Health endpoint listening on 0.0.0.0:{port}")
 
 
-def run_slot(slot: str, force_live: bool = False, platforms_override: str = "", duplicate_mode: str = "") -> None:
+def run_slot(
+    slot: str,
+    force_live: bool = False,
+    platforms_override: str = "",
+    duplicate_mode: str = "",
+    readiness_block_override: str = "",
+) -> None:
     with RUN_LOCK:
         LAST_RUN["status"] = "running"
         LAST_RUN["slot"] = slot
@@ -872,10 +893,13 @@ def run_slot(slot: str, force_live: bool = False, platforms_override: str = "", 
         previous_dry_run = os.environ.get("SOCIAL_DRY_RUN", "true")
         previous_platforms = os.environ.get("POST_PLATFORMS", "")
         previous_duplicate_mode = os.environ.get("MANUAL_DUPLICATE_MODE", "")
+        previous_readiness_block = os.environ.get("CHANNEL_READINESS_BLOCK_ON_RED", "")
         os.environ["POST_SLOT"] = slot
         os.environ["POST_PLATFORMS"] = platforms_override
         if duplicate_mode:
             os.environ["MANUAL_DUPLICATE_MODE"] = duplicate_mode
+        if readiness_block_override:
+            os.environ["CHANNEL_READINESS_BLOCK_ON_RED"] = "true" if readiness_block_override in ("1", "true", "yes") else "false"
         if force_live:
             os.environ["SOCIAL_DRY_RUN"] = "false"
 
@@ -927,6 +951,10 @@ def run_slot(slot: str, force_live: bool = False, platforms_override: str = "", 
                 os.environ["MANUAL_DUPLICATE_MODE"] = previous_duplicate_mode
             elif "MANUAL_DUPLICATE_MODE" in os.environ:
                 del os.environ["MANUAL_DUPLICATE_MODE"]
+            if previous_readiness_block:
+                os.environ["CHANNEL_READINESS_BLOCK_ON_RED"] = previous_readiness_block
+            elif "CHANNEL_READINESS_BLOCK_ON_RED" in os.environ:
+                del os.environ["CHANNEL_READINESS_BLOCK_ON_RED"]
             LAST_RUN["finished_at_utc"] = _utc_now()
 
 

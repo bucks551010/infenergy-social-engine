@@ -6,6 +6,7 @@ import csv
 import glob
 import re
 import uuid
+import unicodedata
 from datetime import date, datetime, timezone, timedelta
 from google import genai
 from google.genai import types
@@ -955,7 +956,7 @@ def sync_inventory_database(force: bool = False) -> dict:
     brand_seeded = False
     ideology_seeded = False
 
-    should_seed_products = force or before_count == 0
+    should_seed_products = force or before_count == 0 or bool(_discover_local_product_image_files())
     if should_seed_products:
         csv_products = _load_products_from_csv()
         if csv_products:
@@ -1181,6 +1182,90 @@ def _is_usable_image_url(url: str) -> bool:
     return True
 
 
+def _is_supported_local_image_file(path: str) -> bool:
+    if not path:
+        return False
+    src = str(path).strip()
+    if src.lower().startswith("file://"):
+        src = src[7:]
+    if not os.path.isfile(src):
+        return False
+    return os.path.splitext(src)[1].lower() in {".png", ".jpg", ".jpeg", ".webp", ".avif"}
+
+
+def _normalize_asset_key(text: str) -> str:
+    base = unicodedata.normalize("NFKD", str(text or "").strip().lower())
+    ascii_text = base.encode("ascii", "ignore").decode("ascii")
+    return re.sub(r"[^a-z0-9]+", "", ascii_text)
+
+
+def _local_product_image_roots() -> list[str]:
+    roots = [
+        os.path.join(DATA_DIR, "products"),
+        os.path.join(BASE_DATA_DIR, "products"),
+        os.path.join(DATA_DIR, "product_images"),
+        os.path.join(BASE_DATA_DIR, "product_images"),
+    ]
+    out: list[str] = []
+    seen: set[str] = set()
+    for root in roots:
+        norm = os.path.normpath(root)
+        if norm in seen or not os.path.isdir(norm):
+            continue
+        seen.add(norm)
+        out.append(norm)
+    return out
+
+
+def _discover_local_product_image_files() -> list[str]:
+    found: list[str] = []
+    seen: set[str] = set()
+    for root in _local_product_image_roots():
+        for ext in ("*.png", "*.jpg", "*.jpeg", "*.webp", "*.avif"):
+            for path in glob.glob(os.path.join(root, "**", ext), recursive=True):
+                norm = os.path.normpath(path)
+                if norm in seen or not os.path.isfile(norm):
+                    continue
+                seen.add(norm)
+                found.append(norm)
+    return found
+
+
+def _score_local_asset_match(stem_key: str, sku: str, product_id: str, name: str) -> int:
+    score = 0
+    sku_key = _normalize_asset_key(sku)
+    product_id_key = _normalize_asset_key(product_id)
+    name_key = _normalize_asset_key(name)
+    if sku_key and (sku_key == stem_key or sku_key in stem_key):
+        score += 100
+    if product_id_key and (product_id_key == stem_key or product_id_key in stem_key):
+        score += 80
+    if name_key:
+        if name_key == stem_key:
+            score += 90
+        elif name_key in stem_key or stem_key in name_key:
+            score += 70
+    for token in ("main", "hero", "primary", "front", "cover", "product"):
+        if token in stem_key:
+            score += 5
+    return score
+
+
+def _match_local_product_images(name: str, sku: str, product_id: str) -> list[str]:
+    ranked: list[tuple[int, str]] = []
+    for path in _discover_local_product_image_files():
+        stem = os.path.splitext(os.path.basename(path))[0]
+        stem_key = _normalize_asset_key(stem)
+        if not stem_key:
+            continue
+        score = _score_local_asset_match(stem_key, sku, product_id, name)
+        if score <= 0:
+            continue
+        ranked.append((score, path))
+    ranked.sort(key=lambda row: (-row[0], row[1].lower()))
+    return [path for _, path in ranked[:6]]
+
+
 def _load_category_image_fallbacks() -> dict[str, str]:
     custom = os.environ.get("IG_CATEGORY_FALLBACKS_JSON", "").strip()
     merged = dict(DEFAULT_CATEGORY_IMAGE_FALLBACKS)
@@ -1310,10 +1395,15 @@ def _load_products_from_csv() -> list[dict]:
                 primary_image, image_candidates = _pick_best_image_urls(image_urls)
                 raw_id = str(row.get("ID") or "").strip()
                 stable_fallback_id = str(sku or hashlib.md5(name.lower().encode("utf-8")).hexdigest()[:12]).strip()
+                resolved_product_id = raw_id or stable_fallback_id
+                local_images = _match_local_product_images(name, sku, resolved_product_id)
+                if local_images:
+                    primary_image = local_images[0]
+                    image_candidates = local_images + [u for u in image_candidates if u not in local_images]
 
                 products.append(
                     {
-                        "id": raw_id or stable_fallback_id,
+                        "id": resolved_product_id,
                         "name": name,
                         "sku": sku,
                         "price": (row.get("Regular price") or "").strip(),

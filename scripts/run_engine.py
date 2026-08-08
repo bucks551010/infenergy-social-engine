@@ -407,14 +407,26 @@ def _resolve_primary_publish_image_url(content: dict, dry_run: bool) -> str:
 
     # Fallback to product/candidate imagery when generated visuals are unavailable.
     product_image = str(content.get("product_image_url", "") or "").strip()
+    if product_image and os.path.exists(product_image) and os.path.isfile(product_image):
+        hosted_url = _host_local_media(product_image)
+        if hosted_url.startswith("http"):
+            return hosted_url
     if product_image.startswith("http"):
         return product_image
     for c in content.get("product_image_candidates", []) or []:
         candidate = str(c or "").strip()
+        if candidate and os.path.exists(candidate) and os.path.isfile(candidate):
+            hosted_url = _host_local_media(candidate)
+            if hosted_url.startswith("http"):
+                return hosted_url
         if candidate.startswith("http"):
             return candidate
     for c in content.get("category_image_candidates", []) or []:
         candidate = str(c or "").strip()
+        if candidate and os.path.exists(candidate) and os.path.isfile(candidate):
+            hosted_url = _host_local_media(candidate)
+            if hosted_url.startswith("http"):
+                return hosted_url
         if candidate.startswith("http"):
             return candidate
     return ""

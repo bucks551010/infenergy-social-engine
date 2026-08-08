@@ -157,8 +157,11 @@ def publish(content: dict, dry_run: bool = False) -> dict:
     ig_default_image = _env("IG_DEFAULT_IMAGE_URL")
     validate_urls = _env("IG_VALIDATE_IMAGE_URLS", "true").lower() in ("1", "true", "yes", "on")
     generated_image_path = str((content.get("generated_visuals") or {}).get("instagram", "")).strip()
+    primary_publish_image_url = str(content.get("primary_publish_image_url", "")).strip()
 
     candidates = []
+    if _is_valid_public_image(primary_publish_image_url):
+        candidates.append(primary_publish_image_url)
     if generated_image_path and os.path.exists(generated_image_path):
         try:
             if hasattr(publish_wordpress, "upload_media"):

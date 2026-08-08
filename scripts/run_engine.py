@@ -335,6 +335,42 @@ def _platform_status(
     return "published"
 
 
+def _resolve_primary_publish_image_url(content: dict, dry_run: bool) -> str:
+    """Resolve one primary image URL to keep IG/LI image selection aligned with FB visuals."""
+    candidate_paths: list[str] = []
+    generated_visuals = content.get("generated_visuals") or {}
+    if isinstance(generated_visuals, dict):
+        for key in ("facebook", "instagram", "linkedin"):
+            raw_path = str(generated_visuals.get(key, "") or "").strip()
+            if raw_path and os.path.exists(raw_path):
+                candidate_paths.append(raw_path)
+
+    # Prefer uploaded generated visuals so all channels can share the same public image URL.
+    if candidate_paths and hasattr(publish_wordpress, "upload_media"):
+        for path in candidate_paths:
+            try:
+                media_result = publish_wordpress.upload_media(path, dry_run=dry_run)
+                source_url = str((media_result or {}).get("source_url", "") or "").strip()
+                if source_url.startswith("http"):
+                    return source_url
+            except Exception as e:
+                print(f"[Image] Warning: failed to upload generated visual for shared URL: {e}")
+
+    # Fallback to product/candidate imagery when generated visuals are unavailable.
+    product_image = str(content.get("product_image_url", "") or "").strip()
+    if product_image.startswith("http"):
+        return product_image
+    for c in content.get("product_image_candidates", []) or []:
+        candidate = str(c or "").strip()
+        if candidate.startswith("http"):
+            return candidate
+    for c in content.get("category_image_candidates", []) or []:
+        candidate = str(c or "").strip()
+        if candidate.startswith("http"):
+            return candidate
+    return ""
+
+
 def _build_platform_history_records(
     content: dict,
     run_started: str,
@@ -701,6 +737,13 @@ def main() -> None:
     fb_result = {"id": "skipped"}
     ig_result = {"id": "skipped"}
     li_result = {"id": "skipped"}
+
+    primary_publish_image_url = _resolve_primary_publish_image_url(content, dry_run=dry_run)
+    if primary_publish_image_url:
+        content["primary_publish_image_url"] = primary_publish_image_url
+        print(f"[Image] Shared primary image URL resolved: {primary_publish_image_url}")
+    else:
+        print("[Image] Shared primary image URL not resolved; publishers will use local fallbacks")
 
     if not any(effective_channels.values()):
         print("[SKIP] No eligible platforms for this slot/stage; recording successful skipped run")

@@ -331,7 +331,11 @@ def _build_gemini_image_prompt(content: dict[str, Any], platform: str, visual_pl
         f"Mandatory on-image copy: headline '{_headline_lockup(content)[0]}', subline '{_headline_lockup(content)[1]}', stat badge '{stat}', CTA '{cta}'. "
         f"Benefit bullets: {', '.join(benefits)}. Trust badges: {', '.join(badges)}. "
         "Use warm premium palette (charcoal, amber, orange, gold), realistic lighting, crisp typography hierarchy, and retail ad polish. "
-        "Generate final ad art with text included in the image, not just a background plate. "
+        "Generate the final ad art with all text already designed into the image, not just a background plate. "
+        "Important: do not draw a fake product render, device mockup, boxed product frame, stat bubble, or decorative badge cluster. "
+        "Instead, leave a clean premium negative-space product stage on the right side for a real cutout product photo to be composited later. "
+        "The product stage should feel intentional, with subtle grounding shadow only, and no border or container around it. "
+        "Typography must look premium, legible, and correctly spelled. Keep the design modern, minimal, and conversion-focused. "
         "No logos from other brands, no watermarks, no gibberish text, no misspelled words, no deformed hands."
     )
 
@@ -341,7 +345,6 @@ def _generate_gemini_background(content: dict[str, Any], platform: str, visual_p
     if not api_key:
         return False
 
-    model_name = os.environ.get("GEMINI_IMAGE_MODEL", "gemini-2.5-flash-image").strip() or "gemini-2.5-flash-image"
     prompt = _build_gemini_image_prompt(content, platform, visual_plan)
     repo_context = _load_visual_repo_context()
     product_source = _resolve_product_source(content, repo_context=repo_context)
@@ -351,34 +354,48 @@ def _generate_gemini_background(content: dict[str, Any], platform: str, visual_p
         from google.genai import types  # type: ignore
 
         client = genai.Client(api_key=api_key)
-        contents: Any = prompt
-        if image_bytes:
+        model_candidates = [
+            str(os.environ.get("GEMINI_IMAGE_MODEL", "")).strip(),
+            "gemini-2.5-flash-image",
+            "gemini-2.5-flash",
+        ]
+        seen_models: set[str] = set()
+        for model_name in model_candidates:
+            if not model_name or model_name in seen_models:
+                continue
+            seen_models.add(model_name)
+            contents: Any = prompt
+            if image_bytes:
+                try:
+                    contents = [prompt, types.Part.from_bytes(data=image_bytes, mime_type=mime_type or "image/jpeg")]
+                except Exception:
+                    contents = prompt
             try:
-                contents = [prompt, types.Part.from_bytes(data=image_bytes, mime_type=mime_type or "image/jpeg")]
+                response = client.models.generate_content(
+                    model=model_name,
+                    contents=contents,
+                    config=types.GenerateContentConfig(response_modalities=["TEXT", "IMAGE"]),
+                )
+                raw = _extract_inline_image_bytes(response)
+                if not raw:
+                    continue
+
+                image_module, _, _ = _load_pillow()
+                if image_module is None:
+                    return False
+
+                generated = image_module.open(io.BytesIO(raw)).convert("RGB")
+                if platform in ("facebook", "instagram"):
+                    target = (1200, 1200)
+                else:
+                    target = (1200, 627)
+                generated = _resize_cover(generated, target, image_module)
+                os.makedirs(os.path.dirname(output_path), exist_ok=True)
+                generated.save(output_path, format="PNG", optimize=True)
+                return True
             except Exception:
-                contents = prompt
-        response = client.models.generate_content(
-            model=model_name,
-            contents=contents,
-            config=types.GenerateContentConfig(response_modalities=["TEXT", "IMAGE"]),
-        )
-        raw = _extract_inline_image_bytes(response)
-        if not raw:
-            return False
-
-        image_module, _, _ = _load_pillow()
-        if image_module is None:
-            return False
-
-        generated = image_module.open(io.BytesIO(raw)).convert("RGB")
-        if platform in ("facebook", "instagram"):
-            target = (1200, 1200)
-        else:
-            target = (1200, 627)
-        generated = _resize_cover(generated, target, image_module)
-        os.makedirs(os.path.dirname(output_path), exist_ok=True)
-        generated.save(output_path, format="PNG", optimize=True)
-        return True
+                continue
+        return False
     except Exception:
         return False
 
@@ -397,24 +414,21 @@ def _compose_product_photo_overlay(content: dict[str, Any], platform: str, image
         return False
 
     if platform in ("facebook", "instagram"):
-        target_w, target_h = 500, 500
-        x, y = (canvas.width - target_w - 66, 150)
+        target_w, target_h = 470, 470
+        x, y = (canvas.width - target_w - 92, 176)
     else:
-        target_w, target_h = 384, 384
-        x, y = (canvas.width - target_w - 48, 86)
+        target_w, target_h = 350, 350
+        x, y = (canvas.width - target_w - 70, 112)
 
     product_copy = product_image.copy()
     product_copy.thumbnail((target_w, target_h))
-    frame = image_module.new("RGBA", (target_w, target_h), (14, 34, 48, 76))
-    off_x = (target_w - product_copy.width) // 2
-    off_y = (target_h - product_copy.height) // 2
-    frame.paste(product_copy, (off_x, off_y), product_copy if product_copy.mode == "RGBA" else None)
-    canvas.paste(frame, (x, y), frame)
-
     draw = draw_module.Draw(canvas)
-    draw.rounded_rectangle((x - 12, y - 12, x + target_w + 12, y + target_h + 12), radius=24, fill="#16354c")
-    canvas.paste(frame, (x, y), frame)
-    draw.rounded_rectangle((x - 10, y - 10, x + target_w + 10, y + target_h + 10), radius=22, outline="#93d8ff", width=2)
+    shadow_top = y + int(target_h * 0.78)
+    shadow_bottom = y + int(target_h * 0.96)
+    draw.ellipse((x + 40, shadow_top, x + target_w - 40, shadow_bottom), fill="#101010")
+    off_x = x + (target_w - product_copy.width) // 2
+    off_y = y + (target_h - product_copy.height) // 2
+    canvas.paste(product_copy, (off_x, off_y), product_copy if product_copy.mode == "RGBA" else None)
     canvas.convert("RGB").save(image_path, format="PNG", optimize=True)
     return True
 

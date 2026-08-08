@@ -1,6 +1,10 @@
 import os
 import time
+import re
 import requests
+from urllib.parse import urljoin
+
+import publish_wordpress
 
 GRAPH_BASE = "https://graph.facebook.com/v26.0"
 
@@ -74,11 +78,50 @@ def _dedupe_keep_order(items: list[str]) -> list[str]:
     return out
 
 
+def _extract_page_image_candidate(page_url: str, timeout: int = 15) -> str:
+    if not page_url or not str(page_url).strip().lower().startswith("http"):
+        return ""
+    try:
+        resp = requests.get(page_url, timeout=timeout)
+        if resp.status_code >= 400:
+            return ""
+        html = resp.text or ""
+        # Prefer OpenGraph image; fall back to Twitter image.
+        patterns = [
+            r'<meta\s+property=["\']og:image["\']\s+content=["\']([^"\']+)["\']',
+            r'<meta\s+content=["\']([^"\']+)["\']\s+property=["\']og:image["\']',
+            r'<meta\s+name=["\']twitter:image["\']\s+content=["\']([^"\']+)["\']',
+            r'<meta\s+content=["\']([^"\']+)["\']\s+name=["\']twitter:image["\']',
+        ]
+        for pat in patterns:
+            m = re.search(pat, html, flags=re.IGNORECASE)
+            if not m:
+                continue
+            candidate = str(m.group(1) or "").strip()
+            if not candidate:
+                continue
+            candidate = urljoin(page_url, candidate)
+            if _is_valid_public_image(candidate):
+                return candidate
+        return ""
+    except Exception:
+        return ""
+
+
 def publish(content: dict, dry_run: bool = False) -> dict:
     ig_default_image = _env("IG_DEFAULT_IMAGE_URL")
     validate_urls = _env("IG_VALIDATE_IMAGE_URLS", "true").lower() in ("1", "true", "yes", "on")
+    generated_image_path = str((content.get("generated_visuals") or {}).get("instagram", "")).strip()
 
     candidates = []
+    if generated_image_path and os.path.exists(generated_image_path):
+        try:
+            media_result = publish_wordpress.upload_media(generated_image_path, dry_run=dry_run)
+            hosted_generated = str(media_result.get("source_url", "")).strip()
+            if _is_valid_public_image(hosted_generated):
+                candidates.append(hosted_generated)
+        except Exception as e:
+            print(f"[Instagram] Warning: generated visual upload failed, falling back to catalog imagery: {e}")
     product_image = content.get("product_image_url", "")
     if _is_valid_public_image(product_image):
         candidates.append(product_image)
@@ -90,6 +133,10 @@ def publish(content: dict, dry_run: bool = False) -> dict:
             candidates.append(c)
     if _is_valid_public_image(ig_default_image):
         candidates.append(ig_default_image)
+    destination_url = str(content.get("destination_url") or "").strip()
+    page_image_candidate = _extract_page_image_candidate(destination_url)
+    if _is_valid_public_image(page_image_candidate):
+        candidates.append(page_image_candidate)
     candidates = _dedupe_keep_order(candidates)
 
     image_url = ""
@@ -105,8 +152,12 @@ def publish(content: dict, dry_run: bool = False) -> dict:
         image_url = candidates[0] if candidates else ""
 
     if not image_url:
-        print("[Instagram] Skipped: no product image and no IG_DEFAULT_IMAGE_URL configured")
-        return {"id": "skipped"}
+        print("[Instagram] Skipped: no valid image URL candidates")
+        return {
+            "id": "skipped",
+            "reason": "no_valid_image_url_candidates",
+            "candidate_count": len(candidates),
+        }
 
     caption = content["ig_caption"]
 

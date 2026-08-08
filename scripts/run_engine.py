@@ -343,6 +343,8 @@ def _build_platform_history_records(
     ids: dict[str, str],
     tracked_links: dict[str, str],
     error_map: dict[str, str],
+    skip_reason_map: dict[str, str] | None = None,
+    channel_reasons: dict[str, str] | None = None,
 ) -> list[dict]:
     destination_url = str(content.get("destination_url") or "")
     campaign_id = str(content.get("campaign_id") or "")
@@ -365,6 +367,14 @@ def _build_platform_history_records(
         utm_url = tracked_links.get(platform) if platform in tracked_links else None
         if platform == "wordpress" and not utm_url:
             utm_url = destination_url or None
+        status = _platform_status(platform, effective_channels, platform_post_id, dry_run, error_map)
+        error_value = error_map.get(platform)
+        if not error_value:
+            error_value = str((skip_reason_map or {}).get(platform, "") or "").strip() or None
+        if not error_value and status == "skipped":
+            reason = str((channel_reasons or {}).get(platform, "") or "").strip()
+            if reason:
+                error_value = reason
         records.append(
             {
                 "post_id": post_id,
@@ -384,8 +394,8 @@ def _build_platform_history_records(
                 "caption_signature": _stable_hash(str(platform_entry.get("caption") or "")),
                 "destination_url": destination_url or None,
                 "utm_url": utm_url,
-                "status": _platform_status(platform, effective_channels, platform_post_id, dry_run, error_map),
-                "error": error_map.get(platform),
+                "status": status,
+                "error": error_value,
             }
         )
     return records
@@ -686,6 +696,7 @@ def main() -> None:
 
     errors = []
     error_map: dict[str, str] = {}
+    skip_reason_map: dict[str, str] = {}
     wp_result = {"id": "skipped", "link": os.environ.get("WP_URL", "https://www.infenergypower.com")}
     fb_result = {"id": "skipped"}
     ig_result = {"id": "skipped"}
@@ -705,6 +716,8 @@ def main() -> None:
             ids=platform_ids,
             tracked_links=tracked_links,
             error_map={},
+            skip_reason_map={},
+            channel_reasons=channel_reasons,
         )
         history["posts"].append({
             "post_id": content.get("post_id", ""),
@@ -842,6 +855,10 @@ def main() -> None:
             try:
                 content["tracked_link_instagram"] = wp_link_ig
                 ig_result = publish_instagram.publish(content, dry_run=dry_run)
+                if str(ig_result.get("id", "")).strip().lower() == "skipped":
+                    ig_reason = str(ig_result.get("reason", "")).strip()
+                    if ig_reason:
+                        skip_reason_map["instagram"] = ig_reason
             except Exception as e:
                 errors.append(f"Instagram: {e}")
                 error_map["instagram"] = str(e)
@@ -888,6 +905,8 @@ def main() -> None:
         ids=platform_ids,
         tracked_links=tracked_links,
         error_map=error_map,
+        skip_reason_map=skip_reason_map,
+        channel_reasons=channel_reasons,
     )
     phase6_learning = _build_phase6_learning(
         content=content,

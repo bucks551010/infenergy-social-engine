@@ -1504,6 +1504,159 @@ def _preferred_pillars_for_stage(funnel_stage: str) -> list[str]:
     return ["emergency_preparedness", "portable_power_readiness", "outdoor_rv_power"]
 
 
+def _product_category_text(product: dict | None) -> str:
+    categories = (product or {}).get("categories", []) if isinstance(product, dict) else []
+    if not isinstance(categories, list):
+        categories = []
+    return " ".join(str(c or "").strip().lower() for c in categories if str(c or "").strip())
+
+
+def _topic_off_brand_penalty(topic: str) -> int:
+    low = str(topic or "").strip().lower()
+    penalty_terms = (
+        "net metering",
+        "utility bill",
+        "rooftop solar",
+        "solar evaluation",
+        "solar install",
+        "tax credit",
+        "electricity bills",
+    )
+    return 100 if any(term in low for term in penalty_terms) else 0
+
+
+def _product_topic_fit_score(product: dict | None, topic: str, pillar: str, funnel_stage: str) -> int:
+    low_topic = str(topic or "").strip().lower()
+    low_pillar = str(pillar or "").strip().lower()
+    category_text = _product_category_text(product)
+    product_name = str((product or {}).get("name", "")).strip().lower()
+    score = 0
+    accessory_product = any(token in product_name for token in ("fan", "light", "power bank", "charger", "jump starter", "filter straw", "cable"))
+
+    if any(token in category_text for token in ("travel power", "phone power bank", "phone charging", "portable laptop")):
+        if any(token in low_topic for token in ("travel", "phone", "laptop", "off-grid", "camping", "rv", "portable")):
+            score += 8
+        if any(token in low_pillar for token in ("outdoor", "use_case", "portable")):
+            score += 5
+
+    if any(token in category_text for token in ("home backup", "emergency power")):
+        if any(token in low_topic for token in ("outage", "backup", "emergency", "must-run", "24-hour", "priority")):
+            score += 8
+        if any(token in low_pillar for token in ("emergency", "readiness", "use_case")):
+            score += 5
+
+    if any(token in category_text for token in ("solar generator", "solar panel", "portable power", "outdoors & camping")):
+        if any(token in low_topic for token in ("portable", "power station", "generator", "solar panel", "charge", "runtime", "battery", "camping", "rv")):
+            score += 8
+        if any(token in low_pillar for token in ("portable", "product_education", "outdoor", "use_case")):
+            score += 4
+
+    if product_name:
+        name_tokens = [token for token in re.split(r"[^a-z0-9]+", product_name) if len(token) > 3]
+        if any(token in low_topic for token in name_tokens[:3]):
+            score += 5
+
+    if accessory_product and any(token in low_topic for token in ("power station", "solar panel", "solar generator", "home backup", "must-run devices")):
+        score -= 12
+
+    stage = str(funnel_stage or "").strip().upper()
+    if stage == "DESIRE" and any(token in low_topic for token in ("compare", "fit", "choose", "what can", "how to match")):
+        score += 3
+    if stage == "TRUST" and any(token in low_topic for token in ("spec", "compare", "verified", "what actually matters")):
+        score += 3
+    if stage == "CONVERSION" and any(token in low_topic for token in ("consultation", "assessment", "product match")):
+        score += 3
+
+    score -= _topic_off_brand_penalty(low_topic)
+    return score
+
+
+def _fallback_topic_for_product(product: dict | None, funnel_stage: str) -> tuple[str, str]:
+    product_name = str((product or {}).get("name", "")).strip() or "this portable power product"
+    category_text = _product_category_text(product)
+    product_name_low = product_name.lower()
+    stage = str(funnel_stage or "").strip().upper()
+
+    if "fan" in product_name_low:
+        return "use_case_breakdowns", f"When {product_name} makes sense for camping, outages, and travel"
+    if "jump starter" in product_name_low:
+        return "use_case_breakdowns", f"How {product_name} fits into a vehicle and emergency backup kit"
+    if "power bank" in product_name_low or "charger" in product_name_low:
+        return "use_case_breakdowns", f"How {product_name} supports travel charging and everyday backup"
+    if "filter straw" in product_name_low or "water filter" in product_name_low:
+        return "use_case_breakdowns", f"Why {product_name} belongs in a preparedness and travel kit"
+
+    if "travel power" in category_text or "phone power bank" in category_text or "phone charging" in category_text:
+        if stage == "CONVERSION":
+            return "use_case_breakdowns", f"How to choose {product_name} for travel, charging, and everyday backup"
+        return "use_case_breakdowns", f"Where {product_name} fits in a travel and backup-power plan"
+    if "home backup" in category_text or "emergency power" in category_text:
+        if stage == "TRUST":
+            return "emergency_preparedness", f"How to verify whether {product_name} fits your outage plan"
+        return "emergency_preparedness", f"How {product_name} fits into a practical home-backup setup"
+    if "solar generator" in category_text or "solar panel" in category_text or "portable power" in category_text:
+        return "portable_power_readiness", f"How to match {product_name} to your real portable-power needs"
+    return "product_education", f"What to compare before buying {product_name}"
+
+
+def _pick_topic_for_product(
+    queue: dict,
+    history: dict,
+    product: dict | None,
+    funnel_stage: str,
+    preferred_pillars: list[str] | None = None,
+) -> tuple[str, str, str]:
+    windows = load_anti_repeat_windows()
+    days = int(windows.get("topic_days", 21))
+    cutoff = datetime.now(timezone.utc) - timedelta(days=max(0, days))
+
+    used_hashes = set()
+    for p in history.get("posts", []):
+        if not isinstance(p, dict):
+            continue
+        topic_hash = str(p.get("topic_hash", "")).strip()
+        if not topic_hash:
+            continue
+        raw = str(p.get("run_started_at_utc") or p.get("date") or "")
+        if not raw:
+            continue
+        try:
+            if len(raw) == 10 and "-" in raw:
+                dt = datetime.fromisoformat(raw + "T00:00:00+00:00")
+            else:
+                dt = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+            if dt >= cutoff:
+                used_hashes.add(topic_hash)
+        except Exception:
+            continue
+
+    queue_pillars = [str(p).strip() for p in queue.get("pillars", []) if str(p).strip()]
+    preferred = [p for p in (preferred_pillars or []) if p in queue_pillars]
+    remaining = [p for p in queue_pillars if p not in preferred]
+    random.shuffle(preferred)
+    random.shuffle(remaining)
+    pillars = preferred + remaining
+    scored: list[tuple[int, str, str, str]] = []
+    for pillar in pillars:
+        topics = queue.get("topics", {}).get(pillar, [])[:]
+        random.shuffle(topics)
+        for topic in topics:
+            topic_hash = hashlib.md5(topic.encode()).hexdigest()
+            if topic_hash in used_hashes:
+                continue
+            score = _product_topic_fit_score(product, topic, pillar, funnel_stage)
+            scored.append((score, pillar, topic, topic_hash))
+
+    if scored:
+        scored.sort(key=lambda row: row[0], reverse=True)
+        best_score, best_pillar, best_topic, best_hash = scored[0]
+        if best_score > 0:
+            return best_pillar, best_topic, best_hash
+
+    fallback_pillar, fallback_topic = _fallback_topic_for_product(product, funnel_stage)
+    return fallback_pillar, fallback_topic, hashlib.md5(fallback_topic.encode()).hexdigest()
+
+
 def _pick_topic(queue: dict, history: dict, preferred_pillars: list[str] | None = None) -> tuple[str, str, str]:
     windows = load_anti_repeat_windows()
     days = int(windows.get("topic_days", 21))
@@ -2668,11 +2821,17 @@ def generate(slot: str, *, funnel_stage_override: str = "", product_id_override:
         history=history,
         funnel_config=funnel_config,
     )
-    preferred_pillars = _preferred_pillars_for_stage(preview_stage)
-    pillar, topic, topic_hash = _pick_topic(queue, history, preferred_pillars=preferred_pillars)
     products = load_products()
     business_profile = _build_business_profile(products)
     product = _pick_product_by_id(products, product_id_override) or _pick_product(products, history)
+    preferred_pillars = _preferred_pillars_for_stage(preview_stage)
+    pillar, topic, topic_hash = _pick_topic_for_product(
+        queue,
+        history,
+        product,
+        preview_stage,
+        preferred_pillars=preferred_pillars,
+    )
     marketing_strategy = _load_latest_marketing_strategy()
     brand_profile = load_brand_profile()
     selling_ideology = load_selling_ideology()

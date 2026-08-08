@@ -338,21 +338,30 @@ def _build_gemini_image_prompt(content: dict[str, Any], platform: str, visual_pl
     elif repo_reference_ideas:
         style_ref_line = f"Style reference ideas: {' | '.join(repo_reference_ideas[:6])}. "
     density_direction = {
-        "facebook": "Use a layered, information-rich hero layout with multiple premium supporting elements and strong scan hierarchy.",
-        "instagram": "Use a bold, high-drama layout with dense premium accents, editorial composition, and instantly readable focal structure.",
-        "linkedin": "Use a sharp, executive ad layout with structured information zones, refined data callouts, and professional polish.",
+        "facebook": "Use a layered, information-rich hero layout with multiple premium supporting elements, a clear reading path, and strong scan hierarchy.",
+        "instagram": "Use a bold, high-drama layout with dense premium accents, editorial composition, strong shape language, and instantly readable focal structure.",
+        "linkedin": "Use a sharp, executive ad layout with structured information zones, refined data callouts, premium interface cues, and professional polish.",
     }.get(platform, "Use a premium layered campaign layout.")
     signage_direction = (
         "Add premium design elements such as directional arrows, stat plaques, trust seals, spec chips, angled light bars, subtle grid panels, "
-        "soft-glow interface fragments, and anchored CTA signage. Keep them intentional and polished, never cluttered. "
+        "soft-glow interface fragments, anchored CTA signage, comparison strips, feature cards, icon clusters, micro labels, urgency banners, "
+        "credibility rails, and structured info panels. Keep them intentional and polished, never cluttered. "
     )
     typography_direction = (
         "Typography should feel like a premium campaign ad: varied scale, bold headline lockup, tight supporting subline, clean stat callouts, "
-        "and crisp CTA treatment. Use correct spelling and clean kerning. "
+        "and crisp CTA treatment. Use correct spelling, clean kerning, strong contrast, and obvious information hierarchy. "
     )
     product_stage_direction = (
         "Reserve a clean hero stage on the right side for the real product cutout. That stage should feel integrated into the design with lighting, "
         "shadow, and depth cues, but no white panel, no boxed frame, and no fake product placeholder. "
+    )
+    atmosphere_direction = (
+        "Build atmosphere with cinematic lighting, premium material textures, glow accents, layered shadows, reflective surfaces, depth haze, and subtle motion energy. "
+        "Avoid flat empty space; every major region should feel intentionally designed. "
+    )
+    campaign_direction = (
+        "This should feel 10x more premium than a normal social post: like a polished campaign board from a top-tier performance brand. "
+        "Be visually ambitious, rich in supporting elements, and unmistakably conversion-focused. "
     )
     return (
         "Create a complete premium social ad creative for Infenergy Power. "
@@ -366,6 +375,8 @@ def _build_gemini_image_prompt(content: dict[str, Any], platform: str, visual_pl
         f"{density_direction} "
         f"{signage_direction}"
         f"{typography_direction}"
+        f"{atmosphere_direction}"
+        f"{campaign_direction}"
         "Generate the final ad art with all text already designed into the image, not just a background plate. "
         "Important: do not draw a fake product render, device mockup, boxed product frame, stat bubble, or decorative badge cluster. "
         f"{product_stage_direction}"

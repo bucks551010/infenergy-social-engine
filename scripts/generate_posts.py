@@ -182,6 +182,10 @@ Rules:
 - Prefer practical scenarios (home backup, preparedness, energy confidence) over abstract art.
 - If product image quality is strong, suggest a hybrid composition that highlights the product naturally.
 - Use strong visual scaffolding: callout panels, directional accents, signage, metric chips, trust markers, and clear CTA zones.
+- Treat the creative like a premium retail campaign system, not a simple social graphic.
+- Build layered depth with foreground, midground, and atmospheric background structure.
+- Use more visual drama: contrast, spotlighting, shape language, editorial framing, and deliberate motion cues.
+- Include more premium supporting elements when appropriate: comparison bars, micro-labels, icon clusters, spec rails, feature panels, credibility strips, and urgency banners.
 - Avoid empty backgrounds and generic gradients; build atmosphere with depth, lighting, material contrast, and purposeful layout structure.
 - Never include text baked into the image unless it is short, intentional, and legible.
 - Return only the requested JSON shape.

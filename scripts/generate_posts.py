@@ -41,6 +41,14 @@ from agent_control_plane import (
 
 FUNNEL_STAGES = {"ATTENTION", "EDUCATION", "DESIRE", "TRUST", "CONVERSION"}
 
+INFENERGY_BUSINESS_GOALS = {
+    "positioning": "Preparedness-first portable power brand helping families, travelers, and mobile users stay powered before, during, and after outages.",
+    "audience_summary": "Families preparing for outages | Travelers and commuters who need device continuity | RV, camping, and mobile users who need off-grid confidence | Caregivers and small operators who cannot afford power disruption",
+    "focus_statement": "portable backup power, emergency readiness, mobile autonomy, outage continuity, and product-fit guidance built around real device needs",
+    "core_outcome": "help customers stay charged, connected, lit, and prepared when traditional power is unavailable",
+    "action_bias": "move people from panic and guesswork into a practical purchase decision grounded in real specs and real use cases",
+}
+
 SITE_URL = os.environ.get("WP_URL", "https://www.infenergypower.com")
 # DATA_DIR can be overridden by Railway volume mount (set DATA_DIR=/app/data in Railway Variables)
 BASE_DATA_DIR = os.path.join(os.path.dirname(__file__), "..", "data")
@@ -945,8 +953,8 @@ def _build_brand_profile_seed(marketing_strategy: dict, manifesto: dict) -> dict
         "brand_name": man.get("brand_name") or strategy.get("brand", {}).get("brand_name") or "Infenergy Power",
         "tagline": strategy_founder.get("tagline") or man_approved.get("hero_line") or "",
         "mission": strategy_founder.get("mission") or man.get("mission") or "",
-        "positioning": man_business.get("positioning") or "portable power preparedness brand",
-        "audience_summary": " | ".join([str(x) for x in audience_segments[:5]]),
+        "positioning": man_business.get("positioning") or INFENERGY_BUSINESS_GOALS["positioning"],
+        "audience_summary": " | ".join([str(x) for x in audience_segments[:5]]) or INFENERGY_BUSINESS_GOALS["audience_summary"],
         "personality_name": man_personality.get("voice_name") or "Calm Strength",
         "personality_traits": _dedupe_str_list(man_personality.get("traits", [])),
         "tone_rules": _dedupe_str_list(man_personality.get("tone_rules", [])),
@@ -1586,7 +1594,7 @@ def _product_topic_fit_score(product: dict | None, topic: str, pillar: str, funn
 
 
 def _fallback_topic_for_product(product: dict | None, funnel_stage: str) -> tuple[str, str]:
-    product_name = str((product or {}).get("name", "")).strip() or "this portable power product"
+    product_name = str((product or {}).get("name", "")).strip() or "this Infenergy portable power product"
     category_text = _product_category_text(product)
     product_name_low = product_name.lower()
     stage = str(funnel_stage or "").strip().upper()
@@ -2189,13 +2197,13 @@ def _build_talking_point(topic: str, funnel_stage: str, product: dict | None) ->
     stage = str(funnel_stage or "").strip().upper()
     pain_point = _pick_pain_point_variant(topic, stage, product)
 
-    product_name = str((product or {}).get("name", "")).strip() or "this solution"
+    product_name = str((product or {}).get("name", "")).strip() or "this Infenergy preparedness solution"
     metrics = (product or {}).get("metrics", []) if isinstance(product, dict) else []
     m1 = metrics[0] if len(metrics) > 0 else "published output specs"
     m2 = metrics[1] if len(metrics) > 1 else "runtime and charging details"
 
     proof_anchor = f"Use {m1} and {m2} to validate fit before buying."
-    angle = f"{topic} through a real-world decision framework, not hype."
+    angle = f"{topic} through Infenergy's preparedness-first buying framework, not hype."
 
     first_step = "Comment with your top 3 must-run devices for a practical match today."
     if stage == "EDUCATION":
@@ -2278,7 +2286,7 @@ def _build_product_intelligence_handoff(
 
     return {
         "agent": "product_intelligence_agent",
-        "product_summary": f"{product_name} for practical portable-power planning and outage readiness.",
+        "product_summary": f"{product_name} for outage readiness, mobile autonomy, and real-world device continuity.",
         "best_fit_audiences": fit_audiences,
         "core_benefits": benefits,
         "proof_points": proof_points,
@@ -2360,7 +2368,7 @@ def _build_business_profile(products: list[dict]) -> dict:
     top_categories = sorted(category_counts.items(), key=lambda kv: kv[1], reverse=True)[:8]
     offers = [name for name, _ in top_categories]
     return {
-        "focus_statement": "portable power, emergency readiness, outdoor and RV use cases",
+        "focus_statement": INFENERGY_BUSINESS_GOALS["focus_statement"],
         "top_categories": top_categories,
         "keyword_signals": keyword_counts,
         "offers": offers,
@@ -2375,18 +2383,18 @@ def _build_post_components(
     funnel_stage: str,
     product_intelligence: dict | None = None,
 ) -> dict:
-    product_name = (product or {}).get("name", "our energy solution")
+    product_name = (product or {}).get("name", "Infenergy preparedness solution")
     product_id = (product or {}).get("id", "")
     metrics = (product or {}).get("metrics", [])
     feature_bullets = _sales_feature_bullets(product, limit=5)
     m1 = metrics[0] if len(metrics) > 0 else "verified output specs"
     m2 = metrics[1] if len(metrics) > 1 else "runtime and charging context"
 
-    situation = "Many households and small businesses discover during outages, travel, or events that their backup plan does not match real power needs."
-    info = f"A better approach is to map your must-run devices and compare them against measured specs like {m1} and {m2}."
-    why = "This reduces expensive guesswork, improves resilience, and helps buyers choose what actually fits real usage."
-    product_connection = f"For this topic, {product_name} can be part of a practical setup when the specs match your actual daily loads."
-    proof = "Start from verified details and published product fields only."
+    situation = "Infenergy customers usually come to us because they want to stay charged, connected, and prepared before the next outage or travel disruption exposes a weak setup."
+    info = f"The stronger path is to map your must-run devices first and compare them against measured specs like {m1} and {m2}."
+    why = "That reduces guesswork, protects against wrong-fit purchases, and moves the buyer toward a confident preparedness decision."
+    product_connection = f"For this topic, {product_name} supports Infenergy's goal of giving customers a right-size power solution matched to real daily loads."
+    proof = "Start from verified details, real use cases, and published product fields only."
 
     if isinstance(product_intelligence, dict) and product_intelligence:
         audiences = product_intelligence.get("best_fit_audiences", [])
@@ -3077,7 +3085,7 @@ def generate(slot: str, *, funnel_stage_override: str = "", product_id_override:
     destination_url = str(structured_campaign.get("destination_url", SITE_URL)).strip() or SITE_URL
 
     brand_name = str(brand_profile.get("brand_name") or "Infenergy Power").strip() or "Infenergy Power"
-    brand_positioning = str(brand_profile.get("positioning") or "portable power preparedness brand").strip()
+    brand_positioning = str(brand_profile.get("positioning") or INFENERGY_BUSINESS_GOALS["positioning"]).strip()
     brand_mission = str(brand_profile.get("mission") or "").strip()
     brand_personality_name = str(brand_profile.get("personality_name") or "Calm Strength").strip() or "Calm Strength"
     brand_personality_traits = _dedupe_str_list(brand_profile.get("personality_traits", []))
@@ -3616,7 +3624,7 @@ WORDS TO AVOID: {brand_words_to_avoid[:12]}
 FORBIDDEN CLAIM PATTERNS: {brand_forbidden_phrases[:10]}
 BRAND MISSION: {brand_mission}
 BRAND VALUES: {brand_core_values}
-AUDIENCE: {brand_audience_summary or 'Homeowners, families, travelers, and small businesses building practical power readiness.'}
+AUDIENCE: {brand_audience_summary or INFENERGY_BUSINESS_GOALS['audience_summary']}
 TOPIC: {topic}
 CONTENT DIRECTIVE: {slot_guidance}
 

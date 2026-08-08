@@ -10,6 +10,7 @@ import schedule
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from datetime import datetime, timezone, timedelta
 import glob
+import requests
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "scripts"))
 
@@ -38,6 +39,232 @@ def _load_json(path: str, default):
             return json.load(f)
     except Exception:
         return default
+
+
+def _meta_state_path() -> str:
+    return os.path.join(_data_dir(), "marketing", "meta_token_state.json")
+
+
+def _safe_write_json(path: str, payload: dict) -> None:
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    temp_path = f"{path}.tmp"
+    with open(temp_path, "w", encoding="utf-8") as f:
+        json.dump(payload, f, ensure_ascii=False, indent=2)
+    os.replace(temp_path, path)
+
+
+def _mask_token(value: str) -> str:
+    token = str(value or "").strip()
+    if not token:
+        return ""
+    if len(token) <= 12:
+        return "********"
+    return f"{token[:6]}...{token[-6:]}"
+
+
+def _load_meta_runtime_from_state() -> tuple[bool, str]:
+    path = _meta_state_path()
+    if not os.path.exists(path):
+        return False, "state_file_not_found"
+    try:
+        data = _load_json(path, {})
+        if not isinstance(data, dict):
+            return False, "state_file_invalid"
+
+        keys = [
+            "META_LONG_LIVED_USER_TOKEN",
+            "META_PAGE_ACCESS_TOKEN",
+            "META_PAGE_ID",
+            "META_IG_USER_ID",
+            "META_TOKEN_EXPIRES_AT_UTC",
+            "META_TOKEN_UPDATED_AT_UTC",
+        ]
+        loaded = 0
+        for key in keys:
+            value = str(data.get(key, "")).strip()
+            if value:
+                os.environ[key] = value
+                loaded += 1
+        if loaded == 0:
+            return False, "state_file_has_no_runtime_keys"
+        return True, f"loaded_{loaded}_keys"
+    except Exception as e:
+        return False, f"state_file_load_error:{e}"
+
+
+def _meta_refresh_secret() -> str:
+    return str(os.environ.get("META_REFRESH_TOKEN", "") or os.environ.get("MANUAL_RUN_TOKEN", "")).strip()
+
+
+def _refresh_meta_tokens() -> tuple[bool, dict]:
+    required = {
+        "META_APP_ID": str(os.environ.get("META_APP_ID", "")).strip(),
+        "META_APP_SECRET": str(os.environ.get("META_APP_SECRET", "")).strip(),
+        "META_LONG_LIVED_USER_TOKEN": str(os.environ.get("META_LONG_LIVED_USER_TOKEN", "")).strip(),
+        "META_PAGE_ID": str(os.environ.get("META_PAGE_ID", "")).strip(),
+    }
+    missing = [k for k, v in required.items() if not v]
+    if missing:
+        return False, {
+            "ok": False,
+            "error": "missing_required_env",
+            "missing": missing,
+        }
+
+    app_id = required["META_APP_ID"]
+    app_secret = required["META_APP_SECRET"]
+    current_user_token = required["META_LONG_LIVED_USER_TOKEN"]
+    page_id = required["META_PAGE_ID"]
+    graph_version = str(os.environ.get("META_GRAPH_VERSION", "v20.0")).strip() or "v20.0"
+    graph_base = f"https://graph.facebook.com/{graph_version}"
+
+    try:
+        exchange = requests.get(
+            f"{graph_base}/oauth/access_token",
+            params={
+                "grant_type": "fb_exchange_token",
+                "client_id": app_id,
+                "client_secret": app_secret,
+                "fb_exchange_token": current_user_token,
+            },
+            timeout=30,
+        )
+        if not exchange.ok:
+            return False, {
+                "ok": False,
+                "error": "exchange_failed",
+                "status_code": exchange.status_code,
+                "response": exchange.text[:1000],
+            }
+        exchange_payload = exchange.json() if exchange.content else {}
+        new_user_token = str(exchange_payload.get("access_token", "")).strip()
+        expires_in = int(exchange_payload.get("expires_in", 0) or 0)
+        if not new_user_token:
+            return False, {
+                "ok": False,
+                "error": "exchange_missing_access_token",
+            }
+
+        pages = requests.get(
+            f"{graph_base}/me/accounts",
+            params={
+                "fields": "id,name,access_token,tasks,instagram_business_account",
+                "access_token": new_user_token,
+            },
+            timeout=30,
+        )
+        if not pages.ok:
+            return False, {
+                "ok": False,
+                "error": "me_accounts_failed",
+                "status_code": pages.status_code,
+                "response": pages.text[:1000],
+            }
+
+        rows = (pages.json() or {}).get("data") or []
+        page = next((r for r in rows if str(r.get("id", "")).strip() == page_id), None)
+        if not page:
+            return False, {
+                "ok": False,
+                "error": "page_not_found",
+                "page_id": page_id,
+                "managed_pages": [
+                    {"id": str(r.get("id", "")), "name": str(r.get("name", ""))}
+                    for r in rows
+                ],
+            }
+
+        new_page_token = str(page.get("access_token", "")).strip()
+        if not new_page_token:
+            return False, {
+                "ok": False,
+                "error": "page_token_missing",
+                "page_id": page_id,
+            }
+
+        resolved_ig_id = ""
+        ig_from_page = (page.get("instagram_business_account") or {}).get("id")
+        if ig_from_page:
+            resolved_ig_id = str(ig_from_page).strip()
+        elif os.environ.get("META_IG_USER_ID", "").strip():
+            resolved_ig_id = str(os.environ.get("META_IG_USER_ID", "")).strip()
+
+        now_utc = datetime.now(timezone.utc)
+        expires_at = ""
+        if expires_in > 0:
+            expires_at = (now_utc + timedelta(seconds=expires_in)).isoformat()
+
+        os.environ["META_LONG_LIVED_USER_TOKEN"] = new_user_token
+        os.environ["META_PAGE_ACCESS_TOKEN"] = new_page_token
+        os.environ["META_PAGE_ID"] = page_id
+        os.environ["META_TOKEN_UPDATED_AT_UTC"] = now_utc.isoformat()
+        if expires_at:
+            os.environ["META_TOKEN_EXPIRES_AT_UTC"] = expires_at
+        if resolved_ig_id:
+            os.environ["META_IG_USER_ID"] = resolved_ig_id
+
+        state_payload = {
+            "META_PAGE_ID": page_id,
+            "META_IG_USER_ID": resolved_ig_id,
+            "META_LONG_LIVED_USER_TOKEN": new_user_token,
+            "META_PAGE_ACCESS_TOKEN": new_page_token,
+            "META_TOKEN_UPDATED_AT_UTC": now_utc.isoformat(),
+            "META_TOKEN_EXPIRES_AT_UTC": expires_at,
+            "meta_graph_version": graph_version,
+            "updated_at_utc": now_utc.isoformat(),
+            "long_user_token_masked": _mask_token(new_user_token),
+            "page_token_masked": _mask_token(new_page_token),
+        }
+        _safe_write_json(_meta_state_path(), state_payload)
+
+        return True, {
+            "ok": True,
+            "page_id": page_id,
+            "ig_user_id": resolved_ig_id,
+            "expires_in": expires_in,
+            "expires_at_utc": expires_at,
+            "updated_at_utc": now_utc.isoformat(),
+            "state_file": _meta_state_path(),
+            "long_user_token": _mask_token(new_user_token),
+            "page_token": _mask_token(new_page_token),
+        }
+    except Exception as e:
+        return False, {
+            "ok": False,
+            "error": "exception",
+            "detail": str(e),
+        }
+
+
+def _auto_refresh_meta_if_due() -> tuple[bool, str]:
+    enabled = str(os.environ.get("META_AUTO_REFRESH_ENABLED", "true")).strip().lower()
+    if enabled in ("0", "false", "no"):
+        return False, "auto_refresh_disabled"
+
+    force_every_run = str(os.environ.get("META_REFRESH_EVERY_RUN", "false")).strip().lower()
+    if force_every_run in ("1", "true", "yes"):
+        ok, payload = _refresh_meta_tokens()
+        return ok, payload.get("error", "refresh_failed") if not ok else "refreshed_force_every_run"
+
+    threshold_hours = int(str(os.environ.get("META_REFRESH_THRESHOLD_HOURS", "72") or "72"))
+    expires_raw = str(os.environ.get("META_TOKEN_EXPIRES_AT_UTC", "")).strip()
+    if not expires_raw:
+        ok, payload = _refresh_meta_tokens()
+        return ok, payload.get("error", "refreshed_without_known_expiry") if not ok else "refreshed"
+
+    try:
+        expiry = datetime.fromisoformat(expires_raw.replace("Z", "+00:00"))
+        if expiry.tzinfo is None:
+            expiry = expiry.replace(tzinfo=timezone.utc)
+        now_utc = datetime.now(timezone.utc)
+        if expiry - now_utc > timedelta(hours=threshold_hours):
+            return False, "not_due"
+    except Exception:
+        ok, payload = _refresh_meta_tokens()
+        return ok, payload.get("error", "refreshed_on_invalid_expiry") if not ok else "refreshed"
+
+    ok, payload = _refresh_meta_tokens()
+    return ok, payload.get("error", "refresh_failed") if not ok else "refreshed"
 
 
 def _load_history(limit: int = 20) -> list[dict]:
@@ -583,6 +810,41 @@ class HealthHandler(BaseHTTPRequestHandler):
             self.wfile.write(body)
             return
 
+        if parsed.path == "/refresh-meta":
+            params = parse_qs(parsed.query)
+            provided = str(params.get("token", [""])[0]).strip()
+            secret = _meta_refresh_secret()
+
+            if not secret:
+                payload = {"error": "META_REFRESH_TOKEN or MANUAL_RUN_TOKEN not configured"}
+                body = json.dumps(payload).encode("utf-8")
+                self.send_response(403)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+                return
+
+            if provided != secret:
+                payload = {"error": "invalid token"}
+                body = json.dumps(payload).encode("utf-8")
+                self.send_response(401)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+                return
+
+            ok, payload = _refresh_meta_tokens()
+            payload["time_utc"] = _utc_now()
+            body = json.dumps(payload).encode("utf-8")
+            self.send_response(200 if ok else 500)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
         self.send_response(404)
         self.end_headers()
 
@@ -616,6 +878,12 @@ def run_slot(slot: str, force_live: bool = False, platforms_override: str = "", 
             os.environ["MANUAL_DUPLICATE_MODE"] = duplicate_mode
         if force_live:
             os.environ["SOCIAL_DRY_RUN"] = "false"
+
+        refresh_ok, refresh_reason = _auto_refresh_meta_if_due()
+        if refresh_ok:
+            print("[META] Token refresh completed before run")
+        elif refresh_reason not in ("not_due", "auto_refresh_disabled"):
+            print(f"[META] Token refresh skipped/failed: {refresh_reason}")
         try:
             timeout_sec = int(os.environ.get("RUN_SLOT_TIMEOUT_SEC", "420"))
             scripts_dir = os.path.join(os.path.dirname(__file__), "scripts")
@@ -677,10 +945,17 @@ def main() -> None:
 
     start_health_server()
 
+    loaded, load_reason = _load_meta_runtime_from_state()
+    if loaded:
+        print(f"Loaded Meta runtime state from disk ({load_reason})")
+    else:
+        print(f"Meta runtime state load: {load_reason}")
+
     print("=== INF Energy Social Engine — Railway Worker ===")
     print(f"Scheduled (UTC): morning={morning_utc}  midday={midday_utc}  evening={evening_utc}")
     print(f"Dry run: {os.environ.get('SOCIAL_DRY_RUN', 'true')}")
     print("Manual run endpoint: /run-now?slot=morning&token=... (requires MANUAL_RUN_TOKEN)")
+    print("Meta refresh endpoint: /refresh-meta?token=... (uses META_REFRESH_TOKEN or MANUAL_RUN_TOKEN)")
     print("Waiting for next scheduled run...\n")
 
     if os.environ.get("RUN_ON_STARTUP", "false").lower() == "true":

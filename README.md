@@ -1,0 +1,267 @@
+# INF Energy Social Engine
+
+Production social publishing worker for INF Energy with a strategy-driven marketing layer.
+
+## What It Does
+
+- Generates slot-based content (`morning`, `midday`, `evening`) with Gemini and deterministic fallbacks.
+- Publishes to WordPress, Facebook, Instagram, and LinkedIn.
+- Applies campaign runtime controls:
+  - funnel stage mapping by slot,
+  - channel/day scheduling,
+  - anti-repeat windows for topics/hooks/CTAs,
+  - claim guardrails and quality scoring,
+  - optional skip-if-recent-success behavior,
+  - UTM link tagging per channel.
+- Exposes worker endpoints for health and runtime state.
+
+## Endpoints
+
+- `GET /health` or `GET /healthz`: health and uptime.
+- `GET /status`: latest run status and quality summary.
+- `GET /history?limit=20`: recent post history.
+- `GET /campaign`: latest generated campaign plan artifact.
+- `GET /campaign-current?token=...`: latest structured weekly campaign.
+- `GET /content-preview?token=...&slot=midday&platform=facebook`: generate preview content without publishing.
+- `GET /schedule-preview?token=...`: show eligible platforms by slot for the next seven days.
+- `GET /quality-report?token=...&limit=200`: summarize recent quality, rejections, and distribution.
+- `GET /run-now?slot=morning&token=...`: manual engine run.
+- `GET /run-marketing?token=...`: generate marketing strategy artifacts.
+- `GET /run-weekly?token=...`: generate weekly and campaign plan artifacts.
+- `GET /refresh-meta?token=...`: refresh Meta long-lived user token and page token for runtime.
+
+All operational preview and control endpoints use the same `MANUAL_RUN_TOKEN` protection.
+
+## Important Environment Variables
+
+- `SOCIAL_DRY_RUN` (`true` by default)
+- `MANUAL_RUN_TOKEN`
+- `META_REFRESH_TOKEN` (optional; if not set, `/refresh-meta` falls back to `MANUAL_RUN_TOKEN`)
+- `DATA_DIR` (optional; default `data/`)
+- `ENABLE_WORDPRESS`, `ENABLE_FACEBOOK`, `ENABLE_INSTAGRAM`, `ENABLE_LINKEDIN`
+- `ENABLE_FACEBOOK_SLOTS`, `ENABLE_INSTAGRAM_SLOTS`, `ENABLE_LINKEDIN_SLOTS`, `ENABLE_WORDPRESS_SLOTS`
+- `SKIP_RECENT_SUCCESS_HOURS` (default `0`, disabled)
+- `ANTI_REPEAT_HOOK_WINDOW` (default `30`)
+- `ANTI_REPEAT_CTA_WINDOW` (default `30`)
+- `UTM_CAMPAIGN_NAME` (default `infenergy_engine`)
+- `META_AUTO_REFRESH_ENABLED` (default `true`; refreshes before a run when close to expiry)
+- `META_REFRESH_THRESHOLD_HOURS` (default `72`)
+- `META_REFRESH_EVERY_RUN` (default `false`; set `true` to refresh Meta tokens before every run)
+- `META_GRAPH_VERSION` (default `v20.0`)
+
+## New Files
+
+- `scripts/build_campaign_plan.py`: builds structured weekly campaign artifacts.
+- `scripts/build_utm_url.py`: generates validated UTM URLs while preserving existing query parameters.
+- `scripts/anti_repeat.py`: anti-repeat windows and duplicate signature checks.
+- `scripts/validate_product_claims.py`: hard validation for risky or unsupported product claims.
+- `scripts/score_content.py`: weighted scoring and regeneration decision logic.
+- `data/marketing/campaigns/campaign_*.json`: immutable structured campaign outputs.
+- `data/marketing/funnel_config.json`: funnel distribution and stage metadata.
+- `data/marketing/channel_schedule.json`: weekday and slot platform eligibility rules.
+- `data/marketing/cta_library.json`: stage-specific CTA options.
+- `data/marketing/anti_repeat_config.json`: repeat-protection windows.
+
+Platform secrets (required in live mode by enabled channel):
+
+- WordPress: `WP_URL`, `WP_USERNAME`, `WP_APP_PASSWORD`
+- Facebook: `META_PAGE_ID`, `META_PAGE_ACCESS_TOKEN`
+- Instagram: `META_IG_USER_ID`, `META_PAGE_ACCESS_TOKEN`
+- LinkedIn: `LINKEDIN_ACCESS_TOKEN` (optional `LINKEDIN_AUTHOR_URN`)
+
+Meta refresh secrets (required for `/refresh-meta`):
+
+- `META_APP_ID`
+- `META_APP_SECRET`
+- `META_LONG_LIVED_USER_TOKEN`
+- `META_PAGE_ID`
+
+The refresh endpoint updates runtime tokens in-memory and writes state to `data/marketing/meta_token_state.json`.
+
+## Railway Cron For Meta Refresh
+
+To keep Meta tokens fresh without local scripts, add a Railway Cron job that calls:
+
+```text
+GET https://your-service.up.railway.app/refresh-meta?token=YOUR_META_REFRESH_TOKEN
+```
+
+Recommended cadence: every 7 days.
+
+Suggested Railway variables:
+
+- `META_REFRESH_TOKEN` (unique random secret)
+- `META_AUTO_REFRESH_ENABLED=true`
+- `META_REFRESH_THRESHOLD_HOURS=72`
+
+If `META_REFRESH_TOKEN` is not configured, the endpoint uses `MANUAL_RUN_TOKEN`.
+
+## Adjusting Content Distribution
+
+Edit `data/marketing/funnel_config.json`.
+
+- `distribution` controls the target mix across `ATTENTION`, `EDUCATION`, `DESIRE`, `TRUST`, and `CONVERSION`.
+- `stages` defines the objective, CTA rules, preferred formats, hook styles, and primary metric for each stage.
+- Stage selection uses recent history so the next post favors the most under-served stage.
+
+Example:
+
+```json
+{
+  "distribution": {
+    "ATTENTION": 0.2,
+    "EDUCATION": 0.3,
+    "DESIRE": 0.25,
+    "TRUST": 0.15,
+    "CONVERSION": 0.1
+  }
+}
+```
+
+## Adjusting Channel Scheduling
+
+Edit `data/marketing/channel_schedule.json`.
+
+- Rules are keyed by weekday and slot.
+- Each item can set `platform`, `stage`, `enabled`, and `preferred_content_formats`.
+- Manual platform override remains available through `POST_PLATFORMS` or `/run-now?...&platforms=facebook,instagram`.
+
+Example:
+
+```json
+{
+  "thursday": {
+    "midday": [
+      {
+        "platform": "linkedin",
+        "stage": "TRUST",
+        "enabled": true,
+        "preferred_content_formats": ["spec_breakdown", "authority_post"]
+      }
+    ]
+  }
+}
+```
+
+## Adding CTA Options
+
+Edit `data/marketing/cta_library.json`.
+
+- Each top-level key is a funnel stage.
+- Keep CTAs short and single-action.
+- The runtime rotates choices and avoids recent repeats.
+
+Example:
+
+```json
+{
+  "EDUCATION": [
+    "Save this checklist.",
+    "Read the full comparison."
+  ],
+  "CONVERSION": [
+    "Build your backup-power setup.",
+    "Shop available products."
+  ]
+}
+```
+
+## Changing Quality Thresholds
+
+Edit `scripts/score_content.py` to change numeric thresholds or weighted components.
+
+Current defaults:
+
+- `82+`: approve when hard validation also passes.
+- `75-81`: regenerate once.
+- `<75`: reject.
+- Hard validation failure: reject regardless of score.
+- Maximum attempts per run: `2`.
+
+Hard validation rules live in `scripts/validate_product_claims.py`.
+
+## Previewing Content Without Publishing
+
+Use the preview endpoint with your token:
+
+```powershell
+Invoke-WebRequest "https://your-service.up.railway.app/content-preview?token=YOUR_TOKEN&slot=midday&platform=facebook" | Select-Object -Expand Content
+```
+
+Supported query parameters:
+
+- `slot`
+- `platform`
+- `funnel_stage`
+- `product_id`
+
+The endpoint generates preview content only. It does not publish.
+
+## Running Tests
+
+```powershell
+Set-Location C:\Users\v-jmoten\infenergy-social-engine
+py -3 -m unittest discover -s tests -p "test_*.py" -v
+```
+
+Tests must never create a live post.
+
+## Dry-Run Validation
+
+```powershell
+Set-Location C:\Users\v-jmoten\infenergy-social-engine
+$env:SOCIAL_DRY_RUN='true'
+python scripts/run_marketing_team.py
+python scripts/run_marketing_weekly.py
+python scripts/run_engine.py
+python -m unittest discover -s tests -p "test_*.py" -v
+```
+
+## Railway Dry Run
+
+Recommended safe verification sequence after deployment:
+
+1. Set `SOCIAL_DRY_RUN=true` in Railway variables.
+2. Call `/run-marketing?token=...`.
+3. Call `/run-weekly?token=...`.
+4. Call `/content-preview?token=...&slot=morning`.
+5. Call `/quality-report?token=...`.
+6. Call `/run-now?slot=midday&token=...` and confirm the run completes without live publishing.
+
+## Rollback
+
+To roll back the campaign system safely:
+
+1. Keep `SOCIAL_DRY_RUN=true`.
+2. Revert `worker.py`, `scripts/run_engine.py`, and `scripts/generate_posts.py` to the prior version.
+3. Leave `data/post_history.json` in place; older and newer history rows remain readable.
+4. Ignore the new `data/marketing/*` runtime files if reverting to an earlier engine version.
+5. Re-run dry-run validation before enabling live publishing again.
+
+## Intentionally Excluded
+
+This implementation intentionally does not include:
+
+- automated comment replies
+- automated direct messages
+- weather-triggered posts
+- invasive cross-site visitor tracking
+- complicated lead scoring
+- paid-ad automation
+- automatic price discounts
+- fake urgency
+- fake testimonials
+
+## Runtime Files
+
+- `data/funnel_config.json` (legacy compatibility copy)
+- `data/channel_schedule.json` (legacy compatibility copy)
+- `data/post_history.json`
+- `data/marketing/marketing_strategy_*.json`
+- `data/marketing/weekly_plan_*.json`
+- `data/marketing/campaign_plan_*.json`
+- `data/marketing/campaigns/campaign_*.json`
+- `data/marketing/funnel_config.json`
+- `data/marketing/channel_schedule.json`
+- `data/marketing/cta_library.json`
+- `data/marketing/anti_repeat_config.json`

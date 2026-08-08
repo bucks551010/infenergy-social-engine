@@ -337,11 +337,22 @@ def _build_gemini_image_prompt(content: dict[str, Any], platform: str, visual_pl
         style_ref_line = f"Style references: {'; '.join(repo_reference_urls)}. "
     elif repo_reference_ideas:
         style_ref_line = f"Style reference ideas: {' | '.join(repo_reference_ideas[:6])}. "
+    stage_direction = {
+        "ATTENTION": "Prioritize interruption, surprise, tension, and high visual magnetism. The creative should stop the scroll immediately.",
+        "EDUCATION": "Prioritize clarity, guided comparison, explainability, and structured insight so the creative teaches at a glance.",
+        "DESIRE": "Prioritize aspiration, ownership, confidence, and product-fit desire without looking gimmicky or overhyped.",
+        "TRUST": "Prioritize credibility, proof, engineering confidence, and factual reassurance with premium restraint.",
+        "CONVERSION": "Prioritize urgency, clarity of next step, confidence-to-act, and unmistakable purchase momentum.",
+    }.get(stage, "Prioritize premium persuasion with clarity and confidence.")
     density_direction = {
         "facebook": "Use a layered, information-rich hero layout with multiple premium supporting elements, a clear reading path, and strong scan hierarchy.",
         "instagram": "Use a bold, high-drama layout with dense premium accents, editorial composition, strong shape language, and instantly readable focal structure.",
         "linkedin": "Use a sharp, executive ad layout with structured information zones, refined data callouts, premium interface cues, and professional polish.",
     }.get(platform, "Use a premium layered campaign layout.")
+    composition_system = (
+        "Use a state-of-the-art composition system: dominant hero zone, secondary information rail, tertiary trust-detail layer, and a clearly staged CTA destination. "
+        "Every region should have a purpose and visual rhythm. "
+    )
     signage_direction = (
         "Add premium design elements such as directional arrows, stat plaques, trust seals, spec chips, angled light bars, subtle grid panels, "
         "soft-glow interface fragments, anchored CTA signage, comparison strips, feature cards, icon clusters, micro labels, urgency banners, "
@@ -350,6 +361,10 @@ def _build_gemini_image_prompt(content: dict[str, Any], platform: str, visual_pl
     typography_direction = (
         "Typography should feel like a premium campaign ad: varied scale, bold headline lockup, tight supporting subline, clean stat callouts, "
         "and crisp CTA treatment. Use correct spelling, clean kerning, strong contrast, and obvious information hierarchy. "
+    )
+    material_direction = (
+        "Use luxury commercial-art details: smoky glass panels, brushed metal accents, illuminated edges, matte carbon surfaces, soft reflections, "
+        "refined gradients, depth haze, and controlled bloom highlights. "
     )
     product_stage_direction = (
         "Reserve a clean hero stage on the right side for the real product cutout. That stage should feel integrated into the design with lighting, "
@@ -363,6 +378,10 @@ def _build_gemini_image_prompt(content: dict[str, Any], platform: str, visual_pl
         "This should feel 10x more premium than a normal social post: like a polished campaign board from a top-tier performance brand. "
         "Be visually ambitious, rich in supporting elements, and unmistakably conversion-focused. "
     )
+    negative_direction = (
+        "Do not make it look like a cheap flyer, Canva template, generic ecommerce tile, flat infographic, cartoon graphic, or basic AI poster. "
+        "Avoid weak spacing, empty corners, random decoration, muddy contrast, oversized product framing, or amateur typography. "
+    )
     return (
         "Create a complete premium social ad creative for Infenergy Power. "
         f"Style intent: {style_intent}. Mood: {mood}. Composition: {composition}. "
@@ -372,15 +391,19 @@ def _build_gemini_image_prompt(content: dict[str, Any], platform: str, visual_pl
         f"Mandatory on-image copy: headline '{_headline_lockup(content)[0]}', subline '{_headline_lockup(content)[1]}', stat badge '{stat}', CTA '{cta}'. "
         f"Benefit bullets: {', '.join(benefits)}. Trust badges: {', '.join(badges)}. "
         "Use warm premium palette (charcoal, amber, orange, gold), realistic lighting, crisp typography hierarchy, and retail ad polish. "
+        f"{stage_direction} "
         f"{density_direction} "
+        f"{composition_system}"
         f"{signage_direction}"
         f"{typography_direction}"
+        f"{material_direction}"
         f"{atmosphere_direction}"
         f"{campaign_direction}"
         "Generate the final ad art with all text already designed into the image, not just a background plate. "
         "Important: do not draw a fake product render, device mockup, boxed product frame, stat bubble, or decorative badge cluster. "
         f"{product_stage_direction}"
         "Typography must look premium, legible, and correctly spelled. Keep the design modern, minimal, and conversion-focused. "
+        f"{negative_direction}"
         "No logos from other brands, no watermarks, no gibberish text, no misspelled words, no deformed hands."
     )
 

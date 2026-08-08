@@ -846,6 +846,11 @@ def main() -> None:
         print("[SKIP] Facebook disabled")
     _apply_phase8_budget(runtime_metrics, "publish_facebook", time.perf_counter() - t_fb, publish_budget)
 
+    ig_wait_after_fb_seconds = int(os.environ.get("IG_WAIT_AFTER_FB_SECONDS", "8"))
+    if effective_channels["facebook"] and effective_channels["instagram"] and ig_wait_after_fb_seconds > 0:
+        print(f"[Instagram] Waiting {ig_wait_after_fb_seconds}s after Facebook step completion")
+        time.sleep(ig_wait_after_fb_seconds)
+
     print("[4/5] Instagram...")
     t_ig = time.perf_counter()
     if effective_channels["instagram"]:

@@ -795,6 +795,34 @@ class HealthHandler(BaseHTTPRequestHandler):
             self.wfile.write(body)
             return
 
+        if parsed.path == "/brand-profile-apply":
+            params = parse_qs(parsed.query)
+            authorized, status_code, error_payload = _authorized(params)
+            if not authorized:
+                body = json.dumps(error_payload).encode("utf-8")
+                self.send_response(status_code)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+                return
+
+            result = generate_posts.apply_conference_brand_profile()
+            payload = {
+                "status": "ok" if result.get("ok") else "error",
+                "time_utc": _utc_now(),
+                "applied": bool(result.get("ok")),
+                "brand_profile": result.get("brand_profile", {}),
+                "snapshot": inventory_db.get_inventory_snapshot(_data_dir()),
+            }
+            body = json.dumps(payload).encode("utf-8")
+            self.send_response(200 if result.get("ok") else 500)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
         if parsed.path == "/run-marketing":
             token = os.environ.get("MANUAL_RUN_TOKEN", "")
             params = parse_qs(parsed.query)

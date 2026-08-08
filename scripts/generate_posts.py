@@ -971,6 +971,102 @@ def load_brand_profile() -> dict:
     return _build_brand_profile_seed(strategy, manifesto)
 
 
+def conference_brand_profile_payload() -> dict:
+    """Canonical conference output for positioning and brand voice."""
+    return {
+        "brand_name": "Infenergy Power",
+        "tagline": "From chaos to control.",
+        "mission": "Help families and everyday people stay powered, prepared, safe, and connected when normal systems fail.",
+        "positioning": "Preparedness-first portable power and resilience brand for families, travelers, outdoor users, seniors, and small operators.",
+        "audience_summary": (
+            "Working families in storm-prone regions | RV and outdoor users | Emergency-minded households "
+            "| Seniors and caregivers | Small operators who need uptime continuity"
+        ),
+        "personality_name": "Calm Strength",
+        "personality_traits": [
+            "Protective",
+            "Mission-driven",
+            "Practical",
+            "Empathetic",
+            "Confident",
+            "Coach-like",
+        ],
+        "tone_rules": [
+            "Lead with a real-life risk or customer moment.",
+            "Translate technical specs into plain-language outcomes.",
+            "Be urgent without fear-mongering.",
+            "Sound human and committed, never generic.",
+            "Close with one clear, low-friction next step.",
+        ],
+        "voice_rules": [
+            "Lead with empathy and urgency rooted in real family preparedness moments.",
+            "Translate specs into immediate and long-term outcomes people can feel.",
+            "Use value stacking, practical guidance, and one clear next step.",
+            "Sound committed and human: protective, coach-like, and trustworthy.",
+            "Anchor every claim in concrete facts and examples.",
+        ],
+        "approved_phrases": [
+            "Preparedness over panic",
+            "Power is protection",
+            "From chaos to control",
+            "Practical power for real life",
+            "Built for outages, travel, and everyday resilience",
+            "Spec-backed recommendations you can trust",
+        ],
+        "cta_style": [
+            "Get your readiness plan",
+            "Map your must-run devices",
+            "Book your product-fit consultation",
+            "Build your outage-ready setup",
+        ],
+        "trust_close": "We do not just sell products. We help people stay calm, connected, and prepared when it matters most.",
+        "words_to_use": [
+            "preparedness",
+            "protection",
+            "resilience",
+            "continuity",
+            "practical",
+            "spec-backed",
+            "confidence",
+            "control",
+        ],
+        "words_to_avoid": [
+            "revolutionary",
+            "game-changing",
+            "once-in-a-lifetime",
+            "guaranteed",
+            "instant savings",
+        ],
+        "forbidden_phrases": [
+            "Unverifiable guarantees",
+            "Fear-only manipulation",
+            "Rooftop installation positioning",
+            "Tax-credit-first sales framing",
+        ],
+        "core_values": [
+            "Protection",
+            "Preparedness",
+            "Reliability",
+            "Integrity",
+            "Service",
+            "Commitment",
+            "Practical guidance",
+        ],
+        "additional_notes": "Primary lifestyle positioning: home resilience, mobile autonomy, and family safety continuity.",
+    }
+
+
+def apply_conference_brand_profile() -> dict:
+    sync_inventory_database(force=False)
+    payload = conference_brand_profile_payload()
+    ok = inventory_db.upsert_brand_profile(DATA_DIR, payload)
+    profile = inventory_db.fetch_brand_profile(DATA_DIR)
+    return {
+        "ok": bool(ok),
+        "brand_profile": profile,
+    }
+
+
 def _is_usable_image_url(url: str) -> bool:
     if not url or not isinstance(url, str):
         return False

@@ -27,6 +27,7 @@ Production social publishing worker for INF Energy with a strategy-driven market
 - `GET /quality-report?token=...&limit=200`: summarize recent quality, rejections, and distribution.
 - `GET /inventory-db?token=...`: inspect inventory/brand database status and current brand profile.
 - `GET /inventory-sync?token=...&force=true`: re-sync product CSV and brand artifacts into the database.
+- `GET /brand-profile-apply?token=...`: apply the conference brand profile package directly into the brand profile table.
 - `GET /run-now?slot=morning&token=...`: manual engine run.
 - `GET /run-marketing?token=...`: generate marketing strategy artifacts.
 - `GET /run-weekly?token=...`: generate weekly and campaign plan artifacts.

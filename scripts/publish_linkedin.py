@@ -4,6 +4,8 @@ import tempfile
 import requests
 from datetime import datetime, timezone
 
+from PIL import Image, ImageFilter, ImageOps
+
 LI_API = "https://api.linkedin.com/v2"
 DEFAULT_LINKEDIN_VERSION = datetime.now(timezone.utc).strftime("%Y%m")
 
@@ -106,6 +108,39 @@ def _download_image_to_temp(url: str) -> str:
     with open(temp_path, "wb") as f:
         f.write(resp.content)
     return temp_path
+
+
+def _normalize_linkedin_image(image_path: str) -> str:
+    """Normalize image to LinkedIn-friendly dimensions to avoid awkward feed rendering."""
+    if not image_path or not os.path.exists(image_path):
+        return image_path
+
+    try:
+        target_w = int(_env("LINKEDIN_IMAGE_WIDTH", "1200") or "1200")
+        target_h = int(_env("LINKEDIN_IMAGE_HEIGHT", "1200") or "1200")
+        target_w = max(400, min(3000, target_w))
+        target_h = max(400, min(3000, target_h))
+
+        with Image.open(image_path) as img:
+            base = img.convert("RGB")
+            canvas_size = (target_w, target_h)
+
+            # Fill canvas with a blurred version of the source, then place contained foreground.
+            bg = ImageOps.fit(base, canvas_size, method=Image.Resampling.LANCZOS)
+            bg = bg.filter(ImageFilter.GaussianBlur(radius=22))
+
+            fg = ImageOps.contain(base, canvas_size, method=Image.Resampling.LANCZOS)
+            x = (target_w - fg.width) // 2
+            y = (target_h - fg.height) // 2
+            bg.paste(fg, (x, y))
+
+            fd, normalized_path = tempfile.mkstemp(prefix="li-image-normalized-", suffix=".jpg")
+            os.close(fd)
+            bg.save(normalized_path, format="JPEG", quality=92, optimize=True)
+            return normalized_path
+    except Exception as e:
+        print(f"[LinkedIn] Warning: image normalization failed, using original image: {e}")
+        return image_path
 
 
 def _organization_author_urn() -> str:
@@ -255,6 +290,7 @@ def publish(content: dict, wp_link: str, dry_run: bool = False) -> dict:
     text = f"{content['li_text']}\n\n{wp_link}"
     image_path = str((content.get("generated_visuals") or {}).get("linkedin", "")).strip()
     temp_download_path = ""
+    temp_normalized_path = ""
 
     if dry_run:
         print(f"[DRY RUN] LinkedIn: would post:\n{text[:150]}...\n")
@@ -295,7 +331,10 @@ def publish(content: dict, wp_link: str, dry_run: bool = False) -> dict:
         "shareMediaCategory": "NONE",
     }
     if image_path and os.path.exists(image_path):
-        asset = _upload_image_asset(author, image_path)
+        normalized_path = _normalize_linkedin_image(image_path)
+        if normalized_path != image_path:
+            temp_normalized_path = normalized_path
+        asset = _upload_image_asset(author, normalized_path)
         share_content = {
             "shareCommentary": {"text": text},
             "shareMediaCategory": "IMAGE",
@@ -345,6 +384,11 @@ def publish(content: dict, wp_link: str, dry_run: bool = False) -> dict:
         print(f"[LinkedIn] Posted: {post_id}")
         return {"id": post_id}
     finally:
+        if temp_normalized_path:
+            try:
+                os.remove(temp_normalized_path)
+            except OSError:
+                pass
         if temp_download_path:
             try:
                 os.remove(temp_download_path)

@@ -200,14 +200,17 @@ def _build_phase5_channel_readiness(effective_channels: dict[str, bool], dry_run
             mark("wordpress", "green", "credentials_present")
 
     fb_token = str(os.environ.get("META_PAGE_ACCESS_TOKEN", "")).strip()
+    fb_page_id = str(os.environ.get("META_PAGE_ID", "")).strip()
     if not effective_channels.get("facebook", False):
         mark("facebook", "yellow", "channel_disabled")
     elif not fb_token:
         mark("facebook", "red", "missing_page_access_token")
+    elif not fb_page_id:
+        mark("facebook", "red", "missing_page_id")
     else:
         try:
             resp = requests.get(
-                "https://graph.facebook.com/v26.0/me/accounts",
+                f"https://graph.facebook.com/v26.0/{fb_page_id}",
                 params={"fields": "id,name", "access_token": fb_token},
                 timeout=15,
             )

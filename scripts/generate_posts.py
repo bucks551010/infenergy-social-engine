@@ -1549,14 +1549,43 @@ def _fallback_cta_for_stage(stage: str) -> str:
     return "Comment with your top outage priority."
 
 
+def _replace_legacy_cta_text(text: str) -> str:
+    body = str(text or "")
+    if not body:
+        return body
+    body = re.sub(
+        r"review verified specs and see your custom runtime plan\.?",
+        "Review verified specs and map your must-run devices.",
+        body,
+        flags=re.IGNORECASE,
+    )
+    body = re.sub(
+        r"see your custom runtime plan",
+        "Map your must-run devices and build your outage-ready setup",
+        body,
+        flags=re.IGNORECASE,
+    )
+    return body
+
+
+def _sanitize_legacy_cta_in_payload(value):
+    if isinstance(value, str):
+        return _replace_legacy_cta_text(value)
+    if isinstance(value, list):
+        return [_sanitize_legacy_cta_in_payload(item) for item in value]
+    if isinstance(value, dict):
+        return {k: _sanitize_legacy_cta_in_payload(v) for k, v in value.items()}
+    return value
+
+
 def _ensure_explicit_cta(text: str, stage: str) -> str:
-    cta = str(text or "").strip()
+    cta = _replace_legacy_cta_text(str(text or "")).strip()
     if cta and has_explicit_cta_keyword(cta):
         return cta
-    fallback = _fallback_cta_for_stage(stage)
+    fallback = _replace_legacy_cta_text(_fallback_cta_for_stage(stage))
     if not cta:
         return fallback
-    return f"{fallback} {cta}".strip()
+    return _replace_legacy_cta_text(f"{fallback} {cta}").strip()
 
 
 def _segment_creative_constraints(audience_segment: str) -> dict:
@@ -3491,5 +3520,6 @@ Return ONLY valid JSON with these exact keys (no markdown, no code fences):
     content["quality_warnings"] = quality.warnings
     for p in content["platform_posts"].values():
         p["quality_score"] = float(quality.score)
+    content = _sanitize_legacy_cta_in_payload(content)
     content = _apply_control_plane_metadata(content, run_context, gate_records)
     return content

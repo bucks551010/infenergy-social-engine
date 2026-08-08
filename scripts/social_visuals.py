@@ -86,6 +86,25 @@ def _remove_near_white_bg(image: Any, threshold: int = 246):
         return image
 
 
+def _resize_cover(image: Any, target: tuple[int, int], image_module: Any) -> Any:
+    target_w, target_h = target
+    src_w, src_h = image.size
+    if not src_w or not src_h:
+        return image.resize(target)
+
+    scale = max(target_w / float(src_w), target_h / float(src_h))
+    resized_w = max(1, int(round(src_w * scale)))
+    resized_h = max(1, int(round(src_h * scale)))
+    resampling = getattr(getattr(image_module, "Resampling", image_module), "LANCZOS", getattr(image_module, "LANCZOS", 1))
+    resized = image.resize((resized_w, resized_h), resampling)
+
+    left = max(0, (resized_w - target_w) // 2)
+    top = max(0, (resized_h - target_h) // 2)
+    right = left + target_w
+    bottom = top + target_h
+    return resized.crop((left, top, right, bottom))
+
+
 def _fetch_product_image(image_module: Any, image_url: str):
     if not image_url:
         return None
@@ -356,7 +375,7 @@ def _generate_gemini_background(content: dict[str, Any], platform: str, visual_p
             target = (1200, 1200)
         else:
             target = (1200, 627)
-        generated = generated.resize(target)
+        generated = _resize_cover(generated, target, image_module)
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
         generated.save(output_path, format="PNG", optimize=True)
         return True

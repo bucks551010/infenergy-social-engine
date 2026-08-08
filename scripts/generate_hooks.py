@@ -71,6 +71,36 @@ def _score_hook(hook: str, topic: str, product_name: str, audience_segment: str)
     }
 
 
+def _infer_hook_family(hook: str) -> str:
+    low = _normalize(hook)
+    if "?" in hook or low.startswith("what") or low.startswith("how") or low.startswith("why"):
+        return "question"
+    if "myth" in low:
+        return "myth"
+    if "mistake" in low:
+        return "common_mistake"
+    if " vs " in low or "compare" in low:
+        return "comparison"
+    if "checklist" in low or low.startswith("before you buy"):
+        return "checklist"
+    if "if " in low or "imagine" in low:
+        return "scenario"
+    if "fit" in low and "plan" in low:
+        return "product_use_case"
+    return "curiosity"
+
+
+def _dominant_recent_family(recent_hooks: list[str] | None) -> str:
+    counts: dict[str, int] = {}
+    for raw in (recent_hooks or [])[:8]:
+        family = _infer_hook_family(str(raw or ""))
+        counts[family] = counts.get(family, 0) + 1
+    if not counts:
+        return ""
+    family, count = max(counts.items(), key=lambda kv: kv[1])
+    return family if count >= 2 else ""
+
+
 def _total_score(component_scores: dict[str, int], duplicate_penalty: int) -> int:
     total = sum(component_scores.values())
     return max(0, total - duplicate_penalty)
@@ -134,6 +164,7 @@ def select_hook(
     product_name: str,
     audience_segment: str,
     recent_hook_hashes: set[str],
+    recent_hooks: list[str] | None = None,
     preferred_hooks: list[str] | None = None,
 ) -> dict[str, Any]:
     templates = _category_templates(topic, product_name)
@@ -148,13 +179,16 @@ def select_hook(
             candidates.append({"hook": text.strip(), "hook_type": "curiosity"})
 
     scored: list[dict[str, Any]] = []
+    dominant_family = _dominant_recent_family(recent_hooks)
     for row in candidates:
         hook = row["hook"]
         if _looks_generic(hook):
             continue
         component_scores = _score_hook(hook, topic, product_name, audience_segment)
         duplicate_penalty = 35 if stable_text_hash(hook) in recent_hook_hashes else 0
+        family_penalty = 8 if dominant_family and row.get("hook_type") == dominant_family else 0
         total = _total_score(component_scores, duplicate_penalty)
+        total = max(0, total - family_penalty)
         scored.append(
             {
                 "hook": hook,
@@ -162,6 +196,7 @@ def select_hook(
                 "component_scores": component_scores,
                 "score": total,
                 "duplicate_penalty": duplicate_penalty,
+                "family_penalty": family_penalty,
             }
         )
 

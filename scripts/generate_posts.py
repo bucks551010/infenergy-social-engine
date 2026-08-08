@@ -18,6 +18,7 @@ from campaign_runtime import (
     choose_cta_for_stage,
     cta_is_valid_for_stage,
     ensure_campaign_runtime_files,
+    has_explicit_cta_keyword,
     load_cta_library,
     load_funnel_config,
     score_generated_content,
@@ -387,6 +388,7 @@ def _run_phase2_creative_stack(
         topic=topic,
         funnel_stage=funnel_stage,
     )
+    segment_constraints = _segment_creative_constraints(audience_segment)
 
     ideation_prompt = f"""{IDEATION_DIVERGENCE_BRIEF}
 
@@ -449,6 +451,7 @@ Run context:
 - Funnel stage: {funnel_stage}
 - Stage objective: {stage_objective}
 - CTA direction: {selected_cta}
+- Segment narrative requirement: {segment_constraints.get('narrative_requirement', '')}
 
 Return ONLY valid JSON with this exact shape:
 {{
@@ -493,6 +496,21 @@ Return ONLY valid JSON with this exact shape:
             continue
         seen.add(k)
         unique_hook_candidates.append(hook)
+
+    # Keep at least three candidates so stress-testing can rotate archetypes.
+    fallback_candidates = [
+        f"What changes first in your plan if this outage lasts 4 hours?",
+        f"Myth: bigger labels always mean better {topic.lower()} outcomes.",
+        f"Compare 2 options before buying: what actually decides fit for {topic.lower()}?",
+    ]
+    for fallback in fallback_candidates:
+        if len(unique_hook_candidates) >= 3:
+            break
+        key = fallback.lower().strip()
+        if key in seen:
+            continue
+        seen.add(key)
+        unique_hook_candidates.append(fallback)
 
     hook_test_prompt = f"""{HOOK_STRESS_TEST_BRIEF}
 
@@ -1518,6 +1536,172 @@ def _contains_numeric_evidence(text: str) -> bool:
     return False
 
 
+def _fallback_cta_for_stage(stage: str) -> str:
+    normalized = str(stage or "").strip().upper()
+    if normalized == "CONVERSION":
+        return "Shop now and build your backup-power setup."
+    if normalized == "TRUST":
+        return "Review verified specs and see your custom runtime plan."
+    if normalized == "DESIRE":
+        return "Compare product options and see what fits your daily loads."
+    if normalized == "EDUCATION":
+        return "Save this and compare your setup today."
+    return "Comment with your top outage priority."
+
+
+def _ensure_explicit_cta(text: str, stage: str) -> str:
+    cta = str(text or "").strip()
+    if cta and has_explicit_cta_keyword(cta):
+        return cta
+    fallback = _fallback_cta_for_stage(stage)
+    if not cta:
+        return fallback
+    return f"{fallback} {cta}".strip()
+
+
+def _segment_creative_constraints(audience_segment: str) -> dict:
+    low = str(audience_segment or "").lower()
+    if "rv" in low or "mobile" in low or "travel" in low:
+        return {
+            "segment_key": "mobile_autonomy",
+            "narrative_requirement": "include one mobile scenario with a 24-hour load plan",
+            "visual_requirement": "show compact, mobile-ready setup context",
+            "platform_focus": "quick setup clarity and portability proof",
+        }
+    if "business" in low or "operator" in low:
+        return {
+            "segment_key": "business_uptime",
+            "narrative_requirement": "include one continuity scenario with downtime-cost framing",
+            "visual_requirement": "show continuity-first workstation or storefront context",
+            "platform_focus": "uptime continuity and decision confidence",
+        }
+    return {
+        "segment_key": "home_resilience",
+        "narrative_requirement": "include one family-home outage scenario with top 3 device priorities",
+        "visual_requirement": "show realistic home preparedness context",
+        "platform_focus": "family safety continuity and practical control",
+    }
+
+
+def _numeric_proof_line(stage: str, talking_point: dict) -> str:
+    anchor = str((talking_point or {}).get("proof_anchor", "")).strip()
+    base = "Map your top 3 must-run devices and estimate 24-hour usage before selecting a system."
+    if anchor:
+        base = f"{anchor} {base}"
+    normalized = str(stage or "").strip().upper()
+    if normalized == "TRUST":
+        return f"Proof checkpoint: {base}"
+    return f"Quick fit check: {base}"
+
+
+def _append_numeric_proof(text: str, stage: str, talking_point: dict, html: bool = False) -> str:
+    body = str(text or "").strip()
+    if _contains_numeric_evidence(body):
+        return body
+    line = _numeric_proof_line(stage, talking_point)
+    if not body:
+        return f"<p>{line}</p>" if html else line
+    if html:
+        return f"{body}\n<p>{line}</p>"
+    return f"{body}\n\n{line}"
+
+
+def _enforce_numeric_proof_requirements(content: dict, funnel_stage: str, talking_point: dict) -> None:
+    stage = str(funnel_stage or "").strip().upper()
+    if stage not in {"DESIRE", "TRUST"}:
+        return
+    content["wp_content"] = _append_numeric_proof(str(content.get("wp_content", "")), stage, talking_point, html=True)
+    for key in ("fb_caption", "ig_caption", "li_text"):
+        content[key] = _append_numeric_proof(str(content.get(key, "")), stage, talking_point, html=False)
+
+
+def _hook_family(hook: str) -> str:
+    low = str(hook or "").strip().lower()
+    if "?" in low or low.startswith("what") or low.startswith("how") or low.startswith("why"):
+        return "question"
+    if "myth" in low:
+        return "myth"
+    if "mistake" in low:
+        return "common_mistake"
+    if " vs " in low or "compare" in low:
+        return "comparison"
+    if "checklist" in low or low.startswith("before you buy"):
+        return "checklist"
+    if low.startswith("if ") or "imagine" in low:
+        return "scenario"
+    if "fit" in low and "plan" in low:
+        return "product_use_case"
+    return "curiosity"
+
+
+def _enforce_hook_diversity(selected_hook: str, phase2_stack: dict, recent_hooks: list[str]) -> tuple[str, str]:
+    counts: dict[str, int] = {}
+    for raw in (recent_hooks or [])[:8]:
+        fam = _hook_family(str(raw or ""))
+        counts[fam] = counts.get(fam, 0) + 1
+    if not counts:
+        return selected_hook, ""
+
+    dominant_family, dominant_count = max(counts.items(), key=lambda kv: kv[1])
+    selected_family = _hook_family(selected_hook)
+    if dominant_count < 2 or selected_family != dominant_family:
+        return selected_hook, ""
+
+    candidates: list[str] = []
+    hook_test = phase2_stack.get("hook_stress_test", {}) if isinstance(phase2_stack, dict) else {}
+    if isinstance(hook_test, dict):
+        candidates.extend([str(x).strip() for x in hook_test.get("candidate_hooks", []) if str(x).strip()])
+    ideation = phase2_stack.get("ideation_divergence", {}) if isinstance(phase2_stack, dict) else {}
+    if isinstance(ideation, dict):
+        candidates.append(str(ideation.get("winner_hook", "")).strip())
+        for row in ideation.get("concepts", []) or []:
+            if isinstance(row, dict):
+                candidates.append(str(row.get("hook_candidate", "")).strip())
+    candidates.append(str(selected_hook or "").strip())
+
+    seen: set[str] = set()
+    unique = []
+    for c in candidates:
+        key = c.lower().strip()
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        unique.append(c)
+
+    for candidate in unique:
+        if _hook_family(candidate) != dominant_family:
+            note = f"Switched hook family from {dominant_family} to {_hook_family(candidate)} for novelty rotation."
+            return candidate, note
+    return selected_hook, ""
+
+
+def _apply_segment_constraints_to_stacks(phase2_stack: dict, phase4_stack: dict, audience_segment: str) -> dict:
+    constraints = _segment_creative_constraints(audience_segment)
+    narrative = phase2_stack.get("narrative_architect", {}) if isinstance(phase2_stack, dict) else {}
+    if isinstance(narrative, dict):
+        must_include = narrative.get("must_include", [])
+        if not isinstance(must_include, list):
+            must_include = []
+        requirement = constraints.get("narrative_requirement", "")
+        if requirement and requirement not in must_include:
+            must_include.append(requirement)
+        narrative["must_include"] = must_include
+        phase2_stack["narrative_architect"] = narrative
+
+    visual = phase4_stack.get("visual_strategy", {}) if isinstance(phase4_stack, dict) else {}
+    if isinstance(visual, dict):
+        adjustments = visual.get("composition_adjustments", [])
+        if not isinstance(adjustments, list):
+            adjustments = []
+        visual_requirement = constraints.get("visual_requirement", "")
+        if visual_requirement and visual_requirement not in adjustments:
+            adjustments.append(visual_requirement)
+        visual["composition_adjustments"] = adjustments
+        phase4_stack["visual_strategy"] = visual
+
+    return constraints
+
+
 def _enforce_conversion_caption(text: str, talking_point: dict, platform: str = "") -> str:
     body = str(text or "").strip()
     pain_point = str((talking_point or {}).get("pain_point", "")).strip()
@@ -2386,11 +2570,15 @@ def generate(slot: str, *, funnel_stage_override: str = "", product_id_override:
             recent_cta_hashes=recent_cta_hashes,
         )
 
+    selected_cta = _ensure_explicit_cta(selected_cta, funnel_stage)
+    recent_hooks_for_diversity = _recent_unique_values(history, "selected_hook", limit=8)
+
     hook_choice = select_hook(
         topic=topic,
         product_name=product_name or "INF Energy Power solution",
         audience_segment=audience_segment,
         recent_hook_hashes=recent_hook_hashes,
+        recent_hooks=recent_hooks_for_diversity,
         preferred_hooks=preferred_hooks,
     )
     selected_hook = str(hook_choice.get("hook", selected_hook)).strip() or selected_hook
@@ -2496,6 +2684,22 @@ def generate(slot: str, *, funnel_stage_override: str = "", product_id_override:
     selected_hook = str(phase2_stack.get("hook_stress_test", {}).get("recommended_hook", "")).strip() or selected_hook
     selected_cta = str(phase2_stack.get("audience_psychographics", {}).get("cta_framing", "")).strip() or selected_cta
     audience_segment = str(phase2_stack.get("audience_psychographics", {}).get("primary_segment", "")).strip() or audience_segment
+    diversified_hook, diversity_note = _enforce_hook_diversity(selected_hook, phase2_stack, recent_hooks)
+    if diversified_hook != selected_hook:
+        selected_hook = diversified_hook
+        if isinstance(phase2_stack.get("hook_stress_test", {}), dict):
+            phase2_stack["hook_stress_test"]["recommended_hook"] = selected_hook
+            reason = str(phase2_stack["hook_stress_test"].get("reason", "")).strip()
+            phase2_stack["hook_stress_test"]["reason"] = (f"{reason} {diversity_note}").strip()
+        gate_records.append(
+            build_gate_record(
+                gate_id="phase2_hook_family_diversity",
+                passed=True,
+                severity="warning",
+                reasons=[],
+                details={"note": diversity_note},
+            )
+        )
     run_context["draft_direction"]["selected_hook"] = selected_hook
     run_context["draft_direction"]["selected_cta"] = selected_cta
     run_context["audience_segment"] = audience_segment
@@ -2613,6 +2817,9 @@ def generate(slot: str, *, funnel_stage_override: str = "", product_id_override:
         gate_records.append(build_gate_record(gate_id="phase4_cta_optimization_schema", passed=True, severity="warning", reasons=[], details={"enabled": False}))
 
     selected_cta = str(phase4_stack.get("cta_optimization", {}).get("recommended_cta", "")).strip() or selected_cta
+    selected_cta = _ensure_explicit_cta(selected_cta, funnel_stage)
+    if isinstance(phase4_stack.get("cta_optimization", {}), dict):
+        phase4_stack["cta_optimization"]["recommended_cta"] = selected_cta
     run_context["draft_direction"]["selected_cta"] = selected_cta
 
     pregen_enabled = os.environ.get("ENABLE_PREGEN_CONFERENCE", "true").strip().lower() not in {"0", "false", "no"}
@@ -2656,6 +2863,9 @@ def generate(slot: str, *, funnel_stage_override: str = "", product_id_override:
             )
         selected_hook = str(pre_generation_conference.get("recommended_hook", "")).strip() or selected_hook
         selected_cta = str(pre_generation_conference.get("recommended_cta", "")).strip() or selected_cta
+        selected_cta = _ensure_explicit_cta(selected_cta, funnel_stage)
+        if isinstance(pre_generation_conference, dict):
+            pre_generation_conference["recommended_cta"] = selected_cta
     else:
         gate_records.append(
             build_gate_record(
@@ -2666,6 +2876,8 @@ def generate(slot: str, *, funnel_stage_override: str = "", product_id_override:
                 details={"enabled": False},
             )
         )
+
+    segment_constraints = _apply_segment_constraints_to_stacks(phase2_stack, phase4_stack, audience_segment)
 
     pregen_context = ""
     if isinstance(pre_generation_conference, dict) and pre_generation_conference:
@@ -2707,6 +2919,14 @@ def generate(slot: str, *, funnel_stage_override: str = "", product_id_override:
         f"- CTA recommendation: {phase4_stack.get('cta_optimization', {}).get('recommended_cta', selected_cta)}\n"
         f"- CTA alternates: {phase4_stack.get('cta_optimization', {}).get('alternates', [])}\n"
         f"- CTA friction note: {phase4_stack.get('cta_optimization', {}).get('friction_note', '')}\n"
+    )
+
+    segment_context = (
+        "AUDIENCE SEGMENT EXECUTION DIRECTIVES:\n"
+        f"- Segment key: {segment_constraints.get('segment_key', '')}\n"
+        f"- Narrative requirement: {segment_constraints.get('narrative_requirement', '')}\n"
+        f"- Visual requirement: {segment_constraints.get('visual_requirement', '')}\n"
+        f"- Platform emphasis: {segment_constraints.get('platform_focus', '')}\n"
     )
 
     ideology_context = (
@@ -2762,6 +2982,15 @@ def generate(slot: str, *, funnel_stage_override: str = "", product_id_override:
     visual_adjustments = phase4_stack.get("visual_strategy", {}).get("composition_adjustments", [])
     if isinstance(visual_adjustments, list) and visual_adjustments:
         visual_plan["phase4_composition_adjustments"] = [str(x) for x in visual_adjustments if str(x).strip()]
+    segment_visual_requirement = str(segment_constraints.get("visual_requirement", "")).strip()
+    if segment_visual_requirement:
+        existing = visual_plan.get("phase4_composition_adjustments", [])
+        if not isinstance(existing, list):
+            existing = []
+        if segment_visual_requirement not in existing:
+            existing.append(segment_visual_requirement)
+        visual_plan["phase4_composition_adjustments"] = existing
+        visual_plan["segment_preset"] = str(segment_constraints.get("segment_key", "")).strip()
 
     prompt = f"""You are an expert content strategist and copywriter for {brand_name} ({SITE_URL}), a {brand_positioning}.
 
@@ -2798,6 +3027,8 @@ PRODUCT CONTEXT (ground your content in these details when relevant):
 {phase3_context}
 
 {phase4_context}
+
+{segment_context}
 
 {ideology_context}
 
@@ -2900,6 +3131,9 @@ Return ONLY valid JSON with these exact keys (no markdown, no code fences):
             selected_cta = fallback_cta
             content["cta_hash"] = stable_text_hash(fallback_cta)
             content.setdefault("quality_warnings", []).append(f"cta_adjusted:{cta_reason}")
+        selected_cta = _ensure_explicit_cta(selected_cta, funnel_stage)
+        content["selected_cta"] = selected_cta
+        content["cta_hash"] = stable_text_hash(selected_cta)
         content["date"] = str(date.today())
         content["slot"] = slot
         for key in ("fb_caption", "ig_caption", "li_text"):
@@ -2909,6 +3143,7 @@ Return ONLY valid JSON with these exact keys (no markdown, no code fences):
                 talking_point,
                 platform=platform_name,
             )
+        _enforce_numeric_proof_requirements(content, funnel_stage, talking_point)
         for key in ("wp_content", "fb_caption", "ig_caption", "li_text"):
             cleaned, replaced = apply_claim_guardrails(str(content.get(key, "")))
             content[key] = cleaned
@@ -3063,6 +3298,9 @@ Return ONLY valid JSON with these exact keys (no markdown, no code fences):
         selected_cta = fallback_cta
         content["cta_hash"] = stable_text_hash(fallback_cta)
         content.setdefault("quality_warnings", []).append(f"cta_adjusted:{cta_reason}")
+    selected_cta = _ensure_explicit_cta(selected_cta, funnel_stage)
+    content["selected_cta"] = selected_cta
+    content["cta_hash"] = stable_text_hash(selected_cta)
     content["date"] = str(date.today())
     content["slot"] = slot
     for key in ("fb_caption", "ig_caption", "li_text"):
@@ -3072,6 +3310,7 @@ Return ONLY valid JSON with these exact keys (no markdown, no code fences):
             talking_point,
             platform=platform_name,
         )
+    _enforce_numeric_proof_requirements(content, funnel_stage, talking_point)
     for key in ("wp_content", "fb_caption", "ig_caption", "li_text"):
         cleaned, replaced = apply_claim_guardrails(str(content.get(key, "")))
         content[key] = cleaned
@@ -3119,6 +3358,8 @@ Return ONLY valid JSON with these exact keys (no markdown, no code fences):
                 )
             )
         content, visual_plan = _apply_conference_refinements(content, visual_plan, conference_summary)
+        selected_cta = _ensure_explicit_cta(str(content.get("selected_cta", selected_cta)), funnel_stage)
+        content["selected_cta"] = selected_cta
         for key in ("fb_caption", "ig_caption", "li_text"):
             platform_name = "facebook" if key == "fb_caption" else "instagram" if key == "ig_caption" else "linkedin"
             content[key] = _enforce_conversion_caption(
@@ -3126,6 +3367,7 @@ Return ONLY valid JSON with these exact keys (no markdown, no code fences):
                 talking_point,
                 platform=platform_name,
             )
+        _enforce_numeric_proof_requirements(content, funnel_stage, talking_point)
         # Re-apply guardrails after conference-driven refinements.
         for key in ("wp_content", "fb_caption", "ig_caption", "li_text"):
             cleaned, replaced = apply_claim_guardrails(str(content.get(key, "")))

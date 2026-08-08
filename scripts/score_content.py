@@ -3,6 +3,35 @@ from __future__ import annotations
 import re
 from typing import Any
 
+try:
+    from campaign_runtime import has_explicit_cta_keyword
+except Exception:  # pragma: no cover
+    def has_explicit_cta_keyword(text: str) -> bool:
+        low = str(text or "").lower()
+        return any(
+            k in low
+            for k in (
+                "shop",
+                "buy",
+                "build",
+                "book",
+                "compare",
+                "see",
+                "review",
+                "get",
+                "start",
+                "message",
+                "comment",
+                "schedule",
+                "call",
+                "contact",
+                "quote",
+                "assessment",
+                "checkout",
+                "order",
+            )
+        )
+
 
 def _clamp(value: float, low: float, high: float) -> float:
     return max(low, min(high, value))
@@ -65,7 +94,7 @@ def score_content(content: dict[str, Any]) -> dict[str, Any]:
     conversion_potential = 10.0
     if not cta.strip():
         conversion_potential -= 6
-    if funnel_stage == "CONVERSION" and not any(x in cta.lower() for x in ("shop", "build", "book", "compare", "see")):
+    if funnel_stage == "CONVERSION" and not has_explicit_cta_keyword(cta):
         conversion_potential -= 3
 
     brand_credibility = 5.0

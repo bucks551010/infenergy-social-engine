@@ -139,6 +139,27 @@ RISKY_CLAIM_PATTERNS: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"\binstant(?:ly)?\b", flags=re.IGNORECASE), "quickly"),
 ]
 
+EXPLICIT_CTA_KEYWORDS: tuple[str, ...] = (
+    "shop",
+    "buy",
+    "build",
+    "book",
+    "compare",
+    "see",
+    "review",
+    "get",
+    "start",
+    "message",
+    "comment",
+    "schedule",
+    "call",
+    "contact",
+    "quote",
+    "assessment",
+    "checkout",
+    "order",
+)
+
 
 @dataclass
 class QualityScore:
@@ -267,6 +288,11 @@ def cta_is_valid_for_stage(stage: str, cta: str, destination_url: str) -> tuple[
     if normalized in ("DESIRE", "TRUST", "CONVERSION") and not (destination_url or "").strip():
         return False, "destination_url_required_for_stage"
     return True, "ok"
+
+
+def has_explicit_cta_keyword(text: str) -> bool:
+    low = str(text or "").lower()
+    return any(k in low for k in EXPLICIT_CTA_KEYWORDS)
 
 
 def _is_legacy_schedule(schedule: dict[str, Any]) -> bool:
@@ -519,8 +545,16 @@ def score_generated_content(content: dict[str, Any]) -> QualityScore:
         warnings.append("Instagram hashtag count below target")
         score -= 6
 
-    cta_keywords = ("book", "schedule", "call", "message", "quote", "assessment", "contact")
-    cta_present = any(k in (fb_caption + " " + li_text + " " + wp_content).lower() for k in cta_keywords)
+    cta_source = " ".join(
+        [
+            str(content.get("selected_cta", "")),
+            fb_caption,
+            ig_caption,
+            li_text,
+            wp_content,
+        ]
+    )
+    cta_present = has_explicit_cta_keyword(cta_source)
     checks["cta_present"] = cta_present
     if not cta_present:
         warnings.append("No explicit CTA keyword detected")

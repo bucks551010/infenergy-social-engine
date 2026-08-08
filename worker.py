@@ -945,14 +945,20 @@ class HealthHandler(BaseHTTPRequestHandler):
                 return
 
             ok, output = _run_script("run_marketing_weekly.py")
+            campaign_ok, campaign_output = _run_script("build_campaign_plan.py")
+            current_campaign = _load_latest_structured_campaign()
+            overall_ok = bool(ok and campaign_ok)
             payload = {
-                "ok": ok,
-                "message": "weekly planner run complete" if ok else "weekly planner run failed",
+                "ok": overall_ok,
+                "message": "weekly planner run complete" if overall_ok else "weekly planner run failed",
                 "time_utc": _utc_now(),
                 "output_tail": output,
+                "campaign_build_ok": campaign_ok,
+                "campaign_output_tail": campaign_output,
+                "campaign_current": current_campaign,
             }
             body = json.dumps(payload).encode("utf-8")
-            self.send_response(200 if ok else 500)
+            self.send_response(200 if overall_ok else 500)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()

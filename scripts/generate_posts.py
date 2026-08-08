@@ -1957,6 +1957,85 @@ def _enforce_product_led_copy(content: dict, product: dict | None) -> None:
     content["li_text"] = _ensure_product_led_text(str(content.get("li_text", "") or ""), product)
 
 
+def _product_use_case_line(product: dict | None) -> str:
+    if not isinstance(product, dict):
+        return "Keep it ready in your emergency kit, vehicle, backpack, or travel bag."
+    name_low = str(product.get("name", "") or "").lower()
+    categories = " ".join(str(x or "") for x in (product.get("categories", []) or [])).lower()
+    if "jump starter" in name_low:
+        return "Keep it in your vehicle, roadside kit, garage, or travel bag so backup power is there when the unexpected hits."
+    if "power bank" in name_low or "charger" in name_low:
+        return "Keep it in your home emergency kit, vehicle, backpack, or travel bag so you are not searching for power when you need it most."
+    if "fan" in name_low:
+        return "Keep it in your camping kit, vehicle, outage closet, or travel bag so airflow and backup charging are already covered."
+    if "filter" in name_low or "straw" in name_low:
+        return "Keep it in your preparedness kit, vehicle, backpack, or travel gear so clean-water backup is ready before you need it."
+    if "travel" in categories or "portable" in categories:
+        return "Keep it in your emergency kit, vehicle, backpack, or travel bag so backup power is ready before you actually need it."
+    return "Keep it ready in your emergency kit, vehicle, backpack, or travel bag."
+
+
+def _sales_cta_line(product: dict | None, first_step: str, platform: str) -> str:
+    name = str((product or {}).get("name", "") or "this product").strip()
+    base = str(first_step or "Get yours today and stay powered when the unexpected happens.").strip()
+    if platform == "instagram":
+        return f"Tap to get {name} and stay powered when the unexpected happens."
+    if platform == "linkedin":
+        return f"Order {name} today and add reliable backup power to your preparedness plan."
+    if not base.lower().startswith(("get", "shop", "order", "build", "tap")):
+        return f"Get {name} today and stay powered when the unexpected happens."
+    return base
+
+
+def _enforce_product_sales_platform_copy(content: dict, product: dict | None, talking_point: dict) -> None:
+    if not isinstance(content, dict) or not isinstance(product, dict):
+        return
+    product_name = str(product.get("name", "") or "").strip()
+    if not product_name:
+        return
+    metrics = [str(x).strip() for x in (product.get("metrics", []) or []) if str(x).strip()]
+    bullets = [f"- {item}" for item in _sales_feature_bullets(product, limit=5)]
+    bullet_block = "\n".join(bullets)
+    use_case_line = _product_use_case_line(product)
+    pain_point = str((talking_point or {}).get("pain_point", "") or "Dead batteries and limited power become a real problem when an outlet is not nearby.").strip()
+    first_step = str((talking_point or {}).get("first_step", "") or "Get yours today and stay powered when the unexpected happens.").strip()
+    proof_line = _one_line(_product_detail_summary(product), 220)
+    metric_line = ", ".join(metrics[:3]) if metrics else proof_line
+
+    content["fb_caption"] = (
+        f"When the power goes out, your essentials should not go with it.\n\n"
+        f"{pain_point}\n\n"
+        f"Meet the {product_name} - portable backup power designed to help keep your essential devices ready when an outlet is not nearby.\n\n"
+        f"{bullet_block}\n\n"
+        f"{proof_line}\n\n"
+        f"{use_case_line}\n\n"
+        f"The best time to prepare for an outage is before the lights go out.\n\n"
+        f"{_sales_cta_line(product, first_step, 'facebook')}\n"
+        f"#PortablePower #EmergencyPreparedness #BackupPower #PowerOutage #StayPowered"
+    )
+    content["ig_caption"] = (
+        f"POWER WHEN YOU NEED IT.\n\n"
+        f"{pain_point}\n\n"
+        f"The {product_name} gives you reliable backup power wherever you go.\n\n"
+        f"{bullet_block}\n\n"
+        f"{use_case_line}\n\n"
+        f"Core details: {metric_line}.\n\n"
+        f"Do not wait for the next outage to realize you needed backup power.\n\n"
+        f"{_sales_cta_line(product, first_step, 'instagram')}\n"
+        f"#PortablePower #StayPowered #EmergencyPreparedness #BackupPower #PowerOutage #StormReady #TravelPower #PreparedNotScared"
+    )
+    content["li_text"] = (
+        f"Reliable backup power should not be complicated.\n\n"
+        f"{pain_point}\n\n"
+        f"The {product_name} is designed to help keep essential devices charged when access to traditional power is limited.\n\n"
+        f"Key features include:\n{bullet_block}\n\n"
+        f"{proof_line}\n\n"
+        f"{use_case_line}\n\n"
+        f"Preparation starts before the power goes out. {_sales_cta_line(product, first_step, 'linkedin')}\n"
+        f"#EmergencyPreparedness #PortablePower #BackupPower #BusinessContinuity #StormPreparedness"
+    )
+
+
 def _enforce_numeric_proof_requirements(content: dict, funnel_stage: str, talking_point: dict) -> None:
     stage = str(funnel_stage or "").strip().upper()
     if stage not in {"DESIRE", "TRUST"}:
@@ -2061,6 +2140,18 @@ def _enforce_conversion_caption(text: str, talking_point: dict, platform: str = 
     platform_name = str(platform or "").strip().lower()
 
     body = _sanitize_positioning_terms(body)
+    low = body.lower()
+    structured_sales_copy = (
+        "meet the " in low
+        or "key features include:" in low
+        or "power when you need it" in low
+        or "get yours today" in low
+        or "tap to get" in low
+        or "order " in low
+    )
+    if structured_sales_copy:
+        return body.strip()
+
     body = _enforce_pain_point_opening(body, pain_point)
 
     low = body.lower()
@@ -2287,6 +2378,7 @@ def _build_post_components(
     product_name = (product or {}).get("name", "our energy solution")
     product_id = (product or {}).get("id", "")
     metrics = (product or {}).get("metrics", [])
+    feature_bullets = _sales_feature_bullets(product, limit=5)
     m1 = metrics[0] if len(metrics) > 0 else "verified output specs"
     m2 = metrics[1] if len(metrics) > 1 else "runtime and charging context"
 
@@ -2331,68 +2423,94 @@ def _build_post_components(
         "why": why,
         "product_connection": product_connection,
         "proof": proof,
+        "feature_bullets": feature_bullets,
+        "product_name": product_name,
+        "use_case_line": _product_use_case_line(product),
+        "detail_summary": _product_detail_summary(product),
         "cta": cta,
         "topic": topic,
     }
 
 
+def _sales_feature_bullets(product: dict | None, limit: int = 5) -> list[str]:
+    if not isinstance(product, dict):
+        return []
+    bullets: list[str] = []
+    metrics = [str(x).strip() for x in (product.get("metrics", []) or []) if str(x).strip()]
+    for metric in metrics[:limit]:
+        bullets.append(metric)
+    categories = [str(x).strip() for x in (product.get("categories", []) or []) if str(x).strip()]
+    if categories:
+        bullets.append(f"Built for {categories[0]}")
+    fact = _one_line(_strip_html(str(product.get("fact_snippet", "") or "")), 140)
+    if fact:
+        bullets.append(fact)
+    cleaned: list[str] = []
+    seen: set[str] = set()
+    for bullet in bullets:
+        key = bullet.lower().strip()
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        cleaned.append(bullet)
+        if len(cleaned) >= limit:
+            break
+    return cleaned
+
+
 def _adapt_facebook(components: dict, funnel_stage: str) -> tuple[str, str, str]:
-    question = "What would you power first if the grid went down tonight?"
-    if funnel_stage.upper() == "CONVERSION":
-        question = "Want a practical recommendation matched to your devices?"
-    cta = components["cta"] if funnel_stage.upper() == "CONVERSION" else "Comment with your top device and we will help you map priorities."
+    product_name = str(components.get("product_name", "this product"))
+    feature_lines = "\n".join([f"- {item}" for item in (components.get("feature_bullets", []) or [])[:5]])
+    question = "What device is non-negotiable for you during an outage?"
+    cta = _sales_cta_line({"name": product_name}, str(components.get("cta", "")), "facebook")
     caption = (
-        f"{_one_line(components['hook'], 120)}\n\n"
-        f"{components['situation']} {components['info']}\n\n"
-        f"{components['why']} {components['product_connection']}\n\n"
+        "When the power goes out, your essentials should not go with it.\n\n"
+        f"{components['situation']}\n\n"
+        f"Meet the {product_name} - portable backup power designed to help keep your essential devices ready when an outlet is not nearby.\n\n"
+        f"{feature_lines}\n\n"
+        f"{components['detail_summary']}\n\n"
+        f"{components['use_case_line']}\n\n"
         f"{components['proof']}\n\n"
-        f"{cta}\n"
+        f"{cta}\n\n"
         f"{question}\n"
-        "#EnergyResilience #PreparedHome #BackupPower"
+        "#PortablePower #EmergencyPreparedness #BackupPower #PowerOutage #StayPowered"
     )
     return caption, cta, "community_story"
 
 
 def _adapt_instagram(components: dict, funnel_stage: str) -> tuple[str, str, str, str]:
-    hook = _one_line(components["hook"], 60)
-    hook_words = hook.split()
-    hook_line = " ".join(hook_words[:9]) if hook_words else "Power planning, done right"
-    stage = funnel_stage.upper()
-    cta = components["cta"]
-    if stage == "EDUCATION":
-        cta = "Save this and share it with someone preparing their home."
-    elif stage in ("DESIRE", "CONVERSION"):
-        cta = "See product options and compare what fits your daily loads."
+    product_name = str(components.get("product_name", "this product"))
+    feature_lines = "\n".join([f"- {item}" for item in (components.get("feature_bullets", []) or [])[:4]])
+    cta = _sales_cta_line({"name": product_name}, str(components.get("cta", "")), "instagram")
 
     caption = (
-        f"{hook_line}\n"
-        f"{components['situation']}\n"
-        f"{components['info']}\n"
-        f"Why it matters: {components['why']}\n"
-        f"{components['product_connection']}\n"
-        f"{components['proof']}\n"
+        "POWER WHEN YOU NEED IT.\n\n"
+        f"The {product_name} gives you reliable backup power when storms, outages, travel, or emergencies make charging harder.\n\n"
+        f"{feature_lines}\n\n"
+        f"{components['detail_summary']}\n\n"
+        f"{components['use_case_line']}\n\n"
+        f"{components['proof']}\n\n"
         f"{cta}\n"
-        "#PortablePower #EnergyPreparedness #SolarBackup #HomeResilience #PowerPlanning"
+        "#PortablePower #StayPowered #EmergencyPreparedness #BackupPower #PowerOutage #StormReady #TravelPower #PreparedNotScared"
     )
-    visual_direction = "reel" if stage in ("ATTENTION", "DESIRE") else "carousel"
+    visual_direction = "reel" if funnel_stage.upper() in ("ATTENTION", "DESIRE") else "carousel"
     alt_text = f"{components['topic']} with practical power-planning visuals and product context."
     return caption, cta, visual_direction, alt_text
 
 
 def _adapt_linkedin(components: dict, funnel_stage: str) -> tuple[str, str, str]:
-    stage = funnel_stage.upper()
-    cta = components["cta"]
-    if stage != "CONVERSION":
-        cta = "Review the framework and adapt it to your own resilience plan."
+    product_name = str(components.get("product_name", "this product"))
+    feature_lines = "\n".join([f"- {item}" for item in (components.get("feature_bullets", []) or [])[:5]])
+    cta = _sales_cta_line({"name": product_name}, str(components.get("cta", "")), "linkedin")
     caption = (
-        f"{_one_line(components['hook'], 120)}\n\n"
-        f"Context: {components['situation']}\n"
-        f"Useful model: {components['info']}\n"
-        f"Why this matters: {components['why']}\n"
-        f"Product connection: {components['product_connection']}\n"
-        f"Credibility check: {components['proof']}\n\n"
-        f"Next step: {cta}\n"
-        "#EnergyResilience #BusinessContinuity"
+        "Reliable backup power should not be complicated.\n\n"
+        f"The {product_name} is designed to help keep essential devices charged when access to traditional power is limited.\n\n"
+        f"Key features include:\n{feature_lines}\n\n"
+        f"{components['detail_summary']}\n\n"
+        f"{components['use_case_line']}\n\n"
+        f"{components['proof']}\n\n"
+        f"{cta}\n"
+        "#EmergencyPreparedness #PortablePower #BackupPower #BusinessContinuity #StormPreparedness"
     )
     return caption, cta, "authority_post"
 
@@ -2539,6 +2657,9 @@ def _build_fallback_content(
     proof_anchor = str(talking_point.get("proof_anchor") or f"Use {m1} and {m2} to validate fit before buying.").strip()
     first_step = str(talking_point.get("first_step") or cta).strip()
     angle = str(talking_point.get("angle") or f"{topic} through practical decision-making.").strip()
+    feature_bullets = _sales_feature_bullets(product)
+    feature_lines = "\n".join([f"- {item}" for item in feature_bullets[:5]])
+    usage_line = "Keep it in your home emergency kit, vehicle, backpack, or travel bag so power is there before you need it."
 
     wp_title = f"{name}: What To Know Before You Buy"
     if len(wp_title) > 64:
@@ -2559,35 +2680,34 @@ def _build_fallback_content(
     )
 
     fb_caption = (
-        f"{pain_point}\n\n"
-        f"If you are comparing options like {name}, start with what actually matters: published specs and your real daily devices. This product lists {m1} and {m2}, which are the kinds of details that should drive your decision, not just brand name."
-        f"{price_line}\n\n"
+        f"When the power goes out, your essentials should not go with it.\n\n"
+        f"{pain_point} Meet {name} - portable backup power built to keep key devices ready when an outlet is not nearby.{price_line}\n\n"
+        f"{feature_lines}\n\n"
         f"{proof_anchor}\n\n"
-        f"If you want help matching the right system to your usage, {first_step.lower()}\n\n"
-        f"What device is non-negotiable for you during an outage?\n"
-        f"#BackupPower #EnergyResilience #SmartBuying #InfEnergyPower #PortablePower"
+        f"{usage_line}\n\n"
+        f"Prepare before the next outage, road trip, or emergency catches you off guard.\n\n"
+        f"{first_step}\n"
+        f"#BackupPower #EmergencyPreparedness #PortablePower #PowerOutage #StayPowered"
     )
 
     ig_caption = (
-        f"{_one_line(pain_point, 70)}\n"
-        f"If you are considering {name}, do not pick based on marketing alone. Compare real specs to your actual daily devices.\n\n"
-        f"Two key published details on this model are {m1} and {m2}. Those numbers matter more than hype because they affect runtime, compatibility, and reliability when you need power most."
-        f"{price_line}\n\n"
-        f"{proof_anchor}\n"
-        f"Want help choosing the right setup for your home or business? {first_step}.\n"
-        f"#PortablePower #EnergyBackup #PowerOutagePrep #SolarReady #EmergencyPower #SmartHomeEnergy #InfEnergyPower #BatteryBackup"
+        f"POWER WHEN YOU NEED IT.\n"
+        f"{name} gives you portable backup power when storms, outages, travel, or emergencies make charging harder.{price_line}\n\n"
+        f"{feature_lines}\n\n"
+        f"{proof_anchor}\n\n"
+        f"{usage_line}\n\n"
+        f"Do not wait for the next outage to realize you needed backup power.\n\n"
+        f"{first_step}\n"
+        f"#PortablePower #StayPowered #EmergencyPreparedness #BackupPower #PowerOutage #StormReady #TravelPower #PreparedNotScared"
     )
 
     li_text = (
-        f"{pain_point}\n\n"
-        f"When evaluating products like {name}{' (' + sku + ')' if sku else ''}, the better framework is simple:\n"
-        f"1) Map your top 3 critical loads\n"
-        f"2) Validate published output and charging specs\n"
-        f"3) Compare portability and recharge practicality\n\n"
-        f"For this model, two important published specs are {m1} and {m2}. These are the details that determine whether a unit helps in a real outage or just looks good on a product page."
-        f"{price_line}\n\n"
+        f"Reliable backup power should not be complicated.\n\n"
+        f"{pain_point} {name}{' (' + sku + ')' if sku else ''} is designed to help keep essential devices charged when access to traditional power is limited.{price_line}\n\n"
+        f"Key product details:\n{feature_lines}\n\n"
         f"{proof_anchor}\n\n"
-        f"If you want a practical recommendation based on your exact use case, {first_step.lower()}"
+        f"Whether you are preparing for outages, travel, or daily continuity, having another way to stay powered can make a meaningful difference.\n\n"
+        f"Preparation starts before the power goes out. {first_step}"
     )
 
     return {
@@ -3571,9 +3691,9 @@ Return ONLY valid JSON with these exact keys (no markdown, no code fences):
   "wp_title": "Specific, curiosity-driven SEO title under 65 characters — not generic",
   "wp_content": "Full blog post as clean HTML with <h2> subheadings. 450-550 words. Open strong, build a logical case, end with a clear next step. Include at least 2 specific data points or examples.",
   "wp_excerpt": "One punchy sentence under 160 characters that makes someone want to click",
-  "fb_caption": "150-220 words. Conversational and personal. Open with a surprising statement or question. Include one specific number or fact. End with a genuine question that invites comments. 4-5 targeted hashtags on the last line only.",
-  "ig_caption": "First line must be a scroll-stopping hook under 10 words. 120-160 words total. Specific, visual, and personal. 7-9 hashtags on the final line only — mix broad and niche.",
-  "li_text": "180-260 words. Professional but not corporate. Open with a counterintuitive insight or bold statement. Build a tight logical argument. Include one specific data point. End with a direct, frictionless CTA — tell them exactly what the first step looks like."
+    "fb_caption": "150-220 words. High-conversion product sales copy. Start with a strong outage/emergency/travel hook, explicitly name the product early, include 4-6 short feature-led lines or bullets using real specs, explain where to keep/use it, then close with a direct buy/preparedness CTA. 4-8 targeted hashtags on the last line only.",
+    "ig_caption": "110-170 words. Tight, visual, scroll-stopping product sales copy. First line should feel like a headline. Name the product early, highlight core features/specs in short punchy lines, mention real use cases like outage, travel, car, emergency kit, or backpack, then close with a direct tap-to-buy CTA. 7-10 hashtags on the final line only.",
+    "li_text": "170-260 words. Professional product sales copy with a preparedness/business-continuity angle. Explicitly name the product early, include a short 'key features include' style section with real specs, explain why the product matters in real use, and end with a direct order or action CTA."
 }}"""
 
     content = _generate_json_with_gemini(prompt, model_candidates)
@@ -3639,6 +3759,7 @@ Return ONLY valid JSON with these exact keys (no markdown, no code fences):
                 platform=platform_name,
             )
         _enforce_product_led_copy(content, product)
+        _enforce_product_sales_platform_copy(content, product, talking_point)
         _enforce_numeric_proof_requirements(content, funnel_stage, talking_point)
         for key in ("wp_content", "fb_caption", "ig_caption", "li_text"):
             cleaned, replaced = apply_claim_guardrails(str(content.get(key, "")))
@@ -3818,6 +3939,7 @@ Return ONLY valid JSON with these exact keys (no markdown, no code fences):
             platform=platform_name,
         )
     _enforce_product_led_copy(content, product)
+    _enforce_product_sales_platform_copy(content, product, talking_point)
     _enforce_numeric_proof_requirements(content, funnel_stage, talking_point)
     for key in ("wp_content", "fb_caption", "ig_caption", "li_text"):
         cleaned, replaced = apply_claim_guardrails(str(content.get(key, "")))
@@ -3876,6 +3998,7 @@ Return ONLY valid JSON with these exact keys (no markdown, no code fences):
                 platform=platform_name,
             )
         _enforce_product_led_copy(content, product)
+        _enforce_product_sales_platform_copy(content, product, talking_point)
         _enforce_numeric_proof_requirements(content, funnel_stage, talking_point)
         # Re-apply guardrails after conference-driven refinements.
         for key in ("wp_content", "fb_caption", "ig_caption", "li_text"):

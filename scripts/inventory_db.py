@@ -1,4 +1,5 @@
 import json
+import hashlib
 import os
 import re
 import sqlite3
@@ -672,6 +673,7 @@ def bootstrap_visual_repo_from_env(data_dir: str) -> dict:
     summary = {
         "auto_seeded": 0,
         "imported_refs": 0,
+        "deduped_refs": 0,
         "override_updated": False,
         "active_keys_updated": False,
     }
@@ -687,16 +689,21 @@ def bootstrap_visual_repo_from_env(data_dir: str) -> dict:
     if refs_env:
         raw_items = [p.strip() for p in re.split(r"[;\n,]", refs_env) if p.strip()]
         imported: list[dict] = []
+        stable_keys: set[str] = set()
+        env_urls: list[str] = []
         rank = 1000
         for item in raw_items:
             if not item.startswith("http"):
                 continue
-            style_key = f"env_ref_{abs(hash(item)) % 10_000_000}"
+            normalized_url = item.strip()
+            style_key = f"env_ref_{hashlib.sha1(normalized_url.encode('utf-8')).hexdigest()[:12]}"
+            stable_keys.add(style_key)
+            env_urls.append(normalized_url)
             imported.append(
                 {
                     "style_key": style_key,
                     "style_name": f"Env Reference {rank - 999}",
-                    "reference_url": item,
+                    "reference_url": normalized_url,
                     "visual_product_image_override_url": "",
                     "style_notes": "Imported from GEMINI_STYLE_REFERENCES",
                     "tags": ["env_import", "reference"],
@@ -707,6 +714,26 @@ def bootstrap_visual_repo_from_env(data_dir: str) -> dict:
             rank += 1
         if imported:
             summary["imported_refs"] = upsert_gemini_style_references(data_dir, imported)
+            conn = _connect(data_dir)
+            try:
+                url_placeholders = ", ".join(["?"] * len(env_urls))
+                key_placeholders = ", ".join(["?"] * len(stable_keys))
+                cleanup_sql = (
+                    "DELETE FROM gemini_style_reference_repo "
+                    "WHERE style_notes = ? "
+                    f"AND reference_url IN ({url_placeholders}) "
+                    f"AND style_key NOT IN ({key_placeholders})"
+                )
+                params = [
+                    "Imported from GEMINI_STYLE_REFERENCES",
+                    *env_urls,
+                    *sorted(stable_keys),
+                ]
+                cur = conn.execute(cleanup_sql, tuple(params))
+                summary["deduped_refs"] = int(cur.rowcount or 0)
+                conn.commit()
+            finally:
+                conn.close()
 
     settings = fetch_visual_generation_settings(data_dir)
     override_env = str(os.environ.get("VISUAL_PRODUCT_IMAGE_OVERRIDE", "")).strip()

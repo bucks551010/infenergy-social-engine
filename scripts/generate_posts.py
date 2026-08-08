@@ -1802,6 +1802,100 @@ def _build_talking_point(topic: str, funnel_stage: str, product: dict | None) ->
     }
 
 
+def _build_product_intelligence_handoff(
+    *,
+    product: dict | None,
+    topic: str,
+    funnel_stage: str,
+    selected_hook: str,
+    selected_cta: str,
+    audience_segment: str,
+    talking_point: dict,
+) -> dict:
+    product_name = str((product or {}).get("name", "")).strip() or "this portable power solution"
+    categories = [str(x).strip() for x in ((product or {}).get("categories", []) if isinstance((product or {}).get("categories", []), list) else []) if str(x).strip()]
+    category_low = " ".join(categories).lower()
+    metrics = [str(x).strip() for x in ((product or {}).get("metrics", []) if isinstance((product or {}).get("metrics", []), list) else []) if str(x).strip()]
+    facts = str((product or {}).get("fact_snippet", "")).strip()
+
+    fit_audiences = [
+        "Homeowners and renters preparing for outages",
+        "Families who need dependable daily-device backup",
+    ]
+    if any(k in category_low for k in ("camp", "rv", "travel", "outdoor")):
+        fit_audiences.append("Campers, RV users, and travelers needing off-grid power")
+    if any(k in category_low for k in ("business", "office", "commercial")):
+        fit_audiences.append("Small businesses that need continuity for essential loads")
+    fit_audiences.append(f"Primary audience segment: {audience_segment}")
+    fit_audiences = _dedupe_str_list(fit_audiences)
+
+    benefits = [
+        "Turn confusion into a clear product-fit decision using real usage data",
+        "Reduce overbuying and underbuying risk by matching specs to must-run devices",
+    ]
+    if any(k in category_low for k in ("solar", "panel")):
+        benefits.append("Support charging flexibility with portable solar-compatible workflows")
+    if any(k in category_low for k in ("battery", "power station", "generator", "backup")):
+        benefits.append("Improve outage readiness for priority devices at home or on the go")
+    benefits = _dedupe_str_list(benefits)
+
+    proof_points = metrics[:3]
+    if facts:
+        proof_points.append(facts)
+    proof_points.append(str(talking_point.get("proof_anchor", "")).strip())
+    proof_points = _dedupe_str_list([p for p in proof_points if p])
+
+    stage = str(funnel_stage or "").strip().upper()
+    stage_sales_angle = {
+        "ATTENTION": "lead with the high-cost mistake and reframe the buying decision",
+        "EDUCATION": "teach the spec-to-outcome framework and show what to compare first",
+        "DESIRE": "connect practical peace of mind to verified product fit",
+        "TRUST": "de-risk the purchase with transparent, verifiable product context",
+        "CONVERSION": "make the first step frictionless with a concrete action today",
+    }.get(stage, "translate specs into a practical next step")
+
+    lead_benefit = benefits[0] if benefits else "Match product specs to your real usage"
+    lead_proof = proof_points[0] if proof_points else str(talking_point.get("proof_anchor", "")).strip()
+    pain = str(talking_point.get("pain_point", "")).strip()
+    sales_copy_seed = (
+        f"{selected_hook} {pain} "
+        f"{product_name} helps you {lead_benefit.lower()} with guidance grounded in {lead_proof}. "
+        f"{selected_cta}"
+    ).strip()
+
+    return {
+        "agent": "product_intelligence_agent",
+        "product_summary": f"{product_name} for practical portable-power planning and outage readiness.",
+        "best_fit_audiences": fit_audiences,
+        "core_benefits": benefits,
+        "proof_points": proof_points,
+        "sales_angle": stage_sales_angle,
+        "sales_copy_seed": sales_copy_seed,
+        "handoff": {
+            "copywriter": [
+                f"Write for: {fit_audiences[:3]}",
+                f"Lead benefit: {lead_benefit}",
+                f"Use proof from: {proof_points[:3]}",
+                f"Close with this CTA direction: {selected_cta}",
+            ],
+            "visual_director": [
+                f"Show {product_name} in a realistic use case tied to {topic}",
+                "Frame one before/after decision moment: guessing vs measured fit",
+                f"Anchor composition to this angle: {stage_sales_angle}",
+            ],
+            "platform_editor": [
+                "Keep platform captions consistent on audience, benefit, and proof",
+                "Do not remove the concrete first-step action",
+                f"Maintain this stage objective: {stage}",
+            ],
+            "product_truth": [
+                "Reject unsupported claims, guarantees, and invented specs",
+                f"Allow only these proof anchors: {proof_points[:4]}",
+            ],
+        },
+    }
+
+
 def _build_business_profile(products: list[dict]) -> dict:
     category_counts: dict[str, int] = {}
     keyword_counts: dict[str, int] = {
@@ -1866,6 +1960,7 @@ def _build_post_components(
     selected_cta: str,
     product: dict | None,
     funnel_stage: str,
+    product_intelligence: dict | None = None,
 ) -> dict:
     product_name = (product or {}).get("name", "our energy solution")
     product_id = (product or {}).get("id", "")
@@ -1877,7 +1972,25 @@ def _build_post_components(
     info = f"A better approach is to map your must-run devices and compare them against measured specs like {m1} and {m2}."
     why = "This reduces expensive guesswork, improves resilience, and helps buyers choose what actually fits real usage."
     product_connection = f"For this topic, {product_name} can be part of a practical setup when the specs match your actual daily loads."
-    proof = f"Start from verified details and published product fields only."
+    proof = "Start from verified details and published product fields only."
+
+    if isinstance(product_intelligence, dict) and product_intelligence:
+        audiences = product_intelligence.get("best_fit_audiences", [])
+        benefits = product_intelligence.get("core_benefits", [])
+        proofs = product_intelligence.get("proof_points", [])
+        sales_angle = str(product_intelligence.get("sales_angle", "")).strip()
+        audience_line = str(audiences[0]).strip() if isinstance(audiences, list) and audiences else "buyers preparing for outages"
+        benefit_line = str(benefits[0]).strip() if isinstance(benefits, list) and benefits else "match real usage to the right product specs"
+        proof_line = str(proofs[0]).strip() if isinstance(proofs, list) and proofs else f"{m1} and {m2}"
+        situation = f"{audience_line} often face the same issue: backup plans are picked before real load needs are mapped."
+        info = f"Use {proof_line} as a practical anchor to compare fit before purchase."
+        why = benefit_line
+        product_connection = (
+            f"{product_name} is most effective when used through this lens: {sales_angle}."
+            if sales_angle
+            else f"{product_name} is most effective when matched to verified daily-load needs."
+        )
+        proof = f"Proof-first only: {proof_line}."
 
     cta = selected_cta
     stage = funnel_stage.upper()
@@ -2972,6 +3085,27 @@ def generate(slot: str, *, funnel_stage_override: str = "", product_id_override:
         f"- Banned phrases and patterns: {ideology_banned_phrases}\n"
     )
 
+    product_intelligence = _build_product_intelligence_handoff(
+        product=product,
+        topic=topic,
+        funnel_stage=funnel_stage,
+        selected_hook=selected_hook,
+        selected_cta=selected_cta,
+        audience_segment=audience_segment,
+        talking_point=talking_point,
+    )
+    phase2_stack["product_intelligence_agent"] = product_intelligence
+    product_agent_context = (
+        "PRODUCT INTELLIGENCE AGENT HANDOFF:\n"
+        f"- Product summary: {product_intelligence.get('product_summary', '')}\n"
+        f"- Best-fit audiences: {product_intelligence.get('best_fit_audiences', [])}\n"
+        f"- Core benefits: {product_intelligence.get('core_benefits', [])}\n"
+        f"- Proof points: {product_intelligence.get('proof_points', [])}\n"
+        f"- Sales angle: {product_intelligence.get('sales_angle', '')}\n"
+        f"- Sales copy seed: {product_intelligence.get('sales_copy_seed', '')}\n"
+        f"- Team handoff directives: {product_intelligence.get('handoff', {})}\n"
+    )
+
     visual_plan = _build_visual_plan_with_gemini(
         visual_director_candidates,
         topic=topic,
@@ -3061,6 +3195,8 @@ PRODUCT CONTEXT (ground your content in these details when relevant):
 
 {ideology_context}
 
+{product_agent_context}
+
 CAMPAIGN EXECUTION CONTEXT:
 - Selected hook for this post: {selected_hook}
 - Selected CTA for this post: {selected_cta}
@@ -3144,6 +3280,8 @@ Return ONLY valid JSON with these exact keys (no markdown, no code fences):
         content["audience_segment"] = audience_segment
         content["campaign_id"] = campaign_id
         content["destination_url"] = destination_url
+        content["product_intelligence_handoff"] = product_intelligence
+        content["sales_copy_seed"] = str(product_intelligence.get("sales_copy_seed", "")).strip()
         content["weekly_plan_used"] = bool(weekly_sequence)
         content["hook_hash"] = stable_text_hash(selected_hook)
         content["cta_hash"] = stable_text_hash(selected_cta)
@@ -3186,7 +3324,14 @@ Return ONLY valid JSON with these exact keys (no markdown, no code fences):
         post_id = uuid.uuid4().hex[:12]
         selected_hook = str(content.get("selected_hook", selected_hook))
         selected_cta = str(content.get("selected_cta", selected_cta))
-        components = _build_post_components(topic, selected_hook, selected_cta, product, funnel_stage)
+        components = _build_post_components(
+            topic,
+            selected_hook,
+            selected_cta,
+            product,
+            funnel_stage,
+            product_intelligence=product_intelligence,
+        )
         platform_posts = _build_platform_posts(
             post_id=post_id,
             campaign_id=campaign_id,
@@ -3251,6 +3396,7 @@ Return ONLY valid JSON with these exact keys (no markdown, no code fences):
         )
         content["creative_agents"] = {
             "copywriter": preferred_model or "gemini-2.5-flash",
+            "product_intelligence_agent": "deterministic_profile_agent_v1",
             "visual_director": (preferred_visual_director_model or "gemini-2.5-pro"),
             "ideation_divergence": (preferred_model or "gemini-2.5-flash"),
             "audience_psychographics": (preferred_model or "gemini-2.5-flash"),
@@ -3312,6 +3458,8 @@ Return ONLY valid JSON with these exact keys (no markdown, no code fences):
     content["audience_segment"] = audience_segment
     content["campaign_id"] = campaign_id
     content["destination_url"] = destination_url
+    content["product_intelligence_handoff"] = product_intelligence
+    content["sales_copy_seed"] = str(product_intelligence.get("sales_copy_seed", "")).strip()
     content["weekly_plan_used"] = bool(weekly_sequence)
     content["hook_hash"] = stable_text_hash(selected_hook)
     content["cta_hash"] = stable_text_hash(selected_cta)
@@ -3437,7 +3585,14 @@ Return ONLY valid JSON with these exact keys (no markdown, no code fences):
     post_id = uuid.uuid4().hex[:12]
     selected_hook = str(content.get("selected_hook", selected_hook))
     selected_cta = str(content.get("selected_cta", selected_cta))
-    components = _build_post_components(topic, selected_hook, selected_cta, product, funnel_stage)
+    components = _build_post_components(
+        topic,
+        selected_hook,
+        selected_cta,
+        product,
+        funnel_stage,
+        product_intelligence=product_intelligence,
+    )
     platform_posts = _build_platform_posts(
         post_id=post_id,
         campaign_id=campaign_id,
@@ -3491,6 +3646,7 @@ Return ONLY valid JSON with these exact keys (no markdown, no code fences):
     )
     content["creative_agents"] = {
         "copywriter": preferred_model or "gemini-2.5-flash",
+        "product_intelligence_agent": "deterministic_profile_agent_v1",
         "visual_director": (preferred_visual_director_model or "gemini-2.5-pro"),
         "ideation_divergence": (preferred_model or "gemini-2.5-flash"),
         "audience_psychographics": (preferred_model or "gemini-2.5-flash"),

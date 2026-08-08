@@ -71,17 +71,32 @@ def _font(font_module: Any, size: int):
     return font_module.load_default()
 
 
-def _remove_near_white_bg(image: Any, threshold: int = 246):
+def _autocrop_transparent(image: Any) -> Any:
+    try:
+        bbox = image.getbbox()
+        if not bbox:
+            return image
+        return image.crop(bbox)
+    except Exception:
+        return image
+
+
+def _remove_near_white_bg(image: Any, threshold: int = 238):
     try:
         rgba = image.convert("RGBA")
         pixels = []
         for r, g, b, a in rgba.getdata():
-            if r >= threshold and g >= threshold and b >= threshold:
+            near_white = r >= threshold and g >= threshold and b >= threshold
+            low_saturation = max(r, g, b) - min(r, g, b) <= 18
+            if near_white and low_saturation:
                 pixels.append((r, g, b, 0))
+            elif a > 0 and near_white and low_saturation:
+                softened_alpha = max(0, int(a * 0.18))
+                pixels.append((r, g, b, softened_alpha))
             else:
                 pixels.append((r, g, b, a))
         rgba.putdata(pixels)
-        return rgba
+        return _autocrop_transparent(rgba)
     except Exception:
         return image
 

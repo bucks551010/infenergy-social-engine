@@ -192,16 +192,20 @@ Participants:
 - Visual Director Agent: ensures image concept and composition amplify the message.
 - Product Truth Agent: blocks unsupported claims and keeps facts verifiable.
 - Platform Editor Agent: adapts execution for Facebook, Instagram, and LinkedIn behavior.
+- Product Intelligence Agent: ensures the topic, product, audience, benefits, and proof actually fit together.
 
 Task:
 - Have the agents debate strengths, weaknesses, and risks in the current draft.
 - Produce a unified plan to improve collective performance.
 - Keep recommendations practical and directly applicable in this run.
+- Explicitly discuss whether the topic truly matches the featured product.
+- Explicitly discuss whether the copy names the product and includes concrete product details.
 
 Constraints:
 - No invented product specs, warranties, or guarantees.
 - Keep tone trustworthy and practical.
 - Prefer specific improvements over generic feedback.
+- Flag any mismatch between the chosen topic and the featured product as a high-priority issue.
 """.strip()
 
 PREGEN_CONFERENCE_BRIEF = """
@@ -212,11 +216,14 @@ Participants:
 - Visual Director Agent
 - Product Truth Agent
 - Platform Editor Agent
+- Product Intelligence Agent
 
 Objective:
 - Decide the single best post direction for this run before writing starts.
 - Agree on the strongest hook angle, CTA framing, and visual focus.
 - Reduce duplication risk by choosing a fresh direction versus recent posts.
+- Ensure the selected topic is native to the featured product's use case, not just the funnel stage.
+- Ensure the draft direction will explicitly name the product and mention its real benefits or specs.
 
 Constraints:
 - Use only supported product facts.

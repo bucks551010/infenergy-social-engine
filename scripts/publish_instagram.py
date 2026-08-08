@@ -62,7 +62,7 @@ def _wait_for_media_container(ig_user_id: str, creation_id: str, access_token: s
             resp = requests.get(
                 f"{GRAPH_BASE}/{creation_id}",
                 params={
-                    "fields": "status_code,status,error_message",
+                    "fields": "status_code,status",
                     "access_token": access_token,
                 },
                 timeout=20,
@@ -72,12 +72,11 @@ def _wait_for_media_container(ig_user_id: str, creation_id: str, access_token: s
             data = resp.json() if resp.content else {}
             status_code = str(data.get("status_code", "")).strip().upper()
             status = str(data.get("status", "")).strip().upper()
-            error_message = str(data.get("error_message", "")).strip()
             last_status = status_code or status
             if status_code == "FINISHED" or status == "FINISHED":
                 return True, "finished"
             if status_code in {"ERROR", "EXPIRED"} or status in {"ERROR", "EXPIRED"}:
-                return False, error_message or (last_status or "container_not_ready")
+                return False, last_status or "container_not_ready"
         except Exception as e:
             return False, f"container_status_exception:{e}"
         time.sleep(2)
@@ -162,10 +161,13 @@ def publish(content: dict, dry_run: bool = False) -> dict:
     candidates = []
     if generated_image_path and os.path.exists(generated_image_path):
         try:
-            media_result = publish_wordpress.upload_media(generated_image_path, dry_run=dry_run)
-            hosted_generated = str(media_result.get("source_url", "")).strip()
-            if _is_valid_public_image(hosted_generated):
-                candidates.append(hosted_generated)
+            if hasattr(publish_wordpress, "upload_media"):
+                media_result = publish_wordpress.upload_media(generated_image_path, dry_run=dry_run)
+                hosted_generated = str(media_result.get("source_url", "")).strip()
+                if _is_valid_public_image(hosted_generated):
+                    candidates.append(hosted_generated)
+            else:
+                print("[Instagram] Warning: publish_wordpress.upload_media unavailable; skipping generated visual upload")
         except Exception as e:
             print(f"[Instagram] Warning: generated visual upload failed, falling back to catalog imagery: {e}")
     product_image = content.get("product_image_url", "")

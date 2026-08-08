@@ -274,7 +274,7 @@ def _build_gemini_image_prompt(content: dict[str, Any], platform: str, visual_pl
     topic = normalize_brand_text(str(content.get("topic") or ""))
     product_name = normalize_brand_text(str(content.get("product_name") or ""))
     stage = normalize_brand_text(str(content.get("funnel_stage") or "ATTENTION"))
-    cta = normalize_brand_text(str(content.get("selected_cta") or "See your custom runtime plan"))
+    cta = normalize_brand_text(str(content.get("selected_cta") or "Map your must-run devices and build your outage-ready setup."))
     stat = _primary_stat(content)
     benefits = _benefit_rows(content)
     badges = _trust_badges(content)

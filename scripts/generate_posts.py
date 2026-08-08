@@ -1541,7 +1541,7 @@ def _fallback_cta_for_stage(stage: str) -> str:
     if normalized == "CONVERSION":
         return "Shop now and build your backup-power setup."
     if normalized == "TRUST":
-        return "Review verified specs and see your custom runtime plan."
+        return "Review verified specs and map your must-run devices."
     if normalized == "DESIRE":
         return "Compare product options and see what fits your daily loads."
     if normalized == "EDUCATION":

@@ -23,6 +23,11 @@ def _ensure_list(value: Any, fallback: list[str]) -> list[str]:
     return fallback
 
 
+def _manifesto(profile: dict[str, Any]) -> dict[str, Any]:
+    raw = profile.get("founder_manifesto", {})
+    return raw if isinstance(raw, dict) else {}
+
+
 def _ai_json(prompt: str) -> dict[str, Any] | None:
     api_key = os.environ.get("GEMINI_API_KEY", "").strip()
     if not api_key:
@@ -53,35 +58,39 @@ def _ai_json(prompt: str) -> dict[str, Any] | None:
 
 
 def research_agent(profile: dict[str, Any]) -> dict[str, Any]:
+    manifesto = _manifesto(profile)
+    business_profile = manifesto.get("business_profile", {}) if isinstance(manifesto.get("business_profile", {}), dict) else {}
+    mission = str(manifesto.get("mission", "")).strip()
     top_categories = profile.get("top_categories", [])[:5]
     top_metrics = profile.get("top_metrics", [])[:8]
     value_tier = profile.get("demographics", {}).get("value_tier", "mid_to_premium")
 
-    market_position = (
-        "Preparedness-first modular energy brand bridging consumer portable power, "
-        "home backup continuity, and practical solar independence."
+    market_position = str(business_profile.get("positioning", "")).strip() or (
+        "Preparedness-first portable power brand helping families and mobile users stay ready "
+        "during outages, travel, and uncertain grid moments."
     )
     return {
         "agent": "market_research_agent",
         "market_position": market_position,
+        "mission": mission,
         "category_dominance": top_categories,
         "spec_anchors": top_metrics,
         "value_tier": value_tier,
         "top_buyer_jobs": [
-            "Keep lights/devices running during outages",
-            "Avoid downtime for home office or small business",
-            "Portable power for travel/camping/worksites",
-            "Transition toward solar-ready energy resilience",
+            "Keep lights, phones, and critical devices running during outages",
+            "Protect family comfort and communication when the grid fails",
+            "Avoid downtime for home office, travel, RV, and small business",
+            "Build confidence with practical readiness planning instead of guesswork",
         ],
         "competitive_edges": [
-            "Broad portfolio from compact banks to high-capacity systems",
-            "Spec-led education instead of hype-led claims",
-            "Blends emergency peace-of-mind with solar-forward positioning",
+            "Mission-led preparedness positioning with practical customer education",
+            "Broad portfolio from everyday chargers to modular high-capacity systems",
+            "Spec-led recommendations focused on real usage and family safety",
         ],
         "positioning_risks": [
             "Feature-heavy messaging can feel technical to first-time buyers",
             "Premium SKUs require stronger value justification and proof",
-            "Crowded portable power market needs sharper differentiation stories",
+            "Crowded portable power market needs stronger trust and transformation stories",
         ],
         "proof_assets": [
             "Published wattage/capacity specs",
@@ -94,6 +103,8 @@ def research_agent(profile: dict[str, Any]) -> dict[str, Any]:
 
 
 def audience_agent(profile: dict[str, Any], research: dict[str, Any]) -> dict[str, Any]:
+    manifesto = _manifesto(profile)
+    benefit_map = manifesto.get("customer_benefit_framework", {}) if isinstance(manifesto.get("customer_benefit_framework", {}), dict) else {}
     objections = profile.get("psychographics", {}).get("objections", [])
     return {
         "agent": "audience_psychology_agent",
@@ -101,7 +112,7 @@ def audience_agent(profile: dict[str, Any], research: dict[str, Any]) -> dict[st
             {
                 "name": "Prepared Family Protector",
                 "pain": "Fear of blackout vulnerability",
-                "desired_state": "Calm control during emergencies",
+                "desired_state": "Calm control and family safety during emergencies",
                 "trigger": "Storm warnings and outage memories",
                 "best_offer": "Free Power Readiness Assessment",
                 "proof_needed": "Real outage runtime examples",
@@ -124,6 +135,7 @@ def audience_agent(profile: dict[str, Any], research: dict[str, Any]) -> dict[st
             },
         ],
         "core_objections": objections,
+        "benefit_map": benefit_map,
         "objection_reframes": {
             "Is this enough power for my needs?": "Map critical loads first, then match specs to those loads.",
             "Will it actually work in a real outage?": "Show outage simulations and runtime case snapshots.",
@@ -140,16 +152,19 @@ def audience_agent(profile: dict[str, Any], research: dict[str, Any]) -> dict[st
 
 
 def voice_agent(profile: dict[str, Any]) -> dict[str, Any]:
+    manifesto = _manifesto(profile)
+    personality = manifesto.get("brand_personality", {}) if isinstance(manifesto.get("brand_personality", {}), dict) else {}
+    values = _ensure_list(manifesto.get("core_values", []), ["integrity", "commitment", "service"])
     claims = profile.get("site_claim_snippets", [])[:5]
     return {
         "agent": "brand_voice_agent",
-        "voice_name": "Resilient Momentum",
+        "voice_name": str(personality.get("voice_name", "Resilient Momentum")).strip() or "Resilient Momentum",
         "voice_rules": [
-            "Lead with tension: risk of doing nothing.",
-            "Translate specs into outcomes buyers feel.",
-            "Use value stacking and practical next steps.",
-            "Be urgent but never manipulative or exaggerated.",
-            "Anchor claims in concrete facts and examples.",
+            "Lead with empathy and urgency rooted in real family preparedness moments.",
+            "Translate specs into immediate and long-term outcomes people can feel.",
+            "Use value stacking, practical guidance, and one clear next step.",
+            "Sound committed and human: protective, coach-like, and trustworthy.",
+            "Anchor every claim in concrete facts and examples.",
         ],
         "voice_ladders": {
             "hook": "counterintuitive truth or outage risk moment",
@@ -171,6 +186,9 @@ def voice_agent(profile: dict[str, Any]) -> dict[str, Any]:
             "clear",
             "control",
             "confidence",
+            "prepared",
+            "secure",
+            "lifeline",
         ],
         "do_not": [
             "Do not copy or mimic specific living public figures.",
@@ -178,11 +196,22 @@ def voice_agent(profile: dict[str, Any]) -> dict[str, Any]:
             "Do not overuse jargon.",
         ],
         "grounding_claims": claims,
+        "brand_values": values,
         "timestamp_utc": _utc_now(),
     }
 
 
 def offer_agent(profile: dict[str, Any], audience: dict[str, Any]) -> dict[str, Any]:
+    manifesto = _manifesto(profile)
+    value_stack = _ensure_list(
+        manifesto.get("value_stack", []),
+        [
+            "Preparedness confidence",
+            "Protection during outages",
+            "Portable freedom and control",
+            "Clear product-fit guidance",
+        ],
+    )
     categories = profile.get("top_categories", [])[:4]
     return {
         "agent": "offer_strategy_agent",
@@ -215,6 +244,7 @@ def offer_agent(profile: dict[str, Any], audience: dict[str, Any]) -> dict[str, 
             "Emergency scenario playbook",
             "Support access",
         ],
+        "customer_value_stack": value_stack,
         "timestamp_utc": _utc_now(),
     }
 
@@ -225,10 +255,15 @@ def copy_agent(
     voice: dict[str, Any],
     offer: dict[str, Any],
 ) -> dict[str, Any]:
+    manifesto = _manifesto(profile)
+    story = manifesto.get("origin_story", {}) if isinstance(manifesto.get("origin_story", {}), dict) else {}
+    sales_verbiage = manifesto.get("approved_sales_verbiage", {}) if isinstance(manifesto.get("approved_sales_verbiage", {}), dict) else {}
+    hero_line = str(sales_verbiage.get("hero_line", "")).strip() or "When the grid fails, your family should not."
+    trust_close = str(sales_verbiage.get("trust_close", "")).strip() or "When the lights go out, choose a plan that keeps people calm, connected, and prepared."
     fallback = {
         "agent": "copywriter_agent",
-        "hero": "When the grid fails, your family should not.",
-        "subhero": "Build a power plan that keeps essentials running with modular, portable backup you can trust.",
+        "hero": hero_line,
+        "subhero": "Build a preparedness-first power plan that protects your family now and gives long-term resilience you can trust.",
         "email_subjects": [
             "Power outage plan in 15 minutes",
             "What your backup system must handle first",
@@ -241,7 +276,7 @@ def copy_agent(
         ],
         "cta_bank": [
             "Get your free power readiness assessment",
-            "See your custom runtime plan",
+            "Map your must-run devices and build your outage-ready setup",
             "Build your outage-proof setup today",
         ],
         "ad_angles": [
@@ -255,10 +290,18 @@ def copy_agent(
             "Setup starts simple with a clear onboarding checklist.",
         ],
         "landing_blocks": {
-            "problem": "Outages and rate spikes expose homes and businesses that rely on assumptions.",
-            "solution": "A clear, spec-led resilience plan keeps essentials powered with less guesswork.",
-            "proof": "Use measurable runtime and output specs matched to your critical loads.",
+            "problem": str(story.get("problem", "Outages expose homes and businesses that rely on assumptions.")).strip(),
+            "solution": "A clear, spec-led preparedness plan keeps essentials powered with less guesswork.",
+            "proof": "Use measurable runtime and output specs matched to your critical loads and family priorities.",
             "cta": "Get your free power readiness assessment",
+        },
+        "value_narrative": {
+            "immediate_value": "Clarity and confidence on what to power first and what to buy now.",
+            "short_term_value": "Better outage readiness, less panic, and fewer wrong purchases.",
+            "long_term_value": "A scalable resilience lifestyle with lower downtime risk.",
+            "family_impact": "Safety, connection, and comfort when emergencies hit.",
+            "lifestyle_shift": "From reactive panic to proactive preparedness.",
+            "trust_close": trust_close,
         },
         "timestamp_utc": _utc_now(),
     }
@@ -268,11 +311,12 @@ You are a conversion copy strategist for INF Energy Power.
 Use this context:\n{json.dumps({'profile': profile, 'audience': audience, 'voice': voice, 'offer': offer})[:10000]}
 
 Return ONLY JSON with keys:
-hero, subhero, email_subjects (3), social_hooks (5), cta_bank (5), ad_angles (5), objection_handlers (3), landing_blocks.
+hero, subhero, email_subjects (3), social_hooks (5), cta_bank (5), ad_angles (5), objection_handlers (3), landing_blocks, value_narrative.
 Constraints:
 - High-energy, trust-first, value-stacking voice.
 - No imitation of specific living people.
 - No fake claims.
+- Emphasize immediate value, short-term gains, long-term transformation, and family impact.
 """
     ai = _ai_json(prompt)
     if ai:
@@ -367,11 +411,11 @@ def seo_agent(profile: dict[str, Any], copy: dict[str, Any]) -> dict[str, Any]:
                 ],
             },
             {
-                "pillar": "Solar + Storage ROI",
+                "pillar": "Portable Power Lifestyle",
                 "topics": [
-                    "rate spike mitigation",
-                    "solar storage economics",
-                    "energy independence pathways",
+                    "portable generator vs power station",
+                    "everyday carry and travel power",
+                    "family preparedness routines",
                 ],
             },
         ],

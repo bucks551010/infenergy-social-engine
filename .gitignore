@@ -6,3 +6,4 @@ __pycache__/
 venv/
 data/marketing/*.json
 data/marketing/*.md
+!data/marketing/founder_brand_manifesto.json

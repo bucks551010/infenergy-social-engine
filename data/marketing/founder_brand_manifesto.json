@@ -1,0 +1,121 @@
+{
+  "brand_name": "Infenergy Power",
+  "mission": "Help families and everyday people stay powered, prepared, safe, and connected when normal systems fail.",
+  "vision": "Become the most trusted personal power preparedness brand in homes, backpacks, glove boxes, and emergency kits.",
+  "origin_story": {
+    "spark": "A severe winter storm left the founder's home without power and exposed how unprepared families can feel in crisis.",
+    "problem": "When outages hit, people often have no practical backup plan for communication, lighting, and critical devices.",
+    "why_it_matters": "Power is not just convenience. It is safety, connection, and control during uncertain moments.",
+    "founder_position": "Founder-built with commitment, sacrifice, and direct empathy for families facing outages."
+  },
+  "core_values": [
+    "Protection",
+    "Preparedness",
+    "Reliability",
+    "Integrity",
+    "Service",
+    "Commitment",
+    "Practical guidance"
+  ],
+  "brand_personality": {
+    "voice_name": "Calm Strength",
+    "traits": [
+      "Protective",
+      "Mission-driven",
+      "Practical",
+      "Empathetic",
+      "Confident",
+      "Coach-like"
+    ],
+    "tone_rules": [
+      "Lead with a real-life risk or customer moment.",
+      "Translate technical specs into plain-language outcomes.",
+      "Be urgent without fear-mongering.",
+      "Sound human and committed, never generic.",
+      "Close with one clear, low-friction next step."
+    ]
+  },
+  "business_profile": {
+    "positioning": "Preparedness-first portable power brand for families, travelers, outdoor users, students, and small business operators.",
+    "what_we_sell": [
+      "Portable charging and backup power devices",
+      "Portable and modular power stations",
+      "Portable/foldable solar panel accessories",
+      "Emergency-use lighting and rechargeable essentials",
+      "Preparedness bundles and product-fit guidance"
+    ],
+    "what_we_do_not_position_as": [
+      "Rooftop residential solar installation company",
+      "Tax-credit-first solar sales funnel",
+      "Commodity gadget-only brand without preparedness guidance"
+    ],
+    "differentiation": [
+      "Mission-led preparedness lifestyle",
+      "Product-fit guidance instead of one-size-fits-all selling",
+      "Outcome-focused education for real emergency scenarios",
+      "Trust built through practical coaching and clear next steps"
+    ]
+  },
+  "audience_segments": [
+    "Working families in storm-prone regions",
+    "Campers, adventurers, RV and van-life users",
+    "Students, commuters, and frequent travelers",
+    "Emergency-minded households and first responders",
+    "Seniors and caregivers who prioritize continuity and safety"
+  ],
+  "customer_benefit_framework": {
+    "immediate_value": [
+      "Know exactly what to power first",
+      "Reduce panic with a clear action plan",
+      "Get practical product recommendations matched to daily needs"
+    ],
+    "short_term_value": [
+      "Better outage readiness this season",
+      "Fewer wrong purchases and less guesswork",
+      "More confidence for family safety and communication"
+    ],
+    "long_term_value": [
+      "Build a scalable preparedness lifestyle",
+      "Improve resilience across weather and grid uncertainty",
+      "Protect routines, productivity, and peace of mind over time"
+    ],
+    "family_impact": [
+      "Keeps loved ones connected during outages",
+      "Supports comfort and critical-device continuity",
+      "Replaces helplessness with control and reassurance"
+    ],
+    "lifestyle_shift": [
+      "From reactive scrambling to proactive preparedness",
+      "From buying by hype to buying by fit",
+      "From uncertainty to confident energy planning"
+    ]
+  },
+  "approved_sales_verbiage": {
+    "hero_line": "When the lights go out, your family should not be left in the dark.",
+    "core_phrases": [
+      "Preparedness over panic",
+      "Power is protection",
+      "From chaos to control",
+      "Practical power for real life",
+      "Built for outages, travel, and everyday resilience",
+      "Spec-backed recommendations you can trust"
+    ],
+    "cta_style": [
+      "Get your readiness plan",
+      "Map your must-run devices",
+      "Book your product-fit consultation",
+      "Build your outage-ready setup"
+    ],
+    "trust_close": "We do not just sell products. We help people stay calm, connected, and prepared when it matters most."
+  },
+  "guardrails": {
+    "allowed_solar_context": "portable/foldable solar panels paired with portable power products",
+    "disallowed_claim_patterns": [
+      "Unverifiable guarantees",
+      "Fear-only manipulation",
+      "Rooftop installation positioning",
+      "Pricing or margin claims unless explicitly provided from approved source"
+    ],
+    "compliance_note": "All claims must map to published product specs, verified use-cases, or support policy."
+  }
+}

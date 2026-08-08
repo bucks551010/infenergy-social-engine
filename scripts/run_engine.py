@@ -2,6 +2,8 @@ import os
 import sys
 import time
 import json
+import shutil
+import hashlib
 from datetime import datetime, timezone
 
 import requests
@@ -337,6 +339,41 @@ def _platform_status(
 
 def _resolve_primary_publish_image_url(content: dict, dry_run: bool) -> str:
     """Resolve one primary image URL to keep IG/LI image selection aligned with FB visuals."""
+
+    def _public_base_url() -> str:
+        candidates = [
+            os.environ.get("PUBLIC_BASE_URL", ""),
+            os.environ.get("SOCIAL_ENGINE_BASE_URL", ""),
+            os.environ.get("RAILWAY_STATIC_URL", ""),
+        ]
+        railway_domain = str(os.environ.get("RAILWAY_PUBLIC_DOMAIN", "") or "").strip()
+        if railway_domain:
+            candidates.append(f"https://{railway_domain}")
+        for raw in candidates:
+            base = str(raw or "").strip().rstrip("/")
+            if base.startswith("http"):
+                return base
+        return ""
+
+    def _host_local_media(local_path: str) -> str:
+        if not (local_path and os.path.exists(local_path) and os.path.isfile(local_path)):
+            return ""
+        base = _public_base_url()
+        if not base:
+            return ""
+
+        data_dir = os.environ.get("DATA_DIR", os.path.join(os.path.dirname(__file__), "..", "data"))
+        public_dir = os.path.join(data_dir, "public_media")
+        os.makedirs(public_dir, exist_ok=True)
+
+        ext = os.path.splitext(local_path)[1].lower() or ".png"
+        post_id = str(content.get("post_id", "") or "").strip() or datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
+        digest = hashlib.sha1(local_path.encode("utf-8")).hexdigest()[:10]
+        file_name = f"{post_id}_{digest}{ext}"
+        target_path = os.path.join(public_dir, file_name)
+        shutil.copyfile(local_path, target_path)
+        return f"{base}/media/{file_name}"
+
     candidate_paths: list[str] = []
     generated_visuals = content.get("generated_visuals") or {}
     if isinstance(generated_visuals, dict):
@@ -355,6 +392,15 @@ def _resolve_primary_publish_image_url(content: dict, dry_run: bool) -> str:
                     return source_url
             except Exception as e:
                 print(f"[Image] Warning: failed to upload generated visual for shared URL: {e}")
+
+    # If WordPress media upload is unavailable, host generated files from this service.
+    for path in candidate_paths:
+        try:
+            hosted_url = _host_local_media(path)
+            if hosted_url.startswith("http"):
+                return hosted_url
+        except Exception as e:
+            print(f"[Image] Warning: failed to host generated visual locally: {e}")
 
     # Fallback to product/candidate imagery when generated visuals are unavailable.
     product_image = str(content.get("product_image_url", "") or "").strip()

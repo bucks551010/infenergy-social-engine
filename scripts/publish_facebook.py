@@ -89,7 +89,9 @@ def _post_with_retry(url: str, data: dict, timeout: int = 30) -> requests.Respon
 def publish(content: dict, wp_link: str, dry_run: bool = False) -> dict:
     message = f"{content['fb_caption']}\n\n{wp_link}"
     image_path = str((content.get("generated_visuals") or {}).get("facebook", "")).strip()
-    image_url = str(content.get("product_image_url", "")).strip()
+    image_url = str(content.get("primary_publish_image_url", "")).strip()
+    if not image_url.startswith("http"):
+        image_url = str(content.get("product_image_url", "")).strip()
     require_image = _env_flag("FB_REQUIRE_IMAGE", True)
 
     if dry_run:

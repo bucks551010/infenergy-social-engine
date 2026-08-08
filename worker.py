@@ -2,6 +2,7 @@ import os
 import sys
 import time
 import json
+import mimetypes
 import threading
 import subprocess
 import traceback
@@ -534,6 +535,38 @@ def _start_slot_thread(
 class HealthHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         parsed = urlparse(self.path)
+
+        if parsed.path.startswith("/media/"):
+            file_name = os.path.basename(parsed.path[len("/media/"):]).strip()
+            if not file_name:
+                body = b'{"error":"missing media file"}'
+                self.send_response(400)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+                return
+
+            media_path = os.path.join(_data_dir(), "public_media", file_name)
+            if not os.path.exists(media_path) or not os.path.isfile(media_path):
+                body = b'{"error":"media not found"}'
+                self.send_response(404)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+                return
+
+            with open(media_path, "rb") as f:
+                payload = f.read()
+            mime, _ = mimetypes.guess_type(media_path)
+            self.send_response(200)
+            self.send_header("Content-Type", mime or "application/octet-stream")
+            self.send_header("Cache-Control", "public, max-age=31536000, immutable")
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+            return
 
         if parsed.path in ("/", "/health", "/healthz"):
             payload = {

@@ -367,8 +367,9 @@ def _build_gemini_image_prompt(content: dict[str, Any], platform: str, visual_pl
         "refined gradients, depth haze, and controlled bloom highlights. "
     )
     product_stage_direction = (
-        "Reserve a clean hero stage on the right side for the real product cutout. That stage should feel integrated into the design with lighting, "
-        "shadow, and depth cues, but no white panel, no boxed frame, and no fake product placeholder. "
+        "Reserve a large, dominant hero stage on the right side for the real product cutout. The product should feel big, premium, and compositionally important, "
+        "not secondary or tucked away. That stage should feel integrated into the design with lighting, scale contrast, and depth cues, but no white panel, "
+        "no boxed frame, and no fake product placeholder. Leave enough clean space so the real product can occupy roughly one-third to nearly one-half of the visual weight. "
     )
     atmosphere_direction = (
         "Build atmosphere with cinematic lighting, premium material textures, glow accents, layered shadows, reflective surfaces, depth haze, and subtle motion energy. "
@@ -482,20 +483,31 @@ def _compose_product_photo_overlay(content: dict[str, Any], platform: str, image
         return False
 
     if platform in ("facebook", "instagram"):
-        target_w, target_h = 470, 470
-        x, y = (canvas.width - target_w - 92, 176)
+        target_w, target_h = 620, 620
+        x, y = (canvas.width - target_w - 44, 118)
     else:
-        target_w, target_h = 350, 350
-        x, y = (canvas.width - target_w - 70, 112)
+        target_w, target_h = 430, 430
+        x, y = (canvas.width - target_w - 34, 84)
 
     product_copy = product_image.copy()
     product_copy.thumbnail((target_w, target_h))
-    draw = draw_module.Draw(canvas)
-    shadow_top = y + int(target_h * 0.78)
-    shadow_bottom = y + int(target_h * 0.96)
-    draw.ellipse((x + 40, shadow_top, x + target_w - 40, shadow_bottom), fill="#101010")
     off_x = x + (target_w - product_copy.width) // 2
     off_y = y + (target_h - product_copy.height) // 2
+    shadow_layer = image_module.new("RGBA", canvas.size, (0, 0, 0, 0))
+    shadow_draw = draw_module.Draw(shadow_layer)
+    shadow_width = max(140, int(product_copy.width * 0.58))
+    shadow_height = max(36, int(product_copy.height * 0.10))
+    shadow_left = off_x + max(0, (product_copy.width - shadow_width) // 2)
+    shadow_top = off_y + product_copy.height - int(shadow_height * 0.2)
+    shadow_draw.ellipse(
+        (shadow_left, shadow_top, shadow_left + shadow_width, shadow_top + shadow_height),
+        fill=(14, 22, 30, 74),
+    )
+    shadow_draw.ellipse(
+        (shadow_left + 22, shadow_top + 6, shadow_left + shadow_width - 22, shadow_top + shadow_height - 2),
+        fill=(32, 52, 68, 42),
+    )
+    canvas = image_module.alpha_composite(canvas, shadow_layer)
     canvas.paste(product_copy, (off_x, off_y), product_copy if product_copy.mode == "RGBA" else None)
     canvas.convert("RGB").save(image_path, format="PNG", optimize=True)
     return True

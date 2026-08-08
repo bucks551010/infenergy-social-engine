@@ -286,8 +286,10 @@ def _latest_file(pattern: str) -> str:
 
 
 def _load_latest_campaign_plan() -> dict:
-    pattern = os.path.join(_data_dir(), "marketing", "campaign_plan_*.json")
-    latest = _latest_file(pattern)
+    paths = []
+    for base in (_data_dir(), os.path.join(os.path.dirname(__file__), "data")):
+        paths.extend(glob.glob(os.path.join(base, "marketing", "campaign_plan_*.json")))
+    latest = max(paths, key=os.path.getmtime) if paths else ""
     if not latest:
         return {}
     data = _load_json(latest, {})
@@ -297,8 +299,10 @@ def _load_latest_campaign_plan() -> dict:
 
 
 def _load_latest_structured_campaign() -> dict:
-    pattern = os.path.join(_data_dir(), "marketing", "campaigns", "campaign_*.json")
-    latest = _latest_file(pattern)
+    paths = []
+    for base in (_data_dir(), os.path.join(os.path.dirname(__file__), "data")):
+        paths.extend(glob.glob(os.path.join(base, "marketing", "campaigns", "campaign_*.json")))
+    latest = max(paths, key=os.path.getmtime) if paths else ""
     if not latest:
         return {}
     data = _load_json(latest, {})
@@ -484,9 +488,15 @@ def _run_script(script_name: str) -> tuple[bool, str]:
     scripts_dir = os.path.join(os.path.dirname(__file__), "scripts")
     script_path = os.path.join(scripts_dir, script_name)
     try:
+        runtime_data_dir = _data_dir()
+        runtime_marketing_dir = os.path.join(runtime_data_dir, "marketing")
+        env = os.environ.copy()
+        env.setdefault("DATA_DIR", runtime_data_dir)
+        env.setdefault("MARKETING_OUTPUT_DIR", runtime_marketing_dir)
         completed = subprocess.run(
             [sys.executable, script_path],
             cwd=os.path.dirname(__file__),
+            env=env,
             capture_output=True,
             text=True,
             check=False,

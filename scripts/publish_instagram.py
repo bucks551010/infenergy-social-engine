@@ -38,6 +38,52 @@ def _post_with_retry(url: str, data: dict, timeout: int = 30) -> requests.Respon
     return last if last is not None else requests.Response()
 
 
+def _graph_error_text(resp: requests.Response) -> str:
+    try:
+        payload = resp.json() if resp.content else {}
+    except Exception:
+        payload = {}
+    err = payload.get("error") if isinstance(payload, dict) else None
+    if isinstance(err, dict):
+        message = str(err.get("message", "")).strip()
+        code = str(err.get("code", "")).strip()
+        subcode = str(err.get("error_subcode", "")).strip()
+        parts = [p for p in [message, f"code={code}" if code else "", f"subcode={subcode}" if subcode else ""] if p]
+        if parts:
+            return " | ".join(parts)
+    return (resp.text or "").strip()[:1000]
+
+
+def _wait_for_media_container(ig_user_id: str, creation_id: str, access_token: str, timeout_sec: int = 45) -> tuple[bool, str]:
+    deadline = time.time() + timeout_sec
+    last_status = ""
+    while time.time() < deadline:
+        try:
+            resp = requests.get(
+                f"{GRAPH_BASE}/{creation_id}",
+                params={
+                    "fields": "status_code,status,error_message",
+                    "access_token": access_token,
+                },
+                timeout=20,
+            )
+            if not resp.ok:
+                return False, f"container_status_http_{resp.status_code}: {_graph_error_text(resp)}"
+            data = resp.json() if resp.content else {}
+            status_code = str(data.get("status_code", "")).strip().upper()
+            status = str(data.get("status", "")).strip().upper()
+            error_message = str(data.get("error_message", "")).strip()
+            last_status = status_code or status
+            if status_code == "FINISHED" or status == "FINISHED":
+                return True, "finished"
+            if status_code in {"ERROR", "EXPIRED"} or status in {"ERROR", "EXPIRED"}:
+                return False, error_message or (last_status or "container_not_ready")
+        except Exception as e:
+            return False, f"container_status_exception:{e}"
+        time.sleep(2)
+    return False, f"container_not_ready_timeout:last_status={last_status or 'unknown'}"
+
+
 def _is_valid_public_image(url: str) -> bool:
     if not url:
         return False
@@ -177,8 +223,13 @@ def publish(content: dict, dry_run: bool = False) -> dict:
         },
         timeout=30,
     )
-    resp.raise_for_status()
+    if not resp.ok:
+        raise RuntimeError(f"instagram_media_create_failed_http_{resp.status_code}: {_graph_error_text(resp)}")
     creation_id = resp.json()["id"]
+
+    ready, ready_reason = _wait_for_media_container(ig_user_id, creation_id, access_token)
+    if not ready:
+        raise RuntimeError(f"instagram_media_not_ready:{ready_reason}")
 
     # Step 2: publish the container
     resp2 = _post_with_retry(
@@ -189,7 +240,8 @@ def publish(content: dict, dry_run: bool = False) -> dict:
         },
         timeout=30,
     )
-    resp2.raise_for_status()
+    if not resp2.ok:
+        raise RuntimeError(f"instagram_media_publish_failed_http_{resp2.status_code}: {_graph_error_text(resp2)}")
     data = resp2.json()
     print(f"[Instagram] Posted: {data['id']}")
     return {"id": data["id"]}

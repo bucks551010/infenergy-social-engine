@@ -1878,6 +1878,71 @@ def _append_numeric_proof(text: str, stage: str, talking_point: dict, html: bool
     return f"{body}\n\n{line}"
 
 
+def _product_detail_summary(product: dict | None) -> str:
+    if not isinstance(product, dict):
+        return ""
+    metrics = [str(x).strip() for x in (product.get("metrics", []) or []) if str(x).strip()]
+    categories = [str(x).strip() for x in (product.get("categories", []) or []) if str(x).strip()]
+    parts: list[str] = []
+    if metrics:
+        parts.append("Key specs: " + ", ".join(metrics[:3]))
+    if categories:
+        parts.append("Categories: " + ", ".join(categories[:2]))
+    fact = _one_line(_strip_html(str(product.get("fact_snippet", "") or "")), 160)
+    if fact:
+        parts.append(fact)
+    return " | ".join(parts[:3])
+
+
+def _ensure_product_led_text(text: str, product: dict | None, *, html: bool = False, short_limit: int = 0) -> str:
+    body = str(text or "").strip()
+    if not isinstance(product, dict):
+        return body
+    product_name = str(product.get("name", "") or "").strip()
+    if not product_name:
+        return body
+
+    detail = _product_detail_summary(product)
+    mention_line = f"Featured product: {product_name}."
+    if detail:
+        mention_line = f"Featured product: {product_name}. {detail}"
+    if short_limit > 0:
+        mention_line = _one_line(mention_line, short_limit)
+
+    if body and product_name.lower() in body.lower():
+        if detail and detail.lower() not in body.lower():
+            if html:
+                return f"<p>{mention_line}</p>\n{body}"
+            return f"{mention_line}\n\n{body}"
+        return body
+
+    if not body:
+        if html:
+            return f"<p>{mention_line}</p>"
+        return mention_line
+    if html:
+        return f"<p>{mention_line}</p>\n{body}"
+    return f"{mention_line}\n\n{body}"
+
+
+def _enforce_product_led_copy(content: dict, product: dict | None) -> None:
+    if not isinstance(content, dict) or not isinstance(product, dict):
+        return
+    product_name = str(product.get("name", "") or "").strip()
+    if not product_name:
+        return
+
+    title = str(content.get("wp_title", "") or "").strip()
+    if title and product_name.lower() not in title.lower():
+        content["wp_title"] = _one_line(f"{title} | {product_name}", 65)
+    excerpt = str(content.get("wp_excerpt", "") or "").strip()
+    content["wp_excerpt"] = _ensure_product_led_text(excerpt, product, short_limit=160)
+    content["wp_content"] = _ensure_product_led_text(str(content.get("wp_content", "") or ""), product, html=True)
+    content["fb_caption"] = _ensure_product_led_text(str(content.get("fb_caption", "") or ""), product)
+    content["ig_caption"] = _ensure_product_led_text(str(content.get("ig_caption", "") or ""), product)
+    content["li_text"] = _ensure_product_led_text(str(content.get("li_text", "") or ""), product)
+
+
 def _enforce_numeric_proof_requirements(content: dict, funnel_stage: str, talking_point: dict) -> None:
     stage = str(funnel_stage or "").strip().upper()
     if stage not in {"DESIRE", "TRUST"}:
@@ -3559,6 +3624,7 @@ Return ONLY valid JSON with these exact keys (no markdown, no code fences):
                 talking_point,
                 platform=platform_name,
             )
+        _enforce_product_led_copy(content, product)
         _enforce_numeric_proof_requirements(content, funnel_stage, talking_point)
         for key in ("wp_content", "fb_caption", "ig_caption", "li_text"):
             cleaned, replaced = apply_claim_guardrails(str(content.get(key, "")))
@@ -3737,6 +3803,7 @@ Return ONLY valid JSON with these exact keys (no markdown, no code fences):
             talking_point,
             platform=platform_name,
         )
+    _enforce_product_led_copy(content, product)
     _enforce_numeric_proof_requirements(content, funnel_stage, talking_point)
     for key in ("wp_content", "fb_caption", "ig_caption", "li_text"):
         cleaned, replaced = apply_claim_guardrails(str(content.get(key, "")))
@@ -3794,6 +3861,7 @@ Return ONLY valid JSON with these exact keys (no markdown, no code fences):
                 talking_point,
                 platform=platform_name,
             )
+        _enforce_product_led_copy(content, product)
         _enforce_numeric_proof_requirements(content, funnel_stage, talking_point)
         # Re-apply guardrails after conference-driven refinements.
         for key in ("wp_content", "fb_caption", "ig_caption", "li_text"):

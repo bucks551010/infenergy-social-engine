@@ -47,6 +47,24 @@ INFENERGY_BUSINESS_GOALS = {
     "focus_statement": "portable backup power, emergency readiness, mobile autonomy, outage continuity, and product-fit guidance built around real device needs",
     "core_outcome": "help customers stay charged, connected, lit, and prepared when traditional power is unavailable",
     "action_bias": "move people from panic and guesswork into a practical purchase decision grounded in real specs and real use cases",
+    "voice_anchors": [
+        "preparedness over panic",
+        "power is protection",
+        "specs into confidence",
+        "from guesswork to control",
+        "built for real outages and real life",
+        "right-size before you overspend",
+        "portable power with a job to do",
+    ],
+    "talking_point_lenses": [
+        "home resilience",
+        "storm readiness",
+        "mobile autonomy",
+        "family safety continuity",
+        "travel backup confidence",
+        "device-priority planning",
+        "spec-backed purchase confidence",
+    ],
 }
 
 SITE_URL = os.environ.get("WP_URL", "https://www.infenergypower.com")
@@ -1037,6 +1055,10 @@ def conference_brand_profile_payload() -> dict:
             "Empathetic",
             "Confident",
             "Coach-like",
+            "Preparedness-first",
+            "Steady under pressure",
+            "Spec-literate",
+            "Action-oriented",
         ],
         "tone_rules": [
             "Lead with a real-life risk or customer moment.",
@@ -1044,6 +1066,9 @@ def conference_brand_profile_payload() -> dict:
             "Be urgent without fear-mongering.",
             "Sound human and committed, never generic.",
             "Close with one clear, low-friction next step.",
+            "Make every message feel like guidance from someone who wants the customer ready before the next outage.",
+            "Favor concrete preparedness language over broad lifestyle fluff.",
+            "Keep the message anchored in why the product matters when normal power is unavailable.",
         ],
         "voice_rules": [
             "Lead with empathy and urgency rooted in real family preparedness moments.",
@@ -1051,6 +1076,9 @@ def conference_brand_profile_payload() -> dict:
             "Use value stacking, practical guidance, and one clear next step.",
             "Sound committed and human: protective, coach-like, and trustworthy.",
             "Anchor every claim in concrete facts and examples.",
+            "Use language that helps customers feel more in control, more prepared, and less exposed.",
+            "Frame products as tools with a real job: keeping essential devices powered when people cannot afford interruption.",
+            "Reinforce readiness, continuity, mobility, and peace of mind in nearly every message.",
         ],
         "approved_phrases": [
             "Preparedness over panic",
@@ -1059,6 +1087,12 @@ def conference_brand_profile_payload() -> dict:
             "Practical power for real life",
             "Built for outages, travel, and everyday resilience",
             "Spec-backed recommendations you can trust",
+            "Stay charged when the unexpected hits",
+            "Backup power with a purpose",
+            "Know what powers your must-run devices",
+            "Right-size your power before you buy",
+            "Reliable power for the moments that matter most",
+            "Portable power built for real interruptions",
         ],
         "cta_style": [
             "Get your readiness plan",
@@ -1076,6 +1110,16 @@ def conference_brand_profile_payload() -> dict:
             "spec-backed",
             "confidence",
             "control",
+            "outage-ready",
+            "must-run",
+            "backup",
+            "portable",
+            "dependable",
+            "storm-ready",
+            "real-world",
+            "fit",
+            "power plan",
+            "device priority",
         ],
         "words_to_avoid": [
             "revolutionary",
@@ -1150,12 +1194,20 @@ def conference_selling_ideology_payload() -> dict:
             "right_size_before_upsell",
             "everyday_value_plus_emergency_value",
             "single_checkout_next_step",
+            "power_is_protection",
+            "stay_connected_when_the_grid_fails",
+            "real_device_planning_before_purchase",
+            "mobility_plus_resilience",
+            "backup_power_with_a_job_to_do",
         ],
         "objection_handling": [
             "too_expensive_vs_cost_of_outage",
             "too_complex_use_readiness_checklist",
             "fit_uncertainty_use_scenario_proof",
             "delay_risk_reframe_with_action_cost",
+            "i_can_wait_until_the_next_storm_reframe_with_preparation_timing",
+            "not_sure_what_i_need_map_must_run_devices_first",
+            "concerned_about_overbuying_match_specs_to_daily_use",
         ],
         "cta_ladder": [
             "attention_save_checklist",
@@ -2278,6 +2330,7 @@ def _build_product_intelligence_handoff(
     lead_benefit = benefits[0] if benefits else "Match product specs to your real usage"
     lead_proof = proof_points[0] if proof_points else str(talking_point.get("proof_anchor", "")).strip()
     pain = str(talking_point.get("pain_point", "")).strip()
+    preferred_vocabulary = INFENERGY_BUSINESS_GOALS["voice_anchors"][:5] + INFENERGY_BUSINESS_GOALS["talking_point_lenses"][:4]
     sales_copy_seed = (
         f"{selected_hook} {pain} "
         f"{product_name} helps you {lead_benefit.lower()} with guidance grounded in {lead_proof}. "
@@ -2291,6 +2344,19 @@ def _build_product_intelligence_handoff(
         "core_benefits": benefits,
         "proof_points": proof_points,
         "sales_angle": stage_sales_angle,
+        "preferred_vocabulary": preferred_vocabulary,
+        "emotional_outcomes": [
+            "confidence before the next outage",
+            "control when power is uncertain",
+            "peace of mind through better preparation",
+            "clarity about what to buy and why",
+        ],
+        "messaging_devices": [
+            "translate specs into daily life impact",
+            "frame the product as a tool with a real job to do",
+            "contrast being prepared versus being caught off guard",
+            "make the next step feel immediate and practical",
+        ],
         "sales_copy_seed": sales_copy_seed,
         "handoff": {
             "copywriter": [
@@ -2298,6 +2364,7 @@ def _build_product_intelligence_handoff(
                 f"Lead benefit: {lead_benefit}",
                 f"Use proof from: {proof_points[:3]}",
                 f"Close with this CTA direction: {selected_cta}",
+                f"Lean on this preferred vocabulary: {preferred_vocabulary[:6]}",
             ],
             "visual_director": [
                 f"Show {product_name} in a realistic use case tied to {topic}",
@@ -3558,8 +3625,23 @@ def generate(slot: str, *, funnel_stage_override: str = "", product_id_override:
         f"- Core benefits: {product_intelligence.get('core_benefits', [])}\n"
         f"- Proof points: {product_intelligence.get('proof_points', [])}\n"
         f"- Sales angle: {product_intelligence.get('sales_angle', '')}\n"
+        f"- Preferred vocabulary: {product_intelligence.get('preferred_vocabulary', [])}\n"
+        f"- Emotional outcomes: {product_intelligence.get('emotional_outcomes', [])}\n"
+        f"- Messaging devices: {product_intelligence.get('messaging_devices', [])}\n"
         f"- Sales copy seed: {product_intelligence.get('sales_copy_seed', '')}\n"
         f"- Team handoff directives: {product_intelligence.get('handoff', {})}\n"
+    )
+
+    messaging_playbook_context = (
+        "INFENERGY MESSAGING PLAYBOOK:\n"
+        f"- Core outcome: {INFENERGY_BUSINESS_GOALS['core_outcome']}\n"
+        f"- Action bias: {INFENERGY_BUSINESS_GOALS['action_bias']}\n"
+        f"- Voice anchors: {INFENERGY_BUSINESS_GOALS['voice_anchors']}\n"
+        f"- Talking-point lenses: {INFENERGY_BUSINESS_GOALS['talking_point_lenses']}\n"
+        f"- Words to emphasize: {brand_words_to_use[:14]}\n"
+        f"- Approved sales language: {brand_approved_phrases[:12]}\n"
+        f"- Ideology pillars: {ideology_pillars[:10]}\n"
+        "- Every message should help the customer feel more prepared, more in control, and clearer about the right next step.\n"
     )
 
     visual_plan = _build_visual_plan_with_gemini(
@@ -3652,6 +3734,8 @@ PRODUCT CONTEXT (ground your content in these details when relevant):
 {ideology_context}
 
 {product_agent_context}
+
+{messaging_playbook_context}
 
 CAMPAIGN EXECUTION CONTEXT:
 - Selected hook for this post: {selected_hook}

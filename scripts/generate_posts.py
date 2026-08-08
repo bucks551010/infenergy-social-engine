@@ -3520,6 +3520,6 @@ Return ONLY valid JSON with these exact keys (no markdown, no code fences):
     content["quality_warnings"] = quality.warnings
     for p in content["platform_posts"].values():
         p["quality_score"] = float(quality.score)
-    content = _sanitize_legacy_cta_in_payload(content)
     content = _apply_control_plane_metadata(content, run_context, gate_records)
+    content = _sanitize_legacy_cta_in_payload(content)
     return content

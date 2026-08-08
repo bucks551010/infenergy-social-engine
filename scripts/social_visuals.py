@@ -169,6 +169,15 @@ def _read_image_bytes_any(source: str) -> tuple[bytes, str]:
 
 
 def _primary_stat(content: dict[str, Any]) -> str:
+    metrics = content.get("product_metrics", []) if isinstance(content, dict) else []
+    if isinstance(metrics, list):
+        for metric in metrics:
+            token = re.sub(r"\s+", " ", str(metric or "")).strip()
+            if not token:
+                continue
+            upper = token.upper().replace("MAH", "mAh")
+            if any(unit in upper for unit in ("W", "WH", "KWH", "MAH", "V")):
+                return upper
     topic = normalize_brand_text(str(content.get("topic") or ""))
     hook = normalize_brand_text(str(content.get("selected_hook") or ""))
     text = f"{topic} {hook}".lower()
@@ -194,12 +203,36 @@ def _benefit_rows(content: dict[str, Any]) -> list[str]:
             rows.append(cleaned)
         if len(rows) >= 4:
             break
+    topic = str(content.get("topic") or "").lower()
+    product_name = str(content.get("product_name") or "").lower()
+    categories = " ".join(str(x or "") for x in (content.get("product_categories") or [])).lower() if isinstance(content.get("product_categories"), list) else str(content.get("product_categories") or "").lower()
     defaults = [
-        "Runtime planning",
-        "Device-safe output",
-        "Battery durability",
-        "Faster recharge",
+        "Outage-ready backup",
+        "Real-world device fit",
+        "Spec-backed confidence",
+        "Faster preparedness",
     ]
+    if any(token in product_name or token in categories for token in ("power bank", "charger", "travel power")):
+        defaults = [
+            "Reliable backup charging",
+            "Travel-ready power",
+            "Device-safe recharge",
+            "Everyday carry readiness",
+        ]
+    elif any(token in product_name or token in categories for token in ("jump starter", "car", "vehicle")):
+        defaults = [
+            "Roadside backup power",
+            "Vehicle emergency support",
+            "Portable emergency readiness",
+            "Faster recovery on the road",
+        ]
+    elif any(token in topic or token in categories for token in ("outage", "backup", "home backup")):
+        defaults = [
+            "Must-run device backup",
+            "Home outage readiness",
+            "Spec-backed resilience",
+            "Confidence before storms",
+        ]
     for d in defaults:
         if len(rows) >= 4:
             break
@@ -561,9 +594,35 @@ def _metric_chips(content: dict[str, Any], limit: int = 2) -> list[str]:
 
 
 def _headline_lockup(content: dict[str, Any]) -> tuple[str, str]:
+    def _trim_line(text: str, limit: int) -> str:
+        cleaned = re.sub(r"\s+", " ", str(text or "")).strip()
+        if len(cleaned) <= limit:
+            return cleaned
+        return cleaned[: limit - 3].rstrip() + "..."
+
+    product_name = normalize_brand_text(str(content.get("product_name") or "")).strip()
+    product_name = re.sub(r"[\s\-|:]+$", "", product_name)
+    metrics = content.get("product_metrics", []) if isinstance(content, dict) else []
+    metric_text = ""
+    if isinstance(metrics, list) and metrics:
+        metric_text = re.sub(r"\s+", " ", str(metrics[0] or "")).strip()
     hook_raw = normalize_brand_text(str(content.get("selected_hook") or "")).strip()
     topic_raw = normalize_brand_text(str(content.get("topic") or "")).strip()
     source = f"{hook_raw} {topic_raw}".lower()
+
+    if product_name:
+        words = [word for word in re.split(r"\s+", product_name) if word]
+        headline = " ".join(words[:4]).upper() if words else "INFENERGY POWER"
+        headline = _trim_line(headline, 34)
+        if metric_text:
+            subline = f"Built around {metric_text} and real-world preparedness."
+        elif any(k in source for k in ("outage", "backup", "storm")):
+            subline = "Built for real outages, essential devices, and faster readiness."
+        elif any(k in source for k in ("travel", "portable", "charge")):
+            subline = "Built for portable power, daily carry, and backup charging confidence."
+        else:
+            subline = "Built for real-life readiness, mobility, and backup confidence."
+        return headline, subline
 
     if any(k in source for k in ("outage", "blackout", "storm")):
         headline = "OUTAGE READY POWER"
@@ -889,23 +948,20 @@ def _render_card(content: dict[str, Any], platform: str, image_path: str, visual
     else:
         text_width = 14 if platform in ("facebook", "instagram") else 22
     hook_up = hook.upper()
-    if template == "nike_premium" and platform in ("facebook", "instagram"):
-        body_bottom = _draw_headline_fit(
-            draw,
-            hook_up,
-            font_module=font_module,
-            x=88,
-            y=190,
-            max_width_px=450,
-            base_size=82,
-            min_size=62,
-            max_lines=2,
-            fill="#ffffff",
-            line_gap=4,
-        )
-    else:
-        hook_fill = "#ffd13d" if template == "power_shot" else "#ffffff"
-        body_bottom = _draw_wrapped(draw, hook_up, font=title_font, x=88, y=190, width_chars=text_width, fill=hook_fill, line_gap=4)
+    hook_fill = "#ffd13d" if template == "power_shot" else "#ffffff"
+    body_bottom = _draw_headline_fit(
+        draw,
+        hook_up,
+        font_module=font_module,
+        x=88,
+        y=190,
+        max_width_px=420 if template == "power_shot" and platform in ("facebook", "instagram") else 450 if platform in ("facebook", "instagram") else 500,
+        base_size=82 if template == "nike_premium" and platform in ("facebook", "instagram") else 78 if platform in ("facebook", "instagram") else 52,
+        min_size=44 if platform in ("facebook", "instagram") else 28,
+        max_lines=3 if platform in ("facebook", "instagram") else 2,
+        fill=hook_fill,
+        line_gap=4,
+    )
     topic_fill = "#ffefce" if template == "power_shot" else "#d6e8f9"
     body_bottom = _draw_wrapped(draw, topic, font=body_font, x=88, y=body_bottom + 14, width_chars=22 if platform in ("facebook", "instagram") else 32, fill=topic_fill, line_gap=8)
 
@@ -994,19 +1050,17 @@ def _render_card(content: dict[str, Any], platform: str, image_path: str, visual
         draw.rounded_rectangle((pos[0] - 14, pos[1] - 14, pos[0] + target_w + 14, pos[1] + target_h + 14), radius=24, fill="#17374e")
         if template == "power_shot":
             draw.rounded_rectangle((pos[0] - 14, pos[1] - 14, pos[0] + target_w + 14, pos[1] + target_h + 14), radius=24, fill="#1f1a16")
-        if template == "nike_premium" and platform in ("facebook", "instagram"):
-            shadow_top = pos[1] + int(target_h * 0.72)
-            shadow_bottom = pos[1] + int(target_h * 0.9)
-            draw.ellipse((pos[0] + 72, shadow_top, pos[0] + target_w - 72, shadow_bottom), fill="#0a1b2a")
-        if template == "power_shot" and platform in ("facebook", "instagram"):
-            shadow_top = pos[1] + int(target_h * 0.74)
-            shadow_bottom = pos[1] + int(target_h * 0.92)
-            draw.ellipse((pos[0] + 70, shadow_top, pos[0] + target_w - 70, shadow_bottom), fill="#0f0f0f")
         image_copy = product_image.copy()
         image_copy.thumbnail((target_w, target_h))
         frame = image_module.new("RGBA", (target_w, target_h), (13, 34, 48, 0))
         offset_x = (target_w - image_copy.width) // 2
         offset_y = (target_h - image_copy.height) // 2
+        if platform in ("facebook", "instagram"):
+            shadow_w = max(150, int(image_copy.width * 0.56))
+            shadow_h = max(22, int(image_copy.height * 0.08))
+            shadow_x = pos[0] + max(0, (target_w - shadow_w) // 2)
+            shadow_y = pos[1] + target_h - shadow_h - 18
+            draw.ellipse((shadow_x, shadow_y, shadow_x + shadow_w, shadow_y + shadow_h), fill="#253746")
         frame.paste(image_copy, (offset_x, offset_y), image_copy if image_copy.mode == "RGBA" else None)
         canvas.paste(frame, pos, frame)
         border_color = "#ffbf3c" if template == "power_shot" else ("#93d8ff" if template in ("nike_premium", "premium_product_focus") else "#e0c48e")

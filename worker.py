@@ -17,6 +17,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "scripts"))
 
 import run_engine
 import generate_posts
+import inventory_db
 from campaign_runtime import eligible_channels_for_slot, load_channel_schedule, load_funnel_config, stage_for_slot
 
 RUN_LOCK = threading.Lock()
@@ -728,6 +729,63 @@ class HealthHandler(BaseHTTPRequestHandler):
                 "status": "ok",
                 "time_utc": _utc_now(),
                 "report": _quality_report(posts),
+            }
+            body = json.dumps(payload).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
+        if parsed.path == "/inventory-db":
+            params = parse_qs(parsed.query)
+            authorized, status_code, error_payload = _authorized(params)
+            if not authorized:
+                body = json.dumps(error_payload).encode("utf-8")
+                self.send_response(status_code)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+                return
+
+            sync_result = generate_posts.sync_inventory_database(force=False)
+            payload = {
+                "status": "ok",
+                "time_utc": _utc_now(),
+                "sync": sync_result,
+                "snapshot": inventory_db.get_inventory_snapshot(_data_dir()),
+                "brand_profile": generate_posts.load_brand_profile(),
+            }
+            body = json.dumps(payload).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
+        if parsed.path == "/inventory-sync":
+            params = parse_qs(parsed.query)
+            authorized, status_code, error_payload = _authorized(params)
+            if not authorized:
+                body = json.dumps(error_payload).encode("utf-8")
+                self.send_response(status_code)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+                return
+
+            force = str(params.get("force", ["false"])[0]).strip().lower() in ("1", "true", "yes", "on")
+            sync_result = generate_posts.sync_inventory_database(force=force)
+            payload = {
+                "status": "ok",
+                "time_utc": _utc_now(),
+                "force": force,
+                "sync": sync_result,
+                "snapshot": inventory_db.get_inventory_snapshot(_data_dir()),
             }
             body = json.dumps(payload).encode("utf-8")
             self.send_response(200)

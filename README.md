@@ -25,6 +25,8 @@ Production social publishing worker for INF Energy with a strategy-driven market
 - `GET /content-preview?token=...&slot=midday&platform=facebook`: generate preview content without publishing.
 - `GET /schedule-preview?token=...`: show eligible platforms by slot for the next seven days.
 - `GET /quality-report?token=...&limit=200`: summarize recent quality, rejections, and distribution.
+- `GET /inventory-db?token=...`: inspect inventory/brand database status and current brand profile.
+- `GET /inventory-sync?token=...&force=true`: re-sync product CSV and brand artifacts into the database.
 - `GET /run-now?slot=morning&token=...`: manual engine run.
 - `GET /run-marketing?token=...`: generate marketing strategy artifacts.
 - `GET /run-weekly?token=...`: generate weekly and campaign plan artifacts.
@@ -38,6 +40,7 @@ All operational preview and control endpoints use the same `MANUAL_RUN_TOKEN` pr
 - `MANUAL_RUN_TOKEN`
 - `META_REFRESH_TOKEN` (optional; if not set, `/refresh-meta` falls back to `MANUAL_RUN_TOKEN`)
 - `DATA_DIR` (optional; default `data/`)
+- `INVENTORY_DB_FILE` (optional; default `inventory.db` inside `DATA_DIR`)
 - `ENABLE_WORDPRESS`, `ENABLE_FACEBOOK`, `ENABLE_INSTAGRAM`, `ENABLE_LINKEDIN`
 - `ENABLE_FACEBOOK_SLOTS`, `ENABLE_INSTAGRAM_SLOTS`, `ENABLE_LINKEDIN_SLOTS`, `ENABLE_WORDPRESS_SLOTS`
 - `SKIP_RECENT_SUCCESS_HOURS` (default `0`, disabled)
@@ -77,6 +80,24 @@ Meta refresh secrets (required for `/refresh-meta`):
 - `META_PAGE_ID`
 
 The refresh endpoint updates runtime tokens in-memory and writes state to `data/marketing/meta_token_state.json`.
+
+## Inventory And Brand Database
+
+The engine now uses a SQLite database as the primary source for:
+
+- Product inventory used for product selection and fact-grounded copy
+- Brand personality, voice rules, approved verbiage, and guardrails used in prompt generation
+
+Location:
+
+- `DATA_DIR/inventory.db` by default
+- configurable with `INVENTORY_DB_FILE`
+
+Bootstrap behavior:
+
+- Products are seeded from `data/products/*.csv` if the DB is empty.
+- Brand profile is seeded from `data/marketing/founder_brand_manifesto.json` and latest marketing strategy artifacts.
+- Use `/inventory-sync?token=...&force=true` to re-import and overwrite DB records from source artifacts.
 
 ## Railway Cron For Meta Refresh
 

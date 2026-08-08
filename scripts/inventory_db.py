@@ -87,6 +87,29 @@ def init_inventory_db(data_dir: str) -> str:
                 additional_notes TEXT,
                 updated_at_utc TEXT NOT NULL
             );
+
+            CREATE TABLE IF NOT EXISTS selling_ideology (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                framework_mode TEXT,
+                primary_conversion TEXT,
+                tone_blend TEXT,
+                value_lens TEXT,
+                message_filter TEXT,
+                cta_mode TEXT,
+                campaign_behavior TEXT,
+                proof_rule TEXT,
+                disqualify_alternative TEXT,
+                core_promise TEXT,
+                audience_priority_json TEXT,
+                psychographics_json TEXT,
+                lifestyle_positioning_json TEXT,
+                pillar_messages_json TEXT,
+                objection_handling_json TEXT,
+                cta_ladder_json TEXT,
+                banned_phrases_json TEXT,
+                schema_version TEXT,
+                updated_at_utc TEXT NOT NULL
+            );
             """
         )
         conn.commit()
@@ -312,16 +335,126 @@ def fetch_brand_profile(data_dir: str) -> dict:
         conn.close()
 
 
+def has_selling_ideology(data_dir: str) -> bool:
+    conn = _connect(data_dir)
+    try:
+        row = conn.execute("SELECT 1 AS ok FROM selling_ideology WHERE id = 1").fetchone()
+        return bool(row)
+    finally:
+        conn.close()
+
+
+def upsert_selling_ideology(data_dir: str, ideology: dict) -> bool:
+    if not isinstance(ideology, dict):
+        return False
+
+    conn = _connect(data_dir)
+    try:
+        conn.execute(
+            """
+            INSERT INTO selling_ideology (
+                id, framework_mode, primary_conversion, tone_blend, value_lens,
+                message_filter, cta_mode, campaign_behavior, proof_rule,
+                disqualify_alternative, core_promise, audience_priority_json,
+                psychographics_json, lifestyle_positioning_json,
+                pillar_messages_json, objection_handling_json, cta_ladder_json,
+                banned_phrases_json, schema_version, updated_at_utc
+            ) VALUES (
+                1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+            )
+            ON CONFLICT(id) DO UPDATE SET
+                framework_mode = excluded.framework_mode,
+                primary_conversion = excluded.primary_conversion,
+                tone_blend = excluded.tone_blend,
+                value_lens = excluded.value_lens,
+                message_filter = excluded.message_filter,
+                cta_mode = excluded.cta_mode,
+                campaign_behavior = excluded.campaign_behavior,
+                proof_rule = excluded.proof_rule,
+                disqualify_alternative = excluded.disqualify_alternative,
+                core_promise = excluded.core_promise,
+                audience_priority_json = excluded.audience_priority_json,
+                psychographics_json = excluded.psychographics_json,
+                lifestyle_positioning_json = excluded.lifestyle_positioning_json,
+                pillar_messages_json = excluded.pillar_messages_json,
+                objection_handling_json = excluded.objection_handling_json,
+                cta_ladder_json = excluded.cta_ladder_json,
+                banned_phrases_json = excluded.banned_phrases_json,
+                schema_version = excluded.schema_version,
+                updated_at_utc = excluded.updated_at_utc
+            """,
+            (
+                str(ideology.get("framework_mode", "")).strip(),
+                str(ideology.get("primary_conversion", "")).strip(),
+                str(ideology.get("tone_blend", "")).strip(),
+                str(ideology.get("value_lens", "")).strip(),
+                str(ideology.get("message_filter", "")).strip(),
+                str(ideology.get("cta_mode", "")).strip(),
+                str(ideology.get("campaign_behavior", "")).strip(),
+                str(ideology.get("proof_rule", "")).strip(),
+                str(ideology.get("disqualify_alternative", "")).strip(),
+                str(ideology.get("core_promise", "")).strip(),
+                _to_json(ideology.get("audience_priority", [])),
+                _to_json(ideology.get("psychographics", [])),
+                _to_json(ideology.get("lifestyle_positioning", [])),
+                _to_json(ideology.get("pillar_messages", [])),
+                _to_json(ideology.get("objection_handling", [])),
+                _to_json(ideology.get("cta_ladder", [])),
+                _to_json(ideology.get("banned_phrases", [])),
+                str(ideology.get("schema_version", "v1")).strip() or "v1",
+                _utc_now(),
+            ),
+        )
+        conn.commit()
+        return True
+    finally:
+        conn.close()
+
+
+def fetch_selling_ideology(data_dir: str) -> dict:
+    conn = _connect(data_dir)
+    try:
+        row = conn.execute("SELECT * FROM selling_ideology WHERE id = 1").fetchone()
+        if not row:
+            return {}
+        return {
+            "framework_mode": str(row["framework_mode"] or "").strip(),
+            "primary_conversion": str(row["primary_conversion"] or "").strip(),
+            "tone_blend": str(row["tone_blend"] or "").strip(),
+            "value_lens": str(row["value_lens"] or "").strip(),
+            "message_filter": str(row["message_filter"] or "").strip(),
+            "cta_mode": str(row["cta_mode"] or "").strip(),
+            "campaign_behavior": str(row["campaign_behavior"] or "").strip(),
+            "proof_rule": str(row["proof_rule"] or "").strip(),
+            "disqualify_alternative": str(row["disqualify_alternative"] or "").strip(),
+            "core_promise": str(row["core_promise"] or "").strip(),
+            "audience_priority": _from_json(row["audience_priority_json"], []),
+            "psychographics": _from_json(row["psychographics_json"], []),
+            "lifestyle_positioning": _from_json(row["lifestyle_positioning_json"], []),
+            "pillar_messages": _from_json(row["pillar_messages_json"], []),
+            "objection_handling": _from_json(row["objection_handling_json"], []),
+            "cta_ladder": _from_json(row["cta_ladder_json"], []),
+            "banned_phrases": _from_json(row["banned_phrases_json"], []),
+            "schema_version": str(row["schema_version"] or "v1").strip(),
+            "updated_at_utc": str(row["updated_at_utc"] or "").strip(),
+        }
+    finally:
+        conn.close()
+
+
 def get_inventory_snapshot(data_dir: str) -> dict:
     init_inventory_db(data_dir)
     products = fetch_products(data_dir)
     brand = fetch_brand_profile(data_dir)
+    ideology = fetch_selling_ideology(data_dir)
     return {
         "db_path": get_db_path(data_dir),
         "products_count": len(products),
         "sample_product_ids": [str(p.get("id", "")) for p in products[:10]],
         "brand_profile_present": bool(brand),
+        "selling_ideology_present": bool(ideology),
         "brand_name": str(brand.get("brand_name", "")),
         "personality_name": str(brand.get("personality_name", "")),
         "brand_updated_at_utc": str(brand.get("updated_at_utc", "")),
+        "selling_ideology_updated_at_utc": str(ideology.get("updated_at_utc", "")),
     }

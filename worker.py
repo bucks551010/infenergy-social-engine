@@ -823,6 +823,60 @@ class HealthHandler(BaseHTTPRequestHandler):
             self.wfile.write(body)
             return
 
+        if parsed.path == "/selling-ideology":
+            params = parse_qs(parsed.query)
+            authorized, status_code, error_payload = _authorized(params)
+            if not authorized:
+                body = json.dumps(error_payload).encode("utf-8")
+                self.send_response(status_code)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+                return
+
+            payload = {
+                "status": "ok",
+                "time_utc": _utc_now(),
+                "selling_ideology": generate_posts.load_selling_ideology(),
+                "snapshot": inventory_db.get_inventory_snapshot(_data_dir()),
+            }
+            body = json.dumps(payload).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
+        if parsed.path == "/selling-ideology-apply":
+            params = parse_qs(parsed.query)
+            authorized, status_code, error_payload = _authorized(params)
+            if not authorized:
+                body = json.dumps(error_payload).encode("utf-8")
+                self.send_response(status_code)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+                return
+
+            result = generate_posts.apply_conference_selling_ideology()
+            payload = {
+                "status": "ok" if result.get("ok") else "error",
+                "time_utc": _utc_now(),
+                "applied": bool(result.get("ok")),
+                "selling_ideology": result.get("selling_ideology", {}),
+                "snapshot": inventory_db.get_inventory_snapshot(_data_dir()),
+            }
+            body = json.dumps(payload).encode("utf-8")
+            self.send_response(200 if result.get("ok") else 500)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
         if parsed.path == "/run-marketing":
             token = os.environ.get("MANUAL_RUN_TOKEN", "")
             params = parse_qs(parsed.query)

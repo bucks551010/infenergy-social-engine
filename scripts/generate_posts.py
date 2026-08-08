@@ -935,6 +935,7 @@ def sync_inventory_database(force: bool = False) -> dict:
     before_count = inventory_db.products_count(DATA_DIR)
     products_seeded = 0
     brand_seeded = False
+    ideology_seeded = False
 
     should_seed_products = force or before_count == 0
     if should_seed_products:
@@ -949,6 +950,9 @@ def sync_inventory_database(force: bool = False) -> dict:
         if seed:
             brand_seeded = inventory_db.upsert_brand_profile(DATA_DIR, seed)
 
+    if force or not inventory_db.has_selling_ideology(DATA_DIR):
+        ideology_seeded = inventory_db.upsert_selling_ideology(DATA_DIR, conference_selling_ideology_payload())
+
     after_count = inventory_db.products_count(DATA_DIR)
     return {
         "db_path": inventory_db.get_db_path(DATA_DIR),
@@ -956,7 +960,9 @@ def sync_inventory_database(force: bool = False) -> dict:
         "products_seeded": products_seeded,
         "products_after": after_count,
         "brand_seeded": brand_seeded,
+        "ideology_seeded": ideology_seeded,
         "brand_profile_present": inventory_db.has_brand_profile(DATA_DIR),
+        "selling_ideology_present": inventory_db.has_selling_ideology(DATA_DIR),
     }
 
 
@@ -1064,6 +1070,85 @@ def apply_conference_brand_profile() -> dict:
     return {
         "ok": bool(ok),
         "brand_profile": profile,
+    }
+
+
+def conference_selling_ideology_payload() -> dict:
+    return {
+        "schema_version": "v1",
+        "framework_mode": "mixed_with_campaign_overlay",
+        "primary_conversion": "direct_checkout",
+        "tone_blend": "calm_protective_plus_assertive_urgent",
+        "value_lens": "benefit_first",
+        "message_filter": "no_nonconverting_copy",
+        "cta_mode": "checkout_first",
+        "campaign_behavior": "overlay_not_replace",
+        "proof_rule": "scenario_plus_spec_evidence",
+        "disqualify_alternative": "patchwork_guesswork",
+        "core_promise": "reliable_peace_of_mind",
+        "audience_priority": [
+            "working_families_outage_prone",
+            "rv_and_outdoor_autonomy",
+            "small_operator_and_caregiver_continuity",
+        ],
+        "psychographics": [
+            "risk_aware_planners",
+            "reliability_over_hype_buyers",
+            "control_seekers_wanting_clarity",
+            "value_protectors_avoiding_wrong_fit",
+        ],
+        "lifestyle_positioning": [
+            "home_resilience",
+            "mobile_autonomy",
+            "family_safety_continuity",
+            "preparedness_routine",
+        ],
+        "pillar_messages": [
+            "preparedness_over_panic",
+            "specs_to_outcomes",
+            "right_size_before_upsell",
+            "everyday_value_plus_emergency_value",
+            "single_checkout_next_step",
+        ],
+        "objection_handling": [
+            "too_expensive_vs_cost_of_outage",
+            "too_complex_use_readiness_checklist",
+            "fit_uncertainty_use_scenario_proof",
+            "delay_risk_reframe_with_action_cost",
+        ],
+        "cta_ladder": [
+            "attention_save_checklist",
+            "education_map_top_3_devices",
+            "desire_get_fit_recommendation",
+            "trust_review_spec_backed_options",
+            "conversion_checkout_now",
+        ],
+        "banned_phrases": [
+            "generic_non_directional_copy",
+            "hype_without_proof",
+            "vague_cta_without_path",
+            "fear_mongering",
+            "unverifiable_guarantees",
+        ],
+    }
+
+
+def load_selling_ideology() -> dict:
+    sync_inventory_database(force=False)
+    ideology = inventory_db.fetch_selling_ideology(DATA_DIR)
+    if ideology:
+        return ideology
+    return conference_selling_ideology_payload()
+
+
+def apply_conference_selling_ideology() -> dict:
+    sync_inventory_database(force=False)
+    payload = conference_selling_ideology_payload()
+    ok = inventory_db.upsert_selling_ideology(DATA_DIR, payload)
+    ideology = inventory_db.fetch_selling_ideology(DATA_DIR)
+    return {
+        "ok": bool(ok),
+        "selling_ideology": ideology,
     }
 
 
@@ -2174,6 +2259,7 @@ def generate(slot: str, *, funnel_stage_override: str = "", product_id_override:
     product = _pick_product_by_id(products, product_id_override) or _pick_product(products, history)
     marketing_strategy = _load_latest_marketing_strategy()
     brand_profile = load_brand_profile()
+    selling_ideology = load_selling_ideology()
     structured_campaign = _load_latest_structured_campaign()
     weekly_sequence = select_weekly_sequence(slot, now_utc=datetime.now(timezone.utc))
     funnel_stage = _normalize_funnel_stage_override(funnel_stage_override) or stage_for_slot(
@@ -2230,6 +2316,17 @@ def generate(slot: str, *, funnel_stage_override: str = "", product_id_override:
     brand_core_values = _dedupe_str_list(brand_profile.get("core_values", []))
     brand_trust_close = str(brand_profile.get("trust_close") or "").strip()
     brand_audience_summary = str(brand_profile.get("audience_summary") or "").strip()
+
+    ideology_framework_mode = str(selling_ideology.get("framework_mode") or "mixed_with_campaign_overlay").strip()
+    ideology_primary_conversion = str(selling_ideology.get("primary_conversion") or "direct_checkout").strip()
+    ideology_tone_blend = str(selling_ideology.get("tone_blend") or "calm_protective_plus_assertive_urgent").strip()
+    ideology_value_lens = str(selling_ideology.get("value_lens") or "benefit_first").strip()
+    ideology_message_filter = str(selling_ideology.get("message_filter") or "no_nonconverting_copy").strip()
+    ideology_cta_mode = str(selling_ideology.get("cta_mode") or "checkout_first").strip()
+    ideology_proof_rule = str(selling_ideology.get("proof_rule") or "scenario_plus_spec_evidence").strip()
+    ideology_core_promise = str(selling_ideology.get("core_promise") or "reliable_peace_of_mind").strip()
+    ideology_banned_phrases = _dedupe_str_list(selling_ideology.get("banned_phrases", []))
+    ideology_pillars = _dedupe_str_list(selling_ideology.get("pillar_messages", []))
 
     preferred_hooks = []
     if selected_hook:
@@ -2612,6 +2709,20 @@ def generate(slot: str, *, funnel_stage_override: str = "", product_id_override:
         f"- CTA friction note: {phase4_stack.get('cta_optimization', {}).get('friction_note', '')}\n"
     )
 
+    ideology_context = (
+        "SELLING IDEOLOGY DIRECTIVES:\n"
+        f"- Framework mode: {ideology_framework_mode}\n"
+        f"- Primary conversion: {ideology_primary_conversion}\n"
+        f"- Tone blend: {ideology_tone_blend}\n"
+        f"- Value lens: {ideology_value_lens}\n"
+        f"- Message filter: {ideology_message_filter}\n"
+        f"- CTA mode: {ideology_cta_mode}\n"
+        f"- Proof rule: {ideology_proof_rule}\n"
+        f"- Core promise: {ideology_core_promise}\n"
+        f"- Pillars: {ideology_pillars}\n"
+        f"- Banned phrases and patterns: {ideology_banned_phrases}\n"
+    )
+
     visual_plan = _build_visual_plan_with_gemini(
         visual_director_candidates,
         topic=topic,
@@ -2687,6 +2798,8 @@ PRODUCT CONTEXT (ground your content in these details when relevant):
 {phase3_context}
 
 {phase4_context}
+
+{ideology_context}
 
 CAMPAIGN EXECUTION CONTEXT:
 - Selected hook for this post: {selected_hook}

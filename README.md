@@ -28,6 +28,8 @@ Production social publishing worker for INF Energy with a strategy-driven market
 - `GET /inventory-db?token=...`: inspect inventory/brand database status and current brand profile.
 - `GET /inventory-sync?token=...&force=true`: re-sync product CSV and brand artifacts into the database.
 - `GET /brand-profile-apply?token=...`: apply the conference brand profile package directly into the brand profile table.
+- `GET /selling-ideology?token=...`: inspect the structured selling ideology profile currently in the database.
+- `GET /selling-ideology-apply?token=...`: apply the conference selling ideology package directly into the selling ideology table.
 - `GET /run-now?slot=morning&token=...`: manual engine run.
 - `GET /run-marketing?token=...`: generate marketing strategy artifacts.
 - `GET /run-weekly?token=...`: generate weekly and campaign plan artifacts.
@@ -88,6 +90,7 @@ The engine now uses a SQLite database as the primary source for:
 
 - Product inventory used for product selection and fact-grounded copy
 - Brand personality, voice rules, approved verbiage, and guardrails used in prompt generation
+- Structured selling ideology directives used as default prompt constraints for conversion-first messaging
 
 Location:
 

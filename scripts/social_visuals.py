@@ -345,6 +345,22 @@ def _build_gemini_image_prompt(content: dict[str, Any], platform: str, visual_pl
     stat = _primary_stat(content)
     benefits = _benefit_rows(content)
     badges = _trust_badges(content)
+    product_label = re.sub(r"[\s\-|:]+$", "", product_name).strip()
+    product_label = re.sub(r"\s+", " ", product_label)
+    support_line = _headline_lockup(content)[1]
+    if not product_label:
+        product_label = "Infenergy backup power"
+    copy_direction = (
+        f"Use product-specific on-image copy, not generic slogans. Build the headline around '{product_label}'. "
+        f"Use one supporting line that translates a real spec into a customer outcome, such as '{support_line}'. "
+        f"Use one prominent spec callout based on '{stat}'. "
+        f"Use one direct CTA based on '{cta}'. "
+        "Do not use generic headlines like 'POWER WITHOUT GUESSWORK' or broad fallback language unless the product context genuinely supports it. "
+    )
+    badge_direction = (
+        "If you include credibility or support markers, they must feel product-true and category-true, not templated. "
+        "Avoid generic trust labels such as 'Best Seller', 'Fast Ship', 'Lab Verified', or other unsupported badges unless they are explicitly grounded in source context. "
+    )
     style_refs = str(os.environ.get("GEMINI_STYLE_REFERENCES") or "").strip()
     repo_context = _load_visual_repo_context()
     repo_refs = repo_context.get("references", []) if isinstance(repo_context, dict) else []
@@ -422,8 +438,10 @@ def _build_gemini_image_prompt(content: dict[str, Any], platform: str, visual_pl
         f"{style_ref_line}"
         f"Platform: {platform}. Hook context: {key_hook}. Topic context: {topic}. "
         f"Product context: {product_name or 'portable/home power solution'}. Funnel stage: {stage}. "
-        f"Mandatory on-image copy: headline '{_headline_lockup(content)[0]}', subline '{_headline_lockup(content)[1]}', stat badge '{stat}', CTA '{cta}'. "
-        f"Benefit bullets: {', '.join(benefits)}. Trust badges: {', '.join(badges)}. "
+        f"Primary product facts available for copy and design: {', '.join(benefits)}. "
+        f"Reference support markers available if useful: {', '.join(badges)}. "
+        f"{copy_direction}"
+        f"{badge_direction}"
         "Use warm premium palette (charcoal, amber, orange, gold), realistic lighting, crisp typography hierarchy, and retail ad polish. "
         f"{stage_direction} "
         f"{density_direction} "

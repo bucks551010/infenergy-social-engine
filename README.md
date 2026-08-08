@@ -30,6 +30,10 @@ Production social publishing worker for INF Energy with a strategy-driven market
 - `GET /brand-profile-apply?token=...`: apply the conference brand profile package directly into the brand profile table.
 - `GET /selling-ideology?token=...`: inspect the structured selling ideology profile currently in the database.
 - `GET /selling-ideology-apply?token=...`: apply the conference selling ideology package directly into the selling ideology table.
+- `GET /gemini-visual-repo?token=...`: inspect Gemini style reference repository and visual generation settings.
+- `GET /gemini-visual-repo-seed?token=...`: seed default high-end ad style ideas into the Gemini repository.
+- `GET /gemini-visual-repo-apply?token=...&active_style_keys=...&override_url=...`: update active style pack and product image override URL.
+- `GET /gemini-visual-repo-bootstrap?token=...`: force automation bootstrap from Railway env vars.
 - `GET /run-now?slot=morning&token=...`: manual engine run.
 - `GET /run-marketing?token=...`: generate marketing strategy artifacts.
 - `GET /run-weekly?token=...`: generate weekly and campaign plan artifacts.
@@ -54,6 +58,13 @@ All operational preview and control endpoints use the same `MANUAL_RUN_TOKEN` pr
 - `META_REFRESH_THRESHOLD_HOURS` (default `72`)
 - `META_REFRESH_EVERY_RUN` (default `false`; set `true` to refresh Meta tokens before every run)
 - `META_GRAPH_VERSION` (default `v20.0`)
+- `GEMINI_API_KEY` (required for Gemini image generation)
+- `VISUAL_IMAGE_STRATEGY` (recommended `gemini_generated`)
+- `GEMINI_IMAGE_MODEL` (recommended `gemini-2.5-flash-image`)
+- `GEMINI_STYLE_REFERENCES` (optional URL list split by `;`, `,`, or newlines)
+- `VISUAL_PRODUCT_IMAGE_OVERRIDE` (optional public URL)
+- `GEMINI_STYLE_ACTIVE_KEYS` (optional comma-separated style keys from repo)
+- `VISUAL_REPO_AUTO_SEED` (default `true`; auto-seeds visual idea repo if empty)
 
 ## New Files
 
@@ -102,6 +113,10 @@ Bootstrap behavior:
 - Products are seeded from `data/products/*.csv` if the DB is empty.
 - Brand profile is seeded from `data/marketing/founder_brand_manifesto.json` and latest marketing strategy artifacts.
 - Use `/inventory-sync?token=...&force=true` to re-import and overwrite DB records from source artifacts.
+- Gemini visual repository automation runs on worker startup and before each slot run:
+  - auto-seeds default style ideas when repo is empty,
+  - imports external style reference URLs from `GEMINI_STYLE_REFERENCES`,
+  - applies `VISUAL_PRODUCT_IMAGE_OVERRIDE` and `GEMINI_STYLE_ACTIVE_KEYS` into DB settings.
 
 ## Railway Cron For Meta Refresh
 

@@ -29,6 +29,12 @@ LAST_RUN = {
     "error": None,
 }
 STARTED_AT = datetime.now(timezone.utc)
+VISUAL_REPO_BOOTSTRAP = {
+    "status": "not_run",
+    "time_utc": None,
+    "summary": {},
+    "error": None,
+}
 
 
 def _data_dir() -> str:
@@ -514,6 +520,26 @@ def _utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _auto_bootstrap_visual_repo() -> dict:
+    global VISUAL_REPO_BOOTSTRAP
+    try:
+        summary = inventory_db.bootstrap_visual_repo_from_env(_data_dir())
+        VISUAL_REPO_BOOTSTRAP = {
+            "status": "ok",
+            "time_utc": _utc_now(),
+            "summary": summary,
+            "error": None,
+        }
+    except Exception as e:
+        VISUAL_REPO_BOOTSTRAP = {
+            "status": "error",
+            "time_utc": _utc_now(),
+            "summary": {},
+            "error": str(e),
+        }
+    return VISUAL_REPO_BOOTSTRAP
+
+
 def _start_slot_thread(
     slot: str,
     force_live: bool = False,
@@ -604,9 +630,39 @@ class HealthHandler(BaseHTTPRequestHandler):
                 "last_run": LAST_RUN,
                 "dry_run": os.environ.get("SOCIAL_DRY_RUN", "true"),
                 "recent_quality": _quality_summary(recent_posts),
+                "visual_repo_bootstrap": VISUAL_REPO_BOOTSTRAP,
             }
             body = json.dumps(payload).encode("utf-8")
             self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
+        if parsed.path == "/gemini-visual-repo-bootstrap":
+            params = parse_qs(parsed.query)
+            authorized, status_code, error_payload = _authorized(params)
+            if not authorized:
+                body = json.dumps(error_payload).encode("utf-8")
+                self.send_response(status_code)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+                return
+
+            bootstrap = _auto_bootstrap_visual_repo()
+            payload = {
+                "status": "ok" if bootstrap.get("status") == "ok" else "error",
+                "time_utc": _utc_now(),
+                "bootstrap": bootstrap,
+                "repo": inventory_db.fetch_gemini_style_references(_data_dir(), active_only=False, limit=500),
+                "settings": inventory_db.fetch_visual_generation_settings(_data_dir()),
+                "snapshot": inventory_db.get_inventory_snapshot(_data_dir()),
+            }
+            body = json.dumps(payload).encode("utf-8")
+            self.send_response(200 if bootstrap.get("status") == "ok" else 500)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
@@ -887,6 +943,117 @@ class HealthHandler(BaseHTTPRequestHandler):
             self.wfile.write(body)
             return
 
+        if parsed.path == "/gemini-visual-repo":
+            params = parse_qs(parsed.query)
+            authorized, status_code, error_payload = _authorized(params)
+            if not authorized:
+                body = json.dumps(error_payload).encode("utf-8")
+                self.send_response(status_code)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+                return
+
+            refs = inventory_db.fetch_gemini_style_references(_data_dir(), active_only=False, limit=500)
+            settings = inventory_db.fetch_visual_generation_settings(_data_dir())
+            payload = {
+                "status": "ok",
+                "time_utc": _utc_now(),
+                "repo": refs,
+                "settings": settings,
+                "snapshot": inventory_db.get_inventory_snapshot(_data_dir()),
+            }
+            body = json.dumps(payload).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
+        if parsed.path == "/gemini-visual-repo-seed":
+            params = parse_qs(parsed.query)
+            authorized, status_code, error_payload = _authorized(params)
+            if not authorized:
+                body = json.dumps(error_payload).encode("utf-8")
+                self.send_response(status_code)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+                return
+
+            seeded = inventory_db.seed_gemini_style_idea_repo(_data_dir())
+            payload = {
+                "status": "ok",
+                "time_utc": _utc_now(),
+                "seed": seeded,
+                "repo": inventory_db.fetch_gemini_style_references(_data_dir(), active_only=False, limit=500),
+                "settings": inventory_db.fetch_visual_generation_settings(_data_dir()),
+                "snapshot": inventory_db.get_inventory_snapshot(_data_dir()),
+            }
+            body = json.dumps(payload).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
+        if parsed.path == "/gemini-visual-repo-apply":
+            params = parse_qs(parsed.query)
+            authorized, status_code, error_payload = _authorized(params)
+            if not authorized:
+                body = json.dumps(error_payload).encode("utf-8")
+                self.send_response(status_code)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+                return
+
+            refs_json_raw = str(params.get("refs_json", [""])[0] or "").strip()
+            active_style_keys_csv = str(params.get("active_style_keys", [""])[0] or "").strip()
+            override_url = str(params.get("override_url", [""])[0] or "").strip()
+
+            refs_payload = []
+            if refs_json_raw:
+                try:
+                    parsed_refs = json.loads(refs_json_raw)
+                    if isinstance(parsed_refs, list):
+                        refs_payload = parsed_refs
+                except Exception:
+                    refs_payload = []
+
+            upserted = inventory_db.upsert_gemini_style_references(_data_dir(), refs_payload) if refs_payload else 0
+            active_style_keys = [k.strip() for k in active_style_keys_csv.split(",") if k.strip()]
+
+            existing_settings = inventory_db.fetch_visual_generation_settings(_data_dir())
+            inventory_db.upsert_visual_generation_settings(
+                _data_dir(),
+                {
+                    "active_style_keys": active_style_keys or existing_settings.get("active_style_keys", []),
+                    "visual_product_image_override_url": override_url or str(existing_settings.get("visual_product_image_override_url", "")),
+                },
+            )
+
+            payload = {
+                "status": "ok",
+                "time_utc": _utc_now(),
+                "upserted": upserted,
+                "repo": inventory_db.fetch_gemini_style_references(_data_dir(), active_only=False, limit=500),
+                "settings": inventory_db.fetch_visual_generation_settings(_data_dir()),
+                "snapshot": inventory_db.get_inventory_snapshot(_data_dir()),
+            }
+            body = json.dumps(payload).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
         if parsed.path == "/run-marketing":
             token = os.environ.get("MANUAL_RUN_TOKEN", "")
             params = parse_qs(parsed.query)
@@ -1118,6 +1285,8 @@ def run_slot(
         if force_live:
             os.environ["SOCIAL_DRY_RUN"] = "false"
 
+        _auto_bootstrap_visual_repo()
+
         refresh_ok, refresh_reason = _auto_refresh_meta_if_due()
         if refresh_ok:
             print("[META] Token refresh completed before run")
@@ -1201,6 +1370,12 @@ def main() -> None:
         print(f"Loaded Meta runtime state from disk ({load_reason})")
     else:
         print(f"Meta runtime state load: {load_reason}")
+
+    bootstrap = _auto_bootstrap_visual_repo()
+    if bootstrap.get("status") == "ok":
+        print(f"Visual repo bootstrap ok: {bootstrap.get('summary', {})}")
+    else:
+        print(f"Visual repo bootstrap failed: {bootstrap.get('error')}")
 
     print("=== INF Energy Social Engine — Railway Worker ===")
     print(f"Scheduled (UTC): morning={morning_utc}  midday={midday_utc}  evening={evening_utc}")

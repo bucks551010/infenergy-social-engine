@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import sqlite3
 from datetime import datetime, timezone
 
@@ -108,6 +109,27 @@ def init_inventory_db(data_dir: str) -> str:
                 cta_ladder_json TEXT,
                 banned_phrases_json TEXT,
                 schema_version TEXT,
+                updated_at_utc TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS gemini_style_reference_repo (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                style_key TEXT UNIQUE,
+                style_name TEXT NOT NULL,
+                reference_url TEXT,
+                visual_product_image_override_url TEXT,
+                style_notes TEXT,
+                tags_json TEXT,
+                priority INTEGER DEFAULT 100,
+                active INTEGER DEFAULT 1,
+                created_at_utc TEXT NOT NULL,
+                updated_at_utc TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS visual_generation_settings (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                active_style_keys_json TEXT,
+                visual_product_image_override_url TEXT,
                 updated_at_utc TEXT NOT NULL
             );
             """
@@ -442,19 +464,303 @@ def fetch_selling_ideology(data_dir: str) -> dict:
         conn.close()
 
 
+def fetch_gemini_style_references(data_dir: str, active_only: bool = True, limit: int = 50) -> list[dict]:
+    init_inventory_db(data_dir)
+    conn = _connect(data_dir)
+    try:
+        query = (
+            "SELECT id, style_key, style_name, reference_url, visual_product_image_override_url, "
+            "style_notes, tags_json, priority, active, created_at_utc, updated_at_utc "
+            "FROM gemini_style_reference_repo "
+        )
+        args: list = []
+        if active_only:
+            query += "WHERE active = 1 "
+        query += "ORDER BY priority ASC, id ASC LIMIT ?"
+        args.append(max(1, min(int(limit or 50), 500)))
+        rows = conn.execute(query, tuple(args)).fetchall()
+        out: list[dict] = []
+        for row in rows:
+            out.append(
+                {
+                    "id": int(row["id"]),
+                    "style_key": str(row["style_key"] or "").strip(),
+                    "style_name": str(row["style_name"] or "").strip(),
+                    "reference_url": str(row["reference_url"] or "").strip(),
+                    "visual_product_image_override_url": str(row["visual_product_image_override_url"] or "").strip(),
+                    "style_notes": str(row["style_notes"] or "").strip(),
+                    "tags": _from_json(row["tags_json"], []),
+                    "priority": int(row["priority"] or 100),
+                    "active": bool(int(row["active"] or 0)),
+                    "created_at_utc": str(row["created_at_utc"] or "").strip(),
+                    "updated_at_utc": str(row["updated_at_utc"] or "").strip(),
+                }
+            )
+        return out
+    finally:
+        conn.close()
+
+
+def fetch_visual_generation_settings(data_dir: str) -> dict:
+    init_inventory_db(data_dir)
+    conn = _connect(data_dir)
+    try:
+        row = conn.execute("SELECT * FROM visual_generation_settings WHERE id = 1").fetchone()
+        if not row:
+            return {
+                "active_style_keys": [],
+                "visual_product_image_override_url": "",
+                "updated_at_utc": "",
+            }
+        return {
+            "active_style_keys": _from_json(row["active_style_keys_json"], []),
+            "visual_product_image_override_url": str(row["visual_product_image_override_url"] or "").strip(),
+            "updated_at_utc": str(row["updated_at_utc"] or "").strip(),
+        }
+    finally:
+        conn.close()
+
+
+def upsert_visual_generation_settings(data_dir: str, settings: dict) -> bool:
+    if not isinstance(settings, dict):
+        return False
+    init_inventory_db(data_dir)
+    conn = _connect(data_dir)
+    try:
+        conn.execute(
+            """
+            INSERT INTO visual_generation_settings (
+                id, active_style_keys_json, visual_product_image_override_url, updated_at_utc
+            ) VALUES (1, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                active_style_keys_json = excluded.active_style_keys_json,
+                visual_product_image_override_url = excluded.visual_product_image_override_url,
+                updated_at_utc = excluded.updated_at_utc
+            """,
+            (
+                _to_json(settings.get("active_style_keys", [])),
+                str(settings.get("visual_product_image_override_url", "")).strip(),
+                _utc_now(),
+            ),
+        )
+        conn.commit()
+        return True
+    finally:
+        conn.close()
+
+
+def upsert_gemini_style_references(data_dir: str, references: list[dict]) -> int:
+    if not isinstance(references, list):
+        return 0
+    init_inventory_db(data_dir)
+    conn = _connect(data_dir)
+    try:
+        now = _utc_now()
+        rows = []
+        for ref in references:
+            if not isinstance(ref, dict):
+                continue
+            style_key = str(ref.get("style_key", "")).strip().lower()
+            style_name = str(ref.get("style_name", "")).strip()
+            if not style_key:
+                style_key = re.sub(r"[^a-z0-9]+", "_", style_name.lower()).strip("_")
+            if not style_key or not style_name:
+                continue
+            rows.append(
+                (
+                    style_key,
+                    style_name,
+                    str(ref.get("reference_url", "")).strip(),
+                    str(ref.get("visual_product_image_override_url", "")).strip(),
+                    str(ref.get("style_notes", "")).strip(),
+                    _to_json(ref.get("tags", [])),
+                    int(ref.get("priority", 100) or 100),
+                    1 if bool(ref.get("active", True)) else 0,
+                    now,
+                    now,
+                )
+            )
+        if not rows:
+            return 0
+
+        conn.executemany(
+            """
+            INSERT INTO gemini_style_reference_repo (
+                style_key, style_name, reference_url, visual_product_image_override_url,
+                style_notes, tags_json, priority, active, created_at_utc, updated_at_utc
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(style_key) DO UPDATE SET
+                style_name = excluded.style_name,
+                reference_url = excluded.reference_url,
+                visual_product_image_override_url = excluded.visual_product_image_override_url,
+                style_notes = excluded.style_notes,
+                tags_json = excluded.tags_json,
+                priority = excluded.priority,
+                active = excluded.active,
+                updated_at_utc = excluded.updated_at_utc
+            """,
+            rows,
+        )
+        conn.commit()
+        return len(rows)
+    finally:
+        conn.close()
+
+
+def seed_gemini_style_idea_repo(data_dir: str) -> dict:
+    refs = [
+        {
+            "style_key": "review_board_high_contrast",
+            "style_name": "Review Board High Contrast",
+            "style_notes": "Dark steel background, yellow review lockup, dense trust badges, product hero right.",
+            "tags": ["high_contrast", "review", "badge_grid", "retail_board"],
+            "priority": 10,
+            "active": True,
+        },
+        {
+            "style_key": "warm_lifestyle_orange",
+            "style_name": "Warm Lifestyle Orange",
+            "style_notes": "Warm orange light, aspirational human context, simplified icon row and strong CTA rail.",
+            "tags": ["lifestyle", "warm_palette", "cta_focus"],
+            "priority": 20,
+            "active": True,
+        },
+        {
+            "style_key": "spec_comparison_overlay",
+            "style_name": "Spec Comparison Overlay",
+            "style_notes": "Side-by-side performance framing, technical overlays, clear stat hierarchy.",
+            "tags": ["comparison", "specs", "proof"],
+            "priority": 30,
+            "active": True,
+        },
+        {
+            "style_key": "urgent_power_cta",
+            "style_name": "Urgent Power CTA",
+            "style_notes": "Emergency-use positioning, hazard accent color, scarcity CTA treatment.",
+            "tags": ["urgency", "cta", "emergency"],
+            "priority": 40,
+            "active": True,
+        },
+        {
+            "style_key": "infographic_grid_proof",
+            "style_name": "Infographic Grid Proof",
+            "style_notes": "Compact icon tiles for proof points, legible metrics, premium editorial spacing.",
+            "tags": ["infographic", "proof", "icons"],
+            "priority": 50,
+            "active": True,
+        },
+    ]
+    added = upsert_gemini_style_references(data_dir, refs)
+    settings = fetch_visual_generation_settings(data_dir)
+    active_keys = settings.get("active_style_keys", []) if isinstance(settings, dict) else []
+    if not active_keys:
+        upsert_visual_generation_settings(
+            data_dir,
+            {
+                "active_style_keys": [r["style_key"] for r in refs],
+                "visual_product_image_override_url": str(settings.get("visual_product_image_override_url", "")) if isinstance(settings, dict) else "",
+            },
+        )
+    return {
+        "seeded": added,
+        "active_styles": [r["style_key"] for r in refs],
+    }
+
+
+def bootstrap_visual_repo_from_env(data_dir: str) -> dict:
+    init_inventory_db(data_dir)
+    summary = {
+        "auto_seeded": 0,
+        "imported_refs": 0,
+        "override_updated": False,
+        "active_keys_updated": False,
+    }
+
+    all_refs = fetch_gemini_style_references(data_dir, active_only=False, limit=500)
+    allow_seed = str(os.environ.get("VISUAL_REPO_AUTO_SEED", "true")).strip().lower() not in ("0", "false", "no")
+    if allow_seed and not all_refs:
+        seeded = seed_gemini_style_idea_repo(data_dir)
+        summary["auto_seeded"] = int(seeded.get("seeded", 0) or 0)
+        all_refs = fetch_gemini_style_references(data_dir, active_only=False, limit=500)
+
+    refs_env = str(os.environ.get("GEMINI_STYLE_REFERENCES", "")).strip()
+    if refs_env:
+        raw_items = [p.strip() for p in re.split(r"[;\n,]", refs_env) if p.strip()]
+        imported: list[dict] = []
+        rank = 1000
+        for item in raw_items:
+            if not item.startswith("http"):
+                continue
+            style_key = f"env_ref_{abs(hash(item)) % 10_000_000}"
+            imported.append(
+                {
+                    "style_key": style_key,
+                    "style_name": f"Env Reference {rank - 999}",
+                    "reference_url": item,
+                    "visual_product_image_override_url": "",
+                    "style_notes": "Imported from GEMINI_STYLE_REFERENCES",
+                    "tags": ["env_import", "reference"],
+                    "priority": rank,
+                    "active": True,
+                }
+            )
+            rank += 1
+        if imported:
+            summary["imported_refs"] = upsert_gemini_style_references(data_dir, imported)
+
+    settings = fetch_visual_generation_settings(data_dir)
+    override_env = str(os.environ.get("VISUAL_PRODUCT_IMAGE_OVERRIDE", "")).strip()
+    active_keys_env = str(os.environ.get("GEMINI_STYLE_ACTIVE_KEYS", "")).strip()
+
+    next_override = str(settings.get("visual_product_image_override_url", "")).strip()
+    if override_env and override_env.startswith("http") and override_env != next_override:
+        next_override = override_env
+        summary["override_updated"] = True
+
+    next_active_keys = settings.get("active_style_keys", []) if isinstance(settings.get("active_style_keys", []), list) else []
+    if active_keys_env:
+        parsed_keys = [k.strip().lower() for k in active_keys_env.split(",") if k.strip()]
+        if parsed_keys and parsed_keys != next_active_keys:
+            next_active_keys = parsed_keys
+            summary["active_keys_updated"] = True
+    elif not next_active_keys:
+        refs = fetch_gemini_style_references(data_dir, active_only=True, limit=500)
+        fallback_keys = [str(r.get("style_key", "")).strip() for r in refs if str(r.get("style_key", "")).strip()]
+        if fallback_keys:
+            next_active_keys = fallback_keys
+            summary["active_keys_updated"] = True
+
+    upsert_visual_generation_settings(
+        data_dir,
+        {
+            "active_style_keys": next_active_keys,
+            "visual_product_image_override_url": next_override,
+        },
+    )
+    summary["repo_count"] = len(fetch_gemini_style_references(data_dir, active_only=False, limit=500))
+    summary["active_count"] = len(fetch_gemini_style_references(data_dir, active_only=True, limit=500))
+    return summary
+
+
 def get_inventory_snapshot(data_dir: str) -> dict:
     init_inventory_db(data_dir)
     products = fetch_products(data_dir)
     brand = fetch_brand_profile(data_dir)
     ideology = fetch_selling_ideology(data_dir)
+    visual_settings = fetch_visual_generation_settings(data_dir)
+    style_refs = fetch_gemini_style_references(data_dir, active_only=False, limit=500)
     return {
         "db_path": get_db_path(data_dir),
         "products_count": len(products),
         "sample_product_ids": [str(p.get("id", "")) for p in products[:10]],
         "brand_profile_present": bool(brand),
         "selling_ideology_present": bool(ideology),
+        "gemini_style_repo_count": len(style_refs),
+        "gemini_style_repo_active_count": len([r for r in style_refs if r.get("active")]),
+        "visual_override_url_present": bool(str(visual_settings.get("visual_product_image_override_url", "")).strip()),
         "brand_name": str(brand.get("brand_name", "")),
         "personality_name": str(brand.get("personality_name", "")),
         "brand_updated_at_utc": str(brand.get("updated_at_utc", "")),
         "selling_ideology_updated_at_utc": str(ideology.get("updated_at_utc", "")),
+        "visual_settings_updated_at_utc": str(visual_settings.get("updated_at_utc", "")),
     }

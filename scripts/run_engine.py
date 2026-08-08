@@ -440,6 +440,8 @@ def _build_platform_history_records(
 def main() -> None:
     slot = os.environ.get("POST_SLOT", "morning")
     dry_run = os.environ.get("SOCIAL_DRY_RUN", "true").lower() == "true"
+    product_id_override = os.environ.get("POST_PRODUCT_ID_OVERRIDE", "").strip()
+    funnel_stage_override = os.environ.get("POST_FUNNEL_STAGE_OVERRIDE", "").strip().upper()
     manual_platforms = [
         x.strip().lower()
         for x in os.environ.get("POST_PLATFORMS", "").split(",")
@@ -464,7 +466,11 @@ def main() -> None:
     # Compute a stage first so schedule rules can enforce stage eligibility.
     generate_posts.ensure_runtime_data()
     t_preview = time.perf_counter()
-    preview_content = generate_posts.generate(slot)
+    preview_content = generate_posts.generate(
+        slot,
+        funnel_stage_override=funnel_stage_override,
+        product_id_override=product_id_override,
+    )
     _apply_phase8_budget(runtime_metrics, "preview_generation", time.perf_counter() - t_preview, generation_budget)
     funnel_stage = str(preview_content.get("funnel_stage", "EDUCATION"))
 
@@ -509,6 +515,10 @@ def main() -> None:
     )
     if manual_platforms:
         print(f"Manual platform override: {manual_platforms}\n")
+    if product_id_override:
+        print(f"Manual product override: {product_id_override}\n")
+    if funnel_stage_override:
+        print(f"Manual funnel-stage override: {funnel_stage_override}\n")
     print(f"Marketing strategy: {strategy_name} ({strategy_freshness})\n")
     print(f"Phase5 readiness: {json.dumps(phase5_readiness, ensure_ascii=True)}\n")
 
@@ -580,7 +590,11 @@ def main() -> None:
     t_generation = time.perf_counter()
     for idx in range(2):
         if idx > 0:
-            content = generate_posts.generate(slot)
+            content = generate_posts.generate(
+                slot,
+                funnel_stage_override=funnel_stage_override,
+                product_id_override=product_id_override,
+            )
 
         validation = validate_generated_content(content)
         if content.get("orchestration_blocked"):

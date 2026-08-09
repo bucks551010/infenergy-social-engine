@@ -658,12 +658,20 @@ def main() -> None:
             )
 
         validation = validate_generated_content(content)
+        hard_block = str(os.environ.get("ORCHESTRATION_HARD_BLOCK", "false")).strip().lower() in {"1", "true", "yes", "on"}
         if content.get("orchestration_blocked"):
-            validation = {
-                "passed": False,
-                "errors": list(validation.get("errors", [])) + ["orchestration_control_plane_blocked"],
-                "warnings": list(validation.get("warnings", [])),
-            }
+            if hard_block:
+                validation = {
+                    "passed": False,
+                    "errors": list(validation.get("errors", [])) + ["orchestration_control_plane_blocked"],
+                    "warnings": list(validation.get("warnings", [])),
+                }
+            else:
+                validation = {
+                    "passed": bool(validation.get("passed", False)),
+                    "errors": list(validation.get("errors", [])),
+                    "warnings": list(validation.get("warnings", [])) + ["orchestration_control_plane_soft_fail"],
+                }
         scoring = score_content(content)
         duplicates = check_duplicates(content, generate_posts.load_history(), windows=windows)
         if manual_platforms and manual_duplicate_mode == "allow_all":

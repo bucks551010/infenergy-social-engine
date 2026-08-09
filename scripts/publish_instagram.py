@@ -160,8 +160,6 @@ def publish(content: dict, dry_run: bool = False) -> dict:
     primary_publish_image_url = str(content.get("primary_publish_image_url", "")).strip()
 
     candidates = []
-    if _is_valid_public_image(primary_publish_image_url):
-        candidates.append(primary_publish_image_url)
     if generated_image_path and os.path.exists(generated_image_path):
         try:
             if hasattr(publish_wordpress, "upload_media"):
@@ -173,6 +171,8 @@ def publish(content: dict, dry_run: bool = False) -> dict:
                 print("[Instagram] Warning: publish_wordpress.upload_media unavailable; skipping generated visual upload")
         except Exception as e:
             print(f"[Instagram] Warning: generated visual upload failed, falling back to catalog imagery: {e}")
+    if _is_valid_public_image(primary_publish_image_url):
+        candidates.append(primary_publish_image_url)
     product_image = content.get("product_image_url", "")
     if _is_valid_public_image(product_image):
         candidates.append(product_image)

@@ -341,7 +341,7 @@ def _platform_status(
 
 
 def _resolve_primary_publish_image_url(content: dict, dry_run: bool) -> str:
-    """Resolve one primary image URL to keep IG/LI image selection aligned with FB visuals."""
+    """Resolve one primary image URL with square-first priority for social placements."""
 
     def _public_base_url() -> str:
         candidates = [
@@ -380,7 +380,8 @@ def _resolve_primary_publish_image_url(content: dict, dry_run: bool) -> str:
     candidate_paths: list[str] = []
     generated_visuals = content.get("generated_visuals") or {}
     if isinstance(generated_visuals, dict):
-        for key in ("facebook", "instagram", "linkedin"):
+        # Prefer square-first assets because IG and most FB feed placements render best from square images.
+        for key in ("instagram", "facebook", "linkedin"):
             raw_path = str(generated_visuals.get(key, "") or "").strip()
             if raw_path and os.path.exists(raw_path):
                 candidate_paths.append(raw_path)

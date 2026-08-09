@@ -2054,45 +2054,55 @@ def _enforce_product_sales_platform_copy(content: dict, product: dict | None, ta
     if not product_name:
         return
     metrics = [str(x).strip() for x in (product.get("metrics", []) or []) if str(x).strip()]
-    bullets = [f"- {item}" for item in _sales_feature_bullets(product, limit=5)]
+    feature_items = _sales_feature_bullets(product, limit=5)
+    bullets = [f"- {item}" for item in feature_items]
     bullet_block = "\n".join(bullets)
+    short_feature_block = "\n".join([f"- {item}" for item in feature_items[:3]])
     use_case_line = _product_use_case_line(product)
     pain_point = str((talking_point or {}).get("pain_point", "") or "Dead batteries and limited power become a real problem when an outlet is not nearby.").strip()
     first_step = str((talking_point or {}).get("first_step", "") or "Get yours today and stay powered when the unexpected happens.").strip()
     proof_line = _one_line(_product_detail_summary(product), 220)
     metric_line = ", ".join(metrics[:3]) if metrics else proof_line
+    if not bullet_block:
+        bullet_block = "- Portable backup power built for real outages and daily carry\n- Practical, ready-to-use design for emergency planning\n- Built for home, vehicle, and travel preparedness"
+    if not short_feature_block:
+        short_feature_block = "- Portable backup power\n- Real preparedness use case\n- Designed for home, vehicle, and travel"
+    urgency_line = "If your backup plan is still \"we will figure it out later,\" this is the part to fix today."
+    offer_line = f"The {product_name} is built for people who want a working backup-power plan before the next outage hits."
+    action_line = f"Use the {product_name} to close the gap between \"I should prepare\" and \"my setup is ready now.\""
 
     content["fb_caption"] = (
-        f"When the power goes out, your essentials should not go with it.\n\n"
+        f"Stop waiting for the outage to tell you your setup is not ready.\n\n"
         f"{pain_point}\n\n"
-        f"Meet the {product_name} - portable backup power designed to help keep your essential devices ready when an outlet is not nearby.\n\n"
-        f"{bullet_block}\n\n"
-        f"{proof_line}\n\n"
+        f"{offer_line}\n\n"
+        f"Why people buy it:\n{bullet_block}\n\n"
+        f"Proof in plain terms: {proof_line}.\n\n"
         f"{use_case_line}\n\n"
-        f"The best time to prepare for an outage is before the lights go out.\n\n"
+        f"{urgency_line}\n\n"
+        f"{action_line}\n\n"
         f"{_sales_cta_line(product, first_step, 'facebook')}\n"
-        f"#PortablePower #EmergencyPreparedness #BackupPower #PowerOutage #StayPowered"
+        f"#PortablePower #BackupPower #EmergencyPreparedness #PowerOutage #StayPowered #PreparedNotPanicked"
     )
     content["ig_caption"] = (
-        f"POWER WHEN YOU NEED IT.\n\n"
-        f"{pain_point}\n\n"
-        f"The {product_name} gives you reliable backup power wherever you go.\n\n"
-        f"{bullet_block}\n\n"
+        f"YOUR PHONE IS 3% AND THE POWER IS OUT. NOW WHAT?\n\n"
+        f"{offer_line}\n\n"
+        f"Built for real use:\n{short_feature_block}\n\n"
         f"{use_case_line}\n\n"
         f"Core details: {metric_line}.\n\n"
-        f"Do not wait for the next outage to realize you needed backup power.\n\n"
+        f"{urgency_line}\n\n"
         f"{_sales_cta_line(product, first_step, 'instagram')}\n"
-        f"#PortablePower #StayPowered #EmergencyPreparedness #BackupPower #PowerOutage #StormReady #TravelPower #PreparedNotScared"
+        f"#PortablePower #BackupPower #EmergencyPreparedness #PowerOutage #StayPowered #StormReady #TravelPower #PreparedNotPanicked"
     )
     content["li_text"] = (
-        f"Reliable backup power should not be complicated.\n\n"
+        f"Most backup-power plans fail for one reason: people decide to prepare only after the outage starts.\n\n"
         f"{pain_point}\n\n"
-        f"The {product_name} is designed to help keep essential devices charged when access to traditional power is limited.\n\n"
+        f"{offer_line}\n\n"
         f"Key features include:\n{bullet_block}\n\n"
-        f"{proof_line}\n\n"
+        f"What this means in practice: {proof_line}.\n\n"
         f"{use_case_line}\n\n"
-        f"Preparation starts before the power goes out. {_sales_cta_line(product, first_step, 'linkedin')}\n"
-        f"#EmergencyPreparedness #PortablePower #BackupPower #BusinessContinuity #StormPreparedness"
+        f"For teams and households, this is about response speed, continuity, and confidence under pressure.\n\n"
+        f"{_sales_cta_line(product, first_step, 'linkedin')}\n"
+        f"#EmergencyPreparedness #PortablePower #BackupPower #BusinessContinuity #Resilience"
     )
 
 

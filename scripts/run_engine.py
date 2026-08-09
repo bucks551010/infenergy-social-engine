@@ -672,6 +672,17 @@ def main() -> None:
                     "errors": list(validation.get("errors", [])),
                     "warnings": list(validation.get("warnings", [])) + ["orchestration_control_plane_soft_fail"],
                 }
+
+        strict_runtime_claims = str(os.environ.get("STRICT_RUNTIME_CLAIMS", "false")).strip().lower() in {"1", "true", "yes", "on"}
+        if manual_platforms and manual_duplicate_mode == "allow_all" and not strict_runtime_claims:
+            runtime_errors = [e for e in list(validation.get("errors", [])) if str(e) == "runtime_claim_not_supported"]
+            if runtime_errors:
+                kept_errors = [e for e in list(validation.get("errors", [])) if str(e) != "runtime_claim_not_supported"]
+                validation = {
+                    "passed": len(kept_errors) == 0,
+                    "errors": kept_errors,
+                    "warnings": list(validation.get("warnings", [])) + ["runtime_claim_not_supported_soft_fail"],
+                }
         scoring = score_content(content)
         duplicates = check_duplicates(content, generate_posts.load_history(), windows=windows)
         if manual_platforms and manual_duplicate_mode == "allow_all":

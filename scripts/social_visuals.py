@@ -663,6 +663,8 @@ def _headline_lockup(content: dict[str, Any]) -> tuple[str, str]:
 def _select_visual_template(visual_plan: dict[str, Any], platform: str) -> str:
     requested = str(visual_plan.get("visual_template") or os.environ.get("VISUAL_TEMPLATE", "")).strip().lower()
     if requested in {"premium_editorial", "premium_product_focus", "premium_minimal", "nike_premium", "power_shot"}:
+        if requested == "power_shot" and platform in ("facebook", "instagram"):
+            return "premium_product_focus"
         return requested
     strategy = str(visual_plan.get("image_strategy") or "").strip().lower()
     if strategy in {"gemini_generated", "hybrid"}:

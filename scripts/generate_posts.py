@@ -2546,19 +2546,27 @@ def _sales_feature_bullets(product: dict | None, limit: int = 5) -> list[str]:
 def _adapt_facebook(components: dict, funnel_stage: str) -> tuple[str, str, str]:
     product_name = str(components.get("product_name", "this product"))
     feature_lines = "\n".join([f"- {item}" for item in (components.get("feature_bullets", []) or [])[:5]])
-    question = "What device is non-negotiable for you during an outage?"
+    question = "What is the first device you refuse to lose during an outage?"
     cta = _sales_cta_line({"name": product_name}, str(components.get("cta", "")), "facebook")
+    if not feature_lines.strip():
+        feature_lines = (
+            "- Portable backup power for real outage scenarios\n"
+            "- Designed for home, vehicle, and travel readiness\n"
+            "- Practical setup for faster response when power drops"
+        )
     caption = (
-        "When the power goes out, your essentials should not go with it.\n\n"
+        "Stop waiting for an outage to expose a weak backup plan.\n\n"
         f"{components['situation']}\n\n"
-        f"Meet the {product_name} - portable backup power designed to help keep your essential devices ready when an outlet is not nearby.\n\n"
+        f"{product_name} is built to keep your must-run devices supported when normal power is not available.\n\n"
+        "Why buyers choose it:\n"
         f"{feature_lines}\n\n"
-        f"{components['detail_summary']}\n\n"
+        f"Proof-first details: {components['detail_summary']}\n\n"
         f"{components['use_case_line']}\n\n"
         f"{components['proof']}\n\n"
+        "If your current plan is still guesswork, fix it today before the next outage decides for you.\n\n"
         f"{cta}\n\n"
         f"{question}\n"
-        "#PortablePower #EmergencyPreparedness #BackupPower #PowerOutage #StayPowered"
+        "#PortablePower #BackupPower #EmergencyPreparedness #PowerOutage #StayPowered #PreparedNotPanicked"
     )
     return caption, cta, "community_story"
 
@@ -2567,16 +2575,24 @@ def _adapt_instagram(components: dict, funnel_stage: str) -> tuple[str, str, str
     product_name = str(components.get("product_name", "this product"))
     feature_lines = "\n".join([f"- {item}" for item in (components.get("feature_bullets", []) or [])[:4]])
     cta = _sales_cta_line({"name": product_name}, str(components.get("cta", "")), "instagram")
+    if not feature_lines.strip():
+        feature_lines = (
+            "- Built for outage and travel backup\n"
+            "- Designed for practical daily carry\n"
+            "- Ready for home, vehicle, and emergency kits"
+        )
 
     caption = (
-        "POWER WHEN YOU NEED IT.\n\n"
-        f"The {product_name} gives you reliable backup power when storms, outages, travel, or emergencies make charging harder.\n\n"
+        "YOUR POWER PLAN SHOULD NOT START AT 2% BATTERY.\n\n"
+        f"{product_name} gives you a real backup option when outages, storms, travel, or emergencies kill normal charging.\n\n"
+        "Built for real use:\n"
         f"{feature_lines}\n\n"
         f"{components['detail_summary']}\n\n"
         f"{components['use_case_line']}\n\n"
         f"{components['proof']}\n\n"
+        "Do not wait for the next outage to find out your setup is not ready.\n\n"
         f"{cta}\n"
-        "#PortablePower #StayPowered #EmergencyPreparedness #BackupPower #PowerOutage #StormReady #TravelPower #PreparedNotScared"
+        "#PortablePower #BackupPower #EmergencyPreparedness #PowerOutage #StayPowered #StormReady #TravelPower #PreparedNotPanicked"
     )
     visual_direction = "reel" if funnel_stage.upper() in ("ATTENTION", "DESIRE") else "carousel"
     alt_text = f"{components['topic']} with practical power-planning visuals and product context."
@@ -2587,15 +2603,21 @@ def _adapt_linkedin(components: dict, funnel_stage: str) -> tuple[str, str, str]
     product_name = str(components.get("product_name", "this product"))
     feature_lines = "\n".join([f"- {item}" for item in (components.get("feature_bullets", []) or [])[:5]])
     cta = _sales_cta_line({"name": product_name}, str(components.get("cta", "")), "linkedin")
+    if not feature_lines.strip():
+        feature_lines = (
+            "- Practical backup power for continuity planning\n"
+            "- Supports faster response in outage scenarios\n"
+            "- Portable form factor for home and mobile readiness"
+        )
     caption = (
-        "Reliable backup power should not be complicated.\n\n"
-        f"The {product_name} is designed to help keep essential devices charged when access to traditional power is limited.\n\n"
+        "Most preparedness plans fail at execution, not intent.\n\n"
+        f"The {product_name} helps teams and households close the gap between planning and real outage readiness.\n\n"
         f"Key features include:\n{feature_lines}\n\n"
-        f"{components['detail_summary']}\n\n"
+        f"Operational proof points: {components['detail_summary']}\n\n"
         f"{components['use_case_line']}\n\n"
         f"{components['proof']}\n\n"
         f"{cta}\n"
-        "#EmergencyPreparedness #PortablePower #BackupPower #BusinessContinuity #StormPreparedness"
+        "#EmergencyPreparedness #PortablePower #BackupPower #BusinessContinuity #Resilience"
     )
     return caption, cta, "authority_post"
 

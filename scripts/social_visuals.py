@@ -666,12 +666,12 @@ def _select_visual_template(visual_plan: dict[str, Any], platform: str) -> str:
         return requested
     strategy = str(visual_plan.get("image_strategy") or "").strip().lower()
     if strategy in {"gemini_generated", "hybrid"}:
-        return "power_shot"
+        return "premium_product_focus" if platform in ("facebook", "instagram") else "power_shot"
     if strategy in {"product_photo_featured", "hybrid"}:
-        return "power_shot"
+        return "premium_product_focus" if platform in ("facebook", "instagram") else "power_shot"
     if platform == "linkedin":
         return "premium_editorial"
-    return "power_shot"
+    return "premium_product_focus" if platform in ("facebook", "instagram") else "power_shot"
 
 
 def _draw_wrapped(draw: Any, text: str, *, font: Any, x: int, y: int, width_chars: int, fill: str, line_gap: int) -> int:
@@ -1022,6 +1022,8 @@ def _render_card(content: dict[str, Any], platform: str, image_path: str, visual
         cta_top, cta_bottom = height - 120, height - 54
     elif template == "nike_premium" and platform in ("facebook", "instagram"):
         cta_top, cta_bottom = 842, 920
+    elif platform in ("facebook", "instagram"):
+        cta_top, cta_bottom = height - 130, height - 58
     elif template == "nike_premium":
         cta_top, cta_bottom = height - 126, height - 58
     else:
@@ -1060,12 +1062,16 @@ def _render_card(content: dict[str, Any], platform: str, image_path: str, visual
             target_w, target_h = 580, 580
             pos = (width - target_w - 64, 152)
         elif platform in ("facebook", "instagram"):
-            target_w, target_h = 500, 500
-            pos = (width - target_w - 66, 150)
+            target_w, target_h = 430, 430
+            pos = (width - target_w - 72, 314)
         else:
             target_w, target_h = (420, 420) if template == "power_shot" else ((410, 410) if template == "nike_premium" else (384, 384))
             pos = (width - target_w - 48, 86)
-        draw.rounded_rectangle((pos[0] - 14, pos[1] - 14, pos[0] + target_w + 14, pos[1] + target_h + 14), radius=24, fill="#17374e")
+        if platform in ("facebook", "instagram") and template not in ("power_shot", "nike_premium"):
+            draw.rounded_rectangle((pos[0] - 18, pos[1] - 18, pos[0] + target_w + 18, pos[1] + target_h + 18), radius=28, fill="#152638")
+            draw.rounded_rectangle((pos[0] - 8, pos[1] - 8, pos[0] + target_w + 8, pos[1] + target_h + 8), radius=22, fill="#1e3547")
+        else:
+            draw.rounded_rectangle((pos[0] - 14, pos[1] - 14, pos[0] + target_w + 14, pos[1] + target_h + 14), radius=24, fill="#17374e")
         if template == "power_shot":
             draw.rounded_rectangle((pos[0] - 14, pos[1] - 14, pos[0] + target_w + 14, pos[1] + target_h + 14), radius=24, fill="#1f1a16")
         image_copy = product_image.copy()
@@ -1074,10 +1080,10 @@ def _render_card(content: dict[str, Any], platform: str, image_path: str, visual
         offset_x = (target_w - image_copy.width) // 2
         offset_y = (target_h - image_copy.height) // 2
         if platform in ("facebook", "instagram"):
-            shadow_w = max(150, int(image_copy.width * 0.56))
-            shadow_h = max(22, int(image_copy.height * 0.08))
+            shadow_w = max(180, int(image_copy.width * 0.70))
+            shadow_h = max(26, int(image_copy.height * 0.10))
             shadow_x = pos[0] + max(0, (target_w - shadow_w) // 2)
-            shadow_y = pos[1] + target_h - shadow_h - 18
+            shadow_y = pos[1] + target_h - shadow_h - 10
             draw.ellipse((shadow_x, shadow_y, shadow_x + shadow_w, shadow_y + shadow_h), fill="#253746")
         frame.paste(image_copy, (offset_x, offset_y), image_copy if image_copy.mode == "RGBA" else None)
         canvas.paste(frame, pos, frame)

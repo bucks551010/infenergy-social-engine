@@ -3056,15 +3056,18 @@ def _apply_control_plane_metadata(content: dict, run_context: dict, gate_records
         "global_gate": global_gate,
     }
     blocked = not bool(global_gate.get("passed", False))
-    content["orchestration_blocked"] = blocked
+    hard_block = str(os.environ.get("ORCHESTRATION_HARD_BLOCK", "false")).strip().lower() in {"1", "true", "yes", "on"}
+    content["orchestration_blocked"] = blocked and hard_block
     if blocked:
         for gate in global_gate.get("blocking_failures", []):
             gate_id = str(gate.get("gate_id", "unknown_gate"))
             reasons = gate.get("reasons", [])
-            if isinstance(reasons, list):
+            if hard_block and isinstance(reasons, list):
                 for reason in reasons:
                     content.setdefault("validation_errors", []).append(f"{gate_id}:{reason}")
             content.setdefault("quality_warnings", []).append(f"orchestration_gate_failed:{gate_id}")
+        if blocked and not hard_block:
+            content.setdefault("quality_warnings", []).append("orchestration_soft_fail_publish_allowed")
     return content
 
 

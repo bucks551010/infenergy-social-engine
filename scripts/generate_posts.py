@@ -2306,6 +2306,9 @@ def _enforce_conversion_caption(text: str, talking_point: dict, platform: str = 
     platform_name = str(platform or "").strip().lower()
 
     body = _sanitize_positioning_terms(body)
+    copy_source = str((talking_point or {}).get("copy_generation_source", ""))
+    if copy_source == "gemini" and len(body) >= 80:
+        return body
 
     body = _enforce_pain_point_opening(body, pain_point)
 
@@ -4215,6 +4218,7 @@ Return ONLY valid JSON with these exact keys (no markdown, no code fences):
 
     content = _generate_json_with_gemini(prompt, model_candidates)
     copy_generation_source = "gemini" if content is not None else "deterministic_fallback"
+    talking_point["copy_generation_source"] = copy_generation_source
 
     if content is None:
         content = _build_fallback_content(slot, topic, product, marketing_strategy, talking_point=talking_point)

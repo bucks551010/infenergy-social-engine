@@ -14,7 +14,11 @@ sys.path.insert(0, SCRIPTS)
 import publish_facebook  # noqa: E402
 import publish_instagram  # noqa: E402
 import publish_linkedin  # noqa: E402
-from generate_posts import _enforce_product_sales_platform_copy, _model_caption_overrides  # noqa: E402
+from generate_posts import (  # noqa: E402
+    _enforce_conversion_caption,
+    _enforce_product_sales_platform_copy,
+    _model_caption_overrides,
+)
 from run_engine import _live_visual_gate_errors  # noqa: E402
 from social_visuals import (  # noqa: E402
     _build_gemini_image_prompt,
@@ -246,6 +250,24 @@ class PublisherVisualTests(unittest.TestCase):
         content = dict(original)
         _enforce_product_sales_platform_copy(content, product, {})
         self.assertEqual(content, original)
+
+    def test_conversion_guard_does_not_append_boilerplate_to_substantive_copy(self) -> None:
+        caption = (
+            "HoneyVolt Slim Power Bank belongs in the bag you already carry. "
+            "Check its published capacity against your phone, charge it before leaving, "
+            "and keep one dependable backup close when outlets disappear."
+        )
+        result = _enforce_conversion_caption(
+            caption,
+            {
+                "pain_point": "Dead batteries expose weak preparation.",
+                "proof_anchor": "Use published specifications to validate fit.",
+                "first_step": "Comment with your top three devices.",
+                "copy_generation_source": "gemini",
+            },
+            platform="facebook",
+        )
+        self.assertEqual(result, caption)
 
     def test_instagram_prefers_generated_visual_upload(self) -> None:
         with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:

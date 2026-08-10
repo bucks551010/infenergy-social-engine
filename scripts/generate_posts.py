@@ -2562,11 +2562,10 @@ def _build_post_components(
         proofs = product_intelligence.get("proof_points", [])
         sales_angle = str(product_intelligence.get("sales_angle", "")).strip()
         audience_line = str(audiences[0]).strip() if isinstance(audiences, list) and audiences else "buyers preparing for outages"
-        benefit_line = str(benefits[0]).strip() if isinstance(benefits, list) and benefits else str(profile.get("benefit", "match real usage to the right product specs"))
         proof_line = str(proofs[0]).strip() if isinstance(proofs, list) and proofs else f"{m1} and {m2}"
         situation = f"{audience_line} often hit the same issue: the product gets picked before the actual job, compatibility, or limits are mapped."
         info = f"Use {proof_line} as a practical anchor to compare real fit before purchase."
-        why = benefit_line or str(profile.get("benefit", "match real usage to the right product specs"))
+        why = str(profile.get("benefit", "match real usage to the right product specs"))
         product_connection = (
             f"{product_name} is most effective when used through this lens: {sales_angle}."
             if sales_angle

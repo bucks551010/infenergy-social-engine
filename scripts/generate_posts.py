@@ -2573,6 +2573,8 @@ def _build_post_components(
         )
         proof = f"Proof-first only: {proof_line}."
 
+    benefit_fragment = _normalize_benefit_fragment(why)
+
     cta = selected_cta
     stage = funnel_stage.upper()
     if stage == "EDUCATION":
@@ -2588,7 +2590,7 @@ def _build_post_components(
         "situation": situation,
         "info": info,
         "why": why,
-        "benefit_fragment": (why[:1].lower() + why[1:]) if why else "supports a clearer buying decision",
+        "benefit_fragment": benefit_fragment,
         "product_connection": product_connection,
         "proof": proof,
         "feature_bullets": feature_bullets,
@@ -2607,11 +2609,11 @@ def _sales_feature_bullets(product: dict | None, limit: int = 5) -> list[str]:
     bullets: list[str] = []
     metrics = [str(x).strip() for x in (product.get("metrics", []) or []) if str(x).strip()]
     for metric in metrics[:limit]:
-        bullets.append(metric)
+        bullets.append(_one_line(_strip_html(metric), 72))
     categories = [str(x).strip() for x in (product.get("categories", []) or []) if str(x).strip()]
     if categories:
         bullets.append(f"Built for {categories[0]}")
-    fact = _one_line(_strip_html(str(product.get("fact_snippet", "") or "")), 140)
+    fact = _one_line(_strip_html(str(product.get("fact_snippet", "") or "")), 82)
     if fact:
         bullets.append(fact)
     cleaned: list[str] = []
@@ -2625,6 +2627,13 @@ def _sales_feature_bullets(product: dict | None, limit: int = 5) -> list[str]:
         if len(cleaned) >= limit:
             break
     return cleaned
+
+
+def _normalize_benefit_fragment(text: str) -> str:
+    cleaned = _one_line(_strip_html(str(text or "")), 140).strip()
+    if not cleaned:
+        return "supports a clearer buying decision"
+    return cleaned[:1].lower() + cleaned[1:]
 
 
 def _adapt_facebook(components: dict, funnel_stage: str) -> tuple[str, str, str]:

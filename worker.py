@@ -458,7 +458,7 @@ def _schedule_preview(days: int = 7) -> list[dict]:
             "slots": {},
         }
         for slot in ("morning", "midday", "evening"):
-            stage = stage_for_slot(slot, history=history, funnel_config=funnel_config)
+            stage = stage_for_slot(slot, history=history, funnel_config=funnel_config, schedule=schedule, now_utc=when)
             eligibility = eligible_channels_for_slot(
                 slot=slot,
                 funnel_stage=stage,

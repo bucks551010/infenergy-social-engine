@@ -72,42 +72,119 @@ DEFAULT_FUNNEL_CONFIG: dict[str, Any] = {
 
 DEFAULT_CHANNEL_SCHEDULE: dict[str, Any] = {
     "monday": {
+        "morning": [
+            {"platform": "linkedin", "allowed_funnel_stages": ["EDUCATION", "TRUST"], "enabled": True, "preferred_content_formats": ["authority_post", "faq"]},
+        ],
         "midday": [
-            {"platform": "facebook", "stage": "EDUCATION", "enabled": True, "preferred_content_formats": ["comparison", "how_to"]},
-            {"platform": "linkedin", "stage": "EDUCATION", "enabled": True, "preferred_content_formats": ["authority_post", "faq"]},
-        ]
-    },
-    "tuesday": {
-        "midday": [
-            {"platform": "instagram", "stage": "DESIRE", "enabled": True, "preferred_content_formats": ["use_case", "demonstration"]}
+            {"platform": "facebook", "allowed_funnel_stages": ["ATTENTION", "EDUCATION"], "enabled": True, "preferred_content_formats": ["comparison", "how_to", "question_post"]},
+            {"platform": "linkedin", "allowed_funnel_stages": ["EDUCATION", "TRUST"], "enabled": True, "preferred_content_formats": ["authority_post", "faq"]},
         ],
         "evening": [
-            {"platform": "facebook", "stage": "DESIRE", "enabled": True, "preferred_content_formats": ["scenario", "use_case"]}
+            {"platform": "instagram", "allowed_funnel_stages": ["ATTENTION", "DESIRE"], "enabled": True, "preferred_content_formats": ["use_case", "carousel"]},
+        ],
+    },
+    "tuesday": {
+        "morning": [
+            {"platform": "facebook", "allowed_funnel_stages": ["ATTENTION", "EDUCATION"], "enabled": True, "preferred_content_formats": ["question_post", "myth_bust"]},
+        ],
+        "midday": [
+            {"platform": "instagram", "allowed_funnel_stages": ["DESIRE", "EDUCATION"], "enabled": True, "preferred_content_formats": ["use_case", "demonstration"]},
+        ],
+        "evening": [
+            {"platform": "facebook", "allowed_funnel_stages": ["DESIRE", "TRUST"], "enabled": True, "preferred_content_formats": ["scenario", "use_case"]},
         ],
     },
     "wednesday": {
+        "morning": [
+            {"platform": "linkedin", "allowed_funnel_stages": ["EDUCATION", "TRUST"], "enabled": True, "preferred_content_formats": ["authority_post", "spec_breakdown"]},
+        ],
         "midday": [
-            {"platform": "facebook", "stage": "ATTENTION", "enabled": True, "preferred_content_formats": ["question_post", "myth_bust"]}
+            {"platform": "facebook", "allowed_funnel_stages": ["ATTENTION", "EDUCATION"], "enabled": True, "preferred_content_formats": ["question_post", "myth_bust"]},
         ],
         "evening": [
-            {"platform": "instagram", "stage": "EDUCATION", "enabled": True, "preferred_content_formats": ["checklist", "carousel"]}
+            {"platform": "instagram", "allowed_funnel_stages": ["EDUCATION", "DESIRE"], "enabled": True, "preferred_content_formats": ["checklist", "carousel"]},
         ],
     },
     "thursday": {
+        "morning": [
+            {"platform": "instagram", "allowed_funnel_stages": ["ATTENTION", "DESIRE"], "enabled": True, "preferred_content_formats": ["reel", "use_case"]},
+        ],
         "midday": [
-            {"platform": "linkedin", "stage": "TRUST", "enabled": True, "preferred_content_formats": ["spec_breakdown", "authority_post"]},
-            {"platform": "instagram", "stage": "TRUST", "enabled": True, "preferred_content_formats": ["demonstration", "reel"]},
+            {"platform": "linkedin", "allowed_funnel_stages": ["TRUST", "EDUCATION"], "enabled": True, "preferred_content_formats": ["spec_breakdown", "authority_post"]},
+            {"platform": "instagram", "allowed_funnel_stages": ["TRUST", "DESIRE"], "enabled": True, "preferred_content_formats": ["demonstration", "reel"]},
         ],
         "evening": [
-            {"platform": "facebook", "stage": "CONVERSION", "enabled": True, "preferred_content_formats": ["direct_cta", "offer_post"]}
+            {"platform": "facebook", "allowed_funnel_stages": ["CONVERSION", "TRUST"], "enabled": True, "preferred_content_formats": ["direct_cta", "offer_post"]},
         ],
     },
     "friday": {
+        "morning": [
+            {"platform": "facebook", "allowed_funnel_stages": ["EDUCATION", "ATTENTION"], "enabled": True, "preferred_content_formats": ["how_to", "comparison"]},
+        ],
         "midday": [
-            {"platform": "linkedin", "stage": "TRUST", "enabled": True, "preferred_content_formats": ["authority_post", "faq"]}
-        ]
+            {"platform": "linkedin", "allowed_funnel_stages": ["TRUST", "EDUCATION"], "enabled": True, "preferred_content_formats": ["authority_post", "faq"]},
+        ],
+        "evening": [
+            {"platform": "instagram", "allowed_funnel_stages": ["DESIRE", "CONVERSION"], "enabled": True, "preferred_content_formats": ["carousel", "offer_post"]},
+        ],
+    },
+    "saturday": {
+        "morning": [
+            {"platform": "instagram", "allowed_funnel_stages": ["ATTENTION", "DESIRE"], "enabled": True, "preferred_content_formats": ["use_case", "carousel"]},
+        ],
+        "midday": [
+            {"platform": "facebook", "allowed_funnel_stages": ["DESIRE", "ATTENTION"], "enabled": True, "preferred_content_formats": ["scenario", "question_post"]},
+        ],
+        "evening": [],
+    },
+    "sunday": {
+        "morning": [],
+        "midday": [
+            {"platform": "facebook", "allowed_funnel_stages": ["ATTENTION", "DESIRE"], "enabled": True, "preferred_content_formats": ["question_post", "use_case"]},
+        ],
+        "evening": [
+            {"platform": "linkedin", "allowed_funnel_stages": ["TRUST", "EDUCATION"], "enabled": True, "preferred_content_formats": ["authority_post", "faq"]},
+        ],
     },
 }
+
+
+def weekly_schedule_coverage(schedule: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Summarize weekly opportunity coverage per platform and flag empty day/slot gaps.
+
+    Used to enforce the seven-day planning invariant: every platform should have
+    a real opportunity across the week, and empty slots should be visible rather
+    than silently discovered at generation time.
+    """
+    active_schedule = schedule if schedule is not None else load_channel_schedule()
+    days = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+    slots = ["morning", "midday", "evening"]
+    platform_counts = {"facebook": 0, "instagram": 0, "linkedin": 0, "wordpress": 0}
+    empty_slots: list[str] = []
+
+    if _is_legacy_schedule(active_schedule):
+        return {"platform_counts": platform_counts, "empty_slots": empty_slots, "legacy_schedule": True}
+
+    for day in days:
+        day_rules = active_schedule.get(day, {}) if isinstance(active_schedule, dict) else {}
+        for slot in slots:
+            slot_rules = day_rules.get(slot, []) if isinstance(day_rules, dict) else []
+            active_rules = [
+                r for r in slot_rules
+                if isinstance(r, dict) and bool(r.get("enabled", True)) and _platform_from_rule(r) in platform_counts
+            ]
+            if not active_rules:
+                empty_slots.append(f"{day}:{slot}")
+                continue
+            for rule in active_rules:
+                platform_counts[_platform_from_rule(rule)] += 1
+
+    return {
+        "platform_counts": platform_counts,
+        "empty_slots": empty_slots,
+        "legacy_schedule": False,
+        "platforms_with_zero_opportunities": [p for p, c in platform_counts.items() if c == 0 and p != "wordpress"],
+    }
 
 DEFAULT_CTA_LIBRARY: dict[str, list[str]] = {
     "ATTENTION": [
@@ -176,6 +253,28 @@ def _marketing_json_path(filename: str) -> str:
     return os.path.join(MARKETING_DIR, filename)
 
 
+def _schedule_needs_migration(existing: dict[str, Any]) -> bool:
+    """Detect the sparse pre-fix default schedule (no weekends, no morning slot).
+
+    Older deployments already persisted `channel_schedule.json` from the previous
+    default, so `not os.path.exists(...)` alone would never refresh it. Auto-heal
+    any schedule that is missing full 7-day/3-slot coverage back to the current
+    default so every platform gets real weekly opportunities.
+    """
+    if not isinstance(existing, dict) or not existing:
+        return True
+    if _is_legacy_schedule(existing):
+        return False
+    required_days = {"monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"}
+    if not required_days.issubset({str(k).lower() for k in existing.keys()}):
+        return True
+    for day in required_days:
+        day_rules = existing.get(day, {})
+        if not isinstance(day_rules, dict) or "morning" not in day_rules:
+            return True
+    return False
+
+
 def ensure_campaign_runtime_files() -> None:
     os.makedirs(DATA_DIR, exist_ok=True)
     os.makedirs(MARKETING_DIR, exist_ok=True)
@@ -197,12 +296,22 @@ def ensure_campaign_runtime_files() -> None:
     if not os.path.exists(schedule_marketing_path):
         with open(schedule_marketing_path, "w", encoding="utf-8") as f:
             json.dump(DEFAULT_CHANNEL_SCHEDULE, f, indent=2)
+    else:
+        existing = _read_json_or_default(schedule_marketing_path, {})
+        if _schedule_needs_migration(existing):
+            with open(schedule_marketing_path, "w", encoding="utf-8") as f:
+                json.dump(DEFAULT_CHANNEL_SCHEDULE, f, indent=2)
 
     # Backward-compatible legacy location.
     schedule_path = _json_path("channel_schedule.json")
     if not os.path.exists(schedule_path):
         with open(schedule_path, "w", encoding="utf-8") as f:
             json.dump(DEFAULT_CHANNEL_SCHEDULE, f, indent=2)
+    else:
+        existing_legacy = _read_json_or_default(schedule_path, {})
+        if _schedule_needs_migration(existing_legacy):
+            with open(schedule_path, "w", encoding="utf-8") as f:
+                json.dump(DEFAULT_CHANNEL_SCHEDULE, f, indent=2)
 
     cta_library_path = _marketing_json_path("cta_library.json")
     if not os.path.exists(cta_library_path):
@@ -445,14 +554,56 @@ def _distribution_map(config: dict[str, Any]) -> dict[str, float]:
     return {k: v / total for k, v in result.items()}
 
 
-def select_funnel_stage(history: dict[str, Any], funnel_config: dict[str, Any] | None = None, window: int = 60) -> str:
+def allowed_stages_for_slot(
+    slot: str,
+    schedule: dict[str, Any] | None = None,
+    now_utc: datetime | None = None,
+) -> list[str]:
+    """Return the funnel stages actually schedulable for this weekday/slot.
+
+    Legacy (per-channel) schedules carry no stage constraint, so every stage
+    is considered available. Structured schedules restrict the choice to the
+    union of `allowed_funnel_stages` (or single `stage`) declared by enabled
+    rules for that exact day and slot, so stage selection can never pick a
+    stage no scheduled channel is willing to run.
+    """
+    active_schedule = schedule if schedule is not None else load_channel_schedule()
+    if _is_legacy_schedule(active_schedule):
+        return list(FUNNEL_STAGES)
+
+    now = now_utc or datetime.now(timezone.utc)
+    day_name = now.strftime("%A").lower()
+    day_rules = active_schedule.get(day_name, {}) if isinstance(active_schedule, dict) else {}
+    slot_rules = day_rules.get(slot, []) if isinstance(day_rules, dict) else []
+
+    stages: set[str] = set()
+    if isinstance(slot_rules, list):
+        for raw_rule in slot_rules:
+            if not isinstance(raw_rule, dict):
+                continue
+            if not bool(raw_rule.get("enabled", True)):
+                continue
+            stages.update(_stages_from_rule(raw_rule))
+
+    return sorted(stages) if stages else list(FUNNEL_STAGES)
+
+
+def select_funnel_stage(
+    history: dict[str, Any],
+    funnel_config: dict[str, Any] | None = None,
+    window: int = 60,
+    allowed_stages: list[str] | None = None,
+) -> str:
     config = funnel_config or load_funnel_config()
     distribution = _distribution_map(config)
+    candidates = [s for s in FUNNEL_STAGES if not allowed_stages or s in allowed_stages]
+    if not candidates:
+        candidates = list(FUNNEL_STAGES)
 
     posts = history.get("posts", []) if isinstance(history, dict) else []
     recent = [p for p in posts[-window:] if isinstance(p, dict)]
     if not recent:
-        return max(distribution.items(), key=lambda kv: kv[1])[0]
+        return max(candidates, key=lambda stage: distribution.get(stage, 0.0))
 
     counts = {stage: 0 for stage in FUNNEL_STAGES}
     for row in recent:
@@ -461,7 +612,7 @@ def select_funnel_stage(history: dict[str, Any], funnel_config: dict[str, Any] |
 
     total = max(1, sum(counts.values()))
     deficits = []
-    for stage in FUNNEL_STAGES:
+    for stage in candidates:
         actual = counts[stage] / total
         target = distribution.get(stage, 0.0)
         deficits.append((target - actual, target, stage))
@@ -470,9 +621,15 @@ def select_funnel_stage(history: dict[str, Any], funnel_config: dict[str, Any] |
     return deficits[0][2]
 
 
-def stage_for_slot(slot: str, history: dict[str, Any] | None = None, funnel_config: dict[str, Any] | None = None) -> str:
-    del slot  # Funnel stage is selected from target distribution, not fixed slot mapping.
-    return select_funnel_stage(history or {"posts": []}, funnel_config=funnel_config)
+def stage_for_slot(
+    slot: str,
+    history: dict[str, Any] | None = None,
+    funnel_config: dict[str, Any] | None = None,
+    schedule: dict[str, Any] | None = None,
+    now_utc: datetime | None = None,
+) -> str:
+    allowed = allowed_stages_for_slot(slot, schedule=schedule, now_utc=now_utc)
+    return select_funnel_stage(history or {"posts": []}, funnel_config=funnel_config, allowed_stages=allowed)
 
 
 def should_channel_run(

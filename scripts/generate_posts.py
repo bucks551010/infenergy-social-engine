@@ -76,40 +76,147 @@ DATA_DIR = os.environ.get("DATA_DIR", BASE_DATA_DIR)
 
 DEFAULT_TOPIC_QUEUE = {
     "pillars": [
-        "portable_power_readiness",
-        "emergency_preparedness",
-        "outdoor_rv_power",
+        "preparedness_education",
+        "energy_literacy",
+        "customer_problem_solving",
+        "brand_authority",
+        "trust_and_company_values",
+        "community_engagement",
+        "home_resilience",
+        "travel_and_outdoor_preparedness",
+        "caregiver_preparedness",
+        "small_business_continuity",
+        "category_education",
         "product_education",
-        "promotions",
+        "readiness_assessment_lead_gen",
     ],
     "topics": {
-        "portable_power_readiness": [
-            "How to choose a portable power station for your daily must-run devices",
-            "Battery capacity basics: what can 1kWh actually power?",
-            "How to avoid buying a power station that is too small for real use",
+        "preparedness_education": [
+            "The 24-hour outage plan every household should write down before storm season",
+            "What to power first when the grid goes down: a practical priority list",
+            "The three preparedness mistakes people only discover during their first real outage",
+            "How to build a device-priority list for your household in 10 minutes",
+            "Preparedness is a plan, not a purchase: the steps that matter before you buy anything",
         ],
-        "emergency_preparedness": [
-            "How to build a 24-hour outage plan with portable backup power",
-            "The most common outage-prep mistakes and how to avoid them",
-            "What to power first during outages: a practical priority list",
+        "energy_literacy": [
+            "Watts, wattage, and runtime: the three numbers that actually decide what backup power can do",
+            "Why battery capacity labels alone do not tell you what a device can run",
+            "Recharge speed vs output vs portability: what to compare and why it matters",
+            "A plain-English guide to inverters for people who are not electricians",
+            "How to translate your appliance's power draw into a real backup-power decision",
         ],
-        "outdoor_rv_power": [
-            "Portable power setups for camping and RV weekends",
-            "How to match solar panel wattage to your portable generator",
+        "customer_problem_solving": [
+            "The most common question we get about backup power, answered honestly",
+            "How to figure out what your household actually needs before you shop",
+            "What people usually get wrong when comparing backup power options",
+            "A simple framework for matching real device needs to real capacity",
+            "What to ask before you buy any portable power product",
+        ],
+        "brand_authority": [
+            "Why we evaluate every product by real use cases before we ever recommend it",
+            "The preparedness-first philosophy behind how we build product guidance",
+            "What separates a genuinely useful power-readiness recommendation from a sales pitch",
+            "Our approach to only publishing specs we can verify",
+            "How we think about the difference between hype and honest product fit",
+        ],
+        "trust_and_company_values": [
+            "Why we would rather tell you not to buy something than oversell it",
+            "The values behind how Infenergy Power talks about products and specs",
+            "What 'proof over hype' actually means in how we write product guidance",
+            "Behind the scenes: how we vet the claims we publish",
+            "Why transparency about limitations builds more trust than perfect marketing",
+        ],
+        "community_engagement": [
+            "What's the one device you can't afford to lose power to during an outage?",
+            "Tell us about the last time you lost power unexpectedly, what happened?",
+            "Poll: what's your household's biggest backup-power blind spot?",
+            "What would your 24-hour outage plan actually look like right now?",
+            "Share your best (or worst) outage story, we read every one",
+        ],
+        "home_resilience": [
+            "Building a whole-household backup plan without overspending",
+            "How families are building outage resilience one device at a time",
+            "The home resilience checklist most people skip",
+            "What a realistic backup-power setup looks like for a family of four",
+            "How to keep essentials running during a multi-day outage",
+        ],
+        "travel_and_outdoor_preparedness": [
             "Travel power checklist: charging phones, laptops, and essentials off-grid",
+            "What campers and RV owners actually need from portable power",
+            "How to match solar panel wattage to your portable generator for weekend trips",
+            "The off-grid power mistakes first-time campers make",
+            "Packing for backup power: what belongs in every travel bag",
+        ],
+        "caregiver_preparedness": [
+            "What caregivers need to know about backup power for medical devices",
+            "Building a preparedness plan when someone in your home depends on powered equipment",
+            "The questions caregivers should ask before choosing any backup power option",
+            "How to plan for outages when reliability is not optional",
+            "A caregiver's guide to prioritizing what must stay powered",
+        ],
+        "small_business_continuity": [
+            "What small businesses lose in the first hour of an unplanned outage",
+            "Building a business continuity plan around portable backup power",
+            "How small operators keep point-of-sale and communication running during outages",
+            "The real cost of downtime for a small business, and how to plan around it",
+            "A practical continuity checklist for shops that cannot afford to close",
+        ],
+        "category_education": [
+            "Portable generator vs power station: what actually matters for your use case",
+            "Power banks vs power stations: which one solves your actual problem",
+            "Solar panels paired with portable power: how the pairing actually works",
+            "Jump starters vs power banks: what each one is really built for",
+            "What separates a real emergency-ready product category from a marketing label",
         ],
         "product_education": [
-            "Portable generator vs power station: what actually matters",
-            "Inverter and output basics for non-technical buyers",
             "How to compare recharge speed, output, and portability before buying",
+            "Reading a spec sheet: what the numbers on a power station label actually mean",
+            "What to verify before trusting a product's advertised capacity",
+            "How to match a specific product's specs to your specific must-run devices",
+            "The verified details worth checking before you commit to any backup power product",
         ],
-        "promotions": [
+        "readiness_assessment_lead_gen": [
             "Book a free portable-power readiness assessment",
             "How to get a product match in under 15 minutes",
             "What to expect from your first product-fit consultation",
+            "Not sure what you need? Start with a two-minute readiness check",
+            "Get a tailored backup-power recommendation before you spend a dollar",
         ],
     },
 }
+
+# Business-first editorial director: default product-inclusion mode per content pillar.
+# no_product: never attach a product. category_reference: may reference a product category
+# generically but not push a specific SKU. optional_product: product may or may not be attached.
+# required_product: always needs a specific product. multiple_products: conversion-style content
+# that may reference more than one product; treated like required_product for selection purposes.
+PILLAR_PRODUCT_MODE = {
+    "preparedness_education": "no_product",
+    "energy_literacy": "no_product",
+    "customer_problem_solving": "optional_product",
+    "brand_authority": "no_product",
+    "trust_and_company_values": "no_product",
+    "community_engagement": "no_product",
+    "home_resilience": "optional_product",
+    "travel_and_outdoor_preparedness": "optional_product",
+    "caregiver_preparedness": "no_product",
+    "small_business_continuity": "optional_product",
+    "category_education": "category_reference",
+    "product_education": "required_product",
+    "readiness_assessment_lead_gen": "multiple_products",
+}
+
+# Target weekly content mix (business-first, not product-first). Ratios are guidance for
+# biasing pillar selection, not hard quotas — see _decide_content_bucket().
+CONTENT_MIX_TARGETS = {
+    "no_product_min": 0.60,
+    "no_product_max": 0.70,
+    "product_education_min": 0.20,
+    "product_education_max": 0.30,
+    "conversion_min": 0.10,
+    "conversion_max": 0.15,
+}
+MAX_CONSECUTIVE_PRODUCT_POSTS = 2
 
 DEFAULT_STAGE_PAIN_POINTS = {
     "ATTENTION": "Most buyers realize too late that their backup plan does not match real device usage.",
@@ -814,7 +921,7 @@ def _build_phase7_conference_packets(
     }
 
 
-def _conversion_caption_gate(platform_posts: dict, talking_point: dict) -> tuple[bool, list[str]]:
+def _conversion_caption_gate(platform_posts: dict, talking_point: dict, want_product: bool = True) -> tuple[bool, list[str]]:
     reasons: list[str] = []
     pain = str((talking_point or {}).get("pain_point", "")).strip().lower()
     first_step = str((talking_point or {}).get("first_step", "")).strip().lower()
@@ -829,12 +936,33 @@ def _conversion_caption_gate(platform_posts: dict, talking_point: dict) -> tuple
             reasons.append(f"{platform_name}:missing_pain_point")
         if first_step and first_step not in low:
             reasons.append(f"{platform_name}:missing_next_step")
-        if not _contains_numeric_evidence(caption):
+        # Numeric specs evidence only applies to product-led posts — business-first, no-product
+        # posts have nothing to cite a spec/number for and shouldn't be penalized for that.
+        if want_product and not _contains_numeric_evidence(caption):
             reasons.append(f"{platform_name}:missing_numeric_evidence")
         for bad in POSITIONING_REPLACEMENTS.keys():
             if bad in low:
                 reasons.append(f"{platform_name}:off_brand_phrase:{bad}")
     return len(reasons) == 0, reasons
+
+
+def _topic_queue_needs_migration(existing: dict) -> bool:
+    """True if a persisted topic_queue.json predates the business-first pillar taxonomy."""
+    if not isinstance(existing, dict):
+        return True
+    pillars = existing.get("pillars", [])
+    if not isinstance(pillars, list) or not pillars:
+        return True
+    current_pillars = set(DEFAULT_TOPIC_QUEUE["pillars"])
+    existing_pillars = {str(p).strip() for p in pillars if str(p).strip()}
+    # Stale if it is missing most of the current pillars (legacy/off-brand queue), or if it
+    # still contains pillars from a generic residential-solar template that never applied
+    # to this business (e.g. solar_savings, net_metering-flavored content).
+    known_off_brand_pillars = {"solar_savings", "energy_independence", "battery_storage", "case_studies", "industry_news"}
+    if existing_pillars & known_off_brand_pillars:
+        return True
+    overlap = existing_pillars & current_pillars
+    return len(overlap) < max(1, len(current_pillars) // 2)
 
 
 def ensure_runtime_data() -> None:
@@ -846,6 +974,18 @@ def ensure_runtime_data() -> None:
     if not os.path.exists(topic_primary) and not os.path.exists(topic_fallback):
         with open(topic_primary, "w", encoding="utf-8") as f:
             json.dump(DEFAULT_TOPIC_QUEUE, f, indent=2)
+    else:
+        for path in (topic_primary, topic_fallback):
+            if not os.path.exists(path):
+                continue
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    existing = json.load(f)
+            except Exception:
+                existing = {}
+            if _topic_queue_needs_migration(existing):
+                with open(path, "w", encoding="utf-8") as f:
+                    json.dump(DEFAULT_TOPIC_QUEUE, f, indent=2)
 
     history_primary = os.path.join(DATA_DIR, "post_history.json")
     history_fallback = os.path.join(BASE_DATA_DIR, "post_history.json")
@@ -1583,14 +1723,14 @@ def _normalize_funnel_stage_override(value: str) -> str:
 def _preferred_pillars_for_stage(funnel_stage: str) -> list[str]:
     stage = str(funnel_stage or "").strip().upper()
     if stage == "CONVERSION":
-        return ["promotions", "product_education", "portable_power_readiness"]
+        return ["readiness_assessment_lead_gen", "product_education", "small_business_continuity"]
     if stage == "TRUST":
-        return ["use_case_breakdowns", "product_education", "emergency_preparedness"]
+        return ["trust_and_company_values", "product_education", "customer_problem_solving"]
     if stage == "DESIRE":
-        return ["use_case_breakdowns", "outdoor_rv_power", "portable_power_readiness"]
+        return ["home_resilience", "travel_and_outdoor_preparedness", "customer_problem_solving"]
     if stage == "EDUCATION":
-        return ["product_education", "portable_power_readiness", "myth_busting_power"]
-    return ["emergency_preparedness", "portable_power_readiness", "outdoor_rv_power"]
+        return ["preparedness_education", "energy_literacy", "category_education"]
+    return ["community_engagement", "brand_authority", "preparedness_education"]
 
 
 def _product_category_text(product: dict | None) -> str:
@@ -1790,6 +1930,131 @@ def _pick_topic(queue: dict, history: dict, preferred_pillars: list[str] | None 
     pillar = random.choice(pillars)
     topic = random.choice(queue["topics"][pillar])
     return pillar, topic, hashlib.md5(topic.encode()).hexdigest()
+
+
+def _recent_history_window(history: dict, limit: int = 14) -> list[dict]:
+    posts = [p for p in (history.get("posts", []) if isinstance(history, dict) else []) if isinstance(p, dict)]
+    return posts[-limit:]
+
+
+def _weekly_mix_snapshot(history: dict, window: int = 14) -> dict[str, float | int]:
+    """Business-first content mix snapshot: how product-first vs pillar-first recent posts have been."""
+    recent = _recent_history_window(history, window)
+    total = len(recent)
+    if total == 0:
+        return {"non_product_ratio": 0.0, "product_education_ratio": 0.0, "conversion_ratio": 0.0, "total": 0}
+    non_product = sum(1 for p in recent if not str(p.get("product_name", "")).strip())
+    product_education = sum(1 for p in recent if str(p.get("pillar", "")) == "product_education")
+    conversion = sum(
+        1
+        for p in recent
+        if str(p.get("pillar", "")) == "readiness_assessment_lead_gen"
+        or (str(p.get("funnel_stage", "")).upper() == "CONVERSION" and str(p.get("product_name", "")).strip())
+    )
+    return {
+        "non_product_ratio": non_product / total,
+        "product_education_ratio": product_education / total,
+        "conversion_ratio": conversion / total,
+        "total": total,
+    }
+
+
+def _consecutive_product_posts(history: dict) -> int:
+    posts = [p for p in (history.get("posts", []) if isinstance(history, dict) else []) if isinstance(p, dict)]
+    count = 0
+    for p in reversed(posts):
+        if str(p.get("product_name", "")).strip():
+            count += 1
+        else:
+            break
+    return count
+
+
+def _decide_content_bucket(history: dict) -> str:
+    """Decide whether the next post should be non-product, product-education, or conversion.
+
+    Implements the mission's default weekly mix (60-70% non-product, 20-30% product education,
+    10-15% direct conversion) and the max-2-consecutive-product-posts guardrail, favoring
+    whichever bucket is furthest below its target given recent history.
+    """
+    if _consecutive_product_posts(history) >= MAX_CONSECUTIVE_PRODUCT_POSTS:
+        return "no_product"
+
+    snapshot = _weekly_mix_snapshot(history)
+    if snapshot["total"] < 3:
+        # Not enough history yet: bias toward non-product content to seed a healthy mix.
+        return "no_product"
+
+    deficits = {
+        "no_product": CONTENT_MIX_TARGETS["no_product_min"] - snapshot["non_product_ratio"],
+        "product_education": CONTENT_MIX_TARGETS["product_education_min"] - snapshot["product_education_ratio"],
+        "conversion": CONTENT_MIX_TARGETS["conversion_min"] - snapshot["conversion_ratio"],
+    }
+    bucket = max(deficits, key=deficits.get)
+    if deficits[bucket] <= 0:
+        # All targets already met or exceeded — default to the non-product majority.
+        return "no_product"
+    return bucket
+
+
+def _pillars_for_bucket(bucket: str) -> list[str]:
+    if bucket == "product_education":
+        return [p for p, mode in PILLAR_PRODUCT_MODE.items() if mode == "required_product"]
+    if bucket == "conversion":
+        return [p for p, mode in PILLAR_PRODUCT_MODE.items() if mode in ("multiple_products", "optional_product")]
+    return [p for p, mode in PILLAR_PRODUCT_MODE.items() if mode in ("no_product", "optional_product", "category_reference")]
+
+
+def select_editorial_plan(
+    queue: dict,
+    history: dict,
+    products: list[dict],
+    funnel_stage: str,
+) -> dict:
+    """Business-first editorial decision chain: pillar/topic and product-inclusion decision.
+
+    Decides the content pillar and whether a specific product belongs in this post *before*
+    picking a product, so products are one source of content rather than the organizing
+    principle of every post.
+    """
+    preferred_pillars = _preferred_pillars_for_stage(funnel_stage)
+    bucket = _decide_content_bucket(history)
+    bucket_pillars = _pillars_for_bucket(bucket)
+    queue_pillars = [str(p).strip() for p in queue.get("pillars", []) if str(p).strip()]
+    trimmed_pillars = [p for p in queue_pillars if p in bucket_pillars] or queue_pillars
+    if not trimmed_pillars:
+        raise ValueError("topic queue has no valid pillars")
+    trimmed_queue = {
+        "pillars": trimmed_pillars,
+        "topics": {p: queue.get("topics", {}).get(p, []) for p in trimmed_pillars},
+    }
+    ranked_preferred = [p for p in preferred_pillars if p in trimmed_pillars]
+
+    if bucket == "no_product":
+        pillar, topic, topic_hash = _pick_topic(trimmed_queue, history, preferred_pillars=ranked_preferred)
+        return {
+            "pillar": pillar,
+            "topic": topic,
+            "topic_hash": topic_hash,
+            "content_bucket": bucket,
+            "product_mode": PILLAR_PRODUCT_MODE.get(pillar, "no_product"),
+            "product": None,
+            "want_product": False,
+        }
+
+    product = _pick_product(products, history)
+    pillar, topic, topic_hash = _pick_topic_for_product(
+        trimmed_queue, history, product, funnel_stage, preferred_pillars=ranked_preferred
+    )
+    return {
+        "pillar": pillar,
+        "topic": topic,
+        "topic_hash": topic_hash,
+        "content_bucket": bucket,
+        "product_mode": PILLAR_PRODUCT_MODE.get(pillar, "optional_product"),
+        "product": product,
+        "want_product": True,
+    }
 
 
 def _pick_non_repeating_text(candidates: list[str], recent_hashes: set[str], fallback: str) -> str:
@@ -2369,6 +2634,40 @@ def _build_talking_point(topic: str, funnel_stage: str, product: dict | None) ->
         first_step = "Review your device list and verify specs before committing."
     elif stage == "CONVERSION":
         first_step = "Book your free readiness assessment and get a tailored recommendation in under 15 minutes."
+
+    return {
+        "pain_point": pain_point,
+        "proof_anchor": proof_anchor,
+        "angle": angle,
+        "first_step": first_step,
+    }
+
+
+def _build_talking_point_no_product(topic: str, funnel_stage: str, pillar: str) -> dict:
+    """Talking point for business-first content with no product attached.
+
+    Keeps the same shape as _build_talking_point() but never frames the post around
+    "compare specs before you buy" language, since there is no product to compare.
+    """
+    stage = str(funnel_stage or "").strip().upper()
+    pain_point = DEFAULT_STAGE_PAIN_POINT_VARIANTS.get(stage, DEFAULT_STAGE_PAIN_POINT_VARIANTS["EDUCATION"])[0]
+    angle = f"{topic}, viewed through Infenergy's preparedness-first perspective."
+
+    first_step = "Comment below with your take, we read every reply."
+    if pillar == "readiness_assessment_lead_gen":
+        first_step = "Book your free readiness assessment and get a tailored recommendation in under 15 minutes."
+    elif pillar == "community_engagement":
+        first_step = "Tell us in the comments, we want to hear your experience."
+    elif pillar in ("preparedness_education", "energy_literacy", "category_education"):
+        first_step = "Save this so it's ready the next time you need it."
+    elif pillar in ("home_resilience", "travel_and_outdoor_preparedness", "caregiver_preparedness"):
+        first_step = "Share this with someone who is still figuring out their own plan."
+    elif pillar == "small_business_continuity":
+        first_step = "Walk through this checklist with your team this week."
+    elif pillar in ("brand_authority", "trust_and_company_values"):
+        first_step = "Follow along for more of how we think about preparedness."
+
+    proof_anchor = "The details that actually matter here are specific, not headline-level claims."
 
     return {
         "pain_point": pain_point,
@@ -3072,7 +3371,11 @@ def _build_fallback_content(
     brief_benefits = [str(value).strip() for value in brief.get("core_benefits", []) if str(value).strip()]
     benefit = brief_benefits[0] if brief_benefits else "fills a specific gap in a practical preparedness plan"
     pain_point = str(brief.get("primary_pain_point", "") or pain_point)
-    proof_anchor = str(brief.get("proof_rule", "") or proof_anchor)
+    # NOTE: brief["proof_rule"] is an internal validation instruction, never customer copy —
+    # derive proof_anchor from customer-safe verified_facts instead (see _build_product_intelligence_handoff).
+    brief_verified_facts = [str(v).strip() for v in brief.get("verified_facts", []) if str(v).strip()]
+    if brief_verified_facts:
+        proof_anchor = f"Published details: {'; '.join(brief_verified_facts[:2])}."
     first_step = str(brief.get("recommended_cta", "") or first_step)
     use_cases = [str(value).strip() for value in brief.get("best_fit_use_cases", []) if str(value).strip()]
     usage_line = f"Best suited to {', '.join(use_cases[:3])}." if use_cases else "Match the product to the specific job it needs to do."
@@ -3134,6 +3437,83 @@ def _build_fallback_content(
         "wp_title": wp_title,
         "wp_content": wp_content,
         "wp_excerpt": f"{name}: practical buying guidance, key specs, and what to compare before you purchase.",
+        "fb_caption": fb_caption,
+        "ig_caption": ig_caption,
+        "li_text": li_text,
+    }
+
+
+_PILLAR_HASHTAGS = {
+    "preparedness_education": "#Preparedness #OutagePlan #EmergencyReady",
+    "energy_literacy": "#EnergyLiteracy #Preparedness #PowerBasics",
+    "customer_problem_solving": "#Preparedness #BackupPower #BuyingGuide",
+    "brand_authority": "#InfenergyPower #Preparedness #ProofOverHype",
+    "trust_and_company_values": "#InfenergyPower #Trust #Preparedness",
+    "community_engagement": "#Preparedness #OutageStory #StayPowered",
+    "home_resilience": "#HomeResilience #Preparedness #BackupPower",
+    "travel_and_outdoor_preparedness": "#TravelPower #CampingReady #RVLife",
+    "caregiver_preparedness": "#CaregiverPrep #Preparedness #BackupPower",
+    "small_business_continuity": "#BusinessContinuity #SmallBusiness #Preparedness",
+    "category_education": "#Preparedness #BackupPower #BuyingGuide",
+    "readiness_assessment_lead_gen": "#PowerReadiness #Preparedness #GetPrepared",
+}
+
+
+def _build_fallback_content_no_product(
+    slot: str,
+    topic: str,
+    pillar: str,
+    marketing_strategy: dict | None,
+    talking_point: dict | None = None,
+) -> dict:
+    """Deterministic fallback content for business-first posts with no product attached.
+
+    Discusses the pillar/topic at a category or brand level. Never names a specific product,
+    price, or SKU, and never uses a purchase-style CTA (except the lead-gen pillar, which uses
+    a free-assessment CTA rather than a direct sale).
+    """
+    marketing_strategy = marketing_strategy or {}
+    talking_point = talking_point or _build_talking_point_no_product(topic, "EDUCATION", pillar)
+    pain_point = str(talking_point.get("pain_point") or "").strip()
+    angle = str(talking_point.get("angle") or topic).strip()
+    first_step = str(talking_point.get("first_step") or "Comment below, we read every reply.").strip()
+    hashtag_line = _PILLAR_HASHTAGS.get(pillar, "#Preparedness #InfenergyPower")
+
+    wp_title = _one_line(topic, 64) if len(topic) <= 64 else _one_line(topic, 60)
+    wp_content = (
+        f"<p>{pain_point} Here is how we think about it: {angle}</p>"
+        f"<h2>What Actually Matters Here</h2><p>{topic}</p>"
+        f"<h2>The Practical Takeaway</h2><p>Focus on the specifics that change your real-world outcome, not the headline claim.</p>"
+        f"<h2>Next Step</h2><p>{first_step}</p>"
+    )
+
+    fb_caption = (
+        f"{pain_point}\n\n"
+        f"{topic}\n\n"
+        f"{angle}\n\n"
+        f"{first_step}\n"
+        f"{hashtag_line}"
+    )
+
+    ig_caption = (
+        f"{topic}\n\n"
+        f"{pain_point}\n\n"
+        f"{angle}\n\n"
+        f"{first_step}\n"
+        f"{hashtag_line}"
+    )
+
+    li_text = (
+        f"{pain_point}\n\n"
+        f"{angle}\n\n"
+        f"For households, caregivers, travelers, and small operators, this kind of practical clarity is what actually reduces risk.\n\n"
+        f"{first_step}"
+    )
+
+    return {
+        "wp_title": wp_title,
+        "wp_content": wp_content,
+        "wp_excerpt": _one_line(f"{topic}: {pain_point}", 160),
         "fb_caption": fb_caption,
         "ig_caption": ig_caption,
         "li_text": li_text,
@@ -3449,15 +3829,30 @@ def generate(slot: str, *, funnel_stage_override: str = "", product_id_override:
     preview_stage = funnel_stage
     products = load_products()
     business_profile = _build_business_profile(products)
-    product = _pick_product_by_id(products, product_id_override) or _pick_product(products, history)
-    preferred_pillars = _preferred_pillars_for_stage(preview_stage)
-    pillar, topic, topic_hash = _pick_topic_for_product(
-        queue,
-        history,
-        product,
-        preview_stage,
-        preferred_pillars=preferred_pillars,
-    )
+
+    forced_product = _pick_product_by_id(products, product_id_override) if product_id_override else None
+    if forced_product:
+        # Operator explicitly requested this product (e.g. dashboard override) — always honor it.
+        product = forced_product
+        preferred_pillars = _preferred_pillars_for_stage(preview_stage)
+        pillar, topic, topic_hash = _pick_topic_for_product(
+            queue,
+            history,
+            product,
+            preview_stage,
+            preferred_pillars=preferred_pillars,
+        )
+        content_bucket = "product_education"
+        want_product = True
+    else:
+        editorial_plan = select_editorial_plan(queue, history, products, preview_stage)
+        product = editorial_plan["product"]
+        pillar = editorial_plan["pillar"]
+        topic = editorial_plan["topic"]
+        topic_hash = editorial_plan["topic_hash"]
+        content_bucket = editorial_plan["content_bucket"]
+        want_product = editorial_plan["want_product"]
+
     marketing_strategy = _load_latest_marketing_strategy()
     brand_profile = load_brand_profile()
     selling_ideology = load_selling_ideology()
@@ -3489,7 +3884,11 @@ def generate(slot: str, *, funnel_stage_override: str = "", product_id_override:
     product_in_stock = product.get("in_stock", "") if product else ""
     product_stock = product.get("stock", "") if product else ""
     product_url = product.get("product_url", "") if product else ""
-    talking_point = _build_talking_point(topic=topic, funnel_stage=funnel_stage, product=product)
+    talking_point = (
+        _build_talking_point(topic=topic, funnel_stage=funnel_stage, product=product)
+        if want_product
+        else _build_talking_point_no_product(topic=topic, funnel_stage=funnel_stage, pillar=pillar)
+    )
 
     marketing_context = ""
     selected_hook = (weekly_sequence.get("hook") or "").strip()
@@ -3964,6 +4363,10 @@ def generate(slot: str, *, funnel_stage_override: str = "", product_id_override:
         audience_segment=audience_segment,
         talking_point=talking_point,
     )
+    if not want_product:
+        # Restore the no-product talking point: the handoff above runs against a generic
+        # placeholder product for internal bookkeeping only and must not reshape visible copy.
+        talking_point.update(_build_talking_point_no_product(topic=topic, funnel_stage=funnel_stage, pillar=pillar))
     phase2_stack["product_intelligence_agent"] = product_intelligence
     logical_strategy = _select_logical_emotional_strategy(product, audience_segment, funnel_stage)
     phase2_stack["logical_emotional_strategy"] = logical_strategy
@@ -4056,6 +4459,54 @@ def generate(slot: str, *, funnel_stage_override: str = "", product_id_override:
         visual_plan["segment_preset"] = str(segment_constraints.get("segment_key", "")).strip()
     visual_plan = _apply_logical_visual_strategy(visual_plan, logical_strategy, product)
 
+    if want_product:
+        product_directive = (
+            "PRODUCT CONTEXT (ground your content in these details when relevant):\n"
+            f"- Product name: {product_name or 'N/A'}\n"
+            f"- SKU: {product_sku or 'N/A'}\n"
+            f"- Regular price: {product_price or 'N/A'}\n"
+            f"- Sale price: {product_sale_price or 'N/A'}\n"
+            f"- Categories: {product_categories or 'N/A'}\n"
+            f"- Key measurable specs: {product_metrics or 'N/A'}\n"
+            f"- Product facts excerpt: {product_facts or 'N/A'}\n"
+        )
+        fb_caption_instruction = (
+            "150-220 words. High-conversion product sales copy. Start with a strong outage/emergency/travel hook, "
+            "explicitly name the product early, include 4-6 short feature-led lines or bullets using real specs, "
+            "explain where to keep/use it, then close with a direct buy/preparedness CTA. 4-8 targeted hashtags on the last line only."
+        )
+        ig_caption_instruction = (
+            "110-170 words. Tight, visual, scroll-stopping product sales copy. First line should feel like a headline. "
+            "Name the product early, highlight core features/specs in short punchy lines, mention real use cases like outage, "
+            "travel, car, emergency kit, or backpack, then close with a direct tap-to-buy CTA. 7-10 hashtags on the final line only."
+        )
+        li_text_instruction = (
+            "170-260 words. Professional product sales copy with a preparedness/business-continuity angle. Explicitly name "
+            "the product early, include a short 'key features include' style section with real specs, explain why the product "
+            "matters in real use, and end with a direct order or action CTA."
+        )
+    else:
+        product_directive = (
+            "PRODUCT CONTEXT: No specific product is attached to this post.\n"
+            "- Do NOT name, imply, or promote any specific product or SKU.\n"
+            "- Do NOT include a buy/order/checkout CTA or any price.\n"
+            "- Write genuinely useful, standalone content about the topic/pillar at a category or brand level.\n"
+            "- If this is a lead-generation pillar, close with a free readiness-assessment CTA instead of a purchase CTA.\n"
+        )
+        fb_caption_instruction = (
+            "150-220 words. Valuable, non-salesy post about the topic itself. No product name, no price, no purchase CTA. "
+            "Teach something real or invite genuine engagement, then close with the assigned first-step action (comment, save, "
+            "share, or book a free assessment if this is a lead-generation post). 3-6 relevant hashtags on the last line only."
+        )
+        ig_caption_instruction = (
+            "110-170 words. Tight, visual, scroll-stopping post about the topic itself. First line should feel like a headline. "
+            "No product name, no price, no purchase CTA. Close with the assigned first-step action. 5-8 hashtags on the final line only."
+        )
+        li_text_instruction = (
+            "170-260 words. Professional, insight-led post about the topic with a business/preparedness-authority angle. "
+            "No product name, no price, no purchase CTA. Close with the assigned first-step action."
+        )
+
     prompt = f"""You are an expert content strategist and copywriter for {brand_name} ({SITE_URL}), a {brand_positioning}.
 
 {CONVERSION_COPY_BRIEF}
@@ -4073,14 +4524,7 @@ AUDIENCE: {brand_audience_summary or INFENERGY_BUSINESS_GOALS['audience_summary'
 TOPIC: {topic}
 CONTENT DIRECTIVE: {slot_guidance}
 
-PRODUCT CONTEXT (ground your content in these details when relevant):
-- Product name: {product_name or 'N/A'}
-- SKU: {product_sku or 'N/A'}
-- Regular price: {product_price or 'N/A'}
-- Sale price: {product_sale_price or 'N/A'}
-- Categories: {product_categories or 'N/A'}
-- Key measurable specs: {product_metrics or 'N/A'}
-- Product facts excerpt: {product_facts or 'N/A'}
+{product_directive}
 
 {marketing_context}
 
@@ -4160,9 +4604,9 @@ Return ONLY valid JSON with these exact keys (no markdown, no code fences):
   "wp_title": "Specific, curiosity-driven SEO title under 65 characters — not generic",
   "wp_content": "Full blog post as clean HTML with <h2> subheadings. 450-550 words. Open strong, build a logical case, end with a clear next step. Include at least 2 specific data points or examples.",
   "wp_excerpt": "One punchy sentence under 160 characters that makes someone want to click",
-    "fb_caption": "150-220 words. High-conversion product sales copy. Start with a strong outage/emergency/travel hook, explicitly name the product early, include 4-6 short feature-led lines or bullets using real specs, explain where to keep/use it, then close with a direct buy/preparedness CTA. 4-8 targeted hashtags on the last line only.",
-    "ig_caption": "110-170 words. Tight, visual, scroll-stopping product sales copy. First line should feel like a headline. Name the product early, highlight core features/specs in short punchy lines, mention real use cases like outage, travel, car, emergency kit, or backpack, then close with a direct tap-to-buy CTA. 7-10 hashtags on the final line only.",
-    "li_text": "170-260 words. Professional product sales copy with a preparedness/business-continuity angle. Explicitly name the product early, include a short 'key features include' style section with real specs, explain why the product matters in real use, and end with a direct order or action CTA."
+    "fb_caption": "{fb_caption_instruction}",
+    "ig_caption": "{ig_caption_instruction}",
+    "li_text": "{li_text_instruction}"
 }}"""
 
     content = _generate_json_with_gemini(prompt, model_candidates)
@@ -4170,7 +4614,11 @@ Return ONLY valid JSON with these exact keys (no markdown, no code fences):
     talking_point["copy_generation_source"] = copy_generation_source
 
     if content is None:
-        content = _build_fallback_content(slot, topic, product, marketing_strategy, talking_point=talking_point)
+        content = (
+            _build_fallback_content(slot, topic, product, marketing_strategy, talking_point=talking_point)
+            if want_product
+            else _build_fallback_content_no_product(slot, topic, pillar, marketing_strategy, talking_point=talking_point)
+        )
         content["copy_generation_source"] = copy_generation_source
         content["topic"] = topic
         content["pillar"] = pillar
@@ -4314,7 +4762,7 @@ Return ONLY valid JSON with these exact keys (no markdown, no code fences):
             )
         )
         content["phase7_conference_packets"] = phase7_packets_validated if not phase7_errors else phase7_packets
-        conv_passed, conv_reasons = _conversion_caption_gate(platform_posts, talking_point)
+        conv_passed, conv_reasons = _conversion_caption_gate(platform_posts, talking_point, want_product=want_product)
         gate_records.append(
             build_gate_record(
                 gate_id="conversion_caption_enforcement",
@@ -4358,6 +4806,13 @@ Return ONLY valid JSON with these exact keys (no markdown, no code fences):
             p["quality_score"] = float(quality.score)
         content = _apply_control_plane_metadata(content, run_context, gate_records)
         content = _sanitize_legacy_cta_in_payload(content)
+        content["editorial_decision"] = {
+            "content_bucket": content_bucket,
+            "pillar": pillar,
+            "product_mode": PILLAR_PRODUCT_MODE.get(pillar, "optional_product"),
+            "want_product": want_product,
+            "product_forced_override": bool(forced_product),
+        }
         return content
 
     content["copy_generation_source"] = copy_generation_source
@@ -4572,7 +5027,7 @@ Return ONLY valid JSON with these exact keys (no markdown, no code fences):
     content["phase4_optimization_stack"] = phase4_stack
     content["phase7_conference_packets"] = phase7_packets_validated if not phase7_errors else phase7_packets
     content["agent_conference"] = conference_summary
-    conv_passed, conv_reasons = _conversion_caption_gate(platform_posts, talking_point)
+    conv_passed, conv_reasons = _conversion_caption_gate(platform_posts, talking_point, want_product=want_product)
     gate_records.append(
         build_gate_record(
             gate_id="conversion_caption_enforcement",
@@ -4617,4 +5072,11 @@ Return ONLY valid JSON with these exact keys (no markdown, no code fences):
         p["quality_score"] = float(quality.score)
     content = _apply_control_plane_metadata(content, run_context, gate_records)
     content = _sanitize_legacy_cta_in_payload(content)
+    content["editorial_decision"] = {
+        "content_bucket": content_bucket,
+        "pillar": pillar,
+        "product_mode": PILLAR_PRODUCT_MODE.get(pillar, "optional_product"),
+        "want_product": want_product,
+        "product_forced_override": bool(forced_product),
+    }
     return content

@@ -1,80 +1,110 @@
 {
   "pillars": [
-    "solar_savings",
-    "energy_independence",
-    "battery_storage",
-    "product_highlights",
-    "case_studies",
-    "myth_busting",
-    "promotions",
-    "industry_news"
+    "preparedness_education",
+    "energy_literacy",
+    "customer_problem_solving",
+    "brand_authority",
+    "trust_and_company_values",
+    "community_engagement",
+    "home_resilience",
+    "travel_and_outdoor_preparedness",
+    "caregiver_preparedness",
+    "small_business_continuity",
+    "category_education",
+    "product_education",
+    "readiness_assessment_lead_gen"
   ],
   "topics": {
-    "solar_savings": [
-      "How solar panels can reduce your electricity bill by up to 90%",
-      "The real ROI of going solar in 2026",
-      "Federal and state solar tax credits available right now",
-      "How net metering puts money back in your pocket",
-      "Solar financing options that require $0 down",
-      "How to read your utility bill and find hidden savings",
-      "What affects how much you save with solar"
+    "preparedness_education": [
+      "The 24-hour outage plan every household should write down before storm season",
+      "What to power first when the grid goes down: a practical priority list",
+      "The three preparedness mistakes people only discover during their first real outage",
+      "How to build a device-priority list for your household in 10 minutes",
+      "Preparedness is a plan, not a purchase: the steps that matter before you buy anything"
     ],
-    "energy_independence": [
-      "Why energy independence matters more than ever in 2026",
-      "How to protect your home from rising utility rates",
-      "The real cost of grid dependency over 10 years",
-      "Your home as its own power plant",
-      "What happens to your solar during a grid outage",
-      "How homeowners are escaping unpredictable energy bills"
+    "energy_literacy": [
+      "Watts, wattage, and runtime: the three numbers that actually decide what backup power can do",
+      "Why battery capacity labels alone do not tell you what a device can run",
+      "Recharge speed vs output vs portability: what to compare and why it matters",
+      "A plain-English guide to inverters for people who are not electricians",
+      "How to translate your appliance's power draw into a real backup-power decision"
     ],
-    "battery_storage": [
-      "Why battery storage is the missing piece of your solar system",
-      "How home batteries keep your lights on during outages",
-      "Battery storage vs whole-home generator: which is right for you?",
-      "The best times of day to use stored solar energy",
-      "How battery backup pays for itself in 3 years",
-      "Understanding battery capacity and what it powers"
+    "customer_problem_solving": [
+      "The most common question we get about backup power, answered honestly",
+      "How to figure out what your household actually needs before you shop",
+      "What people usually get wrong when comparing backup power options",
+      "A simple framework for matching real device needs to real capacity",
+      "What to ask before you buy any portable power product"
     ],
-    "product_highlights": [
-      "Our top-rated solar panel installation process explained",
-      "Smart home energy monitoring: see every watt in real time",
-      "EV charging solutions designed for your home",
-      "Commercial solar solutions that scale with your business",
-      "Our 25-year warranty and what it actually covers",
-      "The brands we trust and why we chose them"
+    "brand_authority": [
+      "Why we evaluate every product by real use cases before we ever recommend it",
+      "The preparedness-first philosophy behind how we build product guidance",
+      "What separates a genuinely useful power-readiness recommendation from a sales pitch",
+      "Our approach to only publishing specs we can verify",
+      "How we think about the difference between hype and honest product fit"
     ],
-    "case_studies": [
-      "How one family cut their energy bill to under $20 per month",
-      "Commercial client eliminates $50,000 in annual energy costs",
-      "From grid-dependent to energy independent in 45 days",
-      "Before and after: a residential solar installation story",
-      "5 years of solar ownership: what one customer learned",
-      "Small business owner powers his shop entirely with solar"
+    "trust_and_company_values": [
+      "Why we would rather tell you not to buy something than oversell it",
+      "The values behind how Infenergy Power talks about products and specs",
+      "What 'proof over hype' actually means in how we write product guidance",
+      "Behind the scenes: how we vet the claims we publish",
+      "Why transparency about limitations builds more trust than perfect marketing"
     ],
-    "myth_busting": [
-      "Myth: Solar panels do not work on cloudy days",
-      "Myth: Solar installation damages your roof",
-      "Myth: Solar is only for wealthy homeowners",
-      "Myth: Solar panels require constant maintenance",
-      "Myth: Solar is not worth it in my state",
-      "Myth: Going solar means going off-grid",
-      "Myth: Solar panels look bad on a home"
+    "community_engagement": [
+      "What's the one device you can't afford to lose power to during an outage?",
+      "Tell us about the last time you lost power unexpectedly, what happened?",
+      "Poll: what's your household's biggest backup-power blind spot?",
+      "What would your 24-hour outage plan actually look like right now?",
+      "Share your best (or worst) outage story, we read every one"
     ],
-    "promotions": [
-      "Schedule your free home energy audit today",
-      "Get a no-obligation solar savings estimate",
-      "Refer a neighbor and earn a $500 credit",
-      "Limited slots: free consultation this month",
-      "How to get started with solar in under a week",
-      "What to expect on your first call with our team"
+    "home_resilience": [
+      "Building a whole-household backup plan without overspending",
+      "How families are building outage resilience one device at a time",
+      "The home resilience checklist most people skip",
+      "What a realistic backup-power setup looks like for a family of four",
+      "How to keep essentials running during a multi-day outage"
     ],
-    "industry_news": [
-      "Solar adoption hits record highs in 2026",
-      "New utility rate increases and what it means for homeowners",
-      "How the IRA solar incentives affect your installation cost",
-      "The future of home energy storage technology",
-      "Why more businesses are choosing solar in 2026",
-      "Grid reliability concerns driving solar demand nationwide"
+    "travel_and_outdoor_preparedness": [
+      "Travel power checklist: charging phones, laptops, and essentials off-grid",
+      "What campers and RV owners actually need from portable power",
+      "How to match solar panel wattage to your portable generator for weekend trips",
+      "The off-grid power mistakes first-time campers make",
+      "Packing for backup power: what belongs in every travel bag"
+    ],
+    "caregiver_preparedness": [
+      "What caregivers need to know about backup power for medical devices",
+      "Building a preparedness plan when someone in your home depends on powered equipment",
+      "The questions caregivers should ask before choosing any backup power option",
+      "How to plan for outages when reliability is not optional",
+      "A caregiver's guide to prioritizing what must stay powered"
+    ],
+    "small_business_continuity": [
+      "What small businesses lose in the first hour of an unplanned outage",
+      "Building a business continuity plan around portable backup power",
+      "How small operators keep point-of-sale and communication running during outages",
+      "The real cost of downtime for a small business, and how to plan around it",
+      "A practical continuity checklist for shops that cannot afford to close"
+    ],
+    "category_education": [
+      "Portable generator vs power station: what actually matters for your use case",
+      "Power banks vs power stations: which one solves your actual problem",
+      "Solar panels paired with portable power: how the pairing actually works",
+      "Jump starters vs power banks: what each one is really built for",
+      "What separates a real emergency-ready product category from a marketing label"
+    ],
+    "product_education": [
+      "How to compare recharge speed, output, and portability before buying",
+      "Reading a spec sheet: what the numbers on a power station label actually mean",
+      "What to verify before trusting a product's advertised capacity",
+      "How to match a specific product's specs to your specific must-run devices",
+      "The verified details worth checking before you commit to any backup power product"
+    ],
+    "readiness_assessment_lead_gen": [
+      "Book a free portable-power readiness assessment",
+      "How to get a product match in under 15 minutes",
+      "What to expect from your first product-fit consultation",
+      "Not sure what you need? Start with a two-minute readiness check",
+      "Get a tailored backup-power recommendation before you spend a dollar"
     ]
   }
 }

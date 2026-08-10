@@ -20,6 +20,7 @@ from generate_posts import (  # noqa: E402
     _enforce_product_led_copy,
     _enforce_product_sales_platform_copy,
     _model_caption_overrides,
+    _product_copy_profile,
 )
 from run_engine import _live_visual_gate_errors  # noqa: E402
 from social_visuals import (  # noqa: E402
@@ -350,6 +351,19 @@ class PublisherVisualTests(unittest.TestCase):
             self.assertNotIn("top 3 must-run devices", caption)
         self.assertIn("#PortableFan", content["fb_caption"])
         self.assertLessEqual(len(content["fb_caption"]), 700)
+
+    def test_power_station_evidence_wins_over_solar_panel_category(self) -> None:
+        profile = _product_copy_profile(
+            {
+                "name": "AFERIY AF-P210",
+                "categories": ["Emergency Power", "Power Stations", "Solar Panels"],
+                "metrics": ["1.5 hours", "120V", "100W"],
+                "fact_snippet": "2400W home backup powerhouse with a 2048Wh battery and pure sine wave inverter.",
+            }
+        )
+
+        self.assertEqual(profile["role"], "backup power station")
+        self.assertIn("runtime", profile["proof_intro"])
 
     def test_instagram_prefers_generated_visual_upload(self) -> None:
         with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:

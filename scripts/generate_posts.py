@@ -2048,8 +2048,12 @@ def _product_copy_profile(product: dict | None) -> dict[str, str]:
     name = str((product or {}).get("name", "") or "").strip()
     name_low = name.lower()
     categories = " ".join(str(x or "") for x in ((product or {}).get("categories", []) or [])).lower()
+    fact_low = _strip_html(str((product or {}).get("fact_snippet", "") or "")).lower()
     metrics = [str(x).strip() for x in ((product or {}).get("metrics", []) or []) if str(x).strip()]
     primary_metric = metrics[0] if metrics else "published product specs"
+    power_station_evidence = any(token in name_low for token in ("power station", "generator", "inverter")) or any(
+        token in categories for token in ("power station", "generator")
+    ) or any(token in fact_low for token in ("home backup powerhouse", "solar generator", "pure sine wave inverter"))
 
     profile = {
         "role": "preparedness product",
@@ -2060,7 +2064,7 @@ def _product_copy_profile(product: dict | None) -> dict[str, str]:
         "category_pain": "Generic recommendations often leave buyers with the wrong tool for the job.",
     }
 
-    if "solar" in name_low or "solar" in categories or "panel" in name_low:
+    if "solar" in name_low or "panel" in name_low or (("solar" in categories or "panel" in categories) and not power_station_evidence):
         profile.update({
             "role": "foldable solar charging panel",
             "benefit": "adds off-grid charging support for compatible power stations and devices",
@@ -2105,7 +2109,7 @@ def _product_copy_profile(product: dict | None) -> dict[str, str]:
             "offer_line": f"The {name or 'product'} is for buyers who want portable airflow support that earns space in a real preparedness kit.",
             "category_pain": "Comfort becomes a real problem fast when outages or travel leave you with no airflow and no plan.",
         })
-    elif any(token in name_low for token in ("inverter", "power station", "generator", "battery")) or any(token in categories for token in ("power station", "generator", "battery", "emergency power", "portable power")):
+    elif power_station_evidence or "battery" in name_low or any(token in categories for token in ("battery", "emergency power", "portable power")):
         profile.update({
             "role": "backup power station",
             "benefit": "supports must-run devices during outages and off-grid use",

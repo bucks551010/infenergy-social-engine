@@ -40,23 +40,27 @@ class PublisherVisualTests(unittest.TestCase):
         self.assertIn("Infenergy Power", normalized)
         self.assertIn("#InfenergyPower", normalized)
 
-    def test_gemini_prompt_is_a_textless_platform_scene_contract(self) -> None:
+    def test_gemini_prompt_includes_verbatim_ad_copy(self) -> None:
         prompt = _build_gemini_image_prompt(
             {
                 "funnel_stage": "TRUST",
                 "product_name": "PowerFlex 2000",
                 "product_metrics": ["2000 Wh"],
                 "selected_hook": "Keep essentials running",
+                "selected_cta": "Compare the verified specs.",
             },
             "instagram",
             {"gemini_image_prompt": "Add badges, labels, and a fake product render."},
         )
         self.assertIn("left 42% and bottom 16%", prompt)
-        self.assertIn("ABSOLUTE EXCLUSIONS", prompt)
-        self.assertIn("no text, letters, numerals", prompt)
+        self.assertIn("Render exactly this on-image copy", prompt)
+        self.assertIn("Compare the verified specs.", prompt)
+        self.assertIn("2000 Wh", prompt)
+        self.assertIn("do not invent a different or generic device", prompt)
+        self.assertNotIn("ABSOLUTE EXCLUSIONS", prompt)
         self.assertIn("subordinate to every rule", prompt)
 
-    def test_gemini_plate_quality_rejects_wrong_ratio_and_busy_copy_zone(self) -> None:
+    def test_gemini_plate_quality_rejects_wrong_aspect_ratio(self) -> None:
         from PIL import Image
 
         wrong_ratio = Image.new("RGB", (1200, 400), "#202830")
@@ -64,14 +68,9 @@ class PublisherVisualTests(unittest.TestCase):
         self.assertFalse(accepted)
         self.assertIn("aspect_ratio", reasons)
 
-        busy = Image.new("RGB", (1200, 1200), "black")
-        for x in range(0, 528, 8):
-            for y in range(0, 1200, 8):
-                if (x // 8 + y // 8) % 2:
-                    busy.paste("white", (x, y, x + 8, y + 8))
-        accepted, reasons = _gemini_plate_quality(busy, "instagram")
-        self.assertFalse(accepted)
-        self.assertIn("busy_copy_zone", reasons)
+        correct_ratio = Image.new("RGB", (1200, 1200), "#334455")
+        accepted, reasons = _gemini_plate_quality(correct_ratio, "instagram")
+        self.assertNotIn("aspect_ratio", reasons)
 
     def test_style_reference_must_decode_as_an_image(self) -> None:
         from PIL import Image
@@ -180,24 +179,25 @@ class PublisherVisualTests(unittest.TestCase):
                     dry_run=False,
                 )
 
-    def test_generate_visuals_emits_png_and_html_assets(self) -> None:
-        visuals = generate_visuals(
-            {
-                "post_id": "unit_test_card",
-                "funnel_stage": "TRUST",
-                "selected_hook": "Why energy resilience needs a better design standard",
-                "topic": "A stronger branded social card",
-                "selected_cta": "Review the full system.",
-                "product_name": "PowerFlex",
-                "product_image_url": "",
-            }
-        )
-        self.assertIn("facebook", visuals)
-        self.assertIn("instagram", visuals)
-        self.assertIn("linkedin", visuals)
-        self.assertIn("facebook_html", visuals)
-        self.assertTrue(os.path.exists(visuals["facebook"]))
-        self.assertTrue(os.path.exists(visuals["facebook_html"]))
+    def test_generate_visuals_has_no_fallback_when_gemini_unavailable(self) -> None:
+        with patch.dict(os.environ, {"GEMINI_API_KEY": ""}, clear=False):
+            visuals = generate_visuals(
+                {
+                    "post_id": "unit_test_card_no_fallback",
+                    "funnel_stage": "TRUST",
+                    "selected_hook": "Why energy resilience needs a better design standard",
+                    "topic": "A stronger branded social card",
+                    "selected_cta": "Review the full system.",
+                    "product_name": "PowerFlex",
+                    "product_image_url": "",
+                }
+            )
+        self.assertNotIn("facebook", visuals)
+        self.assertNotIn("instagram", visuals)
+        self.assertNotIn("linkedin", visuals)
+        self.assertNotIn("facebook_html", visuals)
+        self.assertEqual(visuals["render_engines"]["facebook"], "failed")
+        self.assertEqual(visuals["gemini_available"], "false")
 
     def test_live_visual_gate_rejects_local_render_and_missing_product(self) -> None:
         content = {

@@ -351,11 +351,9 @@ def _build_gemini_image_prompt(content: dict[str, Any], platform: str, visual_pl
     if not product_label:
         product_label = "Infenergy backup power"
     copy_direction = (
-        f"Use product-specific on-image copy, not generic slogans. Build the headline around '{product_label}'. "
-        f"Use one supporting line that translates a real spec into a customer outcome, such as '{support_line}'. "
-        f"Use one prominent spec callout based on '{stat}'. "
-        f"Use one direct CTA based on '{cta}'. "
-        "Do not use generic headlines like 'POWER WITHOUT GUESSWORK' or broad fallback language unless the product context genuinely supports it. "
+        f"Design for the product story around '{product_label}', but do not render readable text into the image. "
+        f"Use the support idea '{support_line}', the proof cue '{stat}', and the CTA intent '{cta}' only as composition guidance. "
+        "The application will add the actual product cutout, numbers, headline, proof callout, and CTA afterward. "
     )
     badge_direction = (
         "If you include credibility or support markers, they must feel product-true and category-true, not templated. "
@@ -416,10 +414,16 @@ def _build_gemini_image_prompt(content: dict[str, Any], platform: str, visual_pl
         "refined gradients, depth haze, and controlled bloom highlights. "
     )
     product_stage_direction = (
-        "Reserve a large, dominant hero stage on the right side for the real product cutout. The product should feel big, premium, and compositionally important, "
-        "not secondary or tucked away. That stage should feel integrated into the design with lighting, scale contrast, and depth cues, but no white panel, "
-        "no boxed frame, and no fake product placeholder. Leave enough clean space so the real product can occupy roughly one-third to nearly one-half of the visual weight. "
+        "Reserve a grounded hero stage on the lower-right side for the real product cutout. "
+        "The stage should feel premium and believable, with a base surface, shadow landing zone, and coherent lighting direction. "
+        "Do not render a product, do not render a fake placeholder device, and do not leave a white box or empty frame. "
+        "Leave enough clean space so the real product can occupy roughly one-third of the final composition without overlapping the copy zone. "
     )
+    layout_guardrails = {
+        "facebook": "Keep the left 42 percent of the square relatively calm and dark for text overlay, keep the lower center open for a CTA band, and keep the right side visually anchored rather than busy.",
+        "instagram": "Keep the left 40 percent of the square relatively calm for headline overlay, keep the lower third free of clutter for CTA and proof, and make the right side feel like a grounded premium product stage.",
+        "linkedin": "Keep the left half structured and readable for data-led copy overlay, with a cleaner right-side product zone and restrained professional atmosphere.",
+    }.get(platform, "Keep a clean copy-safe zone and a separate grounded product-safe zone.")
     atmosphere_direction = (
         "Build atmosphere with cinematic lighting, premium material textures, glow accents, layered shadows, reflective surfaces, depth haze, and subtle motion energy. "
         "Avoid flat empty space; every major region should feel intentionally designed. "
@@ -433,7 +437,7 @@ def _build_gemini_image_prompt(content: dict[str, Any], platform: str, visual_pl
         "Avoid weak spacing, empty corners, random decoration, muddy contrast, oversized product framing, or amateur typography. "
     )
     return (
-        "Create a complete premium social ad creative for Infenergy Power. "
+        "Create a premium social background plate for Infenergy Power. "
         f"Style intent: {style_intent}. Mood: {mood}. Composition: {composition}. "
         f"{style_ref_line}"
         f"Platform: {platform}. Hook context: {key_hook}. Topic context: {topic}. "
@@ -451,12 +455,13 @@ def _build_gemini_image_prompt(content: dict[str, Any], platform: str, visual_pl
         f"{material_direction}"
         f"{atmosphere_direction}"
         f"{campaign_direction}"
-        "Generate the final ad art with all text already designed into the image, not just a background plate. "
-        "Important: do not draw a fake product render, device mockup, boxed product frame, stat bubble, or decorative badge cluster. "
+        "Generate only the atmospheric background plate and scene, not the final ad copy layer. "
+        "Important: do not draw readable text, letters, numerals, logos, product renders, device mockups, boxed product frames, stat bubbles, CTA buttons, or decorative badge clusters. "
         f"{product_stage_direction}"
-        "Typography must look premium, legible, and correctly spelled. Keep the design modern, minimal, and conversion-focused. "
+        f"{layout_guardrails} "
+        "Keep the design modern, premium, clean, and conversion-focused, but leave negative space for post-composited text and product. "
         f"{negative_direction}"
-        "No logos from other brands, no watermarks, no gibberish text, no misspelled words, no deformed hands."
+        "No logos from other brands, no watermarks, no readable text, no gibberish text, no misspelled words, no floating product silhouettes, no duplicate products, no deformed hands."
     )
 
 
@@ -469,6 +474,8 @@ def _generate_gemini_background(content: dict[str, Any], platform: str, visual_p
     repo_context = _load_visual_repo_context()
     product_source = _resolve_product_source(content, repo_context=repo_context)
     image_bytes, mime_type = _read_image_bytes_any(product_source)
+    image_strategy = str(visual_plan.get("image_strategy") or os.environ.get("VISUAL_IMAGE_STRATEGY", "gemini_generated")).strip().lower()
+    prefer_product_overlay = image_strategy in ("product_photo_featured", "hybrid") or bool(visual_plan.get("use_product_photo"))
     try:
         from google import genai  # type: ignore
         from google.genai import types  # type: ignore
@@ -485,7 +492,7 @@ def _generate_gemini_background(content: dict[str, Any], platform: str, visual_p
                 continue
             seen_models.add(model_name)
             contents: Any = prompt
-            if image_bytes:
+            if image_bytes and not prefer_product_overlay:
                 try:
                     contents = [prompt, types.Part.from_bytes(data=image_bytes, mime_type=mime_type or "image/jpeg")]
                 except Exception:
@@ -518,6 +525,125 @@ def _generate_gemini_background(content: dict[str, Any], platform: str, visual_p
         return False
     except Exception:
         return False
+
+
+def _compose_gemini_ad_overlay(content: dict[str, Any], platform: str, image_path: str, visual_plan: dict[str, Any] | None = None) -> bool:
+    image_module, draw_module, font_module = _load_pillow()
+    if image_module is None:
+        return False
+    try:
+        canvas = image_module.open(image_path).convert("RGBA")
+    except Exception:
+        return False
+
+    draw = draw_module.Draw(canvas)
+    width, height = canvas.size
+
+    # Add a controlled dark overlay so local typography stays readable over Gemini backgrounds.
+    overlay = image_module.new("RGBA", canvas.size, (0, 0, 0, 0))
+    overlay_draw = draw_module.Draw(overlay)
+    overlay_draw.rounded_rectangle((38, 38, width - 38, height - 38), radius=26, fill=(7, 16, 24, 68))
+    overlay_draw.polygon([(0, 0), (int(width * 0.58), 0), (int(width * 0.42), height), (0, height)], fill=(6, 14, 22, 174))
+    overlay_draw.polygon([(0, height - 250), (width, height - 180), (width, height), (0, height)], fill=(20, 12, 8, 118))
+    canvas = image_module.alpha_composite(canvas, overlay)
+    draw = draw_module.Draw(canvas)
+
+    brand_font = _font(font_module, 34 if platform in ("facebook", "instagram") else 24)
+    stage_font = _font(font_module, 20 if platform in ("facebook", "instagram") else 15)
+    body_font = _font(font_module, 28 if platform in ("facebook", "instagram") else 21)
+    footer_font = _font(font_module, 30 if platform in ("facebook", "instagram") else 21)
+
+    draw.text((88, 84), "Infenergy Power", font=brand_font, fill="#eef7ff")
+    stage_text = normalize_brand_text(str(content.get("funnel_stage", "EDUCATION")))
+    draw.rounded_rectangle((88, 130, 312 if platform in ("facebook", "instagram") else 272, 176 if platform in ("facebook", "instagram") else 166), radius=15, fill="#f2a81a", outline="#ffd469", width=1)
+    draw.text((102, 142 if platform in ("facebook", "instagram") else 138), stage_text, font=stage_font, fill="#161616")
+
+    headline_text, subline_text = _headline_lockup(content)
+    body_bottom = _draw_headline_fit(
+        draw,
+        _trim_for_card(headline_text.upper(), 72 if platform in ("facebook", "instagram") else 82),
+        font_module=font_module,
+        x=88,
+        y=196,
+        max_width_px=430 if platform in ("facebook", "instagram") else 500,
+        base_size=74 if platform in ("facebook", "instagram") else 52,
+        min_size=42 if platform in ("facebook", "instagram") else 28,
+        max_lines=3 if platform in ("facebook", "instagram") else 2,
+        fill="#ffffff",
+        line_gap=5,
+    )
+    body_bottom = _draw_wrapped(
+        draw,
+        _trim_for_card(subline_text, 82 if platform in ("facebook", "instagram") else 92),
+        font=body_font,
+        x=88,
+        y=body_bottom + 12,
+        width_chars=22 if platform in ("facebook", "instagram") else 32,
+        fill="#d9ecff",
+        line_gap=8,
+    )
+
+    stat_text = _primary_stat(content)
+    stat_font = _font(font_module, 34 if platform in ("facebook", "instagram") else 22)
+    stat_bbox = draw.textbbox((0, 0), stat_text, font=stat_font)
+    stat_w = (stat_bbox[2] - stat_bbox[0]) + 26
+    draw.rounded_rectangle((88, body_bottom + 10, 88 + stat_w, body_bottom + 56), radius=10, fill="#f7af20", outline="#ffd56a", width=1)
+    draw.text((100, body_bottom + 20), stat_text, font=stat_font, fill="#151515")
+
+    row_font = _font(font_module, 24 if platform in ("facebook", "instagram") else 17)
+    benefit_y = body_bottom + 72
+    for row in _benefit_rows(content):
+        label = _trim_for_card(row, 30)
+        draw.text((88, benefit_y), ">>", font=row_font, fill="#ffb62b")
+        draw.text((126, benefit_y), label, font=row_font, fill="#ffe4ae")
+        benefit_y += 36 if platform in ("facebook", "instagram") else 26
+
+    cta = normalize_brand_text(str(content.get("selected_cta") or "Learn more"))
+    if not cta.endswith("->"):
+        cta = f"{cta} ->"
+    cta_top = height - 126 if platform in ("facebook", "instagram") else height - 90
+    cta_bottom = height - 54 if platform in ("facebook", "instagram") else height - 34
+    cta_right = 548 if platform in ("facebook", "instagram") else 420
+    draw.rounded_rectangle((88, cta_top, cta_right, cta_bottom), radius=18, fill="#c73613", outline="#ffcf52", width=1)
+    draw.rounded_rectangle((88, cta_top, cta_right, cta_top + 4), radius=18, fill="#ffd13d")
+    cta_bbox = draw.textbbox((0, 0), cta, font=footer_font)
+    cta_x = 88 + max(0, ((cta_right - 88) - (cta_bbox[2] - cta_bbox[0])) // 2)
+    draw.text((cta_x, cta_top + 20), cta, font=footer_font, fill="#f2fbff")
+
+    badge_font = _font(font_module, 16 if platform in ("facebook", "instagram") else 12)
+    badge_x = width - 286 if platform in ("facebook", "instagram") else width - 220
+    badge_y = 760 if platform in ("facebook", "instagram") else 392
+    for label in _trust_badges(content):
+        clean = _trim_for_card(label, 20)
+        bbox = draw.textbbox((0, 0), clean, font=badge_font)
+        bw = (bbox[2] - bbox[0]) + 26
+        draw.rounded_rectangle((badge_x, badge_y, badge_x + bw, badge_y + 30), radius=14, fill="#12191f", outline="#f8c24f", width=1)
+        draw.text((badge_x + 12, badge_y + 8), clean, font=badge_font, fill="#f7f9ff")
+        badge_y += 36
+
+    product_source = _resolve_product_source(content)
+    product_image = _fetch_product_image(image_module, product_source)
+    if product_image is not None:
+        target_w, target_h = (430, 430) if platform in ("facebook", "instagram") else (384, 384)
+        pos = (width - target_w - 72, 314) if platform in ("facebook", "instagram") else (width - target_w - 48, 108)
+        draw.rounded_rectangle((pos[0] - 18, pos[1] - 18, pos[0] + target_w + 18, pos[1] + target_h + 18), radius=28, fill="#152638")
+        draw.rounded_rectangle((pos[0] - 8, pos[1] - 8, pos[0] + target_w + 8, pos[1] + target_h + 8), radius=22, fill="#1e3547")
+        image_copy = product_image.copy()
+        image_copy.thumbnail((target_w, target_h))
+        frame = image_module.new("RGBA", (target_w, target_h), (13, 34, 48, 0))
+        offset_x = (target_w - image_copy.width) // 2
+        offset_y = (target_h - image_copy.height) // 2
+        shadow_w = max(180, int(image_copy.width * 0.70))
+        shadow_h = max(26, int(image_copy.height * 0.10))
+        shadow_x = pos[0] + max(0, (target_w - shadow_w) // 2)
+        shadow_y = pos[1] + target_h - shadow_h - 10
+        draw.ellipse((shadow_x, shadow_y, shadow_x + shadow_w, shadow_y + shadow_h), fill="#253746")
+        frame.paste(image_copy, (offset_x, offset_y), image_copy if image_copy.mode == "RGBA" else None)
+        canvas.paste(frame, pos, frame)
+        draw.rounded_rectangle((pos[0] - 10, pos[1] - 10, pos[0] + target_w + 10, pos[1] + target_h + 10), radius=22, outline="#93d8ff", width=2)
+
+    canvas.convert("RGB").save(image_path, format="PNG", optimize=True)
+    return True
 
 
 def _compose_product_photo_overlay(content: dict[str, Any], platform: str, image_path: str) -> bool:
@@ -1126,8 +1252,8 @@ def generate_visuals(content: dict[str, Any], visual_plan: dict[str, Any] | None
             rendered = _generate_gemini_background(content, platform, plan, file_path)
             if rendered:
                 render_engine = "gemini"
-            if rendered and prefer_product_overlay:
-                _compose_product_photo_overlay(content, platform, file_path)
+            if rendered:
+                _compose_gemini_ad_overlay(content, platform, file_path, visual_plan=plan)
 
         if not rendered:
             rendered = _render_card(content, platform, file_path, visual_plan=plan)

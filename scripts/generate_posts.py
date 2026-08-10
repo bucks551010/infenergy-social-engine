@@ -2959,17 +2959,18 @@ def _build_default_visual_plan(topic: str, funnel_stage: str, selected_hook: str
         "style_intent": "Premium cinematic realism for practical energy resilience",
         "mood": "trustworthy, confident, modern",
         "image_strategy": strategy,
-        "composition": "left-side negative space for headline, right-side hero visual",
+        "composition": "text-safe negative space on the left, grounded product-safe stage on the lower right, premium atmospheric center depth",
         "use_product_photo": has_product_image,
-        "text_on_image": "minimal",
+        "text_on_image": "none",
         "gemini_image_prompt": (
-            f"Create a premium social visual for topic '{topic}' with hook '{selected_hook}'. "
-            f"Convey {funnel_stage.lower()} stage intent and support CTA: {selected_cta}. "
-            "Show credible, modern home or small-business backup power atmosphere with cinematic lighting."
+            f"Create a premium social background plate for topic '{topic}' with hook '{selected_hook}'. "
+            f"Convey {funnel_stage.lower()} stage intent and support CTA direction: {selected_cta}. "
+            "Do not render readable text or a product device; leave safe zones for local overlay and product compositing. "
+            "Show credible, modern home or small-business preparedness atmosphere with cinematic lighting."
         ),
         "platform_overrides": {
-            "facebook": {"composition": "balanced, educational, product-visible", "visual_direction": "single_image"},
-            "instagram": {"composition": "bold focal point, strong depth, mobile-first", "visual_direction": "reel_cover_style"},
+            "facebook": {"composition": "calm left copy-safe zone, grounded lower-right product zone, premium household atmosphere", "visual_direction": "single_image"},
+            "instagram": {"composition": "bold but uncluttered left headline-safe zone, grounded lower-right product zone, mobile-first depth", "visual_direction": "reel_cover_style"},
             "linkedin": {"composition": "clean professional credibility layout", "visual_direction": "insight_graphic"},
         },
     }

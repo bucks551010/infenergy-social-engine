@@ -2069,7 +2069,7 @@ def _product_copy_profile(product: dict | None) -> dict[str, str]:
             "offer_line": f"The {name or 'product'} is for buyers who need portable solar charging support, not vague emergency promises.",
             "category_pain": "Many buyers assume any solar panel will recharge their gear the way they need, then discover the output or compatibility is wrong.",
         })
-    elif any(token in name_low for token in ("power bank", "powerbank", "charger")) or any(token in categories for token in ("power bank", "power banks", "phone power bank", "phone power banks", "charger", "chargers")):
+    elif "fan" not in name_low and (any(token in name_low for token in ("power bank", "powerbank", "charger")) or any(token in categories for token in ("power bank", "power banks", "phone power bank", "phone power banks", "charger", "chargers"))):
         profile.update({
             "role": "portable charging backup",
             "benefit": "keeps phones, tablets, and small daily devices charged when wall power is not available",
@@ -3128,21 +3128,29 @@ def _build_fallback_content(
     product_name_low = str(name).lower()
     product_categories = " ".join(str(value or "") for value in ((product or {}).get("categories", []) or [])).lower()
     is_water_product = "filter" in product_name_low or "straw" in product_name_low or "water" in product_categories
+    is_fan_product = "fan" in product_name_low
     pain_point = profile["category_pain"]
     if is_water_product:
         first_step = f"Review {name}'s published filtration details and add it to the water-backup plan that fits your kit."
         proof_anchor = ""
+    elif is_fan_product:
+        first_step = "Review the published runtime and airflow details against where you plan to use it."
     talking_point["pain_point"] = pain_point
     talking_point["first_step"] = first_step
     talking_point["proof_anchor"] = proof_anchor
     metric_line = " and ".join(str(value).strip() for value in metrics[:2] if str(value).strip())
     proof_line = f"Published specs include {metric_line}." if metric_line and not is_water_product else f"{profile['proof_intro']}."
+    if not metric_line or is_water_product:
+        proof_anchor = ""
     usage_line = _product_use_case_line(product)
     facebook_hashtags = "#BackupPower #EmergencyPreparedness #PortablePower #PowerOutage #StayPowered"
     instagram_hashtags = "#PortablePower #StayPowered #EmergencyPreparedness #BackupPower #PowerOutage"
     if is_water_product:
         facebook_hashtags = "#WaterPreparedness #EmergencyKit #WaterFiltration #OutdoorSafety #Preparedness"
         instagram_hashtags = "#WaterPreparedness #EmergencyKit #WaterFiltration #OutdoorSafety #Preparedness"
+    elif is_fan_product:
+        facebook_hashtags = "#CampingGear #OutagePreparedness #PortableFan #EmergencyKit #OutdoorComfort"
+        instagram_hashtags = "#CampingGear #PortableFan #OutagePreparedness #OutdoorComfort #EmergencyKit"
 
     wp_title = f"{name}: What To Know Before You Buy"
     if len(wp_title) > 64:

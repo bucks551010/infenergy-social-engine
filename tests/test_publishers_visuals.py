@@ -332,6 +332,25 @@ class PublisherVisualTests(unittest.TestCase):
         self.assertIn("#WaterFiltration", content["fb_caption"])
         self.assertIn("#WaterFiltration", content["ig_caption"])
 
+    def test_multifunction_fan_is_not_classified_as_a_power_bank(self) -> None:
+        product = {
+            "name": "3-in-1 Portable Camping Fan with 12000mAh Battery, LED Light & Power Bank",
+            "sku": "CAMP-FAN-12K",
+            "sale_price": "39.99",
+            "metrics": [],
+            "categories": ["Camping Gear", "Portable Power"],
+        }
+        content = _build_fallback_content("midday", "outage readiness", product, {}, {})
+
+        for key in ("fb_caption", "ig_caption", "li_text"):
+            caption = content[key]
+            self.assertIn("airflow", caption.lower())
+            self.assertIn("runtime", caption.lower())
+            self.assertNotIn("cheap power bank", caption.lower())
+            self.assertNotIn("top 3 must-run devices", caption)
+        self.assertIn("#PortableFan", content["fb_caption"])
+        self.assertLessEqual(len(content["fb_caption"]), 700)
+
     def test_instagram_prefers_generated_visual_upload(self) -> None:
         with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
             tmp.write(b"fakepng")

@@ -306,6 +306,7 @@ class PublisherVisualTests(unittest.TestCase):
             self.assertLessEqual(len(caption), 700)
             self.assertNotIn("Featured product:", caption)
             self.assertNotIn("Key specs:", caption)
+            self.assertNotIn("to keeps", caption)
 
     def test_instagram_prefers_generated_visual_upload(self) -> None:
         with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:

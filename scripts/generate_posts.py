@@ -3158,7 +3158,7 @@ def _build_fallback_content(
 
     ig_caption = (
         f"{pain_point}\n\n"
-        f"{name} is a {profile['role']} built to {profile['benefit']}.{price_line}\n\n"
+        f"{name} is a {profile['role']} that {profile['benefit']}.{price_line}\n\n"
         f"{proof_line}\n\n"
         f"{usage_line}\n\n"
         f"{first_step}\n"
@@ -3167,7 +3167,7 @@ def _build_fallback_content(
 
     li_text = (
         f"{pain_point}\n\n"
-        f"{name}{' (' + sku + ')' if sku else ''} is a {profile['role']} designed to {profile['benefit']}.{price_line}\n\n"
+        f"{name}{' (' + sku + ')' if sku else ''} is a {profile['role']} that {profile['benefit']}.{price_line}\n\n"
         f"{proof_line} {proof_anchor}\n\n"
         f"For households and mobile teams, the practical value is continuity without a complicated setup.\n\n"
         f"{first_step}"

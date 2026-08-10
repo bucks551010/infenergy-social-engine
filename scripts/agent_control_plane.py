@@ -239,6 +239,31 @@ AGENT_IO_SCHEMAS: dict[str, dict[str, Any]] = {
             "candidates": "list",
         }
     },
+    "product_intelligence": {
+        "required": {
+            "agent": "str",
+            "product_brief": {
+                "required": {
+                    "product_id": "str",
+                    "name": "str",
+                    "product_type": "str",
+                    "role": "str",
+                    "product_summary": "str",
+                    "verified_facts": {"list_of": "str"},
+                    "core_benefits": {"list_of": "str"},
+                    "best_fit_use_cases": {"list_of": "str"},
+                    "best_fit_audiences": {"list_of": "str"},
+                    "primary_pain_point": "str",
+                    "proof_rule": "str",
+                    "recommended_cta": "str",
+                    "hashtag_themes": {"list_of": "str"},
+                    "visual_direction": "str",
+                    "forbidden_claims": {"list_of": "str"},
+                }
+            },
+            "handoff": "dict",
+        }
+    },
     "brand_voice_drift": {
         "required": {
             "agent": "str",

@@ -26,6 +26,7 @@ from agents import (  # noqa: E402
     learning_ingestion,
     performance_reflection,
     posting_time_optimizer,
+    product_intelligence,
     product_matcher,
     retention,
     topic_intelligence,
@@ -53,6 +54,7 @@ class AgentsTests(unittest.TestCase):
             "topic_intelligence",
             "carousel_slide_writer",
             "visual_qa_reviewer",
+            "product_intelligence",
             "product_matcher",
             "brand_voice_drift",
             "hashtag_intelligence",
@@ -169,12 +171,10 @@ class AgentsTests(unittest.TestCase):
         self.assertTrue(result["acceptable"])
 
     def test_product_matcher_ranks_by_archetype_keywords(self) -> None:
-        with patch("inventory_db.get_inventory_snapshot", return_value={
-            "products": [
+        with patch("inventory_db.fetch_products", return_value=[
                 {"id": "A", "name": "Solar Panel", "categories": ["solar"], "metrics": ["100W"]},
                 {"id": "B", "name": "Power Bank", "categories": ["charger"], "metrics": ["20000mAh"]},
-            ]
-        }), patch("inventory_db.init_inventory_db"):
+            ]), patch("inventory_db.init_inventory_db"):
             result = product_matcher.run(
                 self._tmp,
                 topic="daily commute charging",
@@ -182,6 +182,59 @@ class AgentsTests(unittest.TestCase):
                 archetype_key="mobile_professional",
             )
         self.assertEqual(result["top_choice"]["product_id"], "B")
+
+    def test_product_intelligence_persists_case_specific_dossier(self) -> None:
+        product = {
+            "id": "WFS-001",
+            "sku": "WFS-001",
+            "name": "Wosfer Micron Water Filter Straw",
+            "categories": ["Water Filtration"],
+            "metrics": ["0.1 micron filtration"],
+            "fact_snippet": "Portable filter for emergency and outdoor water preparation.",
+            "image_url": "https://example.com/filter.jpg",
+        }
+        result = product_intelligence.run(
+            self._tmp,
+            product=product,
+            topic="building an emergency water kit",
+            funnel_stage="EDUCATION",
+            audience_segment="Prepared Buyer",
+        )
+
+        brief = result["product_brief"]
+        self.assertEqual(brief["product_type"], "portable_water_filter")
+        self.assertIn("water", brief["primary_pain_point"].lower())
+        self.assertNotIn("must-run devices", result["sales_copy_seed"])
+        self.assertTrue(os.path.exists(os.path.join(self._tmp, "product_briefs", "WFS-001.json")))
+        _, errors = validate_agent_output("product_intelligence", result)
+        self.assertEqual(errors, [])
+
+    def test_product_intelligence_uses_primary_type_for_multifunction_product(self) -> None:
+        brief = product_intelligence.build_product_brief(
+            {
+                "id": "CAMP-FAN-12K",
+                "name": "3-in-1 Portable Camping Fan with 12000mAh Battery, LED Light & Power Bank",
+                "categories": ["Power Banks", "Outdoors & Camping"],
+                "metrics": ["12000mAh"],
+            }
+        )
+
+        self.assertEqual(brief["product_type"], "portable_fan")
+        self.assertIn("airflow", brief["core_benefits"][0])
+        self.assertNotIn("portable charging backup", brief["product_summary"])
+
+    def test_product_intelligence_rebuilds_entire_catalog(self) -> None:
+        products = [
+            {"id": "PS-1", "name": "Home Power Station", "categories": ["Power Stations"], "metrics": ["1000Wh"]},
+            {"id": "WF-1", "name": "Trail Water Filter Straw", "categories": ["Water Filtration"], "metrics": ["0.1 micron"]},
+        ]
+        with patch("inventory_db.fetch_products", return_value=products), patch("inventory_db.init_inventory_db"):
+            result = product_intelligence.run(self._tmp, product_id="all")
+
+        self.assertEqual(result["mode"], "catalog_rebuild")
+        self.assertEqual(result["briefs_written"], 2)
+        self.assertTrue(os.path.exists(os.path.join(self._tmp, "product_briefs", "PS-1.json")))
+        self.assertTrue(os.path.exists(os.path.join(self._tmp, "product_briefs", "WF-1.json")))
 
     def test_brand_voice_drift_flags_banned_hits(self) -> None:
         os.makedirs(os.path.join(self._tmp, "marketing"), exist_ok=True)

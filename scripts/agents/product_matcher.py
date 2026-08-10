@@ -58,8 +58,7 @@ def run(
         import inventory_db  # type: ignore
 
         inventory_db.init_inventory_db(data_dir)
-        snapshot = inventory_db.get_inventory_snapshot(data_dir)
-        products = snapshot.get("products", []) if isinstance(snapshot, dict) else []
+        products = inventory_db.fetch_products(data_dir)
     except Exception:
         products = []
 

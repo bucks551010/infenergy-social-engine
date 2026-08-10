@@ -31,6 +31,7 @@ from generate_hooks import select_hook
 from anti_repeat import load_anti_repeat_windows
 from build_utm_url import build_utm_url
 from social_visuals import generate_visuals, normalize_brand_content, normalize_brand_text
+from agents import product_intelligence
 from agent_control_plane import (
     SCHEMAS_VERSION,
     build_gate_record,
@@ -2383,104 +2384,26 @@ def _build_product_intelligence_handoff(
     audience_segment: str,
     talking_point: dict,
 ) -> dict:
-    product_name = str((product or {}).get("name", "")).strip() or "this portable power solution"
-    categories = [str(x).strip() for x in ((product or {}).get("categories", []) if isinstance((product or {}).get("categories", []), list) else []) if str(x).strip()]
-    category_low = " ".join(categories).lower()
-    metrics = [str(x).strip() for x in ((product or {}).get("metrics", []) if isinstance((product or {}).get("metrics", []), list) else []) if str(x).strip()]
-    facts = str((product or {}).get("fact_snippet", "")).strip()
-    profile = _product_copy_profile(product)
-
-    fit_audiences = [
-        "Homeowners and renters preparing for outages",
-        "Families who need dependable daily-device backup",
-    ]
-    if any(k in category_low for k in ("camp", "rv", "travel", "outdoor")):
-        fit_audiences.append("Campers, RV users, and travelers needing off-grid power")
-    if any(k in category_low for k in ("business", "office", "commercial")):
-        fit_audiences.append("Small businesses that need continuity for essential loads")
-    fit_audiences.append(f"Primary audience segment: {audience_segment}")
-    fit_audiences = _dedupe_str_list(fit_audiences)
-
-    benefits = [
-        str(profile.get("benefit", "supports a more reliable preparedness setup")),
-        "Reduce overbuying and underbuying risk by matching specs to the actual job the product needs to do",
-    ]
-    if any(k in category_low for k in ("solar", "panel")):
-        benefits.append("Support charging flexibility with portable solar-compatible workflows")
-    if any(k in category_low for k in ("battery", "power station", "generator", "backup")):
-        benefits.append("Improve outage readiness for priority devices at home or on the go")
-    benefits = _dedupe_str_list(benefits)
-
-    proof_points = metrics[:3]
-    if facts:
-        proof_points.append(facts)
-    proof_points.append(str(talking_point.get("proof_anchor", "")).strip())
-    proof_points = _dedupe_str_list([p for p in proof_points if p])
-
-    stage = str(funnel_stage or "").strip().upper()
-    stage_sales_angle = {
-        "ATTENTION": "lead with the high-cost mistake and reframe the buying decision",
-        "EDUCATION": "teach the spec-to-outcome framework and show what to compare first",
-        "DESIRE": "connect practical peace of mind to verified product fit",
-        "TRUST": "de-risk the purchase with transparent, verifiable product context",
-        "CONVERSION": "make the first step frictionless with a concrete action today",
-    }.get(stage, "translate specs into a practical next step")
-
-    lead_benefit = benefits[0] if benefits else "Match product specs to your real usage"
-    lead_proof = proof_points[0] if proof_points else str(talking_point.get("proof_anchor", "")).strip()
-    pain = str(talking_point.get("pain_point", "")).strip()
-    preferred_vocabulary = INFENERGY_BUSINESS_GOALS["voice_anchors"][:5] + INFENERGY_BUSINESS_GOALS["talking_point_lenses"][:4]
-    sales_copy_seed = (
-        f"{selected_hook} {pain} "
-        f"{product_name} helps you {lead_benefit.lower()} with guidance grounded in {lead_proof}. "
-        f"{selected_cta}"
-    ).strip()
-
-    return {
-        "agent": "product_intelligence_agent",
-        "product_summary": f"{product_name} is a {profile.get('role', 'preparedness product')} used when buyers need {profile.get('benefit', 'a more reliable preparedness setup')}.",
-        "best_fit_audiences": fit_audiences,
-        "core_benefits": benefits,
-        "proof_points": proof_points,
-        "sales_angle": stage_sales_angle,
-        "preferred_vocabulary": preferred_vocabulary,
-        "emotional_outcomes": [
-            "confidence before the next outage",
-            "control when power is uncertain",
-            "peace of mind through better preparation",
-            "clarity about what to buy and why",
-        ],
-        "messaging_devices": [
-            "translate specs into daily life impact",
-            "frame the product as a tool with a real job to do",
-            "contrast being prepared versus being caught off guard",
-            "make the next step feel immediate and practical",
-        ],
-        "sales_copy_seed": sales_copy_seed,
-        "handoff": {
-            "copywriter": [
-                f"Write for: {fit_audiences[:3]}",
-                f"Lead benefit: {lead_benefit}",
-                f"Use proof from: {proof_points[:3]}",
-                f"Close with this CTA direction: {selected_cta}",
-                f"Lean on this preferred vocabulary: {preferred_vocabulary[:6]}",
-            ],
-            "visual_director": [
-                f"Show {product_name} in a realistic use case tied to {topic}",
-                "Frame one before/after decision moment: guessing vs measured fit",
-                f"Anchor composition to this angle: {stage_sales_angle}",
-            ],
-            "platform_editor": [
-                "Keep platform captions consistent on audience, benefit, and proof",
-                "Do not remove the concrete first-step action",
-                f"Maintain this stage objective: {stage}",
-            ],
-            "product_truth": [
-                "Reject unsupported claims, guarantees, and invented specs",
-                f"Allow only these proof anchors: {proof_points[:4]}",
-            ],
+    payload = product_intelligence.run(
+        DATA_DIR,
+        product=product or {
+            "id": "GENERAL-PREPAREDNESS",
+            "name": "Infenergy preparedness solution",
+            "categories": ["Preparedness"],
         },
-    }
+        topic=topic,
+        funnel_stage=funnel_stage,
+        audience_segment=audience_segment,
+        selected_hook=selected_hook,
+        selected_cta=selected_cta,
+    )
+    brief = payload.get("product_brief", {})
+    if isinstance(brief, dict):
+        talking_point["product_brief"] = brief
+        talking_point["pain_point"] = str(brief.get("primary_pain_point", "") or talking_point.get("pain_point", ""))
+        talking_point["proof_anchor"] = str(brief.get("proof_rule", "") or talking_point.get("proof_anchor", ""))
+        talking_point["first_step"] = str(brief.get("recommended_cta", "") or talking_point.get("first_step", ""))
+    return payload
 
 
 def _build_business_profile(products: list[dict]) -> dict:
@@ -3128,33 +3051,29 @@ def _build_fallback_content(
     proof_anchor = str(talking_point.get("proof_anchor") or f"Use {m1} and {m2} to validate fit before buying.").strip()
     first_step = str(talking_point.get("first_step") or cta).strip()
     angle = str(talking_point.get("angle") or f"{topic} through practical decision-making.").strip()
-    profile = _product_copy_profile(product)
-    product_name_low = str(name).lower()
-    product_categories = " ".join(str(value or "") for value in ((product or {}).get("categories", []) or [])).lower()
-    is_water_product = "filter" in product_name_low or "straw" in product_name_low or "water" in product_categories
-    is_fan_product = "fan" in product_name_low
-    pain_point = profile["category_pain"]
-    if is_water_product:
-        first_step = f"Review {name}'s published filtration details and add it to the water-backup plan that fits your kit."
-        proof_anchor = ""
-    elif is_fan_product:
-        first_step = "Review the published runtime and airflow details against where you plan to use it."
+    brief = talking_point.get("product_brief", {}) if isinstance(talking_point.get("product_brief"), dict) else {}
+    if not brief:
+        brief = product_intelligence.build_product_brief(product or {
+            "id": "GENERAL-PREPAREDNESS",
+            "name": str(name),
+            "categories": ["Preparedness"],
+        })
+        talking_point["product_brief"] = brief
+    role = str(brief.get("role", "") or "preparedness product")
+    brief_benefits = [str(value).strip() for value in brief.get("core_benefits", []) if str(value).strip()]
+    benefit = brief_benefits[0] if brief_benefits else "fills a specific gap in a practical preparedness plan"
+    pain_point = str(brief.get("primary_pain_point", "") or pain_point)
+    proof_anchor = str(brief.get("proof_rule", "") or proof_anchor)
+    first_step = str(brief.get("recommended_cta", "") or first_step)
+    use_cases = [str(value).strip() for value in brief.get("best_fit_use_cases", []) if str(value).strip()]
+    usage_line = f"Best suited to {', '.join(use_cases[:3])}." if use_cases else "Match the product to the specific job it needs to do."
+    hashtag_values = [str(value).strip().lstrip("#") for value in brief.get("hashtag_themes", []) if str(value).strip()]
+    hashtag_line = " ".join(f"#{value}" for value in hashtag_values[:5]) or "#Preparedness #EmergencyKit"
     talking_point["pain_point"] = pain_point
     talking_point["first_step"] = first_step
     talking_point["proof_anchor"] = proof_anchor
     metric_line = " and ".join(str(value).strip() for value in metrics[:2] if str(value).strip())
-    proof_line = f"Published specs include {metric_line}." if metric_line and not is_water_product else f"{profile['proof_intro']}."
-    if not metric_line or is_water_product:
-        proof_anchor = ""
-    usage_line = _product_use_case_line(product)
-    facebook_hashtags = "#BackupPower #EmergencyPreparedness #PortablePower #PowerOutage #StayPowered"
-    instagram_hashtags = "#PortablePower #StayPowered #EmergencyPreparedness #BackupPower #PowerOutage"
-    if is_water_product:
-        facebook_hashtags = "#WaterPreparedness #EmergencyKit #WaterFiltration #OutdoorSafety #Preparedness"
-        instagram_hashtags = "#WaterPreparedness #EmergencyKit #WaterFiltration #OutdoorSafety #Preparedness"
-    elif is_fan_product:
-        facebook_hashtags = "#CampingGear #OutagePreparedness #PortableFan #EmergencyKit #OutdoorComfort"
-        instagram_hashtags = "#CampingGear #PortableFan #OutagePreparedness #OutdoorComfort #EmergencyKit"
+    proof_line = f"Published specs include {metric_line}." if metric_line else proof_anchor
 
     wp_title = f"{name}: What To Know Before You Buy"
     if len(wp_title) > 64:
@@ -3163,38 +3082,34 @@ def _build_fallback_content(
         wp_title = hero
 
     wp_content = (
-        f"<p>{pain_point} Choosing backup power is not just about watts on a label. It is about reliability, runtime, and how well a product matches your real daily use. Today we are breaking down <strong>{name}</strong> through this lens: {angle}</p>"
-        f"<h2>Start With Your Real Use Case</h2>"
-        f"<p>Before buying any power solution, list the devices you need to run first. Most buyers overestimate occasional loads and underestimate frequent loads. The smarter move is to match your frequent loads to verified product specs. For this model, key published specs include <strong>{m1}</strong> and <strong>{m2}</strong>. These two data points are usually the best first filter when comparing options.</p>"
-        f"<h2>How This Product Compares In Practical Terms</h2>"
-        f"<p>When evaluating alternatives, focus on three things: usable output, charging speed, and portability. A product that looks cheaper can cost more over time if charging is slow or output is limited for the devices you use most. {name} is positioned for buyers who want consistent performance without overcomplicating setup.{price_line}</p>"
-        f"<h2>Avoid The Most Common Buying Mistakes</h2>"
-        f"<p>The biggest mistake is buying only on headline capacity. The second is ignoring how and where the unit will be used. A better approach is to map your top 3 devices, compare real specs, and confirm compatibility up front. {proof_anchor} This avoids returns, downtime, and frustration.</p>"
-        f"<h2>Next Step</h2>"
-        f"<p>If you want a tailored recommendation, {first_step.lower()} We can help you compare your options and select the right system for your actual usage, not generic assumptions.</p>"
+        f"<p>{pain_point} This guide evaluates <strong>{name}</strong> as a {role} through this lens: {angle}</p>"
+        f"<h2>The Product's Primary Job</h2><p>{name} {benefit}.{price_line}</p>"
+        f"<h2>Best-Fit Use Cases</h2><p>{usage_line}</p>"
+        f"<h2>What To Verify</h2><p>{proof_line} {proof_anchor}</p>"
+        f"<h2>Next Step</h2><p>{first_step}</p>"
     )
 
     fb_caption = (
         f"{pain_point}\n\n"
-        f"Meet {name}, a {profile['role']} that {profile['benefit']}.{price_line}\n\n"
+        f"Meet {name}, a {role} that {benefit}.{price_line}\n\n"
         f"{proof_line} {proof_anchor}\n\n"
         f"{usage_line}\n\n"
         f"{first_step}\n"
-        f"{facebook_hashtags}"
+        f"{hashtag_line}"
     )
 
     ig_caption = (
         f"{pain_point}\n\n"
-        f"{name} is a {profile['role']} that {profile['benefit']}.{price_line}\n\n"
+        f"{name} is a {role} that {benefit}.{price_line}\n\n"
         f"{proof_line}\n\n"
         f"{usage_line}\n\n"
         f"{first_step}\n"
-        f"{instagram_hashtags}"
+        f"{hashtag_line}"
     )
 
     li_text = (
         f"{pain_point}\n\n"
-        f"{name}{' (' + sku + ')' if sku else ''} is a {profile['role']} that {profile['benefit']}.{price_line}\n\n"
+        f"{name}{' (' + sku + ')' if sku else ''} is a {role} that {benefit}.{price_line}\n\n"
         f"{proof_line} {proof_anchor}\n\n"
         f"For households and mobile teams, the practical value is continuity without a complicated setup.\n\n"
         f"{first_step}"

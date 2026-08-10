@@ -3073,7 +3073,11 @@ def _build_fallback_content(
     talking_point["first_step"] = first_step
     talking_point["proof_anchor"] = proof_anchor
     metric_line = " and ".join(str(value).strip() for value in metrics[:2] if str(value).strip())
-    proof_line = f"Published specs include {metric_line}." if metric_line else proof_anchor
+    proof_line = (
+        f"Published specs include {metric_line}."
+        if metric_line
+        else f"Review the published {role} details and compatibility for your setup."
+    )
 
     wp_title = f"{name}: What To Know Before You Buy"
     if len(wp_title) > 64:
@@ -3085,14 +3089,14 @@ def _build_fallback_content(
         f"<p>{pain_point} This guide evaluates <strong>{name}</strong> as a {role} through this lens: {angle}</p>"
         f"<h2>The Product's Primary Job</h2><p>{name} {benefit}.{price_line}</p>"
         f"<h2>Best-Fit Use Cases</h2><p>{usage_line}</p>"
-        f"<h2>What To Verify</h2><p>{proof_line} {proof_anchor}</p>"
+        f"<h2>What To Verify</h2><p>{proof_line}</p>"
         f"<h2>Next Step</h2><p>{first_step}</p>"
     )
 
     fb_caption = (
         f"{pain_point}\n\n"
         f"Meet {name}, a {role} that {benefit}.{price_line}\n\n"
-        f"{proof_line} {proof_anchor}\n\n"
+        f"{proof_line}\n\n"
         f"{usage_line}\n\n"
         f"{first_step}\n"
         f"{hashtag_line}"
@@ -3110,7 +3114,7 @@ def _build_fallback_content(
     li_text = (
         f"{pain_point}\n\n"
         f"{name}{' (' + sku + ')' if sku else ''} is a {role} that {benefit}.{price_line}\n\n"
-        f"{proof_line} {proof_anchor}\n\n"
+        f"{proof_line}\n\n"
         f"For households and mobile teams, the practical value is continuity without a complicated setup.\n\n"
         f"{first_step}"
     )

@@ -308,6 +308,7 @@ class PublisherVisualTests(unittest.TestCase):
             self.assertNotIn("Featured product:", caption)
             self.assertNotIn("Key specs:", caption)
             self.assertNotIn("to keeps", caption)
+            self.assertNotIn("Use only published", caption)
 
     def test_water_filter_fallback_copy_uses_water_domain_language(self) -> None:
         product = {

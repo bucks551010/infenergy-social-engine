@@ -1760,7 +1760,13 @@ def _product_topic_fit_score(product: dict | None, topic: str, pillar: str, funn
     category_text = _product_category_text(product)
     product_name = str((product or {}).get("name", "")).strip().lower()
     score = 0
-    accessory_product = any(token in product_name for token in ("fan", "light", "power bank", "charger", "jump starter", "filter straw", "cable"))
+    accessory_product = any(
+        token in product_name
+        for token in (
+            "fan", "light", "power bank", "charger", "jump starter", "cable",
+            "filter", "purifier", "straw", "bottle", "lantern", "flashlight", "cooler",
+        )
+    )
 
     if any(token in category_text for token in ("travel power", "phone power bank", "phone charging", "portable laptop")):
         if any(token in low_topic for token in ("travel", "phone", "laptop", "off-grid", "camping", "rv", "portable")):

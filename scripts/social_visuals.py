@@ -251,6 +251,36 @@ def _benefit_rows(content: dict[str, Any]) -> list[str]:
     return rows[:4]
 
 
+def _proof_banner_text(content: dict[str, Any]) -> str:
+    """Keyword-derived proof/urgency phrase, distinct from the raw spec numbers in the badge rows."""
+    topic = normalize_brand_text(str(content.get("topic") or ""))
+    hook = normalize_brand_text(str(content.get("selected_hook") or ""))
+    text = f"{topic} {hook}".lower()
+    if any(k in text for k in ("outage", "backup", "blackout")):
+        return "OUTAGE READY"
+    if any(k in text for k in ("charge", "charging", "recharge")):
+        return "FAST RECHARGE"
+    if any(k in text for k in ("travel", "portable", "carry")):
+        return "TRAVEL READY"
+    return "SMART POWER"
+
+
+def _spec_badge_rows(content: dict[str, Any], limit: int = 4) -> list[str]:
+    """Real, verified specs first (accuracy); only fall back to generic phrasing when none exist."""
+    metrics = content.get("product_metrics", []) if isinstance(content, dict) else []
+    rows: list[str] = []
+    if isinstance(metrics, list):
+        for raw_metric in metrics:
+            cleaned = re.sub(r"\s+", " ", normalize_brand_text(str(raw_metric or ""))).strip()
+            if cleaned and cleaned not in rows:
+                rows.append(cleaned)
+            if len(rows) >= limit:
+                break
+    if not rows:
+        rows = _benefit_rows(content)[:limit]
+    return rows[:limit]
+
+
 def _trust_badges(content: dict[str, Any]) -> list[str]:
     raw_badges = content.get("trust_badges", []) if isinstance(content, dict) else []
     if not isinstance(raw_badges, list):
@@ -260,7 +290,7 @@ def _trust_badges(content: dict[str, Any]) -> list[str]:
         badge = re.sub(r"\s+", " ", normalize_brand_text(str(raw_badge or ""))).strip()
         if badge and badge.lower() not in {item.lower() for item in badges}:
             badges.append(badge)
-    return badges[:3]
+    return badges[:4]
 
 
 def _safe_json_dict(value: Any) -> dict[str, Any]:
@@ -666,6 +696,7 @@ def _compose_gemini_ad_overlay(content: dict[str, Any], platform: str, image_pat
 
     draw = draw_module.Draw(canvas)
     width, height = canvas.size
+    is_square = platform in ("facebook", "instagram")
 
     # Stabilize contrast only where deterministic copy will be composited.
     overlay = image_module.new("RGBA", canvas.size, (0, 0, 0, 0))
@@ -676,78 +707,102 @@ def _compose_gemini_ad_overlay(content: dict[str, Any], platform: str, image_pat
     canvas = image_module.alpha_composite(canvas, overlay)
     draw = draw_module.Draw(canvas)
 
-    brand_font = _font(font_module, 34 if platform in ("facebook", "instagram") else 24)
-    stage_font = _font(font_module, 20 if platform in ("facebook", "instagram") else 15)
-    body_font = _font(font_module, 28 if platform in ("facebook", "instagram") else 21)
-    footer_font = _font(font_module, 30 if platform in ("facebook", "instagram") else 21)
+    # Decorative structure rail (design accent only, no leaked labels/text).
+    draw.rectangle((0, 0, 8, height), fill="#f2a81a")
+    draw.rectangle((8, 0, 11, height), fill="#ffd469")
+
+    brand_font = _font(font_module, 34 if is_square else 24)
+    stage_font = _font(font_module, 20 if is_square else 15)
+    body_font = _font(font_module, 28 if is_square else 21)
+    footer_font = _font(font_module, 30 if is_square else 21)
 
     draw.text((88, 84), "Infenergy Power", font=brand_font, fill="#eef7ff")
     stage_text = normalize_brand_text(str(content.get("funnel_stage", "EDUCATION")))
-    draw.rounded_rectangle((88, 130, 312 if platform in ("facebook", "instagram") else 272, 176 if platform in ("facebook", "instagram") else 166), radius=15, fill="#f2a81a", outline="#ffd469", width=1)
-    draw.text((102, 142 if platform in ("facebook", "instagram") else 138), stage_text, font=stage_font, fill="#161616")
+    draw.rounded_rectangle((88, 130, 312 if is_square else 272, 176 if is_square else 166), radius=15, fill="#f2a81a", outline="#ffd469", width=1)
+    draw.text((102, 142 if is_square else 138), stage_text, font=stage_font, fill="#161616")
 
     headline_text, subline_text = _headline_lockup(content)
     body_bottom = _draw_headline_fit(
         draw,
-        _trim_for_card(headline_text.upper(), 72 if platform in ("facebook", "instagram") else 82),
+        _trim_for_card(headline_text.upper(), 72 if is_square else 82),
         font_module=font_module,
         x=88,
         y=196,
-        max_width_px=430 if platform in ("facebook", "instagram") else 500,
-        base_size=74 if platform in ("facebook", "instagram") else 52,
-        min_size=42 if platform in ("facebook", "instagram") else 28,
-        max_lines=3 if platform in ("facebook", "instagram") else 2,
+        max_width_px=430 if is_square else 500,
+        base_size=74 if is_square else 52,
+        min_size=42 if is_square else 28,
+        max_lines=3 if is_square else 2,
         fill="#ffffff",
         line_gap=5,
     )
     body_bottom = _draw_wrapped(
         draw,
-        _trim_for_card(subline_text, 82 if platform in ("facebook", "instagram") else 92),
+        _trim_for_card(subline_text, 82 if is_square else 92),
         font=body_font,
         x=88,
         y=body_bottom + 12,
-        width_chars=22 if platform in ("facebook", "instagram") else 32,
+        width_chars=22 if is_square else 32,
         fill="#d9ecff",
         line_gap=8,
     )
 
-    stat_text = _primary_stat(content)
-    stat_font = _font(font_module, 34 if platform in ("facebook", "instagram") else 22)
-    stat_bbox = draw.textbbox((0, 0), stat_text, font=stat_font)
-    stat_w = (stat_bbox[2] - stat_bbox[0]) + 26
-    draw.rounded_rectangle((88, body_bottom + 10, 88 + stat_w, body_bottom + 56), radius=10, fill="#f7af20", outline="#ffd56a", width=1)
-    draw.text((100, body_bottom + 20), stat_text, font=stat_font, fill="#151515")
+    # Bold proof/urgency banner pill (e.g. "OUTAGE READY") below the subline.
+    banner_text = _proof_banner_text(content)
+    banner_font = _font(font_module, 30 if is_square else 20)
+    banner_bbox = draw.textbbox((0, 0), banner_text, font=banner_font)
+    banner_w = (banner_bbox[2] - banner_bbox[0]) + 32
+    banner_top = body_bottom + 16
+    banner_bottom = banner_top + (52 if is_square else 34)
+    draw.rounded_rectangle((88, banner_top, 88 + banner_w, banner_bottom), radius=12, fill="#f2a81a", outline="#ffd469", width=1)
+    draw.text((104, banner_top + (12 if is_square else 7)), banner_text, font=banner_font, fill="#151515")
+    body_bottom = banner_bottom
 
-    row_font = _font(font_module, 24 if platform in ("facebook", "instagram") else 17)
-    benefit_y = body_bottom + 72
-    for row in _benefit_rows(content):
-        label = _trim_for_card(row, 30)
-        draw.text((88, benefit_y), ">>", font=row_font, fill="#ffb62b")
-        draw.text((126, benefit_y), label, font=row_font, fill="#ffe4ae")
-        benefit_y += 36 if platform in ("facebook", "instagram") else 26
+    # Spec badge grid: real, verified specs first so the copy stays accurate per product.
+    # LinkedIn's shorter canvas gets one compact highlight row instead of the full grid.
+    spec_font = _font(font_module, 26 if is_square else 18)
+    chevron_font = _font(font_module, 26 if is_square else 18)
+    row_w = 420 if is_square else 460
+    row_h = 50 if is_square else 36
+    row_gap = 10 if is_square else 8
+    row_y = body_bottom + 18
+    for row in _spec_badge_rows(content, limit=4 if is_square else 1):
+        label = _trim_for_card(row, 34 if is_square else 40)
+        draw.rounded_rectangle((88, row_y, 88 + row_w, row_y + row_h), radius=10, fill="#141c22cc", outline="#f2a81a", width=1)
+        draw.text((104, row_y + (row_h // 2) - 13), ">", font=chevron_font, fill="#ffb62b")
+        draw.text((132, row_y + (row_h // 2) - 13), label, font=spec_font, fill="#ffe9c2")
+        row_y += row_h + row_gap
+    body_bottom = row_y
+
+    # Trust badge row (accuracy-grounded claims only, sourced from content.trust_badges).
+    badge_font = _font(font_module, 18 if is_square else 13)
+    bx, by = 88, body_bottom + 8
+    badge_h = 34 if is_square else 24
+    max_bx = 88 + row_w
+    for label in _trust_badges(content):
+        clean = _trim_for_card(label, 18)
+        text = f"\u2022 {clean}"
+        bbox = draw.textbbox((0, 0), text, font=badge_font)
+        bw = (bbox[2] - bbox[0]) + 22
+        if bx + bw > max_bx and bx > 88:
+            bx = 88
+            by += badge_h + 8
+        draw.rounded_rectangle((bx, by, bx + bw, by + badge_h), radius=14, fill="#12191f", outline="#f8c24f", width=1)
+        draw.text((bx + 11, by + (badge_h // 2) - 9), text, font=badge_font, fill="#f7f9ff")
+        bx += bw + 8
+    body_bottom = by + badge_h
 
     cta = normalize_brand_text(str(content.get("selected_cta") or "Learn more"))
     if not cta.endswith("->"):
         cta = f"{cta} ->"
-    cta_top = height - 126 if platform in ("facebook", "instagram") else height - 90
-    cta_bottom = height - 54 if platform in ("facebook", "instagram") else height - 34
-    cta_right = 548 if platform in ("facebook", "instagram") else 420
+    cta_top = max(body_bottom + 14, height - 126 if is_square else height - 76)
+    cta_bottom = cta_top + (72 if is_square else 44)
+    cta_right = 88 + row_w
     draw.rounded_rectangle((88, cta_top, cta_right, cta_bottom), radius=18, fill="#c73613", outline="#ffcf52", width=1)
     draw.rounded_rectangle((88, cta_top, cta_right, cta_top + 4), radius=18, fill="#ffd13d")
     cta_bbox = draw.textbbox((0, 0), cta, font=footer_font)
     cta_x = 88 + max(0, ((cta_right - 88) - (cta_bbox[2] - cta_bbox[0])) // 2)
-    draw.text((cta_x, cta_top + 20), cta, font=footer_font, fill="#f2fbff")
-
-    badge_font = _font(font_module, 16 if platform in ("facebook", "instagram") else 12)
-    badge_x = width - 286 if platform in ("facebook", "instagram") else width - 220
-    badge_y = 760 if platform in ("facebook", "instagram") else 392
-    for label in _trust_badges(content):
-        clean = _trim_for_card(label, 20)
-        bbox = draw.textbbox((0, 0), clean, font=badge_font)
-        bw = (bbox[2] - bbox[0]) + 26
-        draw.rounded_rectangle((badge_x, badge_y, badge_x + bw, badge_y + 30), radius=14, fill="#12191f", outline="#f8c24f", width=1)
-        draw.text((badge_x + 12, badge_y + 8), clean, font=badge_font, fill="#f7f9ff")
-        badge_y += 36
+    cta_y = cta_top + ((cta_bottom - cta_top) // 2) - ((cta_bbox[3] - cta_bbox[1]) // 2)
+    draw.text((cta_x, cta_y), cta, font=footer_font, fill="#f2fbff")
 
     product_source = _resolve_product_source(content)
     product_image = _fetch_product_image(image_module, product_source)

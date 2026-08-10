@@ -670,6 +670,49 @@ class HealthHandler(BaseHTTPRequestHandler):
             self.wfile.write(body)
             return
 
+        if parsed.path == "/agents/list":
+            from agents.dispatcher import available_agents  # local import to avoid startup cost
+
+            body = json.dumps({"status": "ok", "agents": available_agents()}).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
+        if parsed.path == "/agents/run":
+            params = parse_qs(parsed.query)
+            authorized, status_code, error_payload = _authorized(params)
+            if not authorized:
+                body = json.dumps(error_payload).encode("utf-8")
+                self.send_response(status_code)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+                return
+            from agents.dispatcher import run_agent
+
+            name = str(params.get("name", [""])[0]).strip()
+            if not name:
+                body = json.dumps({"error": "missing_name"}).encode("utf-8")
+                self.send_response(400)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+                return
+            result = run_agent(name, _data_dir(), params)
+            code = 400 if isinstance(result, dict) and "error" in result else 200
+            body = json.dumps(result, default=str).encode("utf-8")
+            self.send_response(code)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
         if parsed.path == "/history":
             params = parse_qs(parsed.query)
             try:

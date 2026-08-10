@@ -14,7 +14,7 @@ sys.path.insert(0, SCRIPTS)
 import publish_facebook  # noqa: E402
 import publish_instagram  # noqa: E402
 import publish_linkedin  # noqa: E402
-from generate_posts import _model_caption_overrides  # noqa: E402
+from generate_posts import _enforce_product_sales_platform_copy, _model_caption_overrides  # noqa: E402
 from run_engine import _live_visual_gate_errors  # noqa: E402
 from social_visuals import (  # noqa: E402
     _build_gemini_image_prompt,
@@ -235,6 +235,17 @@ class PublisherVisualTests(unittest.TestCase):
         self.assertEqual(overrides["facebook"]["caption"], "Facebook copy written for this product.")
         self.assertEqual(overrides["instagram"]["caption"], "Instagram copy written for this product.")
         self.assertEqual(overrides["linkedin"]["caption"], "LinkedIn copy written for this product.")
+
+    def test_product_copy_guard_preserves_substantive_model_copy(self) -> None:
+        product = {"name": "HoneyVolt Slim Power Bank", "metrics": ["10,000 mAh"]}
+        original = {
+            "fb_caption": "HoneyVolt Slim Power Bank keeps your phone available through a long travel day without turning preparedness into a lecture. Compare the published capacity before buying.",
+            "ig_caption": "HoneyVolt Slim Power Bank belongs in the bag you already carry. Check the published capacity, charge before leaving, and keep your phone ready when outlets disappear.",
+            "li_text": "HoneyVolt Slim Power Bank gives mobile teams a simple layer of charging continuity. Review its published capacity against the devices employees actually carry before standardizing a kit.",
+        }
+        content = dict(original)
+        _enforce_product_sales_platform_copy(content, product, {})
+        self.assertEqual(content, original)
 
     def test_instagram_prefers_generated_visual_upload(self) -> None:
         with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:

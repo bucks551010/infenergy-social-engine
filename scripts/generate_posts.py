@@ -2140,6 +2140,10 @@ def _enforce_product_sales_platform_copy(content: dict, product: dict | None, ta
     product_name = str(product.get("name", "") or "").strip()
     if not product_name:
         return
+    existing_captions = {
+        key: str(content.get(key, "") or "").strip()
+        for key in ("fb_caption", "ig_caption", "li_text")
+    }
     metrics = [str(x).strip() for x in (product.get("metrics", []) or []) if str(x).strip()]
     feature_items = _sales_feature_bullets(product, limit=5)
     bullets = [f"- {item}" for item in feature_items]
@@ -2192,6 +2196,10 @@ def _enforce_product_sales_platform_copy(content: dict, product: dict | None, ta
         f"{_sales_cta_line(product, first_step, 'linkedin')}\n"
         f"#EmergencyPreparedness #PortablePower #BackupPower #BusinessContinuity #Resilience"
     )
+    product_name_lower = product_name.lower()
+    for key, existing in existing_captions.items():
+        if len(existing) >= 80 and product_name_lower in existing.lower():
+            content[key] = existing
 
 
 def _enforce_numeric_proof_requirements(content: dict, funnel_stage: str, talking_point: dict) -> None:
@@ -4206,9 +4214,11 @@ Return ONLY valid JSON with these exact keys (no markdown, no code fences):
 }}"""
 
     content = _generate_json_with_gemini(prompt, model_candidates)
+    copy_generation_source = "gemini" if content is not None else "deterministic_fallback"
 
     if content is None:
         content = _build_fallback_content(slot, topic, product, marketing_strategy, talking_point=talking_point)
+        content["copy_generation_source"] = copy_generation_source
         content["topic"] = topic
         content["pillar"] = pillar
         content["topic_hash"] = topic_hash
@@ -4396,6 +4406,7 @@ Return ONLY valid JSON with these exact keys (no markdown, no code fences):
         content = _sanitize_legacy_cta_in_payload(content)
         return content
 
+    content["copy_generation_source"] = copy_generation_source
     content["topic"] = topic
     content["pillar"] = pillar
     content["topic_hash"] = topic_hash

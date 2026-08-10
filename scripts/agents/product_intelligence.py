@@ -19,22 +19,41 @@ def _product_type(product: dict) -> str:
     name = str(product.get("name", "") or "").lower()
     categories = " ".join(_clean_list(product.get("categories"))).lower()
     facts = re.sub(r"<[^>]+>", " ", str(product.get("fact_snippet", "") or "")).lower()
-    power_station_evidence = any(token in name for token in ("power station", "generator", "inverter")) or any(
-        token in categories for token in ("power station", "generator")
-    ) or any(token in facts for token in ("home backup powerhouse", "solar generator", "pure sine wave inverter"))
+    product_id = str(product.get("id") or product.get("product_id") or product.get("sku") or "").lower()
 
-    if "filter" in name or "straw" in name or "water filtration" in categories:
+    if any(token in name for token in ("water filter", "water purifier", "filter straw")) or "water filter" in categories:
         return "portable_water_filter"
     if "jump starter" in name:
         return "vehicle_jump_starter"
     if "fan" in name:
         return "portable_fan"
-    if power_station_evidence:
-        return "power_station"
-    if "solar" in name or "panel" in name or (("solar" in categories or "panel" in categories) and not power_station_evidence):
+    if any(token in name for token in ("light bulb", "solar light", "lantern")):
+        return "solar_light"
+    if "electric bike" in categories or "e-bike" in name or "electric bike" in name:
+        return "electric_bike"
+    if any(token in name for token in ("extra battery", "expansion battery")):
+        return "expansion_battery"
+    if any(token in name for token in ("mobile battery chassis", "mobile chassis")):
+        return "power_system_component"
+    if "extra inverter" in name:
+        return "power_system_component"
+    if any(token in name for token in ("full stack", "max power", "powerhouse", "grid buster", "weekender pro", "pro-grade performance")):
+        return "power_system_bundle"
+    if (" w/" in name or " + " in name) and any(token in name for token in ("battery", "solar panel")):
+        return "power_system_bundle"
+    if "solar panel" in name:
         return "solar_panel"
-    if any(token in name for token in ("power bank", "powerbank", "charger")):
+    if any(token in name for token in ("power bank", "powerbank", "charger", "powercharge pro")) or "phone power banks" in categories:
         return "power_bank"
+    if (
+        any(token in name for token in ("power station", "generator", "modular power system", "solarmax pro"))
+        or any(token in categories for token in ("power station", "solar generators", "home backup"))
+        or any(token in facts for token in ("home backup powerhouse", "solar generator", "pure sine wave inverter"))
+        or product_id in {"inf-9792-u", "sorein-mb2000"}
+    ):
+        return "power_station"
+    if "solar panels" in categories:
+        return "solar_panel"
     return "preparedness_product"
 
 
@@ -71,6 +90,61 @@ _TYPE_GUIDANCE = {
         "cta": "Review the runtime and airflow details against where you plan to use it.",
         "hashtags": ["PortableFan", "CampingGear", "OutageReady", "EmergencyPreparedness"],
         "visual": "Show the real fan providing airflow in a campsite, room, vehicle, or outage setting.",
+    },
+    "solar_light": {
+        "role": "portable solar-powered light",
+        "benefits": ["adds renewable lighting for outages and off-grid use", "keeps task lighting portable without relying on a wall outlet"],
+        "use_cases": ["outage lighting", "camping", "emergency kits", "off-grid task lighting"],
+        "audiences": ["prepared households", "campers", "off-grid travelers"],
+        "pain_point": "Emergency lighting is useful only when it is charged, portable, and suited to the space it needs to illuminate.",
+        "proof_rule": "Use only published brightness, runtime, charging, weather-resistance, and mounting details.",
+        "cta": "Compare the published lighting and charging details with where you need dependable light.",
+        "hashtags": ["EmergencyLighting", "SolarLight", "CampingGear", "OutageReady"],
+        "visual": "Show the real light illuminating a credible campsite, outage room, or off-grid task area.",
+    },
+    "electric_bike": {
+        "role": "electric bicycle",
+        "benefits": ["adds powered mobility for commuting and longer rides", "combines pedal travel with documented electric assistance"],
+        "use_cases": ["daily commuting", "recreation", "local errands", "longer-range riding"],
+        "audiences": ["commuters", "recreational riders", "buyers comparing electric mobility"],
+        "pain_point": "An e-bike is a poor fit when range, rider capacity, terrain, and charging needs are not evaluated together.",
+        "proof_rule": "Use only published range, motor, battery, speed, payload, frame, and charging details.",
+        "cta": "Compare the published range, fit, and riding specifications with your actual route.",
+        "hashtags": ["ElectricBike", "EMobility", "DailyCommute", "OutdoorTravel"],
+        "visual": "Show the real bicycle on terrain and in a riding context supported by its published specifications.",
+    },
+    "expansion_battery": {
+        "role": "modular power-system expansion battery",
+        "benefits": ["adds stored-energy capacity to a compatible modular system", "extends supported runtime when paired with documented equipment"],
+        "use_cases": ["home backup expansion", "longer outage coverage", "modular off-grid systems"],
+        "audiences": ["owners of the compatible base system", "households extending backup runtime", "modular-power buyers"],
+        "pain_point": "An expansion battery creates value only when compatibility and added capacity match the installed system.",
+        "proof_rule": "Use only published capacity, chemistry, connection, compatibility, and expansion-limit details.",
+        "cta": "Verify base-system compatibility and added capacity before expanding your setup.",
+        "hashtags": ["ExpansionBattery", "BackupPower", "ModularPower", "OutageReady"],
+        "visual": "Show the real battery connected only to its documented compatible base system.",
+    },
+    "power_system_component": {
+        "role": "modular power-system component",
+        "benefits": ["adds a documented capability to a compatible modular power system", "supports a more purpose-built system configuration"],
+        "use_cases": ["modular system configuration", "compatible system expansion", "mobile or off-grid power setups"],
+        "audiences": ["owners of the compatible modular system", "buyers configuring a purpose-built power setup"],
+        "pain_point": "A system component is useful only when its function and compatibility are clear before purchase.",
+        "proof_rule": "Use only published component function, compatibility, capacity, connection, and included-item details.",
+        "cta": "Confirm the component's function and compatibility with your exact system configuration.",
+        "hashtags": ["ModularPower", "PowerSystem", "SystemExpansion", "BackupPower"],
+        "visual": "Show the real component installed with only the documented compatible modular system.",
+    },
+    "power_system_bundle": {
+        "role": "configured modular power-system bundle",
+        "benefits": ["combines documented system components for a defined backup-power configuration", "simplifies selection when the included components fit the required loads"],
+        "use_cases": ["home backup configuration", "extended outage planning", "off-grid power systems", "high-demand mobile power"],
+        "audiences": ["households planning larger backup loads", "off-grid system buyers", "buyers comparing complete configurations"],
+        "pain_point": "A power bundle is only a good fit when its included components, output, and storage match the planned loads.",
+        "proof_rule": "Use only published included components, output, storage, compatibility, and expansion details for this exact bundle.",
+        "cta": "Compare this exact bundle's included components and capacity with your planned loads.",
+        "hashtags": ["PowerSystem", "HomeBackup", "ModularPower", "EnergyPreparedness"],
+        "visual": "Show every included product from the exact bundle in a credible system configuration.",
     },
     "power_station": {
         "role": "backup power station",

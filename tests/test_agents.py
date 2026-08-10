@@ -223,6 +223,24 @@ class AgentsTests(unittest.TestCase):
         self.assertIn("airflow", brief["core_benefits"][0])
         self.assertNotIn("portable charging backup", brief["product_summary"])
 
+    def test_product_intelligence_prefers_sellable_item_over_broad_category(self) -> None:
+        cases = [
+            ({"id": "AF-SOLAR", "name": "Aferiy Solar Panels", "categories": ["Solar Generators", "Solar Panels"]}, "solar_panel"),
+            ({"id": "SGL-BULB", "name": "Portable Solar-Powered Light Bulb", "categories": ["Portable Power"]}, "solar_light"),
+            ({"id": "WOSFER-DH-C10", "name": "Wosfer Portable Water Purifier Bottle", "categories": ["Portable Water Filters"]}, "portable_water_filter"),
+            ({"id": "BW-1500W-60AH", "name": "Black Warrior 1500W - Long Range Edition", "categories": ["Electric Bikes"]}, "electric_bike"),
+            ({"id": "SOREIN-EB200", "name": "Sorein Modular Power System - EB 200 Extra Battery"}, "expansion_battery"),
+            ({"id": "SM-PRO-2", "name": "SolarMax Pro 5kW-10kW - 2 SolarMax Pros"}, "power_station"),
+            ({"id": "AF-P210", "name": "AFERIY AF-P210", "categories": ["Power Stations", "Solar Panels"]}, "power_station"),
+            ({"id": "b7ad9dc40179", "name": "PowerCharge Pro - Black", "categories": []}, "power_bank"),
+        ]
+
+        for product, expected_type in cases:
+            with self.subTest(product_id=product["id"]):
+                brief = product_intelligence.build_product_brief(product)
+                self.assertEqual(brief["product_type"], expected_type)
+                self.assertNotEqual(brief["role"], "preparedness product")
+
     def test_product_intelligence_rebuilds_entire_catalog(self) -> None:
         products = [
             {"id": "PS-1", "name": "Home Power Station", "categories": ["Power Stations"], "metrics": ["1000Wh"]},

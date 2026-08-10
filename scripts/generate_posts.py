@@ -3080,9 +3080,6 @@ def _apply_conference_refinements(content: dict, visual_plan: dict, conference: 
 
     hook = str(refined.get("hook", "")).strip()
     cta = str(refined.get("cta", "")).strip()
-    fb = str(refined.get("fb_caption", "")).strip()
-    ig = str(refined.get("ig_caption", "")).strip()
-    li = str(refined.get("li_text", "")).strip()
     image_prompt = str(refined.get("gemini_image_prompt", "")).strip()
     image_strategy = str(refined.get("image_strategy", "")).strip().lower()
 
@@ -3090,13 +3087,6 @@ def _apply_conference_refinements(content: dict, visual_plan: dict, conference: 
         content["selected_hook"] = hook
     if cta:
         content["selected_cta"] = cta
-    if fb:
-        content["fb_caption"] = fb
-    if ig:
-        content["ig_caption"] = ig
-    if li:
-        content["li_text"] = li
-
     if image_prompt:
         visual_plan["gemini_image_prompt"] = image_prompt
     if image_strategy in {"gemini_generated", "product_photo_featured", "hybrid"}:

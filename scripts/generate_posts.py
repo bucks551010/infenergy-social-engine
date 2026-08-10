@@ -3881,6 +3881,18 @@ POSITIONING GUARDRAILS:
 - Only reference solar in the context of portable/foldable solar panels paired with portable power products.
 - Forbidden phrasing examples: rooftop install, net metering savings, utility bill offset via home solar install, state solar tax-credit pitch.
 
+COPY ACCURACY RULES:
+- Identify the actual product type from the provided name, categories, specs, and facts before writing a single sentence.
+- Describe the selected item as the correct type, not a generic preparedness product.
+- If the item is a solar panel, describe it as portable or foldable solar charging equipment, not a battery, power bank, or standalone power station.
+- If the item is a power bank or charger, describe it as small-device charging backup, not whole-home backup power.
+- If the item is a jump starter, make vehicle or roadside use explicit and do not frame it like a home backup system.
+- If the item is a water filter or straw, make clean-water preparedness explicit and do not frame it like an energy product.
+- If the item is a fan or comfort device, make airflow, camping, outage comfort, or small-device support explicit and do not frame it like a large battery system.
+- If the item is a power station, inverter, generator, or larger battery unit, make output, runtime, charging limits, and device matching explicit.
+- Never use vague core-product descriptions like "preparedness product", "solution", "gear", or "tool" when a more precise category is available from context.
+- Never use generic benefit phrases like "turn confusion into a clear product-fit decision" or "using real usage data" as the main product description unless they are immediately tied to concrete specs and the real product category.
+
 QUALITY RULES — every piece must follow all of these:
 1. Open with a hook that creates immediate curiosity or challenges a common assumption.
 2. Name one concrete customer pain point in the first two lines.

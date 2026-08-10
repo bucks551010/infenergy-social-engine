@@ -255,3 +255,24 @@ def publish(content: dict, dry_run: bool = False) -> dict:
     data = resp2.json()
     print(f"[Instagram] Posted: {data['id']}")
     return {"id": data["id"]}
+
+
+def delete(media_id: str) -> dict:
+    """Attempt to delete a published Instagram media object.
+
+    Note: Meta's Instagram Graph API does not support deleting Business/Creator
+    account media published through the API. This will typically fail with a
+    Graph API error; callers should treat that as "must be removed manually in
+    the Instagram app" rather than a bug.
+    """
+    access_token = _required_env("META_PAGE_ACCESS_TOKEN")
+    resp = requests.delete(
+        f"{GRAPH_BASE}/{media_id}",
+        params={"access_token": access_token},
+        timeout=30,
+    )
+    if not resp.ok:
+        raise RuntimeError(f"instagram_delete_failed_http_{resp.status_code}: {_graph_error_text(resp)}")
+    data = resp.json() if resp.content else {}
+    print(f"[Instagram] Deleted: {media_id}")
+    return {"id": media_id, "success": bool(data.get("success", True))}

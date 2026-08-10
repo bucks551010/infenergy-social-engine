@@ -141,3 +141,18 @@ def publish(content: dict, wp_link: str, dry_run: bool = False) -> dict:
     data = resp.json()
     print(f"[Facebook] Posted: {data['id']}")
     return {"id": data["id"]}
+
+
+def delete(post_id: str) -> dict:
+    """Delete a previously published Facebook page post/photo by its object id."""
+    page_id = _required_env("META_PAGE_ID")
+    token = _resolve_page_access_token(_required_env("META_PAGE_ACCESS_TOKEN"), page_id)
+    resp = requests.delete(
+        f"{GRAPH_BASE}/{post_id}",
+        params={"access_token": token},
+        timeout=30,
+    )
+    _raise_with_body(resp)
+    data = resp.json() if resp.content else {}
+    print(f"[Facebook] Deleted: {post_id}")
+    return {"id": post_id, "success": bool(data.get("success", True))}

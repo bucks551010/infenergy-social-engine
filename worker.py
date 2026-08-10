@@ -1246,6 +1246,67 @@ class HealthHandler(BaseHTTPRequestHandler):
             self.wfile.write(body)
             return
 
+        if parsed.path == "/delete-post":
+            token = os.environ.get("MANUAL_RUN_TOKEN", "")
+            params = parse_qs(parsed.query)
+            provided = params.get("token", [""])[0]
+            platform = params.get("platform", [""])[0].strip().lower()
+            post_id = params.get("post_id", [""])[0].strip()
+
+            if not token:
+                body = b'{"error":"MANUAL_RUN_TOKEN not configured"}'
+                self.send_response(403)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+                return
+
+            if provided != token:
+                body = b'{"error":"invalid token"}'
+                self.send_response(401)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+                return
+
+            if platform not in ("facebook", "instagram", "linkedin") or not post_id:
+                body = b'{"error":"platform must be facebook|instagram|linkedin and post_id is required"}'
+                self.send_response(400)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+                return
+
+            payload = {"platform": platform, "post_id": post_id, "time_utc": _utc_now()}
+            try:
+                if platform == "facebook":
+                    import publish_facebook
+                    result = publish_facebook.delete(post_id)
+                elif platform == "instagram":
+                    import publish_instagram
+                    result = publish_instagram.delete(post_id)
+                else:
+                    import publish_linkedin
+                    result = publish_linkedin.delete(post_id)
+                payload["success"] = True
+                payload["result"] = result
+                status = 200
+            except Exception as e:
+                payload["success"] = False
+                payload["error"] = str(e)
+                status = 502
+
+            body = json.dumps(payload).encode("utf-8")
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
         if parsed.path == "/refresh-meta":
             params = parse_qs(parsed.query)
             provided = str(params.get("token", [""])[0]).strip()

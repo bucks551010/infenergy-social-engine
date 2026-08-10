@@ -290,6 +290,24 @@ def _is_duplicate_error(resp: requests.Response) -> bool:
     return "duplicate" in body or "already exists" in body or "same content" in body
 
 
+def delete(post_urn: str) -> dict:
+    """Delete a previously published LinkedIn UGC post by its URN (e.g. urn:li:share:123 or urn:li:ugcPost:123)."""
+    from urllib.parse import quote
+
+    urn = str(post_urn or "").strip()
+    if urn.startswith("urn:li:share:"):
+        urn = "urn:li:ugcPost:" + urn.split(":")[-1]
+    resp = requests.delete(
+        f"{LI_API}/ugcPosts/{quote(urn, safe='')}",
+        headers=_headers(),
+        timeout=30,
+    )
+    if resp.status_code not in (200, 204) and not resp.ok:
+        raise RuntimeError(f"linkedin_delete_failed_http_{resp.status_code}: {_response_body(resp)}")
+    print(f"[LinkedIn] Deleted: {urn}")
+    return {"id": urn, "success": True}
+
+
 def publish(content: dict, wp_link: str, dry_run: bool = False) -> dict:
     text = f"{content['li_text']}\n\n{wp_link}"
     image_path = str((content.get("generated_visuals") or {}).get("linkedin", "")).strip()

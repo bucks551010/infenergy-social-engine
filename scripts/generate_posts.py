@@ -1997,10 +1997,6 @@ def _ensure_product_led_text(text: str, product: dict | None, *, html: bool = Fa
         mention_line = _one_line(mention_line, short_limit)
 
     if body and product_name.lower() in body.lower():
-        if detail and detail.lower() not in body.lower():
-            if html:
-                return f"<p>{mention_line}</p>\n{body}"
-            return f"{mention_line}\n\n{body}"
         return body
 
     if not body:
@@ -3128,8 +3124,9 @@ def _build_fallback_content(
     proof_anchor = str(talking_point.get("proof_anchor") or f"Use {m1} and {m2} to validate fit before buying.").strip()
     first_step = str(talking_point.get("first_step") or cta).strip()
     angle = str(talking_point.get("angle") or f"{topic} through practical decision-making.").strip()
-    feature_bullets = _sales_feature_bullets(product)
-    feature_lines = "\n".join([f"- {item}" for item in feature_bullets[:5]])
+    profile = _product_copy_profile(product)
+    metric_line = " and ".join(str(value).strip() for value in metrics[:2] if str(value).strip())
+    proof_line = f"Published specs include {metric_line}." if metric_line else "Review the published specifications against the devices you need to keep running."
     usage_line = "Keep it in your home emergency kit, vehicle, backpack, or travel bag so power is there before you need it."
 
     wp_title = f"{name}: What To Know Before You Buy"
@@ -3151,35 +3148,29 @@ def _build_fallback_content(
     )
 
     fb_caption = (
-        f"When the power goes out, your essentials should not go with it.\n\n"
-        f"{pain_point} Meet {name} - portable backup power built to keep key devices ready when an outlet is not nearby.{price_line}\n\n"
-        f"{feature_lines}\n\n"
-        f"{proof_anchor}\n\n"
+        f"{pain_point}\n\n"
+        f"Meet {name}, a {profile['role']} that {profile['benefit']}.{price_line}\n\n"
+        f"{proof_line} {proof_anchor}\n\n"
         f"{usage_line}\n\n"
-        f"Prepare before the next outage, road trip, or emergency catches you off guard.\n\n"
         f"{first_step}\n"
         f"#BackupPower #EmergencyPreparedness #PortablePower #PowerOutage #StayPowered"
     )
 
     ig_caption = (
-        f"POWER WHEN YOU NEED IT.\n"
         f"{pain_point}\n\n"
-        f"{name} gives you portable backup power when storms, outages, travel, or emergencies make charging harder.{price_line}\n\n"
-        f"{feature_lines}\n\n"
-        f"{proof_anchor}\n\n"
+        f"{name} is a {profile['role']} built to {profile['benefit']}.{price_line}\n\n"
+        f"{proof_line}\n\n"
         f"{usage_line}\n\n"
-        f"Do not wait for the next outage to realize you needed backup power.\n\n"
         f"{first_step}\n"
-        f"#PortablePower #StayPowered #EmergencyPreparedness #BackupPower #PowerOutage #StormReady #TravelPower #PreparedNotScared"
+        f"#PortablePower #StayPowered #EmergencyPreparedness #BackupPower #PowerOutage"
     )
 
     li_text = (
-        f"Reliable backup power should not be complicated.\n\n"
-        f"{pain_point} {name}{' (' + sku + ')' if sku else ''} is designed to help keep essential devices charged when access to traditional power is limited.{price_line}\n\n"
-        f"Key product details:\n{feature_lines}\n\n"
-        f"{proof_anchor}\n\n"
-        f"Whether you are preparing for outages, travel, or daily continuity, having another way to stay powered can make a meaningful difference.\n\n"
-        f"Preparation starts before the power goes out. {first_step}"
+        f"{pain_point}\n\n"
+        f"{name}{' (' + sku + ')' if sku else ''} is a {profile['role']} designed to {profile['benefit']}.{price_line}\n\n"
+        f"{proof_line} {proof_anchor}\n\n"
+        f"For households and mobile teams, the practical value is continuity without a complicated setup.\n\n"
+        f"{first_step}"
     )
 
     return {

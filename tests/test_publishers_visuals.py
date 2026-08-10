@@ -15,7 +15,9 @@ import publish_facebook  # noqa: E402
 import publish_instagram  # noqa: E402
 import publish_linkedin  # noqa: E402
 from generate_posts import (  # noqa: E402
+    _build_fallback_content,
     _enforce_conversion_caption,
+    _enforce_product_led_copy,
     _enforce_product_sales_platform_copy,
     _model_caption_overrides,
 )
@@ -280,6 +282,30 @@ class PublisherVisualTests(unittest.TestCase):
             platform="facebook",
         )
         self.assertEqual(fallback_result, caption)
+
+    def test_fallback_platform_copy_stays_concise_and_avoids_inventory_prefix(self) -> None:
+        product = {
+            "name": "SolarFlex Titan 20K",
+            "sku": "SFT-20K",
+            "sale_price": "69.99",
+            "metrics": ["20,000mAh", "20W", "18W"],
+            "categories": ["Emergency Power", "Outdoors & Camping"],
+            "fact_snippet": "SolarFlex Titan 20K: Infinite Power, On The Go Harness the power of the sun.",
+        }
+        talking_point = {
+            "pain_point": "A dead phone during an outage can cut off weather alerts and family check-ins.",
+            "proof_anchor": "Compare capacity and charging output with the devices you rely on.",
+            "first_step": "Review the product details and confirm it fits your emergency kit.",
+        }
+        content = _build_fallback_content("midday", "outage readiness", product, {}, talking_point)
+        _enforce_product_led_copy(content, product)
+
+        for key in ("fb_caption", "ig_caption", "li_text"):
+            caption = content[key]
+            self.assertIn(product["name"], caption)
+            self.assertLessEqual(len(caption), 700)
+            self.assertNotIn("Featured product:", caption)
+            self.assertNotIn("Key specs:", caption)
 
     def test_instagram_prefers_generated_visual_upload(self) -> None:
         with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:

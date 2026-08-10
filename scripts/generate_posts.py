@@ -2286,17 +2286,6 @@ def _enforce_conversion_caption(text: str, talking_point: dict, platform: str = 
     platform_name = str(platform or "").strip().lower()
 
     body = _sanitize_positioning_terms(body)
-    low = body.lower()
-    structured_sales_copy = (
-        "meet the " in low
-        or "key features include:" in low
-        or "power when you need it" in low
-        or "get yours today" in low
-        or "tap to get" in low
-        or "order " in low
-    )
-    if structured_sales_copy:
-        return body.strip()
 
     body = _enforce_pain_point_opening(body, pain_point)
 

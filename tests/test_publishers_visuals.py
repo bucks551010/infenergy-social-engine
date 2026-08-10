@@ -220,7 +220,11 @@ class PublisherVisualTests(unittest.TestCase):
                 publish_instagram,
                 "_post_with_retry",
                 side_effect=[first, second],
-            ) as mock_post:
+            ) as mock_post, patch.object(
+                publish_instagram,
+                "_wait_for_media_container",
+                return_value=(True, "finished"),
+            ):
                 result = publish_instagram.publish(
                     {
                         "ig_caption": "Caption text",

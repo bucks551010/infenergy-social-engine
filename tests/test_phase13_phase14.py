@@ -332,7 +332,11 @@ class PhaseThirteenFourteenTests(unittest.TestCase):
             patch.object(run_engine, "score_content", return_value={"total": 90, "decision": "approve", "component_scores": {}}), \
             patch.object(run_engine, "load_anti_repeat_windows", return_value={}), \
             patch.object(run_engine, "check_duplicates", return_value={"ok": True, "reasons": [], "signatures": {}}), \
-            patch.dict(os.environ, {"SOCIAL_DRY_RUN": "true", "POST_SLOT": "morning"}, clear=False):
+            patch.dict(
+                os.environ,
+                {"SOCIAL_DRY_RUN": "true", "POST_SLOT": "morning", "ORCHESTRATION_HARD_BLOCK": "true"},
+                clear=False,
+            ):
             run_engine.main()
 
         saved_post = save_calls[-1]["posts"][-1]

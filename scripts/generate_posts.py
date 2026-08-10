@@ -2307,7 +2307,7 @@ def _enforce_conversion_caption(text: str, talking_point: dict, platform: str = 
 
     body = _sanitize_positioning_terms(body)
     copy_source = str((talking_point or {}).get("copy_generation_source", ""))
-    if copy_source == "gemini" and len(body) >= 80:
+    if copy_source in {"gemini", "deterministic_fallback"} and len(body) >= 80:
         return body
 
     body = _enforce_pain_point_opening(body, pain_point)
@@ -3163,6 +3163,7 @@ def _build_fallback_content(
 
     ig_caption = (
         f"POWER WHEN YOU NEED IT.\n"
+        f"{pain_point}\n\n"
         f"{name} gives you portable backup power when storms, outages, travel, or emergencies make charging harder.{price_line}\n\n"
         f"{feature_lines}\n\n"
         f"{proof_anchor}\n\n"
@@ -4315,6 +4316,7 @@ Return ONLY valid JSON with these exact keys (no markdown, no code fences):
             destination_url=destination_url,
             components=components,
             quality_score=float(content.get("quality_score", 0)),
+            caption_overrides=_model_caption_overrides(content),
         )
         for platform_name in ("facebook", "instagram", "linkedin"):
             post_payload = platform_posts.get(platform_name, {})

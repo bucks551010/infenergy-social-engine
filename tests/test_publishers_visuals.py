@@ -269,6 +269,18 @@ class PublisherVisualTests(unittest.TestCase):
         )
         self.assertEqual(result, caption)
 
+        fallback_result = _enforce_conversion_caption(
+            caption,
+            {
+                "pain_point": "Dead batteries expose weak preparation.",
+                "proof_anchor": "Use published specifications to validate fit.",
+                "first_step": "Comment with your top three devices.",
+                "copy_generation_source": "deterministic_fallback",
+            },
+            platform="facebook",
+        )
+        self.assertEqual(fallback_result, caption)
+
     def test_instagram_prefers_generated_visual_upload(self) -> None:
         with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
             tmp.write(b"fakepng")

@@ -290,7 +290,8 @@ def _load_visual_repo_context() -> dict[str, Any]:
                 ref_list = [r for r in ref_list if str(r.get("style_key", "")).strip().lower() in active_key_set]
         context["references"] = ref_list
         context["settings"] = settings if isinstance(settings, dict) else {}
-    except Exception:
+    except Exception as e:
+        print(f"[Visuals] Warning: failed to load visual repo context, using empty context: {e}")
         return context
     return context
 

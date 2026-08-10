@@ -432,6 +432,15 @@ def _run_phase2_creative_stack(
     )
     segment_constraints = _segment_creative_constraints(audience_segment)
 
+    try:
+        from agents.learning_ingestion import load_recent_lessons
+        lessons = load_recent_lessons(DATA_DIR)
+    except Exception:
+        lessons = {}
+    winning_hooks = lessons.get("winning_hooks", []) if isinstance(lessons, dict) else []
+    losing_hooks = lessons.get("losing_hooks", []) if isinstance(lessons, dict) else []
+    top_warnings = [str(w[0]) for w in lessons.get("top_warnings", [])[:5] if isinstance(w, (list, tuple)) and w]
+
     ideation_prompt = f"""{IDEATION_DIVERGENCE_BRIEF}
 
 Run context:
@@ -445,6 +454,9 @@ Run context:
 - Current hook candidate: {selected_hook}
 - Recent hooks to avoid: {recent_hooks}
 - Recent topics to avoid: {recent_topics}
+- Recent winning hook patterns (echo the style, not the words): {winning_hooks}
+- Recent losing hook patterns (avoid this style entirely): {losing_hooks}
+- Recent quality warnings to actively resolve in the new draft: {top_warnings}
 
 Return ONLY valid JSON with this exact shape:
 {{

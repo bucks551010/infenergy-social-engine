@@ -3125,9 +3125,24 @@ def _build_fallback_content(
     first_step = str(talking_point.get("first_step") or cta).strip()
     angle = str(talking_point.get("angle") or f"{topic} through practical decision-making.").strip()
     profile = _product_copy_profile(product)
+    product_name_low = str(name).lower()
+    product_categories = " ".join(str(value or "") for value in ((product or {}).get("categories", []) or [])).lower()
+    is_water_product = "filter" in product_name_low or "straw" in product_name_low or "water" in product_categories
+    pain_point = profile["category_pain"]
+    if is_water_product:
+        first_step = f"Review {name}'s published filtration details and add it to the water-backup plan that fits your kit."
+        proof_anchor = ""
+    talking_point["pain_point"] = pain_point
+    talking_point["first_step"] = first_step
+    talking_point["proof_anchor"] = proof_anchor
     metric_line = " and ".join(str(value).strip() for value in metrics[:2] if str(value).strip())
-    proof_line = f"Published specs include {metric_line}." if metric_line else "Review the published specifications against the devices you need to keep running."
-    usage_line = "Keep it in your home emergency kit, vehicle, backpack, or travel bag so power is there before you need it."
+    proof_line = f"Published specs include {metric_line}." if metric_line and not is_water_product else f"{profile['proof_intro']}."
+    usage_line = _product_use_case_line(product)
+    facebook_hashtags = "#BackupPower #EmergencyPreparedness #PortablePower #PowerOutage #StayPowered"
+    instagram_hashtags = "#PortablePower #StayPowered #EmergencyPreparedness #BackupPower #PowerOutage"
+    if is_water_product:
+        facebook_hashtags = "#WaterPreparedness #EmergencyKit #WaterFiltration #OutdoorSafety #Preparedness"
+        instagram_hashtags = "#WaterPreparedness #EmergencyKit #WaterFiltration #OutdoorSafety #Preparedness"
 
     wp_title = f"{name}: What To Know Before You Buy"
     if len(wp_title) > 64:
@@ -3153,7 +3168,7 @@ def _build_fallback_content(
         f"{proof_line} {proof_anchor}\n\n"
         f"{usage_line}\n\n"
         f"{first_step}\n"
-        f"#BackupPower #EmergencyPreparedness #PortablePower #PowerOutage #StayPowered"
+        f"{facebook_hashtags}"
     )
 
     ig_caption = (
@@ -3162,7 +3177,7 @@ def _build_fallback_content(
         f"{proof_line}\n\n"
         f"{usage_line}\n\n"
         f"{first_step}\n"
-        f"#PortablePower #StayPowered #EmergencyPreparedness #BackupPower #PowerOutage"
+        f"{instagram_hashtags}"
     )
 
     li_text = (

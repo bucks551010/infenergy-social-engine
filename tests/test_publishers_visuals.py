@@ -308,6 +308,30 @@ class PublisherVisualTests(unittest.TestCase):
             self.assertNotIn("Key specs:", caption)
             self.assertNotIn("to keeps", caption)
 
+    def test_water_filter_fallback_copy_uses_water_domain_language(self) -> None:
+        product = {
+            "name": "Wosfer Micron Water Filter Straw",
+            "sku": "WFS-001",
+            "sale_price": "24.99",
+            "metrics": ["28mm", "30mm"],
+            "categories": ["Water Filtration"],
+        }
+        talking_point = {
+            "pain_point": "Your backup power setup cannot run what matters most.",
+            "proof_anchor": "Use 28mm and 30mm to validate fit before buying.",
+            "first_step": "Comment with your top 3 must-run devices.",
+        }
+        content = _build_fallback_content("midday", "outage readiness", product, {}, talking_point)
+
+        for key in ("fb_caption", "ig_caption", "li_text"):
+            caption = content[key]
+            self.assertIn("water", caption.lower())
+            self.assertNotIn("must-run devices", caption)
+            self.assertNotIn("backup power", caption.lower())
+            self.assertNotIn("Use 28mm and 30mm", caption)
+        self.assertIn("#WaterFiltration", content["fb_caption"])
+        self.assertIn("#WaterFiltration", content["ig_caption"])
+
     def test_instagram_prefers_generated_visual_upload(self) -> None:
         with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
             tmp.write(b"fakepng")

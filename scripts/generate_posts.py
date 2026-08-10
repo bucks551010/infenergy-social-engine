@@ -2588,10 +2588,12 @@ def _build_post_components(
         "situation": situation,
         "info": info,
         "why": why,
+        "benefit_fragment": (why[:1].lower() + why[1:]) if why else "supports a clearer buying decision",
         "product_connection": product_connection,
         "proof": proof,
         "feature_bullets": feature_bullets,
         "product_name": product_name,
+        "copy_profile": profile,
         "use_case_line": _product_use_case_line(product),
         "detail_summary": _product_detail_summary(product),
         "cta": cta,
@@ -2627,7 +2629,7 @@ def _sales_feature_bullets(product: dict | None, limit: int = 5) -> list[str]:
 
 def _adapt_facebook(components: dict, funnel_stage: str) -> tuple[str, str, str]:
     product_name = str(components.get("product_name", "this product"))
-    profile = _product_copy_profile({"name": product_name, "categories": [], "metrics": []})
+    profile = components.get("copy_profile") if isinstance(components.get("copy_profile"), dict) else _product_copy_profile({"name": product_name, "categories": [], "metrics": []})
     feature_lines = "\n".join([f"- {item}" for item in (components.get("feature_bullets", []) or [])[:5]])
     question = "What is the first device you refuse to lose during an outage?"
     cta = _sales_cta_line({"name": product_name}, str(components.get("cta", "")), "facebook")
@@ -2640,7 +2642,7 @@ def _adapt_facebook(components: dict, funnel_stage: str) -> tuple[str, str, str]
     caption = (
         "Stop waiting for an outage to expose a weak backup plan.\n\n"
         f"{components['situation']}\n\n"
-        f"{product_name} is a {profile['role']} that {components['why']}.\n\n"
+        f"{product_name} is a {profile['role']} that {components.get('benefit_fragment', 'supports a clearer buying decision')}.\n\n"
         "Why buyers choose it:\n"
         f"{feature_lines}\n\n"
         f"Proof-first details: {components['detail_summary']}\n\n"
@@ -2656,7 +2658,7 @@ def _adapt_facebook(components: dict, funnel_stage: str) -> tuple[str, str, str]
 
 def _adapt_instagram(components: dict, funnel_stage: str) -> tuple[str, str, str, str]:
     product_name = str(components.get("product_name", "this product"))
-    profile = _product_copy_profile({"name": product_name, "categories": [], "metrics": []})
+    profile = components.get("copy_profile") if isinstance(components.get("copy_profile"), dict) else _product_copy_profile({"name": product_name, "categories": [], "metrics": []})
     feature_lines = "\n".join([f"- {item}" for item in (components.get("feature_bullets", []) or [])[:4]])
     cta = _sales_cta_line({"name": product_name}, str(components.get("cta", "")), "instagram")
     if not feature_lines.strip():
@@ -2668,7 +2670,7 @@ def _adapt_instagram(components: dict, funnel_stage: str) -> tuple[str, str, str
 
     caption = (
         "YOUR POWER PLAN SHOULD NOT START AT 2% BATTERY.\n\n"
-        f"{product_name} is a {profile['role']} that {components['why']}.\n\n"
+        f"{product_name} is a {profile['role']} that {components.get('benefit_fragment', 'supports a clearer buying decision')}.\n\n"
         "Built for real use:\n"
         f"{feature_lines}\n\n"
         f"{components['detail_summary']}\n\n"
@@ -2685,7 +2687,7 @@ def _adapt_instagram(components: dict, funnel_stage: str) -> tuple[str, str, str
 
 def _adapt_linkedin(components: dict, funnel_stage: str) -> tuple[str, str, str]:
     product_name = str(components.get("product_name", "this product"))
-    profile = _product_copy_profile({"name": product_name, "categories": [], "metrics": []})
+    profile = components.get("copy_profile") if isinstance(components.get("copy_profile"), dict) else _product_copy_profile({"name": product_name, "categories": [], "metrics": []})
     feature_lines = "\n".join([f"- {item}" for item in (components.get("feature_bullets", []) or [])[:5]])
     cta = _sales_cta_line({"name": product_name}, str(components.get("cta", "")), "linkedin")
     if not feature_lines.strip():
@@ -2696,7 +2698,7 @@ def _adapt_linkedin(components: dict, funnel_stage: str) -> tuple[str, str, str]
         )
     caption = (
         "Most preparedness plans fail at execution, not intent.\n\n"
-        f"The {product_name} is a {profile['role']} that helps teams and households close the gap between planning and real-world use.\n\n"
+        f"The {product_name} is a {profile['role']} that {components.get('benefit_fragment', 'supports a clearer buying decision')}.\n\n"
         f"Key features include:\n{feature_lines}\n\n"
         f"Operational proof points: {components['detail_summary']}\n\n"
         f"{components['use_case_line']}\n\n"

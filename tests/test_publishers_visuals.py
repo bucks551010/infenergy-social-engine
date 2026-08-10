@@ -14,6 +14,8 @@ sys.path.insert(0, SCRIPTS)
 import publish_facebook  # noqa: E402
 import publish_instagram  # noqa: E402
 import publish_linkedin  # noqa: E402
+from generate_posts import _model_caption_overrides  # noqa: E402
+from run_engine import _live_visual_gate_errors  # noqa: E402
 from social_visuals import (  # noqa: E402
     _build_gemini_image_prompt,
     _gemini_plate_quality,
@@ -189,6 +191,50 @@ class PublisherVisualTests(unittest.TestCase):
         self.assertIn("facebook_html", visuals)
         self.assertTrue(os.path.exists(visuals["facebook"]))
         self.assertTrue(os.path.exists(visuals["facebook_html"]))
+
+    def test_live_visual_gate_rejects_local_render_and_missing_product(self) -> None:
+        content = {
+            "generated_visuals": {
+                "facebook": "card.png",
+                "render_engines": {"facebook": "local_render"},
+                "product_overlay_applied": {"facebook": False},
+                "product_specific_source_present": "false",
+            }
+        }
+        errors = _live_visual_gate_errors(content, {"facebook": True}, dry_run=False)
+        self.assertIn("product_specific_image_source_missing", errors)
+        self.assertIn("facebook_visual_not_gemini", errors)
+        self.assertIn("facebook_product_overlay_missing", errors)
+
+    def test_live_visual_gate_accepts_gemini_product_composite(self) -> None:
+        content = {
+            "generated_visuals": {
+                "facebook": "card.png",
+                "instagram": "card.png",
+                "render_engines": {"facebook": "gemini", "instagram": "gemini"},
+                "product_overlay_applied": {"facebook": True, "instagram": True},
+                "product_specific_source_present": "true",
+            }
+        }
+        errors = _live_visual_gate_errors(
+            content,
+            {"facebook": True, "instagram": True, "linkedin": False},
+            dry_run=False,
+        )
+        self.assertEqual(errors, [])
+
+    def test_model_platform_captions_are_preserved_for_packaging(self) -> None:
+        overrides = _model_caption_overrides(
+            {
+                "fb_caption": "Facebook copy written for this product.",
+                "ig_caption": "Instagram copy written for this product.",
+                "li_text": "LinkedIn copy written for this product.",
+                "selected_cta": "Compare the verified specifications.",
+            }
+        )
+        self.assertEqual(overrides["facebook"]["caption"], "Facebook copy written for this product.")
+        self.assertEqual(overrides["instagram"]["caption"], "Instagram copy written for this product.")
+        self.assertEqual(overrides["linkedin"]["caption"], "LinkedIn copy written for this product.")
 
     def test_instagram_prefers_generated_visual_upload(self) -> None:
         with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:

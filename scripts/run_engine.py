@@ -433,6 +433,33 @@ def _resolve_primary_publish_image_url(content: dict, dry_run: bool) -> str:
     return ""
 
 
+def _live_visual_gate_errors(content: dict, effective_channels: dict[str, bool], dry_run: bool) -> list[str]:
+    if dry_run:
+        return []
+
+    requested = [name for name in ("facebook", "instagram", "linkedin") if effective_channels.get(name)]
+    if not requested:
+        return []
+
+    visuals = content.get("generated_visuals") if isinstance(content.get("generated_visuals"), dict) else {}
+    render_engines = visuals.get("render_engines") if isinstance(visuals.get("render_engines"), dict) else {}
+    overlays = visuals.get("product_overlay_applied") if isinstance(visuals.get("product_overlay_applied"), dict) else {}
+    require_gemini = os.environ.get("LIVE_REQUIRE_GEMINI_VISUAL", "true").strip().lower() in {"1", "true", "yes", "on"}
+    require_product = os.environ.get("LIVE_REQUIRE_PRODUCT_VISUAL", "true").strip().lower() in {"1", "true", "yes", "on"}
+
+    errors: list[str] = []
+    if require_product and str(visuals.get("product_specific_source_present", "false")).lower() != "true":
+        errors.append("product_specific_image_source_missing")
+    for platform in requested:
+        if not str(visuals.get(platform, "")).strip():
+            errors.append(f"{platform}_visual_missing")
+        if require_gemini and str(render_engines.get(platform, "")) != "gemini":
+            errors.append(f"{platform}_visual_not_gemini")
+        if require_product and overlays.get(platform) is not True:
+            errors.append(f"{platform}_product_overlay_missing")
+    return errors
+
+
 def _build_platform_history_records(
     content: dict,
     run_started: str,
@@ -785,6 +812,12 @@ def main() -> None:
     final_validation_ok = content.get("validation_status") == "passed"
     final_score = float(content.get("quality_score") or 0)
     duplicate_ok = bool(content.get("duplicate_check", {}).get("ok", True))
+    visual_gate_errors = _live_visual_gate_errors(content, effective_channels, dry_run)
+    if visual_gate_errors:
+        content["validation_status"] = "failed"
+        content["validation_errors"] = list(content.get("validation_errors", [])) + visual_gate_errors
+        content.setdefault("quality_warnings", []).append("live_visual_gate_blocked")
+        final_validation_ok = False
 
     if (not final_validation_ok) or final_score < 82 or (not duplicate_ok):
         print("[SKIP] Content did not pass validation/quality thresholds; recording skipped run")
@@ -823,6 +856,11 @@ def main() -> None:
             "topic_hash": content.get("topic_hash"),
             "hook_type": content.get("selected_hook_type", ""),
             "funnel_stage": content.get("funnel_stage", "EDUCATION"),
+            "product_name": content.get("product_name", ""),
+            "product_sku": content.get("product_sku", ""),
+            "product_image_url": content.get("product_image_url", ""),
+            "generated_visuals": content.get("generated_visuals", {}),
+            "visual_plan": content.get("visual_plan", {}),
             "quality_score": content.get("quality_score"),
             "quality_component_scores": content.get("quality_component_scores", {}),
             "validation_status": content.get("validation_status"),
@@ -1137,6 +1175,10 @@ def main() -> None:
         "funnel_stage": content.get("funnel_stage", "awareness"),
         "product_name": content.get("product_name", ""),
         "product_sku": content.get("product_sku", ""),
+        "product_image_url": content.get("product_image_url", ""),
+        "generated_visuals": content.get("generated_visuals", {}),
+        "visual_plan": content.get("visual_plan", {}),
+        "primary_publish_image_url": content.get("primary_publish_image_url", ""),
         "quality_score": content.get("quality_score"),
         "quality_component_scores": content.get("quality_component_scores", {}),
         "quality_warnings": content.get("quality_warnings", []),

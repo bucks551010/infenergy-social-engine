@@ -301,6 +301,18 @@ def _load_visual_repo_context() -> dict[str, Any]:
 
 
 def _resolve_product_source(content: dict[str, Any], repo_context: dict[str, Any] | None = None) -> str:
+    product_image = str(content.get("product_image_url") or "").strip()
+    if product_image:
+        return product_image
+
+    for key in ("product_image_candidates", "category_image_candidates"):
+        candidates = content.get(key, []) if isinstance(content, dict) else []
+        if isinstance(candidates, list):
+            for raw_candidate in candidates:
+                candidate = str(raw_candidate or "").strip()
+                if candidate:
+                    return candidate
+
     env_override = str(os.environ.get("VISUAL_PRODUCT_IMAGE_OVERRIDE") or "").strip()
     if env_override:
         return env_override
@@ -321,7 +333,7 @@ def _resolve_product_source(content: dict[str, Any], repo_context: dict[str, Any
             if candidate:
                 return candidate
 
-    return str(content.get("product_image_url") or "").strip()
+    return ""
 
 
 def _extract_inline_image_bytes(response: Any) -> bytes:
@@ -1344,20 +1356,26 @@ def _render_card(content: dict[str, Any], platform: str, image_path: str, visual
     return True
 
 
-def generate_visuals(content: dict[str, Any], visual_plan: dict[str, Any] | None = None) -> dict[str, str]:
+def generate_visuals(content: dict[str, Any], visual_plan: dict[str, Any] | None = None) -> dict[str, Any]:
     post_id = str(content.get("post_id") or "preview")
-    visuals: dict[str, str] = {}
+    visuals: dict[str, Any] = {}
     plan = _safe_json_dict(visual_plan)
     template_name = _select_visual_template(plan, "facebook")
     image_strategy = str(plan.get("image_strategy") or os.environ.get("VISUAL_IMAGE_STRATEGY", "gemini_generated")).strip().lower()
     prefer_gemini = image_strategy in ("gemini_generated", "hybrid")
     prefer_product_overlay = image_strategy in ("product_photo_featured", "hybrid")
     gemini_available = bool(os.environ.get("GEMINI_API_KEY", "").strip())
-    render_engine = "local_render"
+    render_engines: dict[str, str] = {}
+    product_overlay_applied: dict[str, bool] = {}
+    fallback_reasons: dict[str, str] = {}
     repo_context = _load_visual_repo_context()
     repo_refs = repo_context.get("references", []) if isinstance(repo_context, dict) else []
     settings = repo_context.get("settings", {}) if isinstance(repo_context, dict) else {}
     resolved_override = _resolve_product_source(content, repo_context=repo_context)
+    product_specific_source_present = bool(
+        str(content.get("product_image_url") or "").strip()
+        or any(str(item or "").strip() for item in (content.get("product_image_candidates", []) or []))
+    )
 
     os.makedirs(VISUAL_DIR, exist_ok=True)
     for platform in ("facebook", "instagram", "linkedin"):
@@ -1369,23 +1387,33 @@ def generate_visuals(content: dict[str, Any], visual_plan: dict[str, Any] | None
         visuals[f"{platform}_html"] = html_path
 
         rendered = False
+        overlay_applied = False
         if prefer_gemini:
             rendered = _generate_gemini_background(content, platform, plan, file_path)
             if rendered:
-                render_engine = "gemini"
-            if rendered:
-                _compose_gemini_ad_overlay(content, platform, file_path, visual_plan=plan)
+                render_engines[platform] = "gemini"
+                overlay_applied = _compose_gemini_ad_overlay(content, platform, file_path, visual_plan=plan)
+                if not overlay_applied:
+                    fallback_reasons[platform] = "product_overlay_unavailable"
 
         if not rendered:
             rendered = _render_card(content, platform, file_path, visual_plan=plan)
+            render_engines[platform] = "local_render" if rendered else "failed"
+            fallback_reasons[platform] = "gemini_unavailable_or_rejected" if prefer_gemini else "local_strategy_selected"
 
         if rendered:
             visuals[platform] = file_path
+        product_overlay_applied[platform] = overlay_applied
     visuals["template"] = template_name
     visuals["image_strategy"] = image_strategy
-    visuals["render_engine"] = render_engine
+    unique_engines = set(render_engines.values())
+    visuals["render_engine"] = next(iter(unique_engines)) if len(unique_engines) == 1 else "mixed"
+    visuals["render_engines"] = render_engines
+    visuals["product_overlay_applied"] = product_overlay_applied
+    visuals["fallback_reasons"] = fallback_reasons
     visuals["gemini_available"] = str(gemini_available).lower()
     visuals["style_reference_count"] = str(len(repo_refs) if isinstance(repo_refs, list) else 0)
     visuals["db_visual_override_present"] = str(bool(str(settings.get("visual_product_image_override_url", "")).strip()) if isinstance(settings, dict) else False).lower()
     visuals["resolved_product_source_present"] = str(bool(str(resolved_override).strip())).lower()
+    visuals["product_specific_source_present"] = str(product_specific_source_present).lower()
     return visuals

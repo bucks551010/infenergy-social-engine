@@ -3077,6 +3077,15 @@ def _build_platform_posts(
     return platform_posts
 
 
+def _model_caption_overrides(content: dict) -> dict[str, dict[str, str]]:
+    cta = str(content.get("selected_cta", ""))
+    return {
+        "facebook": {"caption": str(content.get("fb_caption", "")), "cta": cta},
+        "instagram": {"caption": str(content.get("ig_caption", "")), "cta": cta},
+        "linkedin": {"caption": str(content.get("li_text", "")), "cta": cta},
+    }
+
+
 def _build_fallback_content(
     slot: str,
     topic: str,
@@ -4564,11 +4573,7 @@ Return ONLY valid JSON with these exact keys (no markdown, no code fences):
         destination_url=destination_url,
         components=components,
         quality_score=float(content.get("quality_score", 0)),
-        caption_overrides={
-            "facebook": {"cta": str(content.get("selected_cta", ""))},
-            "instagram": {"cta": str(content.get("selected_cta", ""))},
-            "linkedin": {"cta": str(content.get("selected_cta", ""))},
-        },
+        caption_overrides=_model_caption_overrides(content),
     )
     for platform_name in ("facebook", "instagram", "linkedin"):
         post_payload = platform_posts.get(platform_name, {})

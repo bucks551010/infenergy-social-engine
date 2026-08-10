@@ -175,6 +175,131 @@ AGENT_IO_SCHEMAS: dict[str, dict[str, Any]] = {
             "post_run_packet": "dict",
         }
     },
+    "engagement_ingestion": {
+        "required": {
+            "agent": "str",
+            "posts_scanned": "number",
+            "posts_updated": "number",
+            "per_post": "list",
+        }
+    },
+    "performance_reflection": {
+        "required": {
+            "agent": "str",
+            "posts_analyzed": "number",
+            "winning_patterns": {"list_of": "str"},
+            "losing_patterns": {"list_of": "str"},
+            "summary": "dict",
+        }
+    },
+    "learning_ingestion": {
+        "required": {
+            "agent": "str",
+            "posts_analyzed": "number",
+            "top_errors": "list",
+            "top_warnings": "list",
+            "winning_hooks": {"list_of": "str"},
+            "losing_hooks": {"list_of": "str"},
+        }
+    },
+    "topic_intelligence": {
+        "required": {
+            "agent": "str",
+            "imported_count": "number",
+            "imported": "list",
+        }
+    },
+    "carousel_slide_writer": {
+        "required": {
+            "agent": "str",
+            "slides": {
+                "list_of": {
+                    "required": {
+                        "slide_role": "str",
+                        "on_image_headline": "str",
+                        "on_image_subline": "str",
+                    }
+                }
+            },
+        }
+    },
+    "visual_qa_reviewer": {
+        "required": {
+            "agent": "str",
+            "has_text": "bool",
+            "has_fake_products": "bool",
+            "busy_copy_zone": "bool",
+            "off_brand": "bool",
+            "acceptable": "bool",
+        }
+    },
+    "product_matcher": {
+        "required": {
+            "agent": "str",
+            "candidates": "list",
+        }
+    },
+    "brand_voice_drift": {
+        "required": {
+            "agent": "str",
+            "captions_analyzed": "number",
+            "drift_ratio": "number",
+            "drift_status": {"enum": ["green", "yellow", "red"]},
+        }
+    },
+    "hashtag_intelligence": {
+        "required": {
+            "agent": "str",
+            "hashtags_by_platform": {
+                "required": {
+                    "facebook": {"list_of": "str"},
+                    "instagram": {"list_of": "str"},
+                    "linkedin": {"list_of": "str"},
+                }
+            },
+        }
+    },
+    "alt_text_accessibility": {
+        "required": {
+            "agent": "str",
+            "platform": "str",
+            "alt_text": "str",
+        }
+    },
+    "posting_time_optimizer": {
+        "required": {
+            "agent": "str",
+            "posts_analyzed": "number",
+            "recommendations_utc": "dict",
+        }
+    },
+    "ab_variant_orchestrator": {
+        "required": {
+            "agent": "str",
+            "created": "number",
+            "experiments": "list",
+        }
+    },
+    "crisis_relevance": {
+        "required": {
+            "agent": "str",
+            "active": "bool",
+            "events_found": "number",
+        }
+    },
+    "cross_post_recycler": {
+        "required": {
+            "agent": "str",
+            "queued": "number",
+            "picks": "list",
+        }
+    },
+    "retention": {
+        "required": {
+            "agent": "str",
+            "results": "list",
+        }
+    },
 }
 
 

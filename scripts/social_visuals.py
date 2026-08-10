@@ -11,6 +11,8 @@ from typing import Any
 
 import requests
 
+from url_safety import is_safe_http_url
+
 BASE_DIR = os.path.dirname(__file__)
 DATA_DIR = os.environ.get("DATA_DIR", os.path.join(BASE_DIR, "..", "data"))
 VISUAL_DIR = os.path.join(DATA_DIR, "generated_visuals")
@@ -132,6 +134,8 @@ def _fetch_product_image(image_module: Any, image_url: str):
             return _remove_near_white_bg(raw)
         if not src.startswith("http"):
             return None
+        if not is_safe_http_url(src):
+            return None
         resp = requests.get(src, timeout=20)
         resp.raise_for_status()
         raw = image_module.open(io.BytesIO(resp.content)).convert("RGBA")
@@ -157,6 +161,8 @@ def _read_image_bytes_any(source: str) -> tuple[bytes, str]:
                 return data, "image/webp"
             return data, "image/jpeg"
         if src.startswith("http"):
+            if not is_safe_http_url(src):
+                return b"", ""
             resp = requests.get(src, timeout=20)
             resp.raise_for_status()
             ctype = str(resp.headers.get("content-type") or "image/jpeg").split(";")[0].strip().lower()

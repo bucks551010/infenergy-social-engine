@@ -5,6 +5,7 @@ import requests
 from urllib.parse import urljoin
 
 import publish_wordpress
+from url_safety import is_safe_http_url
 
 GRAPH_BASE = "https://graph.facebook.com/v26.0"
 
@@ -95,6 +96,8 @@ def _is_valid_public_image(url: str) -> bool:
 
 
 def _is_reachable_image_url(url: str, timeout: int = 10) -> bool:
+    if not is_safe_http_url(url):
+        return False
     try:
         head = requests.head(url, allow_redirects=True, timeout=timeout)
         if head.status_code < 400:
@@ -125,6 +128,8 @@ def _dedupe_keep_order(items: list[str]) -> list[str]:
 
 def _extract_page_image_candidate(page_url: str, timeout: int = 15) -> str:
     if not page_url or not str(page_url).strip().lower().startswith("http"):
+        return ""
+    if not is_safe_http_url(page_url):
         return ""
     try:
         resp = requests.get(page_url, timeout=timeout)

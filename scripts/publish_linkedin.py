@@ -6,6 +6,8 @@ from datetime import datetime, timezone
 
 from PIL import Image, ImageFilter, ImageOps
 
+from url_safety import is_safe_http_url
+
 LI_API = "https://api.linkedin.com/v2"
 DEFAULT_LINKEDIN_VERSION = datetime.now(timezone.utc).strftime("%Y%m")
 
@@ -98,6 +100,8 @@ def _dedupe_keep_order(items: list[str]) -> list[str]:
 
 
 def _download_image_to_temp(url: str) -> str:
+    if not is_safe_http_url(url):
+        raise RuntimeError("LinkedIn fallback image URL is not permitted (unsafe host)")
     resp = requests.get(url, allow_redirects=True, timeout=30)
     _raise_with_body(resp)
     ctype = (resp.headers.get("Content-Type") or "").lower()

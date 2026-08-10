@@ -2,6 +2,7 @@ import os
 import sys
 import time
 import json
+import hmac
 import mimetypes
 import threading
 import subprocess
@@ -481,7 +482,7 @@ def _authorized(params: dict) -> tuple[bool, int, dict]:
     provided = str(params.get("token", [""])[0])
     if not token:
         return False, 403, {"error": "MANUAL_RUN_TOKEN not configured"}
-    if provided != token:
+    if not hmac.compare_digest(provided, token):
         return False, 401, {"error": "invalid token"}
     return True, 200, {}
 
@@ -671,7 +672,10 @@ class HealthHandler(BaseHTTPRequestHandler):
 
         if parsed.path == "/history":
             params = parse_qs(parsed.query)
-            limit = int(params.get("limit", ["20"])[0])
+            try:
+                limit = int(params.get("limit", ["20"])[0])
+            except (TypeError, ValueError):
+                limit = 20
             limit = max(1, min(200, limit))
             posts = _load_history(limit=limit)
             payload = {

@@ -471,7 +471,11 @@ def _build_gemini_image_prompt(content: dict[str, Any], platform: str, visual_pl
         f"Use the support idea '{support_line}', the proof cue '{stat}', and the CTA intent '{cta}' only as composition guidance. "
         "The application will add the actual product cutout, numbers, headline, proof callout, and CTA afterward. "
     )
-    plan_prompt = re.sub(r"\s+", " ", str(visual_plan.get("gemini_image_prompt") or "")).strip()[:900]
+    plan_prompt = re.sub(
+        r"\s+",
+        " ",
+        str(platform_cfg.get("scene_prompt") or visual_plan.get("gemini_image_prompt") or ""),
+    ).strip()[:1600]
     style_refs = str(os.environ.get("GEMINI_STYLE_REFERENCES") or "").strip()
     repo_context = _load_visual_repo_context()
     repo_refs = repo_context.get("references", []) if isinstance(repo_context, dict) else []
@@ -546,7 +550,7 @@ def _build_gemini_image_prompt(content: dict[str, Any], platform: str, visual_pl
         f"{layout_guardrails} "
         "Keep the design modern, premium, clean, and conversion-focused, but leave negative space for post-composited text and product. "
         f"{negative_direction}"
-        "No watermarks, gibberish marks, floating silhouettes, duplicate focal objects, people, or hands. Output one finished background scene plate only."
+        "No watermarks, gibberish marks, floating silhouettes, duplicate focal objects, or prominent distorted hands. Any people must look natural, emotionally credible, and remain secondary to the reserved copy and product zones. Output one finished background scene plate only."
     )
 
 
@@ -854,6 +858,11 @@ def _headline_lockup(content: dict[str, Any]) -> tuple[str, str]:
     hook_raw = normalize_brand_text(str(content.get("selected_hook") or "")).strip()
     topic_raw = normalize_brand_text(str(content.get("topic") or "")).strip()
     source = f"{hook_raw} {topic_raw}".lower()
+
+    assigned_headline = normalize_brand_text(str(content.get("on_image_headline") or "")).strip()
+    assigned_subline = normalize_brand_text(str(content.get("on_image_subline") or "")).strip()
+    if assigned_headline:
+        return _trim_line(assigned_headline.upper(), 34), _trim_line(assigned_subline, 74)
 
     if product_name:
         words = [word for word in re.split(r"\s+", product_name) if word]

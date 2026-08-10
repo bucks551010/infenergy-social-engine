@@ -110,28 +110,34 @@ def audience_agent(profile: dict[str, Any], research: dict[str, Any]) -> dict[st
         "agent": "audience_psychology_agent",
         "segments": [
             {
-                "name": "Prepared Family Protector",
+                "archetype_id": "preparedness_buyer",
+                "name": "The Preparedness / Contingency Buyer",
                 "pain": "Fear of blackout vulnerability",
                 "desired_state": "Calm control and family safety during emergencies",
                 "trigger": "Storm warnings and outage memories",
                 "best_offer": "Free Power Readiness Assessment",
                 "proof_needed": "Real outage runtime examples",
+                "visual_environment": "Credible home outage, storm-readiness, vehicle-kit, or contingency setting",
             },
             {
-                "name": "Practical Energy Optimizer",
-                "pain": "Rising utility instability and uncertainty",
-                "desired_state": "Predictable independent power",
-                "trigger": "Bill shock and grid reliability concerns",
-                "best_offer": "Device-by-device runtime planning",
-                "proof_needed": "Cost-of-downtime framing with spec-backed fit",
+                "archetype_id": "mobile_professional",
+                "name": "The Mobile Professional / Digital Nomad",
+                "pain": "Losing productive time when a reliable outlet is unavailable",
+                "desired_state": "Calm productivity and control away from a fixed outlet",
+                "trigger": "Travel, commuting, shared workspaces, and device-heavy days",
+                "best_offer": "Everyday-carry charging recommendations",
+                "proof_needed": "Published portability, capacity, and charging details",
+                "visual_environment": "Urban travel, clean shared workspace, or compact everyday-carry setup",
             },
             {
-                "name": "Mobile Power User",
-                "pain": "Power constraints while traveling or working remote",
-                "desired_state": "Portable confidence anywhere",
-                "trigger": "Trips, jobsites, and device-heavy days",
+                "archetype_id": "outdoor_adventurer",
+                "name": "The Outdoor / Adventure Enthusiast",
+                "pain": "Losing practical control when the trip moves beyond grid access",
+                "desired_state": "Off-grid freedom without sacrificing essential power",
+                "trigger": "Camping, RV travel, trailheads, and remote weekends",
                 "best_offer": "Portable + solar kit recommendations",
-                "proof_needed": "Portability and recharge scenario demos",
+                "proof_needed": "Published portability and recharge details tied to a real outdoor use case",
+                "visual_environment": "Realistic campsite, trailhead, RV stop, or rugged travel setting",
             },
         ],
         "core_objections": objections,
@@ -284,6 +290,13 @@ def copy_agent(
             "Spec-to-outcome: watt-hours translated to daily peace of mind",
             "Savings-through-downtime-avoidance for home and business",
         ],
+        "logical_frameworks": [
+            "Contrapositive: expose the vulnerable result that reveals missing preparation",
+            "Disjunctive syllogism: rule out the reactive method and establish the verified-fit path",
+            "Double implication: define preparedness as inseparable from verified capability and fit, without exclusivity claims",
+            "Symmetrical equivalence: change the setting while preserving the same proof-backed emotional result",
+            "Implication of result: trace the successful outcome back to the verified features that enabled it",
+        ],
         "objection_handlers": [
             "We size power around your real load map, not generic estimates.",
             "Every recommendation is grounded in published specs and use-case fit.",
@@ -314,6 +327,10 @@ Return ONLY JSON with keys:
 hero, subhero, email_subjects (3), social_hooks (5), cta_bank (5), ad_angles (5), objection_handlers (3), landing_blocks, value_narrative.
 Constraints:
 - High-energy, trust-first, value-stacking voice.
+- Structure each social angle with one valid logical framework: contrapositive, disjunctive syllogism, double implication, symmetrical equivalence, or implication of result.
+- Pair the logical case with one concrete emotional outcome and at least one verified proof anchor.
+- Use short, punchy, scannable lines. Never use generic buzzwords such as revolutionary, game-changer, or unlock the power of.
+- Never turn formal logic into an unsupported guarantee or exclusivity claim.
 - No imitation of specific living people.
 - No fake claims.
 - Emphasize immediate value, short-term gains, long-term transformation, and family impact.
@@ -322,6 +339,7 @@ Constraints:
     if ai:
         ai["agent"] = "copywriter_agent"
         ai["timestamp_utc"] = _utc_now()
+        ai.setdefault("logical_frameworks", fallback["logical_frameworks"])
         return ai
     return fallback
 
@@ -333,14 +351,19 @@ def creative_agent(profile: dict[str, Any], voice: dict[str, Any], copy: dict[st
         "visual_system": {
             "palette": palette,
             "typography": "bold geometric headlines + readable sans body",
-            "composition": "high contrast product + scenario storytelling",
-            "iconography": "simple line icons, energy flow arrows, runtime badges",
+            "composition": "textless photorealistic scene plate + deterministic real-product and copy overlay",
+            "iconography": "none in the generated scene plate; exact proof elements are added locally",
         },
         "image_prompts": [
-            "Family kitchen at night during outage, home still lit by modular power station, realistic documentary style, clean blue accent lighting, confidence and calm.",
-            "Portable power station on tailgate with laptop and tools at dusk, practical setup, rugged but premium, focus on reliability and portability.",
-            "Split-scene before/after blackout: left dark home, right powered essentials with Infenergy setup, clear emotional relief, cinematic realism.",
+            "Lifestyle/aesthetic: photorealistic Instagram scene plate for the selected audience, emotionally controlled and aspirational, square 1:1, calm left copy zone and grounded open right product zone, no product, text, logo, label, UI, badge, or watermark.",
+            "Crisis/preparedness: photorealistic Facebook scene plate showing a credible disruption or preparedness gap without sensationalism, square 1:1, calm left copy zone and grounded open right product zone, no product, text, logo, label, UI, badge, or watermark.",
+            "Professional/everyday carry: photorealistic LinkedIn/X business-continuity or mobile-work scene plate, wide 16:9, restrained and credible, calm left copy zone and grounded open right product zone, no product, text, logo, label, UI, badge, or watermark.",
         ],
+        "image_prompt_bank": {
+            "lifestyle_aesthetic": "Instagram/Pinterest focus",
+            "crisis_preparedness": "Facebook/direct-response focus",
+            "professional_everyday_carry": "LinkedIn/X focus",
+        },
         "short_video_concepts": [
             "15s: '3 things that must stay on' checklist",
             "20s: runtime myth vs reality with one product",

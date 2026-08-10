@@ -166,7 +166,7 @@ DEFAULT_CATEGORY_IMAGE_FALLBACKS = {
 }
 
 CONVERSION_COPY_BRIEF = """
-You are the conversion copywriter for Infenergy Power.
+You are the Logical-Emotional Social Media Engine and conversion copywriter for Infenergy Power.
 
 Objective:
 - Stop the scroll.
@@ -180,6 +180,9 @@ Objective:
 Writing requirements:
 - Focus on one primary angle and one specific customer moment.
 - Use this sequence: Attention -> Problem/Desire -> Consequence -> Education -> Product fit -> Verified proof -> Objection reduction -> CTA.
+- Use the assigned formal-logic principle as the narrative structure, then connect it to one honest emotional outcome such as control, relief, confidence, freedom, or readiness.
+- Keep the logic valid: never turn an implication, comparison, or equivalence into an unsupported guarantee or claim that this is literally the only product that can work.
+- Keep lines short, punchy, and scannable. Prefer concrete nouns and verbs over abstract marketing language.
 - Do not invent runtime, appliance compatibility, savings, certifications, durability, warranty, or unsupported specs.
 - Avoid generic ad language and banned cliches (for example: game changer, revolutionary, unlock the power of, don't miss out).
 - Keep platform-native tone:
@@ -195,7 +198,7 @@ Brand:
 """.strip()
 
 VISUAL_DIRECTOR_BRIEF = """
-You are the visual prompt director for Infenergy Power social creatives.
+You are the visual prompt director inside the Logical-Emotional Social Media Engine for Infenergy Power social creatives.
 
 Goal:
 - Produce visual direction that increases click-through and trust.
@@ -207,13 +210,11 @@ Rules:
 - Keep visuals premium, realistic, and brand-safe.
 - Prefer practical scenarios (home backup, preparedness, energy confidence) over abstract art.
 - If product image quality is strong, suggest a hybrid composition that highlights the product naturally.
-- Use strong visual scaffolding: callout panels, directional accents, signage, metric chips, trust markers, and clear CTA zones.
-- Treat the creative like a premium retail campaign system, not a simple social graphic.
+- Translate the assigned logic principle into an emotionally clear scene: vulnerability, old-way versus smart-way contrast, a new standard, cross-setting adaptability, or a credible rescue result.
+- Plan only the photorealistic background scene. The system adds the real product, exact headline, verified specs, brand, and CTA afterward.
 - Build layered depth with foreground, midground, and atmospheric background structure.
-- Use more visual drama: contrast, spotlighting, shape language, editorial framing, and deliberate motion cues.
-- Include more premium supporting elements when appropriate: comparison bars, micro-labels, icon clusters, spec rails, feature panels, credibility strips, and urgency banners.
-- Avoid empty backgrounds and generic gradients; build atmosphere with depth, lighting, material contrast, and purposeful layout structure.
-- Never include text baked into the image unless it is short, intentional, and legible.
+- Use visual drama through contrast, lighting, framing, environment, and human emotion, not fake UI or decorative ad furniture.
+- Never include baked-in text, numerals, logos, labels, signage, fake products, device mockups, badges, buttons, charts, or placeholder frames.
 - Return only the requested JSON shape.
 """.strip()
 
@@ -2528,6 +2529,240 @@ def _build_business_profile(products: list[dict]) -> dict:
     }
 
 
+LOGICAL_EMOTIONAL_PRINCIPLES = {
+    "contrapositive": {
+        "name": "Law of Contrapositive",
+        "logic": "(P -> Q) is equivalent to (not Q -> not P)",
+        "visual_concept": "Show the vulnerable moment that exposes the absence of a workable plan.",
+        "caption_strategy": "Start with the desired result, then show why waiting until that result is impossible reveals the missing preparation.",
+        "on_image_headline": "DON'T WAIT FOR FAILURE",
+    },
+    "disjunctive_syllogism": {
+        "name": "Law of Disjunctive Syllogism",
+        "logic": "P or Q; not P; therefore Q",
+        "visual_concept": "Contrast the cluttered, reactive method with a measured and prepared method.",
+        "caption_strategy": "Present two paths, disqualify the wasteful or unreliable path with evidence, then make the product-fit path the rational conclusion.",
+        "on_image_headline": "REACTIVE OR READY?",
+    },
+    "double_implication": {
+        "name": "Law of Double Implication",
+        "logic": "P if and only if Q",
+        "visual_concept": "Present a high-status new-standard scene where practical preparation and control visibly belong together.",
+        "caption_strategy": "Define real preparedness through verified capability and fit, without claiming one product is the only possible solution.",
+        "on_image_headline": "THE NEW READY STANDARD",
+    },
+    "symmetrical_equivalence": {
+        "name": "Principle of Symmetrical Equivalence",
+        "logic": "p + q = r is equivalent to q + p = r",
+        "visual_concept": "Show that the setting can change while the emotional result of control stays consistent.",
+        "caption_strategy": "Move across credible use settings and hold the same proof-backed outcome constant.",
+        "on_image_headline": "CONTROL TRAVELS WITH YOU",
+    },
+    "implication_of_result": {
+        "name": "Principle of Implication of the Result",
+        "logic": "R -> (p and q)",
+        "visual_concept": "Show the successful human result, then trace it back to the verified features and preparation that enabled it.",
+        "caption_strategy": "Lead with the save-the-day result and explain which real product facts made that outcome plausible.",
+        "on_image_headline": "READY BEFORE IT MATTERS",
+    },
+}
+
+
+AUDIENCE_ARCHETYPES = {
+    "mobile_professional": {
+        "name": "The Mobile Professional / Digital Nomad",
+        "emotion": "calm productivity and control away from a fixed outlet",
+        "environment": "urban travel, a clean shared workspace, or a compact everyday-carry setup",
+    },
+    "preparedness_buyer": {
+        "name": "The Preparedness / Contingency Buyer",
+        "emotion": "relief and family confidence before a disruption",
+        "environment": "a credible home outage, storm-readiness, vehicle-kit, or contingency setting",
+    },
+    "outdoor_adventurer": {
+        "name": "The Outdoor / Adventure Enthusiast",
+        "emotion": "off-grid freedom without losing practical control",
+        "environment": "a realistic campsite, trailhead, RV stop, or rugged travel setting",
+    },
+}
+
+
+def _select_logical_emotional_strategy(product: dict | None, audience_segment: str, funnel_stage: str) -> dict:
+    principle_key = {
+        "ATTENTION": "contrapositive",
+        "EDUCATION": "disjunctive_syllogism",
+        "DESIRE": "double_implication",
+        "TRUST": "symmetrical_equivalence",
+        "CONVERSION": "implication_of_result",
+    }.get(str(funnel_stage or "ATTENTION").strip().upper(), "contrapositive")
+
+    product_text = " ".join(
+        [
+            str((product or {}).get("name", "")),
+            " ".join(str(item) for item in ((product or {}).get("categories", []) or [])),
+            str((product or {}).get("fact_snippet", "")),
+            str(audience_segment or ""),
+        ]
+    ).lower()
+    if any(token in product_text for token in ("camp", "outdoor", "rv", "trail", "hiking", "adventure")):
+        archetype_key = "outdoor_adventurer"
+    elif any(token in product_text for token in ("professional", "digital nomad", "office", "business", "commuter", "airport", "power bank", "charger")):
+        archetype_key = "mobile_professional"
+    else:
+        archetype_key = "preparedness_buyer"
+
+    principle = LOGICAL_EMOTIONAL_PRINCIPLES[principle_key]
+    archetype = AUDIENCE_ARCHETYPES[archetype_key]
+    metrics = [str(item).strip() for item in ((product or {}).get("metrics", []) or []) if str(item).strip()]
+    product_name = str((product or {}).get("name") or "the selected Infenergy product").strip()
+    proof_anchor = metrics[0] if metrics else "its published product details"
+    logic_copy = {
+        "contrapositive": (
+            "If staying powered matters, waiting until power is gone is not a plan.",
+            f"The missing preparation becomes obvious at the exact moment {product_name} and {proof_anchor} would have mattered.",
+        ),
+        "disjunctive_syllogism": (
+            "Keep reacting at the last minute, or build around verified fit.",
+            f"Once guesswork is ruled out, {product_name} can be judged by what matters: {proof_anchor} and the job you need it to do.",
+        ),
+        "double_implication": (
+            "Preparedness is a standard, not a shopping mood.",
+            f"Real readiness connects {product_name} and {proof_anchor} to a defined use case instead of an unsupported promise.",
+        ),
+        "symmetrical_equivalence": (
+            "The setting changes. The need for control does not.",
+            f"At home, in transit, or off-grid, evaluate {product_name} through the same anchor: {proof_anchor} matched to the real task.",
+        ),
+        "implication_of_result": (
+            "The save-the-day moment starts before the crisis.",
+            f"That successful result traces back to choosing {product_name} for the right job and verifying details such as {proof_anchor} first.",
+        ),
+    }[principle_key]
+    return {
+        "principle_key": principle_key,
+        "principle_name": principle["name"],
+        "formal_logic": principle["logic"],
+        "visual_concept": principle["visual_concept"],
+        "caption_strategy": principle["caption_strategy"],
+        "archetype_key": archetype_key,
+        "audience_archetype": archetype["name"],
+        "emotional_outcome": archetype["emotion"],
+        "environment": archetype["environment"],
+        "logic_hook": logic_copy[0],
+        "logic_bridge": logic_copy[1],
+        "on_image_headline": principle["on_image_headline"],
+        "on_image_subline": f"{product_name} | {proof_anchor}",
+    }
+
+
+def _build_ai_image_prompt_bank(strategy: dict, product: dict | None) -> dict[str, str]:
+    product_name = str((product or {}).get("name") or "the selected product").strip()
+    concept = str(strategy.get("visual_concept", "")).strip()
+    environment = str(strategy.get("environment", "")).strip()
+    shared = (
+        f"Create a photorealistic commercial background scene plate informed by this concept: {concept} "
+        f"Audience environment: {environment}. The real {product_name} product cutout will be added later. "
+        "Do not render any product, device, package, placeholder, text, letters, numerals, logos, labels, signs, screens, UI, badges, buttons, charts, or watermarks. "
+        "Use physically believable materials, one coherent light direction, natural human emotion where appropriate, and restrained charcoal, deep navy, amber, and warm-gold color accents. "
+    )
+    return {
+        "lifestyle_aesthetic": shared + "Instagram/Pinterest direction: refined lifestyle editorial photography, 1:1 square, mobile-first focal depth, calm low-detail left 42%, grounded open right 38%, clear bottom 16%.",
+        "crisis_preparedness": shared + "Facebook direct-response direction: the exact tense moment before or during a credible outage, travel disruption, or preparedness gap, 1:1 square, emotionally legible but not sensational, calm left 44%, grounded open right 38%, clear bottom 16%.",
+        "professional_everyday_carry": shared + "LinkedIn/X direction: executive everyday-carry or business-continuity photography, wide 16:9, composed and credible, calm low-detail left 46%, grounded open right 36%, no staged stock-photo handshake.",
+    }
+
+
+def _apply_logical_visual_strategy(visual_plan: dict, strategy: dict, product: dict | None) -> dict:
+    prompt_bank = _build_ai_image_prompt_bank(strategy, product)
+    visual_plan["logical_emotional_strategy"] = dict(strategy)
+    visual_plan["ai_image_prompt_bank"] = prompt_bank
+    platform_overrides = visual_plan.setdefault("platform_overrides", {})
+    platform_prompt_keys = {
+        "facebook": "crisis_preparedness",
+        "instagram": "lifestyle_aesthetic",
+        "linkedin": "professional_everyday_carry",
+    }
+    for platform, prompt_key in platform_prompt_keys.items():
+        platform_config = platform_overrides.setdefault(platform, {})
+        platform_config["prompt_variant"] = prompt_key
+        platform_config["scene_prompt"] = prompt_bank[prompt_key]
+    return visual_plan
+
+
+def _build_logical_carousel_campaign(components: dict) -> dict:
+    features = [str(item).strip() for item in (components.get("feature_bullets", []) or []) if str(item).strip()]
+    proof_line = features[0] if features else str(components.get("proof") or "Review the published product details.")
+    second_proof = features[1] if len(features) > 1 else str(components.get("detail_summary") or proof_line)
+    strategy = components.get("logical_emotional_strategy", {}) if isinstance(components.get("logical_emotional_strategy"), dict) else {}
+    return {
+        "format": "five_slide_carousel",
+        "principle": str(strategy.get("principle_name") or "Logical product-fit narrative"),
+        "audience_archetype": str(strategy.get("audience_archetype") or "Prepared buyer"),
+        "slides": [
+            {
+                "slide": 1,
+                "purpose": "visual_anxiety_or_desire_hook",
+                "headline": str(components.get("on_image_headline") or components.get("hook") or "Choose readiness"),
+                "body": str(components.get("logic_hook") or "Start with the real problem."),
+            },
+            {
+                "slide": 2,
+                "purpose": "logical_contrast",
+                "headline": "THE DECISION",
+                "body": str(components.get("logic_bridge") or components.get("info") or "Compare the old path with verified fit."),
+            },
+            {
+                "slide": 3,
+                "purpose": "product_and_verified_proof",
+                "headline": str(components.get("product_name") or "PRODUCT PROOF"),
+                "body": f"{proof_line}. {second_proof}.",
+            },
+            {
+                "slide": 4,
+                "purpose": "emotional_result",
+                "headline": "WHAT CONTROL FEELS LIKE",
+                "body": str(components.get("emotional_outcome") or "Confidence through better preparation."),
+            },
+            {
+                "slide": 5,
+                "purpose": "single_next_step",
+                "headline": "MAKE THE NEXT MOVE",
+                "body": str(components.get("cta") or "Review the verified product details."),
+            },
+        ],
+    }
+
+
+def _build_social_media_assets(components: dict, platform_posts: dict, visual_plan: dict) -> dict:
+    prompt_bank = visual_plan.get("ai_image_prompt_bank", {}) if isinstance(visual_plan.get("ai_image_prompt_bank"), dict) else {}
+    prompt_keys = {
+        "facebook": "crisis_preparedness",
+        "instagram": "lifestyle_aesthetic",
+        "linkedin": "professional_everyday_carry",
+    }
+    single_image: dict[str, dict] = {}
+    for platform, prompt_key in prompt_keys.items():
+        post = platform_posts.get(platform, {}) if isinstance(platform_posts.get(platform), dict) else {}
+        caption = str(post.get("caption") or "")
+        single_image[platform] = {
+            "visual_concept_description": str(
+                components.get("logical_emotional_strategy", {}).get("visual_concept", "")
+                if isinstance(components.get("logical_emotional_strategy"), dict)
+                else ""
+            ),
+            "ai_image_generation_prompt": str(prompt_bank.get(prompt_key) or ""),
+            "ad_headline": str(components.get("on_image_headline") or ""),
+            "on_image_text_overlay": str(components.get("on_image_subline") or ""),
+            "caption_copy": caption,
+            "hashtags": re.findall(r"#[A-Za-z0-9_]+", caption)[-8:],
+        }
+    return {
+        "asset_1_single_image_social_ads": single_image,
+        "asset_2_carousel_campaign": _build_logical_carousel_campaign(components),
+        "asset_3_ai_image_prompt_bank": prompt_bank,
+    }
+
+
 def _build_post_components(
     topic: str,
     selected_hook: str,
@@ -2535,6 +2770,7 @@ def _build_post_components(
     product: dict | None,
     funnel_stage: str,
     product_intelligence: dict | None = None,
+    logical_strategy: dict | None = None,
 ) -> dict:
     product_name = (product or {}).get("name", "Infenergy preparedness solution")
     product_id = (product or {}).get("id", "")
@@ -2584,6 +2820,7 @@ def _build_post_components(
     elif stage == "CONVERSION":
         cta = "Build your backup-power setup."
 
+    strategy = logical_strategy if isinstance(logical_strategy, dict) else {}
     return {
         "product_id": product_id or None,
         "hook": selected_hook,
@@ -2600,6 +2837,12 @@ def _build_post_components(
         "detail_summary": _product_detail_summary(product),
         "cta": cta,
         "topic": topic,
+        "logical_emotional_strategy": strategy,
+        "logic_hook": str(strategy.get("logic_hook") or selected_hook),
+        "logic_bridge": str(strategy.get("logic_bridge") or info),
+        "emotional_outcome": str(strategy.get("emotional_outcome") or "confidence through better preparation"),
+        "on_image_headline": str(strategy.get("on_image_headline") or selected_hook),
+        "on_image_subline": str(strategy.get("on_image_subline") or m1),
     }
 
 
@@ -2649,15 +2892,16 @@ def _adapt_facebook(components: dict, funnel_stage: str) -> tuple[str, str, str]
             "- Practical setup for faster response when power drops"
         )
     caption = (
-        "Stop waiting for an outage to expose a weak backup plan.\n\n"
+        f"{components['logic_hook']}\n\n"
         f"{components['situation']}\n\n"
+        f"{components['logic_bridge']}\n\n"
         f"{product_name} is a {profile['role']} that {components.get('benefit_fragment', 'supports a clearer buying decision')}.\n\n"
         "Why buyers choose it:\n"
         f"{feature_lines}\n\n"
         f"Proof-first details: {components['detail_summary']}\n\n"
         f"{components['use_case_line']}\n\n"
         f"{components['proof']}\n\n"
-        "If your current plan is still guesswork, fix it today before the next outage decides for you.\n\n"
+        f"The payoff is {components['emotional_outcome']}.\n\n"
         f"{cta}\n\n"
         f"{question}\n"
         "#PortablePower #BackupPower #EmergencyPreparedness #PowerOutage #StayPowered #PreparedNotPanicked"
@@ -2678,14 +2922,15 @@ def _adapt_instagram(components: dict, funnel_stage: str) -> tuple[str, str, str
         )
 
     caption = (
-        "YOUR POWER PLAN SHOULD NOT START AT 2% BATTERY.\n\n"
+        f"{components['logic_hook'].upper()}\n\n"
         f"{product_name} is a {profile['role']} that {components.get('benefit_fragment', 'supports a clearer buying decision')}.\n\n"
+        f"{components['logic_bridge']}\n\n"
         "Built for real use:\n"
         f"{feature_lines}\n\n"
         f"{components['detail_summary']}\n\n"
         f"{components['use_case_line']}\n\n"
         f"{components['proof']}\n\n"
-        "Do not wait for the next outage to find out your setup is not ready.\n\n"
+        f"The result: {components['emotional_outcome']}.\n\n"
         f"{cta}\n"
         "#PortablePower #BackupPower #EmergencyPreparedness #PowerOutage #StayPowered #StormReady #TravelPower #PreparedNotPanicked"
     )
@@ -2706,12 +2951,14 @@ def _adapt_linkedin(components: dict, funnel_stage: str) -> tuple[str, str, str]
             "- Portable form factor for home and mobile readiness"
         )
     caption = (
-        "Most preparedness plans fail at execution, not intent.\n\n"
+        f"{components['logic_hook']}\n\n"
         f"The {product_name} is a {profile['role']} that {components.get('benefit_fragment', 'supports a clearer buying decision')}.\n\n"
+        f"{components['logic_bridge']}\n\n"
         f"Key features include:\n{feature_lines}\n\n"
         f"Operational proof points: {components['detail_summary']}\n\n"
         f"{components['use_case_line']}\n\n"
         f"{components['proof']}\n\n"
+        f"The operational outcome is {components['emotional_outcome']}.\n\n"
         f"{cta}\n"
         "#EmergencyPreparedness #PortablePower #BackupPower #BusinessContinuity #Resilience"
     )
@@ -3748,6 +3995,8 @@ def generate(slot: str, *, funnel_stage_override: str = "", product_id_override:
         talking_point=talking_point,
     )
     phase2_stack["product_intelligence_agent"] = product_intelligence
+    logical_strategy = _select_logical_emotional_strategy(product, audience_segment, funnel_stage)
+    phase2_stack["logical_emotional_strategy"] = logical_strategy
     product_agent_context = (
         "PRODUCT INTELLIGENCE AGENT HANDOFF:\n"
         f"- Product summary: {product_intelligence.get('product_summary', '')}\n"
@@ -3760,6 +4009,19 @@ def generate(slot: str, *, funnel_stage_override: str = "", product_id_override:
         f"- Messaging devices: {product_intelligence.get('messaging_devices', [])}\n"
         f"- Sales copy seed: {product_intelligence.get('sales_copy_seed', '')}\n"
         f"- Team handoff directives: {product_intelligence.get('handoff', {})}\n"
+    )
+
+    logical_emotional_context = (
+        "LOGICAL-EMOTIONAL CREATIVE DIRECTIVE:\n"
+        f"- Formal principle: {logical_strategy.get('principle_name', '')}\n"
+        f"- Logic form: {logical_strategy.get('formal_logic', '')}\n"
+        f"- Caption strategy: {logical_strategy.get('caption_strategy', '')}\n"
+        f"- Visual concept: {logical_strategy.get('visual_concept', '')}\n"
+        f"- Audience archetype: {logical_strategy.get('audience_archetype', '')}\n"
+        f"- Emotional outcome: {logical_strategy.get('emotional_outcome', '')}\n"
+        f"- Required logic hook: {logical_strategy.get('logic_hook', '')}\n"
+        f"- Required proof bridge: {logical_strategy.get('logic_bridge', '')}\n"
+        "- Keep the reasoning valid and grounded in supplied product facts. Never make an unsupported exclusivity claim.\n"
     )
 
     messaging_playbook_context = (
@@ -3822,6 +4084,7 @@ def generate(slot: str, *, funnel_stage_override: str = "", product_id_override:
             existing.append(segment_visual_requirement)
         visual_plan["phase4_composition_adjustments"] = existing
         visual_plan["segment_preset"] = str(segment_constraints.get("segment_key", "")).strip()
+    visual_plan = _apply_logical_visual_strategy(visual_plan, logical_strategy, product)
 
     prompt = f"""You are an expert content strategist and copywriter for {brand_name} ({SITE_URL}), a {brand_positioning}.
 
@@ -3864,6 +4127,8 @@ PRODUCT CONTEXT (ground your content in these details when relevant):
 {ideology_context}
 
 {product_agent_context}
+
+{logical_emotional_context}
 
 {messaging_playbook_context}
 
@@ -3963,6 +4228,7 @@ Return ONLY valid JSON with these exact keys (no markdown, no code fences):
         content["campaign_id"] = campaign_id
         content["destination_url"] = destination_url
         content["product_intelligence_handoff"] = product_intelligence
+        content["logical_emotional_strategy"] = logical_strategy
         content["sales_copy_seed"] = str(product_intelligence.get("sales_copy_seed", "")).strip()
         content["weekly_plan_used"] = bool(weekly_sequence)
         content["hook_hash"] = stable_text_hash(selected_hook)
@@ -4015,6 +4281,7 @@ Return ONLY valid JSON with these exact keys (no markdown, no code fences):
             product,
             funnel_stage,
             product_intelligence=product_intelligence,
+            logical_strategy=logical_strategy,
         )
         platform_posts = _build_platform_posts(
             post_id=post_id,
@@ -4043,6 +4310,11 @@ Return ONLY valid JSON with these exact keys (no markdown, no code fences):
         content["ig_caption"] = platform_posts["instagram"]["caption"]
         content["li_text"] = platform_posts["linkedin"]["caption"]
         content["selected_cta"] = components["cta"]
+        social_media_assets = _build_social_media_assets(components, platform_posts, visual_plan)
+        content["social_media_assets"] = social_media_assets
+        platform_posts["instagram"]["carousel_campaign"] = social_media_assets["asset_2_carousel_campaign"]
+        content["on_image_headline"] = components["on_image_headline"]
+        content["on_image_subline"] = components["on_image_subline"]
         content["generated_visuals"] = generate_visuals(content, visual_plan=visual_plan)
         content["visual_plan"] = visual_plan
         content["pre_generation_conference"] = pre_generation_conference
@@ -4143,6 +4415,7 @@ Return ONLY valid JSON with these exact keys (no markdown, no code fences):
     content["campaign_id"] = campaign_id
     content["destination_url"] = destination_url
     content["product_intelligence_handoff"] = product_intelligence
+    content["logical_emotional_strategy"] = logical_strategy
     content["sales_copy_seed"] = str(product_intelligence.get("sales_copy_seed", "")).strip()
     content["weekly_plan_used"] = bool(weekly_sequence)
     content["hook_hash"] = stable_text_hash(selected_hook)
@@ -4280,6 +4553,7 @@ Return ONLY valid JSON with these exact keys (no markdown, no code fences):
         product,
         funnel_stage,
         product_intelligence=product_intelligence,
+        logical_strategy=logical_strategy,
     )
     platform_posts = _build_platform_posts(
         post_id=post_id,
@@ -4314,6 +4588,11 @@ Return ONLY valid JSON with these exact keys (no markdown, no code fences):
     content["ig_caption"] = platform_posts["instagram"]["caption"]
     content["li_text"] = platform_posts["linkedin"]["caption"]
     content["selected_cta"] = components["cta"]
+    social_media_assets = _build_social_media_assets(components, platform_posts, visual_plan)
+    content["social_media_assets"] = social_media_assets
+    platform_posts["instagram"]["carousel_campaign"] = social_media_assets["asset_2_carousel_campaign"]
+    content["on_image_headline"] = components["on_image_headline"]
+    content["on_image_subline"] = components["on_image_subline"]
     content["generated_visuals"] = generate_visuals(content, visual_plan=visual_plan)
     content["visual_plan"] = visual_plan
     content["pre_generation_conference"] = pre_generation_conference

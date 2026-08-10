@@ -2060,7 +2060,7 @@ def _product_copy_profile(product: dict | None) -> dict[str, str]:
             "offer_line": f"The {name or 'product'} is for buyers who need portable solar charging support, not vague emergency promises.",
             "category_pain": "Many buyers assume any solar panel will recharge their gear the way they need, then discover the output or compatibility is wrong.",
         })
-    elif "power bank" in name_low or "charger" in name_low:
+    elif any(token in name_low for token in ("power bank", "powerbank", "charger")) or any(token in categories for token in ("power bank", "power banks", "phone power bank", "phone power banks", "charger", "chargers")):
         profile.update({
             "role": "portable charging backup",
             "benefit": "keeps phones, tablets, and small daily devices charged when wall power is not available",
@@ -2096,7 +2096,7 @@ def _product_copy_profile(product: dict | None) -> dict[str, str]:
             "offer_line": f"The {name or 'product'} is for buyers who want portable airflow support that earns space in a real preparedness kit.",
             "category_pain": "Comfort becomes a real problem fast when outages or travel leave you with no airflow and no plan.",
         })
-    elif any(token in name_low for token in ("inverter", "power station", "generator", "battery")) or any(token in categories for token in ("power station", "generator", "battery")):
+    elif any(token in name_low for token in ("inverter", "power station", "generator", "battery")) or any(token in categories for token in ("power station", "generator", "battery", "emergency power", "portable power")):
         profile.update({
             "role": "backup power station",
             "benefit": "supports must-run devices during outages and off-grid use",
@@ -2375,6 +2375,7 @@ def _build_product_intelligence_handoff(
     category_low = " ".join(categories).lower()
     metrics = [str(x).strip() for x in ((product or {}).get("metrics", []) if isinstance((product or {}).get("metrics", []), list) else []) if str(x).strip()]
     facts = str((product or {}).get("fact_snippet", "")).strip()
+    profile = _product_copy_profile(product)
 
     fit_audiences = [
         "Homeowners and renters preparing for outages",
@@ -2388,8 +2389,8 @@ def _build_product_intelligence_handoff(
     fit_audiences = _dedupe_str_list(fit_audiences)
 
     benefits = [
-        "Turn confusion into a clear product-fit decision using real usage data",
-        "Reduce overbuying and underbuying risk by matching specs to must-run devices",
+        str(profile.get("benefit", "supports a more reliable preparedness setup")),
+        "Reduce overbuying and underbuying risk by matching specs to the actual job the product needs to do",
     ]
     if any(k in category_low for k in ("solar", "panel")):
         benefits.append("Support charging flexibility with portable solar-compatible workflows")
@@ -2424,7 +2425,7 @@ def _build_product_intelligence_handoff(
 
     return {
         "agent": "product_intelligence_agent",
-        "product_summary": f"{product_name} for outage readiness, mobile autonomy, and real-world device continuity.",
+        "product_summary": f"{product_name} is a {profile.get('role', 'preparedness product')} used when buyers need {profile.get('benefit', 'a more reliable preparedness setup')}.",
         "best_fit_audiences": fit_audiences,
         "core_benefits": benefits,
         "proof_points": proof_points,
@@ -2561,11 +2562,11 @@ def _build_post_components(
         proofs = product_intelligence.get("proof_points", [])
         sales_angle = str(product_intelligence.get("sales_angle", "")).strip()
         audience_line = str(audiences[0]).strip() if isinstance(audiences, list) and audiences else "buyers preparing for outages"
-        benefit_line = str(benefits[0]).strip() if isinstance(benefits, list) and benefits else "match real usage to the right product specs"
+        benefit_line = str(benefits[0]).strip() if isinstance(benefits, list) and benefits else str(profile.get("benefit", "match real usage to the right product specs"))
         proof_line = str(proofs[0]).strip() if isinstance(proofs, list) and proofs else f"{m1} and {m2}"
         situation = f"{audience_line} often hit the same issue: the product gets picked before the actual job, compatibility, or limits are mapped."
         info = f"Use {proof_line} as a practical anchor to compare real fit before purchase."
-        why = benefit_line
+        why = benefit_line or str(profile.get("benefit", "match real usage to the right product specs"))
         product_connection = (
             f"{product_name} is most effective when used through this lens: {sales_angle}."
             if sales_angle

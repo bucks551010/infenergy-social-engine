@@ -2035,6 +2035,80 @@ def _product_use_case_line(product: dict | None) -> str:
     return "Keep it ready in your emergency kit, vehicle, backpack, or travel bag."
 
 
+def _product_copy_profile(product: dict | None) -> dict[str, str]:
+    name = str((product or {}).get("name", "") or "").strip()
+    name_low = name.lower()
+    categories = " ".join(str(x or "") for x in ((product or {}).get("categories", []) or [])).lower()
+    metrics = [str(x).strip() for x in ((product or {}).get("metrics", []) or []) if str(x).strip()]
+    primary_metric = metrics[0] if metrics else "published product specs"
+
+    profile = {
+        "role": "preparedness product",
+        "benefit": "supports a more reliable preparedness setup",
+        "fit_line": f"helps buyers compare real needs against {primary_metric}",
+        "proof_intro": "Use published product details to verify fit before you buy",
+        "offer_line": f"The {name or 'product'} is built for buyers who want a practical preparedness tool matched to a real use case.",
+        "category_pain": "Generic recommendations often leave buyers with the wrong tool for the job.",
+    }
+
+    if "solar" in name_low or "solar" in categories or "panel" in name_low:
+        profile.update({
+            "role": "foldable solar charging panel",
+            "benefit": "adds off-grid charging support for compatible power stations and devices",
+            "fit_line": f"helps recharge compatible gear when sunlight is available, using specs like {primary_metric}",
+            "proof_intro": "Use published wattage, output, and charging compatibility details to verify fit before you buy",
+            "offer_line": f"The {name or 'product'} is for buyers who need portable solar charging support, not vague emergency promises.",
+            "category_pain": "Many buyers assume any solar panel will recharge their gear the way they need, then discover the output or compatibility is wrong.",
+        })
+    elif "power bank" in name_low or "charger" in name_low:
+        profile.update({
+            "role": "portable charging backup",
+            "benefit": "keeps phones, tablets, and small daily devices charged when wall power is not available",
+            "fit_line": f"supports everyday charging backup using details like {primary_metric}",
+            "proof_intro": "Use published battery, port, and charging specs to verify fit before you buy",
+            "offer_line": f"The {name or 'product'} is for buyers who need daily carry charging backup that is easy to keep close.",
+            "category_pain": "A cheap power bank is useless when capacity, ports, or charging speed do not match what you actually carry.",
+        })
+    elif "jump starter" in name_low:
+        profile.update({
+            "role": "vehicle emergency jump starter",
+            "benefit": "supports roadside readiness and emergency vehicle starts",
+            "fit_line": f"adds vehicle-ready emergency support using specs like {primary_metric}",
+            "proof_intro": "Use published starting, battery, and output specs to verify fit before you buy",
+            "offer_line": f"The {name or 'product'} is for drivers who want roadside readiness without guessing what will work when the battery dies.",
+            "category_pain": "Roadside emergencies go from stressful to expensive fast when the tool in your trunk cannot actually handle the job.",
+        })
+    elif "filter" in name_low or "straw" in name_low or "water" in categories:
+        profile.update({
+            "role": "portable water filtration backup",
+            "benefit": "adds clean-water support to emergency and travel kits",
+            "fit_line": f"supports water-prep planning using details like {primary_metric}",
+            "proof_intro": "Use published filtration and capacity specs to verify fit before you buy",
+            "offer_line": f"The {name or 'product'} is for buyers who want a water-backup plan that is practical to carry and easy to deploy.",
+            "category_pain": "Preparedness kits fail fast when water backup is treated like an afterthought instead of a real requirement.",
+        })
+    elif "fan" in name_low:
+        profile.update({
+            "role": "portable airflow and charging support",
+            "benefit": "adds comfort and small-device support during outages, camping, and travel",
+            "fit_line": f"supports comfort and charging backup using specs like {primary_metric}",
+            "proof_intro": "Use published runtime and charging specs to verify fit before you buy",
+            "offer_line": f"The {name or 'product'} is for buyers who want portable airflow support that earns space in a real preparedness kit.",
+            "category_pain": "Comfort becomes a real problem fast when outages or travel leave you with no airflow and no plan.",
+        })
+    elif any(token in name_low for token in ("inverter", "power station", "generator", "battery")) or any(token in categories for token in ("power station", "generator", "battery")):
+        profile.update({
+            "role": "backup power station",
+            "benefit": "supports must-run devices during outages and off-grid use",
+            "fit_line": f"helps buyers match loads and runtime needs using specs like {primary_metric}",
+            "proof_intro": "Use published output, battery, runtime, and charging specs to verify fit before you buy",
+            "offer_line": f"The {name or 'product'} is for buyers who want real backup power capacity matched to real outage needs.",
+            "category_pain": "Backup power decisions get expensive fast when output, runtime, and charging limits are not matched to the devices you actually need to run.",
+        })
+
+    return profile
+
+
 def _sales_cta_line(product: dict | None, first_step: str, platform: str) -> str:
     name = str((product or {}).get("name", "") or "this product").strip()
     base = str(first_step or "Get yours today and stay powered when the unexpected happens.").strip()
@@ -2063,20 +2137,21 @@ def _enforce_product_sales_platform_copy(content: dict, product: dict | None, ta
     first_step = str((talking_point or {}).get("first_step", "") or "Get yours today and stay powered when the unexpected happens.").strip()
     proof_line = _one_line(_product_detail_summary(product), 220)
     metric_line = ", ".join(metrics[:3]) if metrics else proof_line
+    profile = _product_copy_profile(product)
     if not bullet_block:
         bullet_block = "- Portable backup power built for real outages and daily carry\n- Practical, ready-to-use design for emergency planning\n- Built for home, vehicle, and travel preparedness"
     if not short_feature_block:
         short_feature_block = "- Portable backup power\n- Real preparedness use case\n- Designed for home, vehicle, and travel"
     urgency_line = "If your backup plan is still \"we will figure it out later,\" this is the part to fix today."
-    offer_line = f"The {product_name} is built for people who want a working backup-power plan before the next outage hits."
+    offer_line = profile["offer_line"]
     action_line = f"Use the {product_name} to close the gap between \"I should prepare\" and \"my setup is ready now.\""
 
     content["fb_caption"] = (
-        f"Stop waiting for the outage to tell you your setup is not ready.\n\n"
-        f"{pain_point}\n\n"
+        f"Stop waiting for the wrong product choice to show up when you need it most.\n\n"
+        f"{pain_point or profile['category_pain']}\n\n"
         f"{offer_line}\n\n"
         f"Why people buy it:\n{bullet_block}\n\n"
-        f"Proof in plain terms: {proof_line}.\n\n"
+        f"Proof in plain terms: {profile['proof_intro']}: {proof_line}.\n\n"
         f"{use_case_line}\n\n"
         f"{urgency_line}\n\n"
         f"{action_line}\n\n"
@@ -2084,21 +2159,21 @@ def _enforce_product_sales_platform_copy(content: dict, product: dict | None, ta
         f"#PortablePower #BackupPower #EmergencyPreparedness #PowerOutage #StayPowered #PreparedNotPanicked"
     )
     content["ig_caption"] = (
-        f"YOUR PHONE IS 3% AND THE POWER IS OUT. NOW WHAT?\n\n"
+        f"DO NOT BUY THIS UNTIL THE SPECS MATCH THE JOB.\n\n"
         f"{offer_line}\n\n"
         f"Built for real use:\n{short_feature_block}\n\n"
         f"{use_case_line}\n\n"
-        f"Core details: {metric_line}.\n\n"
+        f"Core details: {profile['proof_intro']}: {metric_line}.\n\n"
         f"{urgency_line}\n\n"
         f"{_sales_cta_line(product, first_step, 'instagram')}\n"
         f"#PortablePower #BackupPower #EmergencyPreparedness #PowerOutage #StayPowered #StormReady #TravelPower #PreparedNotPanicked"
     )
     content["li_text"] = (
-        f"Most backup-power plans fail for one reason: people decide to prepare only after the outage starts.\n\n"
-        f"{pain_point}\n\n"
+        f"Most bad product decisions happen because buyers never translate specs into the actual job they need done.\n\n"
+        f"{pain_point or profile['category_pain']}\n\n"
         f"{offer_line}\n\n"
         f"Key features include:\n{bullet_block}\n\n"
-        f"What this means in practice: {proof_line}.\n\n"
+        f"What this means in practice: {profile['proof_intro']}: {proof_line}.\n\n"
         f"{use_case_line}\n\n"
         f"For teams and households, this is about response speed, continuity, and confidence under pressure.\n\n"
         f"{_sales_cta_line(product, first_step, 'linkedin')}\n"
@@ -2466,12 +2541,19 @@ def _build_post_components(
     feature_bullets = _sales_feature_bullets(product, limit=5)
     m1 = metrics[0] if len(metrics) > 0 else "verified output specs"
     m2 = metrics[1] if len(metrics) > 1 else "runtime and charging context"
+    profile = _product_copy_profile(product)
 
     situation = "Infenergy customers usually come to us because they want to stay charged, connected, and prepared before the next outage or travel disruption exposes a weak setup."
     info = f"The stronger path is to map your must-run devices first and compare them against measured specs like {m1} and {m2}."
     why = "That reduces guesswork, protects against wrong-fit purchases, and moves the buyer toward a confident preparedness decision."
     product_connection = f"For this topic, {product_name} supports Infenergy's goal of giving customers a right-size power solution matched to real daily loads."
     proof = "Start from verified details, real use cases, and published product fields only."
+
+    situation = profile["category_pain"]
+    info = f"The stronger path is to compare the real job against published specs like {m1} and {m2}."
+    why = profile["benefit"]
+    product_connection = f"For this topic, {product_name} {profile['fit_line']}."
+    proof = f"{profile['proof_intro']}."
 
     if isinstance(product_intelligence, dict) and product_intelligence:
         audiences = product_intelligence.get("best_fit_audiences", [])
@@ -2481,8 +2563,8 @@ def _build_post_components(
         audience_line = str(audiences[0]).strip() if isinstance(audiences, list) and audiences else "buyers preparing for outages"
         benefit_line = str(benefits[0]).strip() if isinstance(benefits, list) and benefits else "match real usage to the right product specs"
         proof_line = str(proofs[0]).strip() if isinstance(proofs, list) and proofs else f"{m1} and {m2}"
-        situation = f"{audience_line} often face the same issue: backup plans are picked before real load needs are mapped."
-        info = f"Use {proof_line} as a practical anchor to compare fit before purchase."
+        situation = f"{audience_line} often hit the same issue: the product gets picked before the actual job, compatibility, or limits are mapped."
+        info = f"Use {proof_line} as a practical anchor to compare real fit before purchase."
         why = benefit_line
         product_connection = (
             f"{product_name} is most effective when used through this lens: {sales_angle}."
@@ -2545,6 +2627,7 @@ def _sales_feature_bullets(product: dict | None, limit: int = 5) -> list[str]:
 
 def _adapt_facebook(components: dict, funnel_stage: str) -> tuple[str, str, str]:
     product_name = str(components.get("product_name", "this product"))
+    profile = _product_copy_profile({"name": product_name, "categories": [], "metrics": []})
     feature_lines = "\n".join([f"- {item}" for item in (components.get("feature_bullets", []) or [])[:5]])
     question = "What is the first device you refuse to lose during an outage?"
     cta = _sales_cta_line({"name": product_name}, str(components.get("cta", "")), "facebook")
@@ -2557,7 +2640,7 @@ def _adapt_facebook(components: dict, funnel_stage: str) -> tuple[str, str, str]
     caption = (
         "Stop waiting for an outage to expose a weak backup plan.\n\n"
         f"{components['situation']}\n\n"
-        f"{product_name} is built to keep your must-run devices supported when normal power is not available.\n\n"
+        f"{product_name} is a {profile['role']} that {components['why']}.\n\n"
         "Why buyers choose it:\n"
         f"{feature_lines}\n\n"
         f"Proof-first details: {components['detail_summary']}\n\n"
@@ -2573,6 +2656,7 @@ def _adapt_facebook(components: dict, funnel_stage: str) -> tuple[str, str, str]
 
 def _adapt_instagram(components: dict, funnel_stage: str) -> tuple[str, str, str, str]:
     product_name = str(components.get("product_name", "this product"))
+    profile = _product_copy_profile({"name": product_name, "categories": [], "metrics": []})
     feature_lines = "\n".join([f"- {item}" for item in (components.get("feature_bullets", []) or [])[:4]])
     cta = _sales_cta_line({"name": product_name}, str(components.get("cta", "")), "instagram")
     if not feature_lines.strip():
@@ -2584,7 +2668,7 @@ def _adapt_instagram(components: dict, funnel_stage: str) -> tuple[str, str, str
 
     caption = (
         "YOUR POWER PLAN SHOULD NOT START AT 2% BATTERY.\n\n"
-        f"{product_name} gives you a real backup option when outages, storms, travel, or emergencies kill normal charging.\n\n"
+        f"{product_name} is a {profile['role']} that {components['why']}.\n\n"
         "Built for real use:\n"
         f"{feature_lines}\n\n"
         f"{components['detail_summary']}\n\n"
@@ -2601,6 +2685,7 @@ def _adapt_instagram(components: dict, funnel_stage: str) -> tuple[str, str, str
 
 def _adapt_linkedin(components: dict, funnel_stage: str) -> tuple[str, str, str]:
     product_name = str(components.get("product_name", "this product"))
+    profile = _product_copy_profile({"name": product_name, "categories": [], "metrics": []})
     feature_lines = "\n".join([f"- {item}" for item in (components.get("feature_bullets", []) or [])[:5]])
     cta = _sales_cta_line({"name": product_name}, str(components.get("cta", "")), "linkedin")
     if not feature_lines.strip():
@@ -2611,7 +2696,7 @@ def _adapt_linkedin(components: dict, funnel_stage: str) -> tuple[str, str, str]
         )
     caption = (
         "Most preparedness plans fail at execution, not intent.\n\n"
-        f"The {product_name} helps teams and households close the gap between planning and real outage readiness.\n\n"
+        f"The {product_name} is a {profile['role']} that helps teams and households close the gap between planning and real-world use.\n\n"
         f"Key features include:\n{feature_lines}\n\n"
         f"Operational proof points: {components['detail_summary']}\n\n"
         f"{components['use_case_line']}\n\n"

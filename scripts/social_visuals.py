@@ -86,8 +86,12 @@ def _autocrop_transparent(image: Any) -> Any:
 def _remove_near_white_bg(image: Any, threshold: int = 238):
     try:
         rgba = image.convert("RGBA")
+        if hasattr(rgba, "get_flattened_data"):
+            raw_pixels = list(rgba.get_flattened_data())
+        else:
+            raw_pixels = list(rgba.getdata())
         pixels = []
-        for r, g, b, a in rgba.getdata():
+        for r, g, b, a in raw_pixels:
             near_white = r >= threshold and g >= threshold and b >= threshold
             low_saturation = max(r, g, b) - min(r, g, b) <= 18
             if near_white and low_saturation:

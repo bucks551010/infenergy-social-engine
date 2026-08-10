@@ -4280,9 +4280,9 @@ Return ONLY valid JSON with these exact keys (no markdown, no code fences):
         components=components,
         quality_score=float(content.get("quality_score", 0)),
         caption_overrides={
-            "facebook": {"caption": str(content.get("fb_caption", "")), "cta": str(content.get("selected_cta", ""))},
-            "instagram": {"caption": str(content.get("ig_caption", "")), "cta": str(content.get("selected_cta", ""))},
-            "linkedin": {"caption": str(content.get("li_text", "")), "cta": str(content.get("selected_cta", ""))},
+            "facebook": {"cta": str(content.get("selected_cta", ""))},
+            "instagram": {"cta": str(content.get("selected_cta", ""))},
+            "linkedin": {"cta": str(content.get("selected_cta", ""))},
         },
     )
     for platform_name in ("facebook", "instagram", "linkedin"):

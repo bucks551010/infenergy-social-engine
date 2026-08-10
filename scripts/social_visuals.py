@@ -242,13 +242,15 @@ def _benefit_rows(content: dict[str, Any]) -> list[str]:
 
 
 def _trust_badges(content: dict[str, Any]) -> list[str]:
-    stage = str(content.get("funnel_stage") or "").upper()
-    base = ["Verified Specs", "Fast Ship", "2-Yr Support", "Best Seller"]
-    if stage == "TRUST":
-        base[0] = "Lab Verified"
-    if stage == "DESIRE":
-        base[3] = "Top Rated"
-    return base
+    raw_badges = content.get("trust_badges", []) if isinstance(content, dict) else []
+    if not isinstance(raw_badges, list):
+        return []
+    badges: list[str] = []
+    for raw_badge in raw_badges:
+        badge = re.sub(r"\s+", " ", normalize_brand_text(str(raw_badge or ""))).strip()
+        if badge and badge.lower() not in {item.lower() for item in badges}:
+            badges.append(badge)
+    return badges[:3]
 
 
 def _safe_json_dict(value: Any) -> dict[str, Any]:
@@ -332,11 +334,126 @@ def _extract_inline_image_bytes(response: Any) -> bytes:
     return b""
 
 
+def _platform_visual_spec(platform: str) -> dict[str, Any]:
+    if platform == "linkedin":
+        return {
+            "target": (1200, 627),
+            "aspect_ratio": "16:9",
+            "copy_zone": "left 46%",
+            "product_zone": "right 36%, vertically centered",
+            "scene": "credible modern workplace or small-business continuity setting",
+        }
+    if platform == "instagram":
+        return {
+            "target": (1200, 1200),
+            "aspect_ratio": "1:1",
+            "copy_zone": "left 42% and bottom 16%",
+            "product_zone": "right 38%, grounded in the lower half",
+            "scene": "bold mobile-first lifestyle setting with strong depth and one clear focal path",
+        }
+    return {
+        "target": (1200, 1200),
+        "aspect_ratio": "1:1",
+        "copy_zone": "left 44% and bottom 16%",
+        "product_zone": "right 38%, grounded in the lower half",
+        "scene": "credible premium household preparedness setting with useful environmental context",
+    }
+
+
+def _gemini_plate_quality(image: Any, platform: str) -> tuple[bool, list[str]]:
+    image_module, _, _ = _load_pillow()
+    if image_module is None:
+        return False, ["pillow_unavailable"]
+    try:
+        from PIL import ImageStat  # type: ignore
+    except Exception:
+        return False, ["pillow_stats_unavailable"]
+
+    spec = _platform_visual_spec(platform)
+    expected_ratio = spec["target"][0] / spec["target"][1]
+    actual_ratio = image.width / max(1, image.height)
+    reasons: list[str] = []
+    if abs(actual_ratio - expected_ratio) / expected_ratio > 0.18:
+        reasons.append("aspect_ratio")
+
+    nearest = getattr(getattr(image_module, "Resampling", image_module), "NEAREST", 0)
+    grayscale = image.convert("L").resize((240, 240), nearest)
+    extrema = grayscale.getextrema()
+    if not extrema or extrema[1] - extrema[0] < 24:
+        reasons.append("low_dynamic_range")
+
+    copy_fraction = 0.46 if platform == "linkedin" else 0.44
+    copy_zone = grayscale.crop((0, 0, max(1, int(grayscale.width * copy_fraction)), grayscale.height))
+    copy_zone_stddev = float(ImageStat.Stat(copy_zone).stddev[0])
+    if copy_zone_stddev > float(os.environ.get("GEMINI_COPY_ZONE_MAX_STDDEV", "76")):
+        reasons.append("busy_copy_zone")
+
+    return not reasons, reasons
+
+
+def _normalize_reference_image(raw: bytes) -> tuple[bytes, str]:
+    image_module, _, _ = _load_pillow()
+    if image_module is None or not raw or len(raw) > 8_000_000:
+        return b"", ""
+    try:
+        reference = image_module.open(io.BytesIO(raw)).convert("RGB")
+        reference.thumbnail((1280, 1280))
+        output = io.BytesIO()
+        reference.save(output, format="JPEG", quality=88, optimize=True)
+        return output.getvalue(), "image/jpeg"
+    except Exception:
+        return b"", ""
+
+
+def _gemini_semantic_plate_quality(client: Any, types: Any, raw: bytes, platform: str) -> tuple[bool, list[str]]:
+    enabled = str(os.environ.get("GEMINI_VISUAL_QA_ENABLED", "true")).strip().lower() not in {"0", "false", "no"}
+    if not enabled:
+        return True, []
+    spec = _platform_visual_spec(platform)
+    review_prompt = (
+        "Review this candidate social background plate. Return JSON only with booleans for "
+        "has_text_or_symbols, has_product_or_device, copy_zone_is_busy, product_zone_is_blocked, "
+        "and scene_is_low_quality. Treat any readable or gibberish letters, numbers, logos, labels, "
+        "screens, UI, badges, buttons, signs, watermarks, fake power products, device silhouettes, or "
+        "placeholder boxes as failures. The required copy-safe zone is the "
+        f"{spec['copy_zone']}; the required product landing zone is the {spec['product_zone']}."
+    )
+    model_candidates = [
+        str(os.environ.get("GEMINI_VISUAL_QA_MODEL", "")).strip(),
+        "gemini-2.5-flash",
+    ]
+    for model_name in model_candidates:
+        if not model_name:
+            continue
+        try:
+            response = client.models.generate_content(
+                model=model_name,
+                contents=[review_prompt, types.Part.from_bytes(data=raw, mime_type="image/png")],
+                config=types.GenerateContentConfig(response_mime_type="application/json"),
+            )
+            review = json.loads(str(response.text or "{}"))
+            if not isinstance(review, dict):
+                continue
+            failure_keys = (
+                "has_text_or_symbols",
+                "has_product_or_device",
+                "copy_zone_is_busy",
+                "product_zone_is_blocked",
+                "scene_is_low_quality",
+            )
+            reasons = [key for key in failure_keys if review.get(key) is True]
+            return not reasons, reasons
+        except Exception:
+            continue
+    return True, ["semantic_review_unavailable"]
+
+
 def _build_gemini_image_prompt(content: dict[str, Any], platform: str, visual_plan: dict[str, Any]) -> str:
+    spec = _platform_visual_spec(platform)
     platform_cfg = _safe_json_dict((visual_plan.get("platform_overrides") or {}).get(platform))
     style_intent = str(visual_plan.get("style_intent") or "premium retail ad board for power products").strip()
     mood = str(visual_plan.get("mood") or "bold, high-contrast, conversion-focused, premium").strip()
-    composition = str(platform_cfg.get("composition") or visual_plan.get("composition") or "hero product right, headline stack left, badges and CTA bottom").strip()
+    composition = str(platform_cfg.get("composition") or visual_plan.get("composition") or "calm copy-safe zone left, grounded product landing zone right").strip()
     key_hook = normalize_brand_text(str(content.get("selected_hook") or content.get("topic") or "Power planning"))
     topic = normalize_brand_text(str(content.get("topic") or ""))
     product_name = normalize_brand_text(str(content.get("product_name") or ""))
@@ -344,7 +461,6 @@ def _build_gemini_image_prompt(content: dict[str, Any], platform: str, visual_pl
     cta = normalize_brand_text(str(content.get("selected_cta") or "Map your must-run devices and build your outage-ready setup."))
     stat = _primary_stat(content)
     benefits = _benefit_rows(content)
-    badges = _trust_badges(content)
     product_label = re.sub(r"[\s\-|:]+$", "", product_name).strip()
     product_label = re.sub(r"\s+", " ", product_label)
     support_line = _headline_lockup(content)[1]
@@ -355,22 +471,15 @@ def _build_gemini_image_prompt(content: dict[str, Any], platform: str, visual_pl
         f"Use the support idea '{support_line}', the proof cue '{stat}', and the CTA intent '{cta}' only as composition guidance. "
         "The application will add the actual product cutout, numbers, headline, proof callout, and CTA afterward. "
     )
-    badge_direction = (
-        "If you include credibility or support markers, they must feel product-true and category-true, not templated. "
-        "Avoid generic trust labels such as 'Best Seller', 'Fast Ship', 'Lab Verified', or other unsupported badges unless they are explicitly grounded in source context. "
-    )
+    plan_prompt = re.sub(r"\s+", " ", str(visual_plan.get("gemini_image_prompt") or "")).strip()[:900]
     style_refs = str(os.environ.get("GEMINI_STYLE_REFERENCES") or "").strip()
     repo_context = _load_visual_repo_context()
     repo_refs = repo_context.get("references", []) if isinstance(repo_context, dict) else []
-    repo_reference_urls: list[str] = []
     repo_reference_ideas: list[str] = []
     if isinstance(repo_refs, list):
         for ref in repo_refs:
             if not isinstance(ref, dict):
                 continue
-            url = str(ref.get("reference_url") or "").strip()
-            if url:
-                repo_reference_urls.append(url)
             name = str(ref.get("style_name") or "").strip()
             notes = str(ref.get("style_notes") or "").strip()
             idea = f"{name}: {notes}".strip(": ")
@@ -380,8 +489,6 @@ def _build_gemini_image_prompt(content: dict[str, Any], platform: str, visual_pl
     style_ref_line = ""
     if style_refs:
         style_ref_line = f"Style references: {style_refs}. "
-    elif repo_reference_urls:
-        style_ref_line = f"Style references: {'; '.join(repo_reference_urls)}. "
     elif repo_reference_ideas:
         style_ref_line = f"Style reference ideas: {' | '.join(repo_reference_ideas[:6])}. "
     stage_direction = {
@@ -391,27 +498,9 @@ def _build_gemini_image_prompt(content: dict[str, Any], platform: str, visual_pl
         "TRUST": "Prioritize credibility, proof, engineering confidence, and factual reassurance with premium restraint.",
         "CONVERSION": "Prioritize urgency, clarity of next step, confidence-to-act, and unmistakable purchase momentum.",
     }.get(stage, "Prioritize premium persuasion with clarity and confidence.")
-    density_direction = {
-        "facebook": "Use a layered, information-rich hero layout with multiple premium supporting elements, a clear reading path, and strong scan hierarchy.",
-        "instagram": "Use a bold, high-drama layout with dense premium accents, editorial composition, strong shape language, and instantly readable focal structure.",
-        "linkedin": "Use a sharp, executive ad layout with structured information zones, refined data callouts, premium interface cues, and professional polish.",
-    }.get(platform, "Use a premium layered campaign layout.")
-    composition_system = (
-        "Use a state-of-the-art composition system: dominant hero zone, secondary information rail, tertiary trust-detail layer, and a clearly staged CTA destination. "
-        "Every region should have a purpose and visual rhythm. "
-    )
-    signage_direction = (
-        "Add premium design elements such as directional arrows, stat plaques, trust seals, spec chips, angled light bars, subtle grid panels, "
-        "soft-glow interface fragments, anchored CTA signage, comparison strips, feature cards, icon clusters, micro labels, urgency banners, "
-        "credibility rails, and structured info panels. Keep them intentional and polished, never cluttered. "
-    )
-    typography_direction = (
-        "Typography should feel like a premium campaign ad: varied scale, bold headline lockup, tight supporting subline, clean stat callouts, "
-        "and crisp CTA treatment. Use correct spelling, clean kerning, strong contrast, and obvious information hierarchy. "
-    )
     material_direction = (
-        "Use luxury commercial-art details: smoky glass panels, brushed metal accents, illuminated edges, matte carbon surfaces, soft reflections, "
-        "refined gradients, depth haze, and controlled bloom highlights. "
+        "Use restrained commercial photography details: brushed metal, matte charcoal surfaces, warm amber practical light, soft reflections, "
+        "natural depth haze, and controlled highlights. Keep materials physically believable. "
     )
     product_stage_direction = (
         "Reserve a grounded hero stage on the lower-right side for the real product cutout. "
@@ -419,49 +508,45 @@ def _build_gemini_image_prompt(content: dict[str, Any], platform: str, visual_pl
         "Do not render a product, do not render a fake placeholder device, and do not leave a white box or empty frame. "
         "Leave enough clean space so the real product can occupy roughly one-third of the final composition without overlapping the copy zone. "
     )
-    layout_guardrails = {
-        "facebook": "Keep the left 42 percent of the square relatively calm and dark for text overlay, keep the lower center open for a CTA band, and keep the right side visually anchored rather than busy.",
-        "instagram": "Keep the left 40 percent of the square relatively calm for headline overlay, keep the lower third free of clutter for CTA and proof, and make the right side feel like a grounded premium product stage.",
-        "linkedin": "Keep the left half structured and readable for data-led copy overlay, with a cleaner right-side product zone and restrained professional atmosphere.",
-    }.get(platform, "Keep a clean copy-safe zone and a separate grounded product-safe zone.")
+    layout_guardrails = (
+        f"Reserve the {spec['copy_zone']} as a low-detail, dark-to-mid-tone copy-safe zone. "
+        f"Reserve the {spec['product_zone']} as a coherent product landing zone. "
+        "Do not place high-contrast edges, bright hotspots, faces, or focal objects in the copy-safe zone."
+    )
     atmosphere_direction = (
-        "Build atmosphere with cinematic lighting, premium material textures, glow accents, layered shadows, reflective surfaces, depth haze, and subtle motion energy. "
-        "Avoid flat empty space; every major region should feel intentionally designed. "
+        "Build atmosphere with one coherent cinematic light direction, premium material textures, layered shadows, restrained reflections, and natural depth haze. "
+        "The reserved copy zone must remain visually quiet even while the surrounding scene has depth. "
     )
     campaign_direction = (
-        "This should feel 10x more premium than a normal social post: like a polished campaign board from a top-tier performance brand. "
-        "Be visually ambitious, rich in supporting elements, and unmistakably conversion-focused. "
+        "This should feel like premium commercial photography prepared for a top-tier performance campaign. "
+        "Be visually confident, physically credible, and restrained enough for the deterministic ad layer. "
     )
     negative_direction = (
-        "Do not make it look like a cheap flyer, Canva template, generic ecommerce tile, flat infographic, cartoon graphic, or basic AI poster. "
-        "Avoid weak spacing, empty corners, random decoration, muddy contrast, oversized product framing, or amateur typography. "
+        "Do not make it look like a flyer, template, ecommerce tile, infographic, cartoon, abstract wallpaper, or synthetic AI poster. "
+        "Avoid random decoration, muddy contrast, excessive glow, impossible reflections, or visual clutter. "
     )
     return (
         "Create a premium social background plate for Infenergy Power. "
-        f"Style intent: {style_intent}. Mood: {mood}. Composition: {composition}. "
+        f"Plan suggestions, subordinate to the scene contract and exclusions below: style '{style_intent}', mood '{mood}', composition '{composition}'. "
         f"{style_ref_line}"
         f"Platform: {platform}. Hook context: {key_hook}. Topic context: {topic}. "
         f"Product context: {product_name or 'portable/home power solution'}. Funnel stage: {stage}. "
-        f"Primary product facts available for copy and design: {', '.join(benefits)}. "
-        f"Reference support markers available if useful: {', '.join(badges)}. "
+        f"Product facts informing the mood only: {', '.join(benefits)}. "
         f"{copy_direction}"
-        f"{badge_direction}"
-        "Use warm premium palette (charcoal, amber, orange, gold), realistic lighting, crisp typography hierarchy, and retail ad polish. "
+        f"Optional approved scene brief, subordinate to every rule here: {plan_prompt or 'none'}. "
+        "Use a restrained brand palette: charcoal #15191d, deep navy #112d44, amber #f7a30f, and warm gold #ffd469. Avoid neon colors and dominant purple. "
+        f"Build a {spec['scene']}. "
         f"{stage_direction} "
-        f"{density_direction} "
-        f"{composition_system}"
-        f"{signage_direction}"
-        f"{typography_direction}"
         f"{material_direction}"
         f"{atmosphere_direction}"
         f"{campaign_direction}"
         "Generate only the atmospheric background plate and scene, not the final ad copy layer. "
-        "Important: do not draw readable text, letters, numerals, logos, product renders, device mockups, boxed product frames, stat bubbles, CTA buttons, or decorative badge clusters. "
+        "ABSOLUTE EXCLUSIONS: no text, letters, numerals, symbols, logos, labels, signage, screens, interfaces, charts, badges, buttons, frames, product renders, device mockups, or placeholder objects. "
         f"{product_stage_direction}"
         f"{layout_guardrails} "
         "Keep the design modern, premium, clean, and conversion-focused, but leave negative space for post-composited text and product. "
         f"{negative_direction}"
-        "No logos from other brands, no watermarks, no readable text, no gibberish text, no misspelled words, no floating product silhouettes, no duplicate products, no deformed hands."
+        "No watermarks, gibberish marks, floating silhouettes, duplicate focal objects, people, or hands. Output one finished background scene plate only."
     )
 
 
@@ -472,10 +557,7 @@ def _generate_gemini_background(content: dict[str, Any], platform: str, visual_p
 
     prompt = _build_gemini_image_prompt(content, platform, visual_plan)
     repo_context = _load_visual_repo_context()
-    product_source = _resolve_product_source(content, repo_context=repo_context)
-    image_bytes, mime_type = _read_image_bytes_any(product_source)
-    image_strategy = str(visual_plan.get("image_strategy") or os.environ.get("VISUAL_IMAGE_STRATEGY", "gemini_generated")).strip().lower()
-    prefer_product_overlay = image_strategy in ("product_photo_featured", "hybrid") or bool(visual_plan.get("use_product_photo"))
+    repo_refs = repo_context.get("references", []) if isinstance(repo_context, dict) else []
     try:
         from google import genai  # type: ignore
         from google.genai import types  # type: ignore
@@ -487,41 +569,60 @@ def _generate_gemini_background(content: dict[str, Any], platform: str, visual_p
             "gemini-2.5-flash",
         ]
         seen_models: set[str] = set()
+        spec = _platform_visual_spec(platform)
+        reference_parts: list[Any] = []
+        for reference in repo_refs[:3] if isinstance(repo_refs, list) else []:
+            source = str(reference.get("reference_url") or "").strip() if isinstance(reference, dict) else ""
+            image_bytes, mime_type = _read_image_bytes_any(source)
+            image_bytes, mime_type = _normalize_reference_image(image_bytes)
+            if not image_bytes:
+                continue
+            try:
+                reference_parts.append(types.Part.from_bytes(data=image_bytes, mime_type=mime_type or "image/jpeg"))
+            except Exception:
+                continue
+
         for model_name in model_candidates:
             if not model_name or model_name in seen_models:
                 continue
             seen_models.add(model_name)
-            contents: Any = prompt
-            if image_bytes and not prefer_product_overlay:
+            for attempt in range(2):
+                retry_note = "" if attempt == 0 else " Previous plate failed automated composition checks. Make the copy-safe zone calmer and preserve the requested aspect ratio."
+                contents: Any = [prompt + retry_note, *reference_parts] if reference_parts else prompt + retry_note
                 try:
-                    contents = [prompt, types.Part.from_bytes(data=image_bytes, mime_type=mime_type or "image/jpeg")]
+                    config_kwargs: dict[str, Any] = {"response_modalities": ["TEXT", "IMAGE"]}
+                    try:
+                        config_kwargs["image_config"] = types.ImageConfig(aspect_ratio=spec["aspect_ratio"])
+                    except Exception:
+                        pass
+                    response = client.models.generate_content(
+                        model=model_name,
+                        contents=contents,
+                        config=types.GenerateContentConfig(**config_kwargs),
+                    )
+                    raw = _extract_inline_image_bytes(response)
+                    if not raw:
+                        continue
+
+                    image_module, _, _ = _load_pillow()
+                    if image_module is None:
+                        return False
+
+                    generated = image_module.open(io.BytesIO(raw)).convert("RGB")
+                    accepted, _ = _gemini_plate_quality(generated, platform)
+                    if not accepted:
+                        continue
+                    accepted, _ = _gemini_semantic_plate_quality(client, types, raw, platform)
+                    if not accepted:
+                        continue
+                    generated = _resize_cover(generated, spec["target"], image_module)
+                    if generated.size != spec["target"]:
+                        continue
+                    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+                    generated.save(output_path, format="PNG", optimize=True)
+                    return True
                 except Exception:
-                    contents = prompt
-            try:
-                response = client.models.generate_content(
-                    model=model_name,
-                    contents=contents,
-                    config=types.GenerateContentConfig(response_modalities=["TEXT", "IMAGE"]),
-                )
-                raw = _extract_inline_image_bytes(response)
-                if not raw:
                     continue
-
-                image_module, _, _ = _load_pillow()
-                if image_module is None:
-                    return False
-
-                generated = image_module.open(io.BytesIO(raw)).convert("RGB")
-                if platform in ("facebook", "instagram"):
-                    target = (1200, 1200)
-                else:
-                    target = (1200, 627)
-                generated = _resize_cover(generated, target, image_module)
-                os.makedirs(os.path.dirname(output_path), exist_ok=True)
-                generated.save(output_path, format="PNG", optimize=True)
-                return True
-            except Exception:
-                continue
         return False
     except Exception:
         return False
@@ -539,12 +640,12 @@ def _compose_gemini_ad_overlay(content: dict[str, Any], platform: str, image_pat
     draw = draw_module.Draw(canvas)
     width, height = canvas.size
 
-    # Add a controlled dark overlay so local typography stays readable over Gemini backgrounds.
+    # Stabilize contrast only where deterministic copy will be composited.
     overlay = image_module.new("RGBA", canvas.size, (0, 0, 0, 0))
     overlay_draw = draw_module.Draw(overlay)
-    overlay_draw.rounded_rectangle((38, 38, width - 38, height - 38), radius=26, fill=(7, 16, 24, 68))
-    overlay_draw.polygon([(0, 0), (int(width * 0.58), 0), (int(width * 0.42), height), (0, height)], fill=(6, 14, 22, 174))
-    overlay_draw.polygon([(0, height - 250), (width, height - 180), (width, height), (0, height)], fill=(20, 12, 8, 118))
+    base_alpha = max(0, min(220, int(os.environ.get("VISUAL_OVERLAY_ALPHA", "154"))))
+    overlay_draw.polygon([(0, 0), (int(width * 0.56), 0), (int(width * 0.45), height), (0, height)], fill=(6, 14, 22, base_alpha))
+    overlay_draw.polygon([(0, height - int(height * 0.17)), (width, height - int(height * 0.12)), (width, height), (0, height)], fill=(20, 12, 8, 104))
     canvas = image_module.alpha_composite(canvas, overlay)
     draw = draw_module.Draw(canvas)
 
@@ -624,23 +725,23 @@ def _compose_gemini_ad_overlay(content: dict[str, Any], platform: str, image_pat
     product_source = _resolve_product_source(content)
     product_image = _fetch_product_image(image_module, product_source)
     if product_image is not None:
-        target_w, target_h = (430, 430) if platform in ("facebook", "instagram") else (384, 384)
-        pos = (width - target_w - 72, 314) if platform in ("facebook", "instagram") else (width - target_w - 48, 108)
-        draw.rounded_rectangle((pos[0] - 18, pos[1] - 18, pos[0] + target_w + 18, pos[1] + target_h + 18), radius=28, fill="#152638")
-        draw.rounded_rectangle((pos[0] - 8, pos[1] - 8, pos[0] + target_w + 8, pos[1] + target_h + 8), radius=22, fill="#1e3547")
+        target_w, target_h = (480, 500) if platform in ("facebook", "instagram") else (410, 430)
+        pos = (width - target_w - 54, 286) if platform in ("facebook", "instagram") else (width - target_w - 42, 94)
         image_copy = product_image.copy()
         image_copy.thumbnail((target_w, target_h))
         frame = image_module.new("RGBA", (target_w, target_h), (13, 34, 48, 0))
         offset_x = (target_w - image_copy.width) // 2
         offset_y = (target_h - image_copy.height) // 2
-        shadow_w = max(180, int(image_copy.width * 0.70))
-        shadow_h = max(26, int(image_copy.height * 0.10))
+        shadow_w = max(180, int(image_copy.width * 0.72))
+        shadow_h = max(24, int(image_copy.height * 0.09))
         shadow_x = pos[0] + max(0, (target_w - shadow_w) // 2)
-        shadow_y = pos[1] + target_h - shadow_h - 10
-        draw.ellipse((shadow_x, shadow_y, shadow_x + shadow_w, shadow_y + shadow_h), fill="#253746")
+        shadow_y = pos[1] + offset_y + image_copy.height - int(shadow_h * 0.35)
+        shadow_layer = image_module.new("RGBA", canvas.size, (0, 0, 0, 0))
+        shadow_draw = draw_module.Draw(shadow_layer)
+        shadow_draw.ellipse((shadow_x, shadow_y, shadow_x + shadow_w, shadow_y + shadow_h), fill=(4, 10, 15, 108))
+        canvas = image_module.alpha_composite(canvas, shadow_layer)
         frame.paste(image_copy, (offset_x, offset_y), image_copy if image_copy.mode == "RGBA" else None)
         canvas.paste(frame, pos, frame)
-        draw.rounded_rectangle((pos[0] - 10, pos[1] - 10, pos[0] + target_w + 10, pos[1] + target_h + 10), radius=22, outline="#93d8ff", width=2)
 
     canvas.convert("RGB").save(image_path, format="PNG", optimize=True)
     return True

@@ -2956,22 +2956,22 @@ def _build_default_visual_plan(topic: str, funnel_stage: str, selected_hook: str
     has_product_image = bool((product or {}).get("image_url"))
     strategy = "hybrid" if has_product_image else "gemini_generated"
     return {
-        "style_intent": "Premium cinematic realism for practical energy resilience",
-        "mood": "trustworthy, confident, modern",
+        "style_intent": "Premium commercial photography for practical energy resilience, with physically believable materials and lighting",
+        "mood": "trustworthy, confident, modern, restrained",
         "image_strategy": strategy,
-        "composition": "text-safe negative space on the left, grounded product-safe stage on the lower right, premium atmospheric center depth",
+        "composition": "low-detail copy-safe negative space on the left, grounded product-safe stage on the lower right, natural center depth",
         "use_product_photo": has_product_image,
         "text_on_image": "none",
         "gemini_image_prompt": (
             f"Create a premium social background plate for topic '{topic}' with hook '{selected_hook}'. "
             f"Convey {funnel_stage.lower()} stage intent and support CTA direction: {selected_cta}. "
             "Do not render readable text or a product device; leave safe zones for local overlay and product compositing. "
-            "Show credible, modern home or small-business preparedness atmosphere with cinematic lighting."
+            "Show a credible modern home or small-business preparedness environment with directional warm light, charcoal and deep-navy materials, natural depth, and no decorative interface elements."
         ),
         "platform_overrides": {
-            "facebook": {"composition": "calm left copy-safe zone, grounded lower-right product zone, premium household atmosphere", "visual_direction": "single_image"},
-            "instagram": {"composition": "bold but uncluttered left headline-safe zone, grounded lower-right product zone, mobile-first depth", "visual_direction": "reel_cover_style"},
-            "linkedin": {"composition": "clean professional credibility layout", "visual_direction": "insight_graphic"},
+            "facebook": {"composition": "left 44% calm copy-safe zone, right 38% grounded product zone, bottom 16% clear, credible household setting", "visual_direction": "square commercial scene plate"},
+            "instagram": {"composition": "left 42% calm headline-safe zone, right 38% grounded product zone, bottom 16% clear, mobile-first depth", "visual_direction": "square editorial scene plate"},
+            "linkedin": {"composition": "left 46% calm copy-safe zone, right 36% grounded product zone, restrained workplace setting", "visual_direction": "wide professional scene plate"},
         },
     }
 
@@ -3002,6 +3002,14 @@ Campaign input:
 - Product measurable specs: {product_metrics or 'N/A'}
 - Product image available: {has_product_image}
 
+You are planning a BACKGROUND SCENE PLATE, not a finished advertisement. The final system adds the exact product cutout, brand, headline, verified specs, and CTA locally after generation.
+Describe only environment, physical materials, lighting, depth, palette, and negative-space geometry. Never ask the image model to create a product, device, package, logo, readable text, number, badge, button, chart, interface, sign, frame, or placeholder silhouette.
+Use a restrained Infenergy palette of charcoal, deep navy, amber, and warm gold. Keep the scene photorealistic and commercially polished, with one coherent light direction and a believable surface where the real product can land.
+Platform geometry is mandatory:
+- Facebook: square; left 44% low-detail copy zone; right 38% grounded product zone; bottom 16% clear.
+- Instagram: square; left 42% low-detail copy zone; right 38% grounded product zone; bottom 16% clear; mobile-first contrast.
+- LinkedIn: wide; left 46% low-detail copy zone; right 36% grounded product zone; restrained professional environment.
+
 Return only valid JSON with this exact shape:
 {{
   "style_intent": "string",
@@ -3010,7 +3018,7 @@ Return only valid JSON with this exact shape:
   "composition": "string",
   "use_product_photo": true,
   "text_on_image": "none|minimal",
-  "gemini_image_prompt": "Detailed visual generation prompt for an image model",
+    "gemini_image_prompt": "Concise scene-only prompt describing environment, materials, lighting, palette, depth, and safe zones",
   "platform_overrides": {{
     "facebook": {{"composition": "string", "visual_direction": "string"}},
     "instagram": {{"composition": "string", "visual_direction": "string"}},

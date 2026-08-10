@@ -14,7 +14,13 @@ sys.path.insert(0, SCRIPTS)
 import publish_facebook  # noqa: E402
 import publish_instagram  # noqa: E402
 import publish_linkedin  # noqa: E402
-from social_visuals import generate_visuals, normalize_brand_text  # noqa: E402
+from social_visuals import (  # noqa: E402
+    _build_gemini_image_prompt,
+    _gemini_plate_quality,
+    _normalize_reference_image,
+    generate_visuals,
+    normalize_brand_text,
+)
 
 
 class PublisherVisualTests(unittest.TestCase):
@@ -24,6 +30,50 @@ class PublisherVisualTests(unittest.TestCase):
         self.assertNotIn("INF Energy", normalized)
         self.assertIn("Infenergy Power", normalized)
         self.assertIn("#InfenergyPower", normalized)
+
+    def test_gemini_prompt_is_a_textless_platform_scene_contract(self) -> None:
+        prompt = _build_gemini_image_prompt(
+            {
+                "funnel_stage": "TRUST",
+                "product_name": "PowerFlex 2000",
+                "product_metrics": ["2000 Wh"],
+                "selected_hook": "Keep essentials running",
+            },
+            "instagram",
+            {"gemini_image_prompt": "Add badges, labels, and a fake product render."},
+        )
+        self.assertIn("left 42% and bottom 16%", prompt)
+        self.assertIn("ABSOLUTE EXCLUSIONS", prompt)
+        self.assertIn("no text, letters, numerals", prompt)
+        self.assertIn("subordinate to every rule", prompt)
+
+    def test_gemini_plate_quality_rejects_wrong_ratio_and_busy_copy_zone(self) -> None:
+        from PIL import Image
+
+        wrong_ratio = Image.new("RGB", (1200, 400), "#202830")
+        accepted, reasons = _gemini_plate_quality(wrong_ratio, "instagram")
+        self.assertFalse(accepted)
+        self.assertIn("aspect_ratio", reasons)
+
+        busy = Image.new("RGB", (1200, 1200), "black")
+        for x in range(0, 528, 8):
+            for y in range(0, 1200, 8):
+                if (x // 8 + y // 8) % 2:
+                    busy.paste("white", (x, y, x + 8, y + 8))
+        accepted, reasons = _gemini_plate_quality(busy, "instagram")
+        self.assertFalse(accepted)
+        self.assertIn("busy_copy_zone", reasons)
+
+    def test_style_reference_must_decode_as_an_image(self) -> None:
+        from PIL import Image
+        from io import BytesIO
+
+        self.assertEqual(_normalize_reference_image(b"<html>not an image</html>"), (b"", ""))
+        source = BytesIO()
+        Image.new("RGB", (80, 60), "#223344").save(source, format="PNG")
+        normalized, mime_type = _normalize_reference_image(source.getvalue())
+        self.assertGreater(len(normalized), 0)
+        self.assertEqual(mime_type, "image/jpeg")
 
     def test_linkedin_prefers_explicit_organization_urn(self) -> None:
         with patch.dict(os.environ, {"LINKEDIN_ORGANIZATION_URN": "urn:li:organization:12345"}, clear=False):

@@ -354,7 +354,11 @@ def build_art_direction(
 # --- Image prompt compiler (§33) --------------------------------------------
 
 
-def compile_image_prompt(ad: ArtDirection) -> tuple[str, str]:
+def compile_image_prompt(
+    ad: ArtDirection,
+    *,
+    extra_negatives: Iterable[str] = (),
+) -> tuple[str, str]:
     """Return (positive_prompt, negative_prompt)."""
     parts = [
         f"[{ad.visual_purpose}] {ad.visual_message}",
@@ -368,7 +372,9 @@ def compile_image_prompt(ad: ArtDirection) -> tuple[str, str]:
     if ad.must_include:
         parts.append("Must include: " + "; ".join(ad.must_include) + ".")
     positive = " ".join(parts)
-    negative = "; ".join(ad.must_avoid) if ad.must_avoid else ""
+    negatives = list(ad.must_avoid or [])
+    negatives.extend(x for x in extra_negatives if x)
+    negative = "; ".join(negatives) if negatives else ""
     return positive, negative
 
 

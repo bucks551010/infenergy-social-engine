@@ -51,9 +51,12 @@ def _load_bi_creative_context() -> dict[str, Any] | None:
         return None
     try:
         from business_intelligence import api as bi_api
+        from business_intelligence import profile as bi_profile
     except ImportError:
         return None
     try:
+        if not bi_profile.load_current():
+            bi_api.rebuild_profile()
         return bi_api.compile_creative_context()
     except Exception:
         return None
@@ -82,6 +85,42 @@ def _bi_verified_facts(ctx: dict[str, Any] | None) -> list[str]:
     if not ctx:
         return []
     return list(ctx.get("verified_facts", []))
+
+
+def _bi_forbidden_claims(ctx: dict[str, Any] | None) -> list[str]:
+    if not ctx:
+        return []
+    return list(ctx.get("forbidden_claims", []))
+
+
+def _bi_visual_prohibitions(ctx: dict[str, Any] | None) -> list[str]:
+    if not ctx:
+        return []
+    return list((ctx.get("brand_prohibitions") or {}).get("visual", []))
+
+
+def _bi_brand_voice(ctx: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not ctx:
+        return None
+    return ctx.get("voice") or None
+
+
+def _bi_pick_offering(rotation_index: int) -> dict[str, Any] | None:
+    """Rotate through catalog offerings when BI is active."""
+    if not _bi_enabled():
+        return None
+    try:
+        from business_intelligence import api as bi_api
+    except ImportError:
+        return None
+    try:
+        profile = bi_api.get_business_profile()
+        offerings = profile.get("offerings", []) or []
+        if not offerings:
+            return None
+        return offerings[rotation_index % len(offerings)]
+    except Exception:
+        return None
 
 
 # --- Engine rotation --------------------------------------------------------
@@ -158,6 +197,7 @@ class PostPackage:
     published: bool = False
     published_at: str | None = None
     business_context: dict[str, Any] | None = None
+    anchored_offering: dict[str, Any] | None = None
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -175,6 +215,7 @@ class PostPackage:
             "published": self.published,
             "published_at": self.published_at,
             "business_context": self.business_context,
+            "anchored_offering": self.anchored_offering,
         }
 
 
@@ -212,13 +253,18 @@ class SocialIntelligenceOrchestrator:
         # 0b. Optional BI Foundation hydration — only when the caller
         # didn't already specify a value and the flag is on.
         bi_ctx = _load_bi_creative_context()
+        bi_offering = _bi_pick_offering(rotation_index) if bi_ctx else None
         if bi_ctx:
             if not preferred_pillar:
                 preferred_pillar = _bi_preferred_pillar(bi_ctx)
             if not audience_hint:
                 audience_hint = _bi_audience_hint(bi_ctx)
             if not verified_facts:
-                verified_facts = _bi_verified_facts(bi_ctx)
+                # Prefer facts from the specifically-anchored product when we have one
+                if bi_offering and bi_offering.get("verified_facts"):
+                    verified_facts = list(bi_offering.get("verified_facts", []))
+                else:
+                    verified_facts = _bi_verified_facts(bi_ctx)
 
         # 1. Engine
         engine_name = (preferred_engine or _pick_engine(rotation_index)).upper()
@@ -267,7 +313,7 @@ class SocialIntelligenceOrchestrator:
             genre=brief.genre,
             platform=platform,
             body_word_count=len(body_text.split()),
-            has_product_asset=False,
+            has_product_asset=bool(bi_offering and bi_offering.get("images")),
         )
         concepts = visual_intelligence.generate_concepts(
             angle=brief.angle,
@@ -281,10 +327,13 @@ class SocialIntelligenceOrchestrator:
             visual_msg=v_msg,
             visual_format=v_format,
             concept=top_concept,
-            primary_subject=brief.topic_path.get("topic", brief.angle),
+            primary_subject=(bi_offering.get("name") if bi_offering else brief.topic_path.get("topic", brief.angle)),
             platform=platform,
         )
-        positive_prompt, negative_prompt = visual_intelligence.compile_image_prompt(art)
+        positive_prompt, negative_prompt = visual_intelligence.compile_image_prompt(
+            art,
+            extra_negatives=_bi_visual_prohibitions(bi_ctx),
+        )
         v_humanness = visual_intelligence.visual_prompt_humanness(positive_prompt)
 
         # 5. Text/visual allocation
@@ -317,6 +366,7 @@ class SocialIntelligenceOrchestrator:
         ledger = claim_intelligence.build_ledger(
             hook_text + " " + body_text,
             verified_facts=verified_facts or [],
+            forbidden_claims=_bi_forbidden_claims(bi_ctx),
         )
 
         # 8. Quality gate
@@ -333,6 +383,7 @@ class SocialIntelligenceOrchestrator:
             visual_prompt_humanness=v_humanness,
             caption_visual_relationship=alloc.relationship,
             engine=engine_name,
+            brand_voice=_bi_brand_voice(bi_ctx),
         )
         cd = quality_intelligence.creative_director_test(
             strategy_reason=f"engine={engine_name} pillar={brief.pillar.get('id')} genre={brief.genre.get('id')}",
@@ -399,6 +450,7 @@ class SocialIntelligenceOrchestrator:
             },
             provider_result=provider_result.as_dict(),
             business_context=bi_ctx,
+            anchored_offering=bi_offering,
         )
 
         # 10. Memory

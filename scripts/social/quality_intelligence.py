@@ -83,6 +83,7 @@ def score(
     visual_prompt_humanness: float,
     caption_visual_relationship: str,
     engine: str,
+    brand_voice: dict[str, Any] | None = None,
 ) -> QualityScore:
     factors: dict[str, float] = {}
 
@@ -129,10 +130,18 @@ def score(
     factors["shareability"] = 0.85 if "SHARE" in ctas else 0.4
     factors["conversation_potential"] = 0.8 if ("COMMENT" in ctas or "REFLECT" in ctas) else 0.35
 
-    # brand_alignment
     factors["brand_alignment"] = 0.85
+    if brand_voice:
+        text_lower = (hook + " " + body).lower()
+        prohibited = [p for p in brand_voice.get("prohibited_phrases", []) if p and str(p).lower() in text_lower]
+        preferred = [p for p in brand_voice.get("preferred_phrases", []) if p and str(p).lower() in text_lower]
+        adj = 0.0
+        if prohibited:
+            adj -= min(0.6, 0.25 * len(prohibited))
+        if preferred:
+            adj += min(0.15, 0.05 * len(preferred))
+        factors["brand_alignment"] = max(0.0, min(1.0, factors["brand_alignment"] + adj))
 
-    # platform_fit
     factors["platform_fit"] = 0.75
 
     # visual_concept + execution
@@ -165,6 +174,8 @@ def score(
         reasons.append("unverified high-risk claims")
     if factors["information_value"] < 0.5:
         reasons.append("information density weak")
+    if brand_voice and factors["brand_alignment"] < 0.55:
+        reasons.append("brand voice violation (prohibited phrases present)")
 
     return QualityScore(factors=factors, overall=overall, band=_band(overall), reasons=reasons)
 

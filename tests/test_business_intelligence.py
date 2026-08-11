@@ -659,3 +659,112 @@ def test_cli_rebuild_command(bi_env, capsys):
     payload = json.loads(captured.out)
     assert payload["offerings"] == 2
     assert payload["verdict"]["passed"] is True
+
+
+# =====================================================================
+# Deep wiring: brand-guard enforcement inside social pipeline
+# =====================================================================
+
+
+def test_claim_ledger_flags_forbidden_claims():
+    from social import claim_intelligence
+    ledger = claim_intelligence.build_ledger(
+        "This device is life-saving in every outage.",
+        verified_facts=[],
+        forbidden_claims=["life-saving"],
+    )
+    assert ledger.unverified_high_risk
+    assert any(c.claim_type == "forbidden" for c in ledger.claims)
+    assert ledger.summary()["publish_blocking"] is True
+
+
+def test_quality_score_penalizes_prohibited_phrases():
+    from social import claim_intelligence, quality_intelligence
+    base_ledger = claim_intelligence.build_ledger("")
+    baseline = quality_intelligence.score(
+        hook="Prepare calmly for outages.",
+        body="A practical checklist for real households.",
+        takeaway="Take one small preparedness step.",
+        memory_anchor="calm preparedness",
+        visual_concept_description="soft daylight household",
+        platform="instagram_feed",
+        genre={"id": "checklist", "avg_information_density": 0.5, "cta_preferences": ["SAVE"]},
+        reader_job_config={"typical_emotion": "reassurance"},
+        ledger=base_ledger,
+        visual_prompt_humanness=0.9,
+        caption_visual_relationship="VISUAL_SUMMARIZES_CAPTION",
+        engine="B",
+    )
+    penalized = quality_intelligence.score(
+        hook="This device is life-saving.",
+        body="Guaranteed to keep you safe in every doomsday scenario.",
+        takeaway="Take one small preparedness step.",
+        memory_anchor="calm preparedness",
+        visual_concept_description="soft daylight household",
+        platform="instagram_feed",
+        genre={"id": "checklist", "avg_information_density": 0.5, "cta_preferences": ["SAVE"]},
+        reader_job_config={"typical_emotion": "reassurance"},
+        ledger=base_ledger,
+        visual_prompt_humanness=0.9,
+        caption_visual_relationship="VISUAL_SUMMARIZES_CAPTION",
+        engine="B",
+        brand_voice={
+            "prohibited_phrases": ["life-saving", "guaranteed", "doomsday"],
+            "preferred_phrases": ["matched to your need"],
+        },
+    )
+    assert penalized.factors["brand_alignment"] < baseline.factors["brand_alignment"]
+    assert any("brand voice violation" in r for r in penalized.reasons)
+
+
+def test_visual_prompt_appends_extra_negatives():
+    from social import visual_intelligence
+    class _Fake:
+        visual_purpose = "explain"; visual_message = "m"; visual_format = "single_image"
+        creative_concept = "c"; primary_subject = "s"; environment = "e"; composition = "co"
+        focal_point = "fp"; camera_angle = "ca"; lens_feel = "lf"; lighting = "l"
+        time_of_day = "t"; color_direction = "cd"; texture = "tx"; mood = "mo"
+        style = "st"; realism_level = "r"; brand_connection = "bc"; text_safe_area = "tsa"
+        must_include: list[str] = []
+        must_avoid = ["cliche stock photo"]
+    _, negative = visual_intelligence.compile_image_prompt(
+        _Fake(),
+        extra_negatives=["cyberpunk neon UI", "doomsday scenery"],
+    )
+    assert "cliche stock photo" in negative
+    assert "cyberpunk neon UI" in negative
+    assert "doomsday scenery" in negative
+
+
+def test_orchestrator_end_to_end_with_bi_active(bi_env, monkeypatch):
+    _seed_all(bi_env)
+    from business_intelligence import api
+    api.rebuild_profile()
+    monkeypatch.setenv("ENABLE_BUSINESS_INTELLIGENCE", "1")
+
+    for name in list(sys.modules):
+        if name.startswith("social."):
+            del sys.modules[name]
+
+    from social.orchestrator import SocialIntelligenceOrchestrator
+    o = SocialIntelligenceOrchestrator()
+    pkg = o.create_post(rotation_index=0, record_memory=False)
+    assert pkg.business_context is not None
+    assert pkg.anchored_offering is not None
+    assert pkg.anchored_offering.get("sku") in ("PS-500", "CH-65")
+    assert pkg.brief.get("audience_segment") == "preparedness_focused_household"
+    # Quality gate still produces a score
+    assert pkg.quality["overall"] > 0.0
+
+
+def test_generate_posts_run_social_intelligence_with_bi(bi_env, monkeypatch):
+    _seed_all(bi_env)
+    monkeypatch.setenv("ENABLE_BUSINESS_INTELLIGENCE", "1")
+    for name in list(sys.modules):
+        if name.startswith("social.") or name == "business_intelligence":
+            del sys.modules[name]
+    from generate_posts import run_social_intelligence
+    posts = run_social_intelligence(count=1, platform="instagram_feed", record_memory=False)
+    assert len(posts) == 1
+    assert posts[0].get("business_context") is not None
+    assert posts[0].get("anchored_offering") is not None

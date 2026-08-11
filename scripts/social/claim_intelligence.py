@@ -169,7 +169,12 @@ class ClaimLedger:
         }
 
 
-def build_ledger(text: str, *, verified_facts: Iterable[str] = ()) -> ClaimLedger:
+def build_ledger(
+    text: str,
+    *,
+    verified_facts: Iterable[str] = (),
+    forbidden_claims: Iterable[str] = (),
+) -> ClaimLedger:
     ledger = ClaimLedger()
     for c in extract_claims(text):
         if _fact_matches(c, verified_facts):
@@ -182,4 +187,20 @@ def build_ledger(text: str, *, verified_facts: Iterable[str] = ()) -> ClaimLedge
             elif c.risk == MEDIUM_RISK:
                 ledger.unverified_medium.append(c)
         ledger.claims.append(c)
+    low = text.lower()
+    for fc in forbidden_claims:
+        if not fc:
+            continue
+        if str(fc).lower() in low:
+            forbidden = Claim(
+                claim_text=str(fc),
+                claim_type="forbidden",
+                confidence=1.0,
+                risk=HIGH_RISK,
+                verification_required=True,
+                source="brand_forbidden_claims",
+                verification_status="forbidden",
+            )
+            ledger.claims.append(forbidden)
+            ledger.unverified_high_risk.append(forbidden)
     return ledger

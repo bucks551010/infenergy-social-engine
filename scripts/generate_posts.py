@@ -20,11 +20,21 @@ from google.genai import types
 # the new orchestrator (engines A/B/C, audience-value pipeline, quality gate,
 # creative director test). Falls back to the existing generator when the
 # flag is not set, so the default behavior is unchanged.
+#
+# When ENABLE_BUSINESS_INTELLIGENCE=1 is *also* set, the orchestrator
+# auto-hydrates its inputs from the Living Business Intelligence Foundation
+# (identity, voice, audience segments, verified product facts, forbidden
+# claims, visual prohibitions), and every generated post carries the
+# ``business_context`` + ``anchored_offering`` payloads.
 # ---------------------------------------------------------------------------
 
 
 def _social_intelligence_enabled() -> bool:
     return os.environ.get("ENABLE_SOCIAL_INTELLIGENCE", "").lower() in {"1", "true", "yes", "on"}
+
+
+def _business_intelligence_enabled() -> bool:
+    return os.environ.get("ENABLE_BUSINESS_INTELLIGENCE", "").lower() in {"1", "true", "yes", "on"}
 
 
 def run_social_intelligence(count: int = 1, platform: str = "instagram_feed", **kw: Any) -> list[dict[str, Any]]:
@@ -33,6 +43,16 @@ def run_social_intelligence(count: int = 1, platform: str = "instagram_feed", **
     Returns a list of package dicts. Safe to import — the ``social`` package
     is only touched when this function is actually called.
     """
+    if _business_intelligence_enabled():
+        # Ensure the profile is fresh before the orchestrator reads it.
+        try:
+            from business_intelligence import api as bi_api
+            from business_intelligence import profile as bi_profile
+            if not bi_profile.load_current():
+                bi_api.rebuild_profile()
+        except Exception:
+            pass
+
     from social.orchestrator import SocialIntelligenceOrchestrator
 
     orchestrator = SocialIntelligenceOrchestrator()

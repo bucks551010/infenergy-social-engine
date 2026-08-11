@@ -1,0 +1,52 @@
+{
+  "product_id": "WFS-001",
+  "sku": "WFS-001",
+  "name": "Wosfer Micron Water Filter Straw",
+  "product_type": "portable_water_filter",
+  "role": "portable water filtration backup",
+  "product_summary": "Wosfer Micron Water Filter Straw is a portable water filtration backup that adds clean-water support to emergency and travel kits.",
+  "categories": [
+    "Camping & Outdoors",
+    "Emergency Tools",
+    "Portable Water Filters",
+    "Survival Gear"
+  ],
+  "verified_facts": [
+    "28mm",
+    "30mm",
+    "Uncompromising Purification for Any Adventure Equip yourself for any journey with this portable water filter straw. This powerful system features a high-performance, 3-stage filtration process with a 0.01 micron hollow fiber membrane that claims to remove bacteria, parasites, and viruses. The filter is designed with versatility in mind, allowing it to connect to both 28mm and 30mm bottle mouths. With included accessories like a pull rope and dust cover, this tool is ready for any outdoor adventu"
+  ],
+  "core_benefits": [
+    "adds clean-water support to emergency and travel kits",
+    "keeps water preparedness compact and portable"
+  ],
+  "best_fit_use_cases": [
+    "emergency water kit",
+    "camping and hiking",
+    "vehicle preparedness",
+    "travel backup"
+  ],
+  "best_fit_audiences": [
+    "prepared households",
+    "campers and hikers",
+    "travelers building a water-backup plan"
+  ],
+  "primary_pain_point": "Preparedness kits fail when safe-water backup is treated as an afterthought.",
+  "proof_rule": "Use only published filtration, capacity, material, and compatibility details.",
+  "recommended_cta": "Review the filtration details and add it to the water-backup plan that fits your kit.",
+  "hashtag_themes": [
+    "WaterPreparedness",
+    "EmergencyKit",
+    "WaterFiltration",
+    "OutdoorSafety",
+    "Preparedness"
+  ],
+  "visual_direction": "Show the real filter in a credible clean-water, trail, travel, or emergency-kit use case.",
+  "forbidden_claims": [
+    "Do not invent specifications, compatibility, runtime, certifications, guarantees, or included accessories.",
+    "Do not describe the product as a different product type because of secondary features or broad categories.",
+    "Do not use power-device language for water, comfort, safety, or other non-power primary products."
+  ],
+  "source_image_url": "https://infenergypower.com/wp-content/uploads/2025/08/H6add1eef81a641f899edca672a6a75edy.jpg",
+  "updated_at_utc": "2026-08-10T20:36:45.610584+00:00"
+}

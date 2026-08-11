@@ -1,0 +1,50 @@
+{
+  "product_id": "SOREIN-SOLAR-PANEL",
+  "sku": "SOREIN-SOLAR-PANEL",
+  "name": "Sorein Foldable Solar Panel",
+  "product_type": "solar_panel",
+  "role": "portable solar charging panel",
+  "product_summary": "Sorein Foldable Solar Panel is a portable solar charging panel that adds off-grid charging support for compatible equipment.",
+  "categories": [
+    "Outdoors & Camping",
+    "Portable Power",
+    "Solar Panels"
+  ],
+  "verified_facts": [
+    "200W",
+    "400W",
+    "Discover the SOREIN Foldable Solar Panel Your ultimate solution for portable solar power, available in 200W and 400W options. Perfect for outdoor adventures, RVing, emergency preparedness, and off-grid living. ✨ High Efficiency (23%) ✨ Ultra Durable &amp; Flexible ✨ IP67 Waterproof ✨ Compact &amp; Portable ✨ Monocrystalline Cells Select your desired power output and experience the freedom of reliable, clean energy anywhere! /* Basic styling for the container */ .sorein-full-description { font-fa"
+  ],
+  "core_benefits": [
+    "adds off-grid charging support for compatible equipment",
+    "extends charging options when suitable sunlight is available"
+  ],
+  "best_fit_use_cases": [
+    "camping and RV charging",
+    "off-grid travel",
+    "compatible power-station charging",
+    "emergency recharging"
+  ],
+  "best_fit_audiences": [
+    "power-station owners",
+    "campers and RV users",
+    "off-grid travelers"
+  ],
+  "primary_pain_point": "A solar panel is useful only when its output and connectors match the equipment it needs to charge.",
+  "proof_rule": "Use only published wattage, connector, voltage, efficiency, size, and compatibility details.",
+  "recommended_cta": "Verify wattage and connector compatibility with your equipment before buying.",
+  "hashtag_themes": [
+    "SolarPanel",
+    "OffGridPower",
+    "SolarCharging",
+    "CampingPower"
+  ],
+  "visual_direction": "Show the real panel deployed in sunlight and connected only to compatible equipment supported by product data.",
+  "forbidden_claims": [
+    "Do not invent specifications, compatibility, runtime, certifications, guarantees, or included accessories.",
+    "Do not describe the product as a different product type because of secondary features or broad categories.",
+    "Do not use power-device language for water, comfort, safety, or other non-power primary products."
+  ],
+  "source_image_url": "https://infenergypower.com/wp-content/uploads/2025/08/Hb47bafe5afad478583bf6578653b0c4b0-scaled.jpg",
+  "updated_at_utc": "2026-08-10T21:48:32.523676+00:00"
+}

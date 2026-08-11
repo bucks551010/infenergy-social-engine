@@ -1,0 +1,112 @@
+{
+  "agent": "product_intelligence",
+  "product_brief": {
+    "product_id": "BSM-B04-JSAC",
+    "sku": "BSM-B04-JSAC",
+    "name": "5-in-1 Portable Car Jump Starter with Air Compressor",
+    "product_type": "vehicle_jump_starter",
+    "role": "vehicle emergency jump starter",
+    "product_summary": "5-in-1 Portable Car Jump Starter with Air Compressor is a vehicle emergency jump starter that supports roadside readiness.",
+    "categories": [
+      "Car Accessories",
+      "Emergency Tools",
+      "New Arrivals",
+      "Travel Power > Phone Charging Cables"
+    ],
+    "verified_facts": [
+      "12V",
+      "BSMOOM B04: 5-in-1 Power &amp; Preparedness Handle any roadside emergency with the BSMOOM B04. This is a powerful 5-in-1 tool featuring a colossal 6000A peak jump starter and a rapid 150PSI air compressor . With an added power bank and emergency LED light, it's the essential solution for dead batteries, flat tires, and complete peace of mind on the road. Never Stranded Again: The 5-in-1 Emergency Powerhouse The BSMOOM B04 is more than a jump starter; it's your complete roadside survival kit. Eng"
+    ],
+    "core_benefits": [
+      "supports roadside readiness",
+      "provides vehicle-start support when a battery fails"
+    ],
+    "best_fit_use_cases": [
+      "roadside emergency kit",
+      "daily vehicle carry",
+      "road trips",
+      "garage preparedness"
+    ],
+    "best_fit_audiences": [
+      "drivers",
+      "road-trip travelers",
+      "households building vehicle emergency kits"
+    ],
+    "primary_pain_point": "Roadside emergencies become expensive when the tool in the trunk cannot handle the vehicle.",
+    "proof_rule": "Use only published starting-current, battery, compressor, port, and compatibility details.",
+    "recommended_cta": "Compare the published starting and compatibility details with your vehicle before buying.",
+    "hashtag_themes": [
+      "RoadsideReady",
+      "CarEmergencyKit",
+      "JumpStarter",
+      "VehiclePreparedness"
+    ],
+    "visual_direction": "Show the real jump starter beside a vehicle in a credible roadside or garage scenario.",
+    "forbidden_claims": [
+      "Do not invent specifications, compatibility, runtime, certifications, guarantees, or included accessories.",
+      "Do not describe the product as a different product type because of secondary features or broad categories.",
+      "Do not use power-device language for water, comfort, safety, or other non-power primary products."
+    ],
+    "source_image_url": "https://infenergypower.com/wp-content/uploads/2025/08/Hc6124e2203404e9eaafcaf8993982781L.jpg",
+    "updated_at_utc": "2026-08-10T20:34:41.543448+00:00"
+  },
+  "product_summary": "5-in-1 Portable Car Jump Starter with Air Compressor is a vehicle emergency jump starter that supports roadside readiness.",
+  "best_fit_audiences": [
+    "drivers",
+    "road-trip travelers",
+    "households building vehicle emergency kits",
+    "Primary audience segment: Practical Energy Optimizer"
+  ],
+  "core_benefits": [
+    "supports roadside readiness",
+    "provides vehicle-start support when a battery fails"
+  ],
+  "proof_points": [
+    "12V",
+    "BSMOOM B04: 5-in-1 Power &amp; Preparedness Handle any roadside emergency with the BSMOOM B04. This is a powerful 5-in-1 tool featuring a colossal 6000A peak jump starter and a rapid 150PSI air compressor . With an added power bank and emergency LED light, it's the essential solution for dead batteries, flat tires, and complete peace of mind on the road. Never Stranded Again: The 5-in-1 Emergency Powerhouse The BSMOOM B04 is more than a jump starter; it's your complete roadside survival kit. Eng"
+  ],
+  "sales_angle": "Lead with the product-specific problem and make the cost of a poor fit concrete.",
+  "preferred_vocabulary": [
+    "vehicle emergency jump starter",
+    "roadside emergency kit",
+    "daily vehicle carry",
+    "road trips",
+    "garage preparedness"
+  ],
+  "emotional_outcomes": [
+    "confidence in product fit",
+    "clarity about the product's job",
+    "preparedness grounded in verified facts"
+  ],
+  "messaging_devices": [
+    "one product, one primary job",
+    "fact to use case to outcome",
+    "state compatibility limits clearly"
+  ],
+  "sales_copy_seed": "Where does 5-in-1 Portable Car Jump Starter with Air Compressor fit in a practical outage plan? Roadside emergencies become expensive when the tool in the trunk cannot handle the vehicle. 5-in-1 Portable Car Jump Starter with Air Compressor is a vehicle emergency jump starter that supports roadside readiness. Map your must-run devices and build your outage-ready setup",
+  "handoff": {
+    "copywriter": [
+      "Primary product type: vehicle_jump_starter",
+      "Primary job: vehicle emergency jump starter",
+      "Use cases: ['roadside emergency kit', 'daily vehicle carry', 'road trips', 'garage preparedness']",
+      "Use only these facts: ['12V', \"BSMOOM B04: 5-in-1 Power &amp; Preparedness Handle any roadside emergency with the BSMOOM B04. This is a powerful 5-in-1 tool featuring a colossal 6000A peak jump starter and a rapid 150PSI air compressor . With an added power bank and emergency LED light, it's the essential solution for dead batteries, flat tires, and complete peace of mind on the road. Never Stranded Again: The 5-in-1 Emergency Powerhouse The BSMOOM B04 is more than a jump starter; it's your complete roadside survival kit. Eng\"]",
+      "CTA direction: Map your must-run devices and build your outage-ready setup"
+    ],
+    "visual_director": [
+      "Show the real jump starter beside a vehicle in a credible roadside or garage scenario.",
+      "Use the supplied real product image; do not synthesize a replacement product."
+    ],
+    "platform_editor": [
+      "Preserve the primary product job on every platform.",
+      "Keep the content native to this topic: Portable power setups for camping weekends"
+    ],
+    "product_truth": [
+      "Use only published starting-current, battery, compressor, port, and compatibility details.",
+      "Do not invent specifications, compatibility, runtime, certifications, guarantees, or included accessories.",
+      "Do not describe the product as a different product type because of secondary features or broad categories.",
+      "Do not use power-device language for water, comfort, safety, or other non-power primary products."
+    ]
+  },
+  "brief_path": "C:\\Users\\v-jmoten\\infenergy-social-engine\\scripts\\..\\data\\product_briefs\\BSM-B04-JSAC.json",
+  "time_utc": "2026-08-10T20:34:41.546945+00:00"
+}

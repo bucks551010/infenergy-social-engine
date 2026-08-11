@@ -1,0 +1,303 @@
+{
+  "agent": "product_intelligence",
+  "mode": "catalog_rebuild",
+  "products_scanned": 49,
+  "briefs_written": 49,
+  "products": [
+    {
+      "product_id": "CAMP-FAN-12K",
+      "name": "3-in-1 Portable Camping Fan with 12000mAh Battery, LED Light & Power Bank",
+      "product_type": "portable_fan",
+      "brief_path": "data\\product_briefs\\CAMP-FAN-12K.json"
+    },
+    {
+      "product_id": "BSM-B04-JSAC",
+      "name": "5-in-1 Portable Car Jump Starter with Air Compressor",
+      "product_type": "vehicle_jump_starter",
+      "brief_path": "data\\product_briefs\\BSM-B04-JSAC.json"
+    },
+    {
+      "product_id": "AF-T3840",
+      "name": "Aferiy 3840",
+      "product_type": "power_station",
+      "brief_path": "data\\product_briefs\\AF-T3840.json"
+    },
+    {
+      "product_id": "AF-P010",
+      "name": "AFERIY AF-P010",
+      "product_type": "power_station",
+      "brief_path": "data\\product_briefs\\AF-P010.json"
+    },
+    {
+      "product_id": "AF-P110",
+      "name": "AFERIY AF-P110",
+      "product_type": "power_station",
+      "brief_path": "data\\product_briefs\\AF-P110.json"
+    },
+    {
+      "product_id": "AF-P210",
+      "name": "AFERIY AF-P210",
+      "product_type": "power_station",
+      "brief_path": "data\\product_briefs\\AF-P210.json"
+    },
+    {
+      "product_id": "AF-SOLAR",
+      "name": "Aferiy Solar Panels",
+      "product_type": "power_station",
+      "brief_path": "data\\product_briefs\\AF-SOLAR.json"
+    },
+    {
+      "product_id": "AF-S200",
+      "name": "Aferiy Solar Panels - 200W",
+      "product_type": "solar_panel",
+      "brief_path": "data\\product_briefs\\AF-S200.json"
+    },
+    {
+      "product_id": "AF-S400",
+      "name": "Aferiy Solar Panels - 400W",
+      "product_type": "solar_panel",
+      "brief_path": "data\\product_briefs\\AF-S400.json"
+    },
+    {
+      "product_id": "BW-1500W-60AH",
+      "name": "Black Warrior 1500W - Long Range Edition",
+      "product_type": "preparedness_product",
+      "brief_path": "data\\product_briefs\\BW-1500W-60AH.json"
+    },
+    {
+      "product_id": "e081cc5c45c7",
+      "name": "HoneyVolt Slim Power Bank",
+      "product_type": "power_bank",
+      "brief_path": "data\\product_briefs\\e081cc5c45c7.json"
+    },
+    {
+      "product_id": "7dee4a7c5b2a",
+      "name": "HoneyVolt Slim Power Bank - Lilac Purple Bloom",
+      "product_type": "power_bank",
+      "brief_path": "data\\product_briefs\\7dee4a7c5b2a.json"
+    },
+    {
+      "product_id": "0616fd85e7c0",
+      "name": "HoneyVolt Slim Power Bank - Sky Blue Mist",
+      "product_type": "power_bank",
+      "brief_path": "data\\product_briefs\\0616fd85e7c0.json"
+    },
+    {
+      "product_id": "7bc1f4586234",
+      "name": "HoneyVolt Slim Power Bank - Sunrise Yellow Cream",
+      "product_type": "power_bank",
+      "brief_path": "data\\product_briefs\\7bc1f4586234.json"
+    },
+    {
+      "product_id": "INF-9792",
+      "name": "Infenergy 9792",
+      "product_type": "power_station",
+      "brief_path": "data\\product_briefs\\INF-9792.json"
+    },
+    {
+      "product_id": "INF-9792-U1B",
+      "name": "Infenergy 9792 - \"Infenergy 9792 Unit + 1 - 9792Wh Battery\"",
+      "product_type": "preparedness_product",
+      "brief_path": "data\\product_briefs\\INF-9792-U1B.json"
+    },
+    {
+      "product_id": "INF-9792-U2B",
+      "name": "Infenergy 9792 - \"Infenergy 9792 Unit + 2 - 9792Wh Expansion Battery\"",
+      "product_type": "preparedness_product",
+      "brief_path": "data\\product_briefs\\INF-9792-U2B.json"
+    },
+    {
+      "product_id": "INF-9792-U",
+      "name": "Infenergy 9792 - \"Infenergy 9792 Unit\"",
+      "product_type": "preparedness_product",
+      "brief_path": "data\\product_briefs\\INF-9792-U.json"
+    },
+    {
+      "product_id": "MF-SLIM",
+      "name": "MagnaFlex Slim",
+      "product_type": "preparedness_product",
+      "brief_path": "data\\product_briefs\\MF-SLIM.json"
+    },
+    {
+      "product_id": "SGL-BULB",
+      "name": "Portable Solar-Powered Light Bulb",
+      "product_type": "solar_panel",
+      "brief_path": "data\\product_briefs\\SGL-BULB.json"
+    },
+    {
+      "product_id": "PCP-5IN1",
+      "name": "PowerCharge Pro",
+      "product_type": "preparedness_product",
+      "brief_path": "data\\product_briefs\\PCP-5IN1.json"
+    },
+    {
+      "product_id": "b7ad9dc40179",
+      "name": "PowerCharge Pro - Black",
+      "product_type": "preparedness_product",
+      "brief_path": "data\\product_briefs\\b7ad9dc40179.json"
+    },
+    {
+      "product_id": "03534566804e",
+      "name": "PowerCharge Pro - White",
+      "product_type": "preparedness_product",
+      "brief_path": "data\\product_briefs\\03534566804e.json"
+    },
+    {
+      "product_id": "PF-150W",
+      "name": "PowerFlex 150W Portable Laptop Charger",
+      "product_type": "power_bank",
+      "brief_path": "data\\product_briefs\\PF-150W.json"
+    },
+    {
+      "product_id": "PPP-200",
+      "name": "PowerPulse Pro 200",
+      "product_type": "preparedness_product",
+      "brief_path": "data\\product_briefs\\PPP-200.json"
+    },
+    {
+      "product_id": "SFT-20K",
+      "name": "SolarFlex Titan 20K",
+      "product_type": "solar_panel",
+      "brief_path": "data\\product_briefs\\SFT-20K.json"
+    },
+    {
+      "product_id": "SM-PRO",
+      "name": "SolarMax Pro 5kW-10kW",
+      "product_type": "power_station",
+      "brief_path": "data\\product_briefs\\SM-PRO.json"
+    },
+    {
+      "product_id": "c736078f2e72",
+      "name": "SolarMax Pro 5kW-10kW - 2 SolarMax Pro w/6 240W Solar Panels",
+      "product_type": "solar_panel",
+      "brief_path": "data\\product_briefs\\c736078f2e72.json"
+    },
+    {
+      "product_id": "SM-PRO-2",
+      "name": "SolarMax Pro 5kW-10kW - 2 SolarMax Pros",
+      "product_type": "solar_panel",
+      "brief_path": "data\\product_briefs\\SM-PRO-2.json"
+    },
+    {
+      "product_id": "SM-PRO-1",
+      "name": "SolarMax Pro 5kW-10kW - SolarMax Pro",
+      "product_type": "solar_panel",
+      "brief_path": "data\\product_briefs\\SM-PRO-1.json"
+    },
+    {
+      "product_id": "76394d27852b",
+      "name": "SolarMax Pro 5kW-10kW - SolarMax Pro w/3 240W Solar Panels",
+      "product_type": "solar_panel",
+      "brief_path": "data\\product_briefs\\76394d27852b.json"
+    },
+    {
+      "product_id": "SOREIN-SOLAR-PANEL",
+      "name": "Sorein Foldable Solar Panel",
+      "product_type": "solar_panel",
+      "brief_path": "data\\product_briefs\\SOREIN-SOLAR-PANEL.json"
+    },
+    {
+      "product_id": "901f9e73a136",
+      "name": "Sorein Foldable Solar Panel - 200W",
+      "product_type": "solar_panel",
+      "brief_path": "data\\product_briefs\\901f9e73a136.json"
+    },
+    {
+      "product_id": "7ecefbd82dc7",
+      "name": "Sorein Foldable Solar Panel - 400W",
+      "product_type": "solar_panel",
+      "brief_path": "data\\product_briefs\\7ecefbd82dc7.json"
+    },
+    {
+      "product_id": "SOREIN-SYSTEM",
+      "name": "Sorein Modular Power System",
+      "product_type": "preparedness_product",
+      "brief_path": "data\\product_briefs\\SOREIN-SYSTEM.json"
+    },
+    {
+      "product_id": "SOREIN-AC200",
+      "name": "Sorein Modular Power System - AC 200 Extra Inverter",
+      "product_type": "power_station",
+      "brief_path": "data\\product_briefs\\SOREIN-AC200.json"
+    },
+    {
+      "product_id": "SOREIN-EB200",
+      "name": "Sorein Modular Power System - EB 200 Extra Battery",
+      "product_type": "preparedness_product",
+      "brief_path": "data\\product_briefs\\SOREIN-EB200.json"
+    },
+    {
+      "product_id": "SOREIN-FSP",
+      "name": "Sorein Modular Power System - Full Stack Pro",
+      "product_type": "preparedness_product",
+      "brief_path": "data\\product_briefs\\SOREIN-FSP.json"
+    },
+    {
+      "product_id": "SOREIN-MB2000",
+      "name": "Sorein Modular Power System - Main Base 2000",
+      "product_type": "preparedness_product",
+      "brief_path": "data\\product_briefs\\SOREIN-MB2000.json"
+    },
+    {
+      "product_id": "SOREIN-MP",
+      "name": "Sorein Modular Power System - Max Power",
+      "product_type": "preparedness_product",
+      "brief_path": "data\\product_briefs\\SOREIN-MP.json"
+    },
+    {
+      "product_id": "SOREIN-MBC",
+      "name": "Sorein Modular Power System - Mobile Battery Chassis",
+      "product_type": "preparedness_product",
+      "brief_path": "data\\product_briefs\\SOREIN-MBC.json"
+    },
+    {
+      "product_id": "SOREIN-ORMC",
+      "name": "Sorein Modular Power System - Off-Road Mobile Chassis",
+      "product_type": "preparedness_product",
+      "brief_path": "data\\product_briefs\\SOREIN-ORMC.json"
+    },
+    {
+      "product_id": "SOREIN-PH",
+      "name": "Sorein Modular Power System - Powerhouse",
+      "product_type": "preparedness_product",
+      "brief_path": "data\\product_briefs\\SOREIN-PH.json"
+    },
+    {
+      "product_id": "SOREIN-PGP",
+      "name": "Sorein Modular Power System - Pro-Grade Performance",
+      "product_type": "preparedness_product",
+      "brief_path": "data\\product_briefs\\SOREIN-PGP.json"
+    },
+    {
+      "product_id": "SOREIN-UGB",
+      "name": "Sorein Modular Power System - Ultimate Grid Buster",
+      "product_type": "preparedness_product",
+      "brief_path": "data\\product_briefs\\SOREIN-UGB.json"
+    },
+    {
+      "product_id": "SOREIN-WP",
+      "name": "Sorein Modular Power System - Weekender Pro",
+      "product_type": "preparedness_product",
+      "brief_path": "data\\product_briefs\\SOREIN-WP.json"
+    },
+    {
+      "product_id": "WFS-001",
+      "name": "Wosfer Micron Water Filter Straw",
+      "product_type": "portable_water_filter",
+      "brief_path": "data\\product_briefs\\WFS-001.json"
+    },
+    {
+      "product_id": "WOSFER-PEWFS-T05",
+      "name": "Wosfer Portable Electric Water Filter & Purifier",
+      "product_type": "portable_water_filter",
+      "brief_path": "data\\product_briefs\\WOSFER-PEWFS-T05.json"
+    },
+    {
+      "product_id": "WOSFER-DH-C10",
+      "name": "Wosfer Portable Water Purifier Bottle",
+      "product_type": "preparedness_product",
+      "brief_path": "data\\product_briefs\\WOSFER-DH-C10.json"
+    }
+  ],
+  "time_utc": "2026-08-10T20:23:09.846957+00:00"
+}

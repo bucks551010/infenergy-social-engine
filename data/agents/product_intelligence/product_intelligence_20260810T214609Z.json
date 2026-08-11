@@ -1,0 +1,101 @@
+{
+  "agent": "product_intelligence",
+  "product_brief": {
+    "product_id": "76394d27852b",
+    "sku": "",
+    "name": "SolarMax Pro 5kW-10kW - SolarMax Pro w/3 240W Solar Panels",
+    "product_type": "power_system_bundle",
+    "role": "configured modular power-system bundle",
+    "product_summary": "SolarMax Pro 5kW-10kW - SolarMax Pro w/3 240W Solar Panels is a configured modular power-system bundle that combines documented system components for a defined backup-power configuration.",
+    "categories": [],
+    "verified_facts": [],
+    "core_benefits": [
+      "combines documented system components for a defined backup-power configuration",
+      "simplifies selection when the included components fit the required loads"
+    ],
+    "best_fit_use_cases": [
+      "home backup configuration",
+      "extended outage planning",
+      "off-grid power systems",
+      "high-demand mobile power"
+    ],
+    "best_fit_audiences": [
+      "households planning larger backup loads",
+      "off-grid system buyers",
+      "buyers comparing complete configurations"
+    ],
+    "primary_pain_point": "A power bundle is only a good fit when its included components, output, and storage match the planned loads.",
+    "proof_rule": "Use only published included components, output, storage, compatibility, and expansion details for this exact bundle.",
+    "recommended_cta": "Compare this exact bundle's included components and capacity with your planned loads.",
+    "hashtag_themes": [
+      "PowerSystem",
+      "HomeBackup",
+      "ModularPower",
+      "EnergyPreparedness"
+    ],
+    "visual_direction": "Show every included product from the exact bundle in a credible system configuration.",
+    "forbidden_claims": [
+      "Do not invent specifications, compatibility, runtime, certifications, guarantees, or included accessories.",
+      "Do not describe the product as a different product type because of secondary features or broad categories.",
+      "Do not use power-device language for water, comfort, safety, or other non-power primary products."
+    ],
+    "source_image_url": "https://infenergypower.com/wp-content/uploads/2024/08/H574d7c5391ff4f0d8d9a9f36d137d351W.avif",
+    "updated_at_utc": "2026-08-10T21:46:09.193295+00:00"
+  },
+  "product_summary": "SolarMax Pro 5kW-10kW - SolarMax Pro w/3 240W Solar Panels is a configured modular power-system bundle that combines documented system components for a defined backup-power configuration.",
+  "best_fit_audiences": [
+    "households planning larger backup loads",
+    "off-grid system buyers",
+    "buyers comparing complete configurations",
+    "Primary audience segment: Mobile Power User"
+  ],
+  "core_benefits": [
+    "combines documented system components for a defined backup-power configuration",
+    "simplifies selection when the included components fit the required loads"
+  ],
+  "proof_points": [],
+  "sales_angle": "Lead with the product-specific problem and make the cost of a poor fit concrete.",
+  "preferred_vocabulary": [
+    "configured modular power-system bundle",
+    "home backup configuration",
+    "extended outage planning",
+    "off-grid power systems",
+    "high-demand mobile power"
+  ],
+  "emotional_outcomes": [
+    "confidence in product fit",
+    "clarity about the product's job",
+    "preparedness grounded in verified facts"
+  ],
+  "messaging_devices": [
+    "one product, one primary job",
+    "fact to use case to outcome",
+    "state compatibility limits clearly"
+  ],
+  "sales_copy_seed": "Where does SolarMax Pro 5kW-10kW - SolarMax Pro w/3 240W Solar Panels fit in a practical outage plan? A power bundle is only a good fit when its included components, output, and storage match the planned loads. SolarMax Pro 5kW-10kW - SolarMax Pro w/3 240W Solar Panels is a configured modular power-system bundle that combines documented system components for a defined backup-power configuration. Comment with your answer.",
+  "handoff": {
+    "copywriter": [
+      "Primary product type: power_system_bundle",
+      "Primary job: configured modular power-system bundle",
+      "Use cases: ['home backup configuration', 'extended outage planning', 'off-grid power systems', 'high-demand mobile power']",
+      "Use only these facts: []",
+      "CTA direction: Comment with your answer."
+    ],
+    "visual_director": [
+      "Show every included product from the exact bundle in a credible system configuration.",
+      "Use the supplied real product image; do not synthesize a replacement product."
+    ],
+    "platform_editor": [
+      "Preserve the primary product job on every platform.",
+      "Keep the content native to this topic: What to compare before buying SolarMax Pro 5kW-10kW - SolarMax Pro w/3 240W Solar Panels"
+    ],
+    "product_truth": [
+      "Use only published included components, output, storage, compatibility, and expansion details for this exact bundle.",
+      "Do not invent specifications, compatibility, runtime, certifications, guarantees, or included accessories.",
+      "Do not describe the product as a different product type because of secondary features or broad categories.",
+      "Do not use power-device language for water, comfort, safety, or other non-power primary products."
+    ]
+  },
+  "brief_path": "C:\\Users\\v-jmoten\\infenergy-social-engine\\scripts\\..\\data\\product_briefs\\76394d27852b.json",
+  "time_utc": "2026-08-10T21:46:09.197475+00:00"
+}

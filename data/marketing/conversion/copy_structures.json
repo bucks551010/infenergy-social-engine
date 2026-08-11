@@ -1,0 +1,66 @@
+{
+  "schema_version": "conversion.v1",
+  "description": "Spec Section 10. Ten copy structures. Conversion logic law sits ABOVE these; these are execution styles.",
+  "structures": {
+    "PAS": {
+      "name": "Problem - Agitate - Solution",
+      "beats": ["problem", "agitation", "solution"],
+      "best_for_awareness": ["PROBLEM_AWARE"],
+      "best_for_laws": ["contrapositive"]
+    },
+    "AIDA": {
+      "name": "Attention - Interest - Desire - Action",
+      "beats": ["attention", "interest", "desire", "action"],
+      "best_for_awareness": ["PRODUCT_AWARE", "MOST_AWARE"],
+      "best_for_laws": ["double_implication", "result_traceability"]
+    },
+    "BAB": {
+      "name": "Before - After - Bridge",
+      "beats": ["before_state", "after_state", "bridge"],
+      "best_for_awareness": ["PROBLEM_AWARE", "SOLUTION_AWARE"],
+      "best_for_laws": ["contrapositive", "disjunctive"]
+    },
+    "FAB": {
+      "name": "Feature - Advantage - Benefit",
+      "beats": ["feature", "advantage", "benefit"],
+      "best_for_awareness": ["SOLUTION_AWARE", "PRODUCT_AWARE"],
+      "best_for_laws": ["result_traceability", "symmetrical_equivalence"]
+    },
+    "QUEST": {
+      "name": "Qualify - Understand - Educate - Stimulate - Transition",
+      "beats": ["qualify", "understand", "educate", "stimulate", "transition"],
+      "best_for_awareness": ["UNAWARE", "PROBLEM_AWARE"],
+      "best_for_laws": ["contrapositive"]
+    },
+    "PROOF-LED": {
+      "name": "Claim - Evidence - Meaning - CTA",
+      "beats": ["claim", "evidence", "meaning", "cta"],
+      "best_for_awareness": ["PRODUCT_AWARE", "MOST_AWARE"],
+      "best_for_laws": ["double_implication"]
+    },
+    "DEMONSTRATION": {
+      "name": "Problem - Product Demonstration - Result - CTA",
+      "beats": ["problem", "demonstration", "result", "cta"],
+      "best_for_awareness": ["SOLUTION_AWARE", "PRODUCT_AWARE"],
+      "best_for_laws": ["result_traceability"]
+    },
+    "OBJECTION": {
+      "name": "Objection - Reframe - Evidence - CTA",
+      "beats": ["objection", "reframe", "evidence", "cta"],
+      "best_for_awareness": ["PRODUCT_AWARE", "MOST_AWARE"],
+      "best_for_laws": ["double_implication"]
+    },
+    "COMPARISON": {
+      "name": "Current Alternative - Limitation - Product Difference - Benefit - CTA",
+      "beats": ["current_alternative", "limitation", "difference", "benefit", "cta"],
+      "best_for_awareness": ["SOLUTION_AWARE", "PRODUCT_AWARE"],
+      "best_for_laws": ["disjunctive"]
+    },
+    "STORY": {
+      "name": "Situation - Problem - Turning Point - Solution - Outcome - CTA",
+      "beats": ["situation", "problem", "turning_point", "solution", "outcome", "cta"],
+      "best_for_awareness": ["UNAWARE", "PROBLEM_AWARE", "SOLUTION_AWARE"],
+      "best_for_laws": ["contrapositive", "symmetrical_equivalence"]
+    }
+  }
+}

@@ -1,0 +1,43 @@
+{
+  "schema_version": "conversion.v1",
+  "description": "Spec Section 11. Hook categories with awareness/law affinity for the hook engine.",
+  "categories": {
+    "pain": {"awareness_fit": ["PROBLEM_AWARE"], "law_fit": ["contrapositive"]},
+    "curiosity": {"awareness_fit": ["UNAWARE", "PROBLEM_AWARE"], "law_fit": ["contrapositive", "symmetrical_equivalence"]},
+    "outcome": {"awareness_fit": ["SOLUTION_AWARE", "PRODUCT_AWARE", "MOST_AWARE"], "law_fit": ["result_traceability", "symmetrical_equivalence"]},
+    "contrarian": {"awareness_fit": ["SOLUTION_AWARE", "PRODUCT_AWARE"], "law_fit": ["disjunctive"]},
+    "question": {"awareness_fit": ["UNAWARE", "PROBLEM_AWARE"], "law_fit": ["contrapositive"]},
+    "visual_demonstration": {"awareness_fit": ["SOLUTION_AWARE", "PRODUCT_AWARE"], "law_fit": ["result_traceability"]},
+    "problem_recognition": {"awareness_fit": ["PROBLEM_AWARE"], "law_fit": ["contrapositive"]},
+    "identity": {"awareness_fit": ["UNAWARE", "PROBLEM_AWARE"], "law_fit": ["symmetrical_equivalence"]},
+    "comparison": {"awareness_fit": ["SOLUTION_AWARE", "PRODUCT_AWARE"], "law_fit": ["disjunctive"]},
+    "statistic": {"awareness_fit": ["PRODUCT_AWARE", "MOST_AWARE"], "law_fit": ["double_implication", "result_traceability"], "requires_evidence": true},
+    "product_revelation": {"awareness_fit": ["PRODUCT_AWARE", "MOST_AWARE"], "law_fit": ["double_implication"]},
+    "challenge": {"awareness_fit": ["PROBLEM_AWARE", "SOLUTION_AWARE"], "law_fit": ["contrapositive"]},
+    "mistake": {"awareness_fit": ["PROBLEM_AWARE", "SOLUTION_AWARE"], "law_fit": ["contrapositive"]},
+    "before_you_buy": {"awareness_fit": ["SOLUTION_AWARE", "PRODUCT_AWARE"], "law_fit": ["disjunctive", "double_implication"]},
+    "scenario": {"awareness_fit": ["UNAWARE", "PROBLEM_AWARE"], "law_fit": ["contrapositive"]},
+    "myth_correction": {"awareness_fit": ["PROBLEM_AWARE", "SOLUTION_AWARE"], "law_fit": ["double_implication"]},
+    "benefit": {"awareness_fit": ["SOLUTION_AWARE", "PRODUCT_AWARE"], "law_fit": ["symmetrical_equivalence", "result_traceability"]},
+    "lifestyle": {"awareness_fit": ["UNAWARE"], "law_fit": ["symmetrical_equivalence"]}
+  },
+  "scoring_criteria": [
+    "stopping_power",
+    "audience_relevance",
+    "specificity",
+    "curiosity",
+    "believability",
+    "product_connection",
+    "originality",
+    "platform_fit"
+  ],
+  "banned_openers": [
+    "Looking for the perfect solution",
+    "Upgrade your life today",
+    "Introducing our amazing",
+    "Say goodbye to",
+    "Game-changer",
+    "Revolutionize your",
+    "Elevate your"
+  ]
+}

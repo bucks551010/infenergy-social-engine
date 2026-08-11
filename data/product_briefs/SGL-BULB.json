@@ -1,0 +1,49 @@
+{
+  "product_id": "SGL-BULB",
+  "sku": "SGL-BULB",
+  "name": "Portable Solar-Powered Light Bulb",
+  "product_type": "solar_light",
+  "role": "portable solar-powered light",
+  "product_summary": "Portable Solar-Powered Light Bulb is a portable solar-powered light that adds renewable lighting for outages and off-grid use.",
+  "categories": [
+    "Emergency Power",
+    "Outdoors & Camping",
+    "Portable Power"
+  ],
+  "verified_facts": [
+    "240V",
+    "Solar Glow Light Bulb: Your Portable Pocket of Sunshine Light up your adventures with the Solar Glow Light Bulb. This eco-friendly, solar-powered light bulb is the perfect solution for camping, emergencies, or any off-grid lighting need . It's durable, weatherproof, and provides hours of reliable light, all powered by the sun. Upgrade your lighting with a Solar Powered Light Bulb for a sustainable and efficient solution. Brighten Your World, Sustainably The Solar Glow Light Bulb is the ultimate"
+  ],
+  "core_benefits": [
+    "adds renewable lighting for outages and off-grid use",
+    "keeps task lighting portable without relying on a wall outlet"
+  ],
+  "best_fit_use_cases": [
+    "outage lighting",
+    "camping",
+    "emergency kits",
+    "off-grid task lighting"
+  ],
+  "best_fit_audiences": [
+    "prepared households",
+    "campers",
+    "off-grid travelers"
+  ],
+  "primary_pain_point": "Emergency lighting is useful only when it is charged, portable, and suited to the space it needs to illuminate.",
+  "proof_rule": "Use only published brightness, runtime, charging, weather-resistance, and mounting details.",
+  "recommended_cta": "Compare the published lighting and charging details with where you need dependable light.",
+  "hashtag_themes": [
+    "EmergencyLighting",
+    "SolarLight",
+    "CampingGear",
+    "OutageReady"
+  ],
+  "visual_direction": "Show the real light illuminating a credible campsite, outage room, or off-grid task area.",
+  "forbidden_claims": [
+    "Do not invent specifications, compatibility, runtime, certifications, guarantees, or included accessories.",
+    "Do not describe the product as a different product type because of secondary features or broad categories.",
+    "Do not use power-device language for water, comfort, safety, or other non-power primary products."
+  ],
+  "source_image_url": "https://infenergypower.com/wp-content/uploads/2022/05/Marketing-picture-4.jpg",
+  "updated_at_utc": "2026-08-10T20:36:45.491810+00:00"
+}

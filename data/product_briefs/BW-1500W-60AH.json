@@ -1,0 +1,46 @@
+{
+  "product_id": "BW-1500W-60AH",
+  "sku": "BW-1500W-60AH",
+  "name": "Black Warrior 1500W - Long Range Edition",
+  "product_type": "electric_bike",
+  "role": "electric bicycle",
+  "product_summary": "Black Warrior 1500W - Long Range Edition is a electric bicycle that adds powered mobility for commuting and longer rides.",
+  "categories": [
+    "Electric Bikes"
+  ],
+  "verified_facts": [
+    "The Black Warrior HCBK-SS10 1500W Long Range \"Hyper-Ebike\" Stop choosing between speed and distance. The Black Warrior is a high-performance urban explorer designed to replace your car. Featuring a class-leading 60Ah battery , it delivers an incredible 85–100 mile range on a single charge. 🔋 Triple Endurance 60Ah battery for 300% more energy than standard competitors. ⚡ 1500W Power High-torque motor hitting speeds of 40–45 MPH with ease. 🛡️ Smart Security Keyless NFC and App unlocking—zero stres"
+  ],
+  "core_benefits": [
+    "adds powered mobility for commuting and longer rides",
+    "combines pedal travel with documented electric assistance"
+  ],
+  "best_fit_use_cases": [
+    "daily commuting",
+    "recreation",
+    "local errands",
+    "longer-range riding"
+  ],
+  "best_fit_audiences": [
+    "commuters",
+    "recreational riders",
+    "buyers comparing electric mobility"
+  ],
+  "primary_pain_point": "An e-bike is a poor fit when range, rider capacity, terrain, and charging needs are not evaluated together.",
+  "proof_rule": "Use only published range, motor, battery, speed, payload, frame, and charging details.",
+  "recommended_cta": "Compare the published range, fit, and riding specifications with your actual route.",
+  "hashtag_themes": [
+    "ElectricBike",
+    "EMobility",
+    "DailyCommute",
+    "OutdoorTravel"
+  ],
+  "visual_direction": "Show the real bicycle on terrain and in a riding context supported by its published specifications.",
+  "forbidden_claims": [
+    "Do not invent specifications, compatibility, runtime, certifications, guarantees, or included accessories.",
+    "Do not describe the product as a different product type because of secondary features or broad categories.",
+    "Do not use power-device language for water, comfort, safety, or other non-power primary products."
+  ],
+  "source_image_url": "https://infenergypower.com/wp-content/uploads/2026/02/IMG_0490-scaled.jpg",
+  "updated_at_utc": "2026-08-10T20:36:45.455457+00:00"
+}

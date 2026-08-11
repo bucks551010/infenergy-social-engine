@@ -1,0 +1,42 @@
+{
+  "product_id": "7dee4a7c5b2a",
+  "sku": "",
+  "name": "HoneyVolt Slim Power Bank - Lilac Purple Bloom",
+  "product_type": "power_bank",
+  "role": "portable charging backup",
+  "product_summary": "HoneyVolt Slim Power Bank - Lilac Purple Bloom is a portable charging backup that keeps compatible daily devices charged away from outlets.",
+  "categories": [],
+  "verified_facts": [],
+  "core_benefits": [
+    "keeps compatible daily devices charged away from outlets",
+    "adds compact charging continuity for travel and daily carry"
+  ],
+  "best_fit_use_cases": [
+    "daily carry",
+    "commuting",
+    "travel",
+    "small-device outage backup"
+  ],
+  "best_fit_audiences": [
+    "commuters",
+    "travelers",
+    "mobile-device users"
+  ],
+  "primary_pain_point": "A power bank misses the job when its capacity, ports, or charging speed do not match the devices carried.",
+  "proof_rule": "Use only published capacity, port, charging-speed, size, and compatibility details.",
+  "recommended_cta": "Compare capacity, ports, and charging speed with the devices you carry.",
+  "hashtag_themes": [
+    "PowerBank",
+    "PortableCharging",
+    "TravelPower",
+    "StayCharged"
+  ],
+  "visual_direction": "Show the real power bank charging a compatible daily device in a credible travel or commute setting.",
+  "forbidden_claims": [
+    "Do not invent specifications, compatibility, runtime, certifications, guarantees, or included accessories.",
+    "Do not describe the product as a different product type because of secondary features or broad categories.",
+    "Do not use power-device language for water, comfort, safety, or other non-power primary products."
+  ],
+  "source_image_url": "https://infenergypower.com/wp-content/uploads/2024/12/Photoroom_20241227_162650.png",
+  "updated_at_utc": "2026-08-10T20:41:20.381736+00:00"
+}

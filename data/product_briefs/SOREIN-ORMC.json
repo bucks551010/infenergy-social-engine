@@ -1,0 +1,40 @@
+{
+  "product_id": "SOREIN-ORMC",
+  "sku": "SOREIN-ORMC",
+  "name": "Sorein Modular Power System - Off-Road Mobile Chassis",
+  "product_type": "power_system_component",
+  "role": "modular power-system component",
+  "product_summary": "Sorein Modular Power System - Off-Road Mobile Chassis is a modular power-system component that adds a documented capability to a compatible modular power system.",
+  "categories": [],
+  "verified_facts": [],
+  "core_benefits": [
+    "adds a documented capability to a compatible modular power system",
+    "supports a more purpose-built system configuration"
+  ],
+  "best_fit_use_cases": [
+    "modular system configuration",
+    "compatible system expansion",
+    "mobile or off-grid power setups"
+  ],
+  "best_fit_audiences": [
+    "owners of the compatible modular system",
+    "buyers configuring a purpose-built power setup"
+  ],
+  "primary_pain_point": "A system component is useful only when its function and compatibility are clear before purchase.",
+  "proof_rule": "Use only published component function, compatibility, capacity, connection, and included-item details.",
+  "recommended_cta": "Confirm the component's function and compatibility with your exact system configuration.",
+  "hashtag_themes": [
+    "ModularPower",
+    "PowerSystem",
+    "SystemExpansion",
+    "BackupPower"
+  ],
+  "visual_direction": "Show the real component installed with only the documented compatible modular system.",
+  "forbidden_claims": [
+    "Do not invent specifications, compatibility, runtime, certifications, guarantees, or included accessories.",
+    "Do not describe the product as a different product type because of secondary features or broad categories.",
+    "Do not use power-device language for water, comfort, safety, or other non-power primary products."
+  ],
+  "source_image_url": "https://infenergypower.com/wp-content/uploads/2025/06/Photoroom_20250613_004522.png",
+  "updated_at_utc": "2026-08-10T21:09:22.592530+00:00"
+}

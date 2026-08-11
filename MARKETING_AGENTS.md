@@ -21,6 +21,8 @@ Outputs are written to `data/marketing/` as timestamped JSON + Markdown, includi
 - `marketing_strategy_*.json` (full strategy graph)
 - `execution_pack_*.json` (operator-ready payload)
 - `marketing_summary_*.md` (human summary)
+- `weekly_plan_*.json` / `weekly_plan_*.md` (7-day sequence)
+- `campaign_plan_*.json` (runtime funnel + schedule + guardrails)
 
 It also supports a weekly planner that builds a 7-day, 3-slot campaign sequence from the latest strategy snapshot.
 
@@ -75,6 +77,16 @@ Optional environment variables:
 - `GEMINI_MODEL` (default: gemini-2.5-flash)
 - `IG_CATEGORY_FALLBACKS_JSON` (optional JSON map for category-level image fallbacks)
 - `IG_VALIDATE_IMAGE_URLS` (default: true; preflight-check image URLs before Instagram publish)
+- `ENABLE_FACEBOOK_SLOTS`, `ENABLE_INSTAGRAM_SLOTS`, `ENABLE_LINKEDIN_SLOTS`, `ENABLE_WORDPRESS_SLOTS` (comma-separated slot allowlists, e.g. `morning,midday`)
+- `SKIP_RECENT_SUCCESS_HOURS` (if > 0, skip live channel publish when a recent success exists in the same slot)
+- `ANTI_REPEAT_HOOK_WINDOW` / `ANTI_REPEAT_CTA_WINDOW` (history window sizes for rotation)
+- `UTM_CAMPAIGN_NAME` (default: `infenergy_engine`)
+
+## Worker Runtime Visibility
+
+- `GET /status` now includes recent quality summary.
+- `GET /history?limit=20` returns recent run history with score metadata.
+- `GET /campaign` returns the latest campaign plan artifact metadata.
 
 ## Notes
 

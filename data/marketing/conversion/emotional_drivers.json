@@ -1,0 +1,37 @@
+{
+  "schema_version": "conversion.v1",
+  "description": "Spec Section 3. Seventeen emotional drivers. One primary + optional secondary per post.",
+  "drivers": {
+    "convenience": {"antonym": "friction", "cues": ["simple", "one step", "less to carry", "no setup"]},
+    "security": {"antonym": "vulnerability", "cues": ["protected", "ready", "covered", "won't lose"]},
+    "preparedness": {"antonym": "unprepared", "cues": ["ahead of time", "before the storm", "ready when", "plan"]},
+    "freedom": {"antonym": "constraint", "cues": ["no outlet needed", "go anywhere", "off-grid", "untethered"]},
+    "control": {"antonym": "helplessness", "cues": ["decide", "in charge", "on your terms", "manage"]},
+    "confidence": {"antonym": "doubt", "cues": ["know that", "sure of", "verified", "backed by"]},
+    "simplicity": {"antonym": "complexity", "cues": ["one setup", "no learning curve", "clear steps"]},
+    "speed": {"antonym": "delay", "cues": ["fast", "quicker", "in minutes", "no waiting"]},
+    "savings": {"antonym": "waste", "cues": ["skip the cost", "reuse", "one device instead"]},
+    "comfort": {"antonym": "discomfort", "cues": ["quiet", "cool", "warm", "steady"]},
+    "productivity": {"antonym": "downtime", "cues": ["keep working", "stay online", "no interruption"]},
+    "status": {"antonym": "invisibility", "cues": ["the one who", "prepared people", "professionals use"]},
+    "belonging": {"antonym": "isolation", "cues": ["families like yours", "people who", "join"]},
+    "curiosity": {"antonym": "boredom", "cues": ["most people don't know", "hidden reason", "what actually"]},
+    "identity": {"antonym": "role_conflict", "cues": ["for people who", "the kind of person who"]},
+    "relief": {"antonym": "worry", "cues": ["stop worrying", "no more", "finally", "handled"]},
+    "accomplishment": {"antonym": "stalled", "cues": ["done", "checked off", "one less thing"]}
+  },
+  "audience_default_drivers": {
+    "preparedness_buyer": {"primary": "preparedness", "secondary": "security"},
+    "mobile_professional": {"primary": "productivity", "secondary": "freedom"},
+    "outdoor_enthusiast": {"primary": "freedom", "secondary": "confidence"},
+    "caregiver": {"primary": "security", "secondary": "relief"},
+    "small_business_operator": {"primary": "productivity", "secondary": "control"}
+  },
+  "awareness_default_drivers": {
+    "UNAWARE": ["curiosity", "identity", "belonging"],
+    "PROBLEM_AWARE": ["relief", "control", "preparedness"],
+    "SOLUTION_AWARE": ["confidence", "simplicity", "speed"],
+    "PRODUCT_AWARE": ["confidence", "control", "accomplishment"],
+    "MOST_AWARE": ["accomplishment", "savings", "relief"]
+  }
+}

@@ -1,0 +1,83 @@
+{
+  "schema_version": "conversion.v1",
+  "description": "Spec Section 27. Common objections with reframe patterns. Product-specific objections layer on top.",
+  "objections": {
+    "price": {
+      "surface": "It costs too much for what I might get from it.",
+      "reframe_pattern": "Compare the one-time cost against the cost-of-inaction across a realistic use window.",
+      "supporting_proof_types": ["verified_spec", "cost_comparison"],
+      "best_copy_structure": "COMPARISON",
+      "best_awareness": ["PRODUCT_AWARE", "MOST_AWARE"]
+    },
+    "quality": {
+      "surface": "I don't know if it will actually hold up.",
+      "reframe_pattern": "Show verifiable specs, warranty, and design decisions that back the claim.",
+      "supporting_proof_types": ["verified_spec", "warranty", "certification"],
+      "best_copy_structure": "PROOF-LED",
+      "best_awareness": ["PRODUCT_AWARE"]
+    },
+    "trust": {
+      "surface": "I don't know this brand well enough.",
+      "reframe_pattern": "Show the company's process, philosophy, or verified customer language without inventing testimonials.",
+      "supporting_proof_types": ["brand_process", "verified_review"],
+      "best_copy_structure": "STORY",
+      "best_awareness": ["SOLUTION_AWARE", "PRODUCT_AWARE"]
+    },
+    "compatibility": {
+      "surface": "I'm not sure it works with my devices/situation.",
+      "reframe_pattern": "Trace the spec (wattage, ports, capacity) to the specific device or scenario.",
+      "supporting_proof_types": ["verified_spec"],
+      "best_copy_structure": "FAB",
+      "best_awareness": ["SOLUTION_AWARE", "PRODUCT_AWARE"]
+    },
+    "complexity": {
+      "surface": "This looks complicated to set up or use.",
+      "reframe_pattern": "Show a simple three-step (or fewer) real use flow.",
+      "supporting_proof_types": ["demonstration"],
+      "best_copy_structure": "DEMONSTRATION",
+      "best_awareness": ["SOLUTION_AWARE"]
+    },
+    "necessity": {
+      "surface": "I probably don't really need this.",
+      "reframe_pattern": "Anchor to a specific scenario the customer already recognizes; do not manufacture fear.",
+      "supporting_proof_types": ["scenario_recognition"],
+      "best_copy_structure": "STORY",
+      "best_awareness": ["UNAWARE", "PROBLEM_AWARE"]
+    },
+    "effectiveness": {
+      "surface": "How do I know it will actually deliver the result?",
+      "reframe_pattern": "Trace feature -> mechanism -> benefit -> outcome with evidence at each step.",
+      "supporting_proof_types": ["verified_spec", "demonstration"],
+      "best_copy_structure": "PROOF-LED",
+      "best_awareness": ["PRODUCT_AWARE", "MOST_AWARE"]
+    },
+    "durability": {
+      "surface": "Will this last long enough to be worth it?",
+      "reframe_pattern": "Show design specs and warranty; avoid superlatives.",
+      "supporting_proof_types": ["verified_spec", "warranty"],
+      "best_copy_structure": "FAB",
+      "best_awareness": ["PRODUCT_AWARE"]
+    },
+    "shipping_and_returns": {
+      "surface": "What if it doesn't work out?",
+      "reframe_pattern": "Show the actual return/warranty terms plainly.",
+      "supporting_proof_types": ["warranty", "brand_process"],
+      "best_copy_structure": "OBJECTION",
+      "best_awareness": ["MOST_AWARE"]
+    },
+    "timing": {
+      "surface": "This isn't the right time for me to invest.",
+      "reframe_pattern": "Anchor to preparedness timing (before, not during, the event) without manufactured urgency.",
+      "supporting_proof_types": ["scenario_recognition"],
+      "best_copy_structure": "PAS",
+      "best_awareness": ["PROBLEM_AWARE", "SOLUTION_AWARE"]
+    }
+  },
+  "awareness_default_objections": {
+    "UNAWARE": ["necessity"],
+    "PROBLEM_AWARE": ["necessity", "timing"],
+    "SOLUTION_AWARE": ["compatibility", "complexity", "trust"],
+    "PRODUCT_AWARE": ["quality", "effectiveness", "durability", "compatibility"],
+    "MOST_AWARE": ["price", "shipping_and_returns", "effectiveness"]
+  }
+}

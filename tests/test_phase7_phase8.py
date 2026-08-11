@@ -1,0 +1,72 @@
+from __future__ import annotations
+
+import os
+import sys
+import unittest
+
+ROOT = os.path.dirname(os.path.dirname(__file__))
+sys.path.insert(0, ROOT)
+sys.path.insert(0, os.path.join(ROOT, "scripts"))
+
+from scripts.validate_product_claims import validate_generated_content  # noqa: E402
+from scripts.score_content import score_content  # noqa: E402
+
+
+class PhaseSevenEightTests(unittest.TestCase):
+    def test_claim_validator_rejects_invented_wattage(self) -> None:
+        content = {
+            "product_name": "PowerFlex",
+            "product_metrics": ["200W", "154Wh"],
+            "product_facts": "Published specs include 200W and 154Wh.",
+            "product_price": "499",
+            "product_sale_price": "",
+            "product_url": "https://example.com/powerflex",
+            "product_in_stock": "1",
+            "wp_content": "<p>This unit delivers 900W and 20 hours runtime.</p>",
+            "fb_caption": "Great for outages.",
+            "ig_caption": "Backup made simple.",
+            "li_text": "Practical power planning.",
+            "product_image_url": "https://example.com/img.jpg",
+            "product_image_candidates": ["https://example.com/img.jpg"],
+        }
+        result = validate_generated_content(content)
+        self.assertFalse(result["passed"])
+        self.assertTrue(any("wattage_not_verified" in e for e in result["errors"]))
+
+    def test_claim_validator_rejects_missing_product_url(self) -> None:
+        content = {
+            "product_name": "PowerFlex",
+            "product_metrics": ["200W"],
+            "product_facts": "200W",
+            "product_price": "499",
+            "product_url": "",
+            "product_in_stock": "1",
+            "wp_content": "<p>Uses verified 200W spec.</p>",
+            "fb_caption": "",
+            "ig_caption": "",
+            "li_text": "",
+        }
+        result = validate_generated_content(content)
+        self.assertFalse(result["passed"])
+        self.assertIn("product_url_missing", result["errors"])
+
+    def test_score_content_threshold_logic(self) -> None:
+        content = {
+            "selected_hook": "Most buyers miss this outage planning mistake?",
+            "selected_cta": "Build your backup-power setup.",
+            "funnel_stage": "CONVERSION",
+            "product_name": "PowerFlex",
+            "wp_content": "<p>" + ("Useful guidance with 200W and 154Wh details. " * 60) + "</p>",
+            "fb_caption": "Home readiness with 20% better planning. #Energy #Backup #Home",
+            "ig_caption": "Hook line\nHelpful details with 154Wh and 200W. #Power #Energy #Backup #Home #Prepared",
+            "li_text": "Professional resilience framework with measurable specs.",
+        }
+        scored = score_content(content)
+        self.assertIn("total", scored)
+        self.assertIn("decision", scored)
+        self.assertIn("component_scores", scored)
+        self.assertIn(scored["decision"], {"approve", "regenerate_once", "reject"})
+
+
+if __name__ == "__main__":
+    unittest.main()

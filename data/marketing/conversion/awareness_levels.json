@@ -1,0 +1,56 @@
+{
+  "schema_version": "conversion.v1",
+  "description": "Spec Section 5. Five customer awareness stages. Distinct from funnel_stage.",
+  "levels": {
+    "UNAWARE": {
+      "order": 1,
+      "customer_state": "Does not recognize the problem exists.",
+      "prioritize": ["curiosity", "education", "entertainment", "problem_discovery", "lifestyle_visualization"],
+      "avoid": ["direct_sale", "aggressive_cta", "spec_dump"],
+      "preferred_copy_structures": ["STORY", "DEMONSTRATION", "PAS"],
+      "preferred_hook_categories": ["curiosity", "scenario", "lifestyle", "myth_correction"],
+      "preferred_cta_style": "awareness",
+      "funnel_stage_affinity": ["ATTENTION"]
+    },
+    "PROBLEM_AWARE": {
+      "order": 2,
+      "customer_state": "Recognizes a frustration or gap but not a solution category.",
+      "prioritize": ["pain_point", "consequence", "relatability", "contrapositive", "desired_outcome"],
+      "avoid": ["premature_pitch", "generic_hype"],
+      "preferred_copy_structures": ["PAS", "BAB", "STORY"],
+      "preferred_hook_categories": ["pain", "problem_recognition", "question", "identity"],
+      "preferred_cta_style": "awareness",
+      "funnel_stage_affinity": ["ATTENTION", "EDUCATION"]
+    },
+    "SOLUTION_AWARE": {
+      "order": 3,
+      "customer_state": "Knows solutions exist; comparing categories.",
+      "prioritize": ["product_category", "mechanism", "differentiation", "feature_to_benefit", "comparison"],
+      "avoid": ["vague_claims", "unsupported_superlatives"],
+      "preferred_copy_structures": ["FAB", "COMPARISON", "PROOF-LED", "DEMONSTRATION"],
+      "preferred_hook_categories": ["comparison", "product_revelation", "benefit", "before_you_buy"],
+      "preferred_cta_style": "consideration",
+      "funnel_stage_affinity": ["EDUCATION", "DESIRE"]
+    },
+    "PRODUCT_AWARE": {
+      "order": 4,
+      "customer_state": "Knows this product; evaluating trust and fit.",
+      "prioritize": ["proof", "reviews", "demonstration", "objection_handling", "differentiators", "value_proposition"],
+      "avoid": ["repeating_basic_intro", "over_explaining_category"],
+      "preferred_copy_structures": ["PROOF-LED", "OBJECTION", "DEMONSTRATION", "AIDA"],
+      "preferred_hook_categories": ["statistic", "product_revelation", "before_you_buy", "challenge"],
+      "preferred_cta_style": "consideration",
+      "funnel_stage_affinity": ["DESIRE", "TRUST"]
+    },
+    "MOST_AWARE": {
+      "order": 5,
+      "customer_state": "Close to buying; evaluating offer.",
+      "prioritize": ["offer", "price", "legitimate_promotion", "risk_reversal", "urgency", "direct_cta"],
+      "avoid": ["restating_basics", "soft_ctas"],
+      "preferred_copy_structures": ["AIDA", "PROOF-LED", "OBJECTION"],
+      "preferred_hook_categories": ["outcome", "product_revelation", "statistic"],
+      "preferred_cta_style": "purchase",
+      "funnel_stage_affinity": ["TRUST", "CONVERSION"]
+    }
+  }
+}

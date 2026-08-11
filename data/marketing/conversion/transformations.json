@@ -1,0 +1,16 @@
+{
+  "schema_version": "conversion.v1",
+  "description": "Spec Section 4. Current-state to desired-state transformations. Use to shape both copy and visual.",
+  "transformations": [
+    {"from": "dependent", "to": "prepared", "audiences": ["preparedness_buyer", "caregiver"]},
+    {"from": "frustrated", "to": "confident", "audiences": ["mobile_professional", "small_business_operator"]},
+    {"from": "disorganized", "to": "organized", "audiences": ["preparedness_buyer"]},
+    {"from": "slow", "to": "efficient", "audiences": ["mobile_professional", "small_business_operator"]},
+    {"from": "limited", "to": "flexible", "audiences": ["outdoor_enthusiast", "mobile_professional"]},
+    {"from": "uncertain", "to": "in_control", "audiences": ["caregiver", "small_business_operator"]},
+    {"from": "overwhelmed", "to": "simplified", "audiences": ["preparedness_buyer", "caregiver"]},
+    {"from": "reactive", "to": "prepared", "audiences": ["preparedness_buyer", "small_business_operator"]},
+    {"from": "outlet_dependent", "to": "portable", "audiences": ["mobile_professional", "outdoor_enthusiast"]},
+    {"from": "guessing", "to": "informed", "audiences": ["preparedness_buyer", "mobile_professional", "outdoor_enthusiast", "caregiver", "small_business_operator"]}
+  ]
+}

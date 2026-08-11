@@ -1,0 +1,98 @@
+{
+  "agent": "product_intelligence",
+  "product_brief": {
+    "product_id": "GENERAL-PREPAREDNESS",
+    "sku": "",
+    "name": "Infenergy preparedness solution",
+    "product_type": "preparedness_product",
+    "role": "preparedness product",
+    "product_summary": "Infenergy preparedness solution is a preparedness product that fills a specific gap in a practical preparedness plan.",
+    "categories": [
+      "Preparedness"
+    ],
+    "verified_facts": [],
+    "core_benefits": [
+      "fills a specific gap in a practical preparedness plan"
+    ],
+    "best_fit_use_cases": [
+      "home preparedness",
+      "vehicle kit",
+      "travel kit"
+    ],
+    "best_fit_audiences": [
+      "prepared households",
+      "travelers",
+      "outdoor users"
+    ],
+    "primary_pain_point": "Generic recommendations leave buyers with the wrong tool for the job.",
+    "proof_rule": "Use only published product details and verified compatibility information.",
+    "recommended_cta": "Review the published details against the job this product needs to do.",
+    "hashtag_themes": [
+      "Preparedness",
+      "EmergencyKit",
+      "ReadyForAnything"
+    ],
+    "visual_direction": "Show the real product performing its documented job in a credible use case.",
+    "forbidden_claims": [
+      "Do not invent specifications, compatibility, runtime, certifications, guarantees, or included accessories.",
+      "Do not describe the product as a different product type because of secondary features or broad categories.",
+      "Do not use power-device language for water, comfort, safety, or other non-power primary products."
+    ],
+    "source_image_url": "",
+    "updated_at_utc": "2026-08-11T17:29:37.843617+00:00"
+  },
+  "product_summary": "Infenergy preparedness solution is a preparedness product that fills a specific gap in a practical preparedness plan.",
+  "best_fit_audiences": [
+    "prepared households",
+    "travelers",
+    "outdoor users",
+    "Primary audience segment: Practical Energy Optimizer"
+  ],
+  "core_benefits": [
+    "fills a specific gap in a practical preparedness plan"
+  ],
+  "proof_points": [],
+  "sales_angle": "Teach buyers which verified details determine fit for this product type.",
+  "preferred_vocabulary": [
+    "preparedness product",
+    "home preparedness",
+    "vehicle kit",
+    "travel kit"
+  ],
+  "emotional_outcomes": [
+    "confidence in product fit",
+    "clarity about the product's job",
+    "preparedness grounded in verified facts"
+  ],
+  "messaging_devices": [
+    "one product, one primary job",
+    "fact to use case to outcome",
+    "state compatibility limits clearly"
+  ],
+  "sales_copy_seed": "Where does INF Energy Power solution fit in a practical outage plan? Generic recommendations leave buyers with the wrong tool for the job. Infenergy preparedness solution is a preparedness product that fills a specific gap in a practical preparedness plan. Map your must-run devices and build your outage-ready setup",
+  "handoff": {
+    "copywriter": [
+      "Primary product type: preparedness_product",
+      "Primary job: preparedness product",
+      "Use cases: ['home preparedness', 'vehicle kit', 'travel kit']",
+      "Use only these facts: []",
+      "CTA direction: Map your must-run devices and build your outage-ready setup"
+    ],
+    "visual_director": [
+      "Show the real product performing its documented job in a credible use case.",
+      "Use the supplied real product image; do not synthesize a replacement product."
+    ],
+    "platform_editor": [
+      "Preserve the primary product job on every platform.",
+      "Keep the content native to this topic: Watts, wattage, and runtime: the three numbers that actually decide what backup power can do"
+    ],
+    "product_truth": [
+      "Use only published product details and verified compatibility information.",
+      "Do not invent specifications, compatibility, runtime, certifications, guarantees, or included accessories.",
+      "Do not describe the product as a different product type because of secondary features or broad categories.",
+      "Do not use power-device language for water, comfort, safety, or other non-power primary products."
+    ]
+  },
+  "brief_path": "C:\\Users\\v-jmoten\\infenergy-social-engine\\scripts\\..\\data\\product_briefs\\GENERAL-PREPAREDNESS.json",
+  "time_utc": "2026-08-11T17:29:37.846439+00:00"
+}

@@ -1,0 +1,42 @@
+{
+  "product_id": "SOREIN-PGP",
+  "sku": "SOREIN-PGP",
+  "name": "Sorein Modular Power System - Pro-Grade Performance",
+  "product_type": "power_system_bundle",
+  "role": "configured modular power-system bundle",
+  "product_summary": "Sorein Modular Power System - Pro-Grade Performance is a configured modular power-system bundle that combines documented system components for a defined backup-power configuration.",
+  "categories": [],
+  "verified_facts": [],
+  "core_benefits": [
+    "combines documented system components for a defined backup-power configuration",
+    "simplifies selection when the included components fit the required loads"
+  ],
+  "best_fit_use_cases": [
+    "home backup configuration",
+    "extended outage planning",
+    "off-grid power systems",
+    "high-demand mobile power"
+  ],
+  "best_fit_audiences": [
+    "households planning larger backup loads",
+    "off-grid system buyers",
+    "buyers comparing complete configurations"
+  ],
+  "primary_pain_point": "A power bundle is only a good fit when its included components, output, and storage match the planned loads.",
+  "proof_rule": "Use only published included components, output, storage, compatibility, and expansion details for this exact bundle.",
+  "recommended_cta": "Compare this exact bundle's included components and capacity with your planned loads.",
+  "hashtag_themes": [
+    "PowerSystem",
+    "HomeBackup",
+    "ModularPower",
+    "EnergyPreparedness"
+  ],
+  "visual_direction": "Show every included product from the exact bundle in a credible system configuration.",
+  "forbidden_claims": [
+    "Do not invent specifications, compatibility, runtime, certifications, guarantees, or included accessories.",
+    "Do not describe the product as a different product type because of secondary features or broad categories.",
+    "Do not use power-device language for water, comfort, safety, or other non-power primary products."
+  ],
+  "source_image_url": "https://infenergypower.com/wp-content/uploads/2025/06/Photoroom_20250613_030019.png",
+  "updated_at_utc": "2026-08-10T20:36:45.597733+00:00"
+}

@@ -1,0 +1,49 @@
+{
+  "product_id": "CAMP-FAN-12K",
+  "sku": "CAMP-FAN-12K",
+  "name": "3-in-1 Portable Camping Fan with 12000mAh Battery, LED Light & Power Bank",
+  "product_type": "portable_fan",
+  "role": "portable airflow and charging support",
+  "product_summary": "3-in-1 Portable Camping Fan with 12000mAh Battery, LED Light & Power Bank is a portable airflow and charging support that adds portable airflow for outages, camping, and travel.",
+  "categories": [
+    "New Arrivals",
+    "Outdoors & Camping",
+    "Travel Power > Phone Power Banks",
+    "Portable Power"
+  ],
+  "verified_facts": [
+    "Ultimate 3-in-1 Outdoor Comfort Experience comfort anywhere with this versatile camping fan. It features an extra-large 12000mAh battery for all-day cooling, a 3-level LED light for nighttime visibility, and a built-in power bank to charge your devices. Ultra-quiet and equipped with a hanging hook, it's the perfect companion for any adventure. Cooling, Light &amp; Power: Your All-in-One Adventure Fan Don't let the heat, darkness, or a dead phone battery compromise your trip. This 3-in-1 Portable"
+  ],
+  "core_benefits": [
+    "adds portable airflow for outages, camping, and travel",
+    "supports lighting or small-device charging when published features allow"
+  ],
+  "best_fit_use_cases": [
+    "camping",
+    "outage comfort",
+    "vehicle and travel kit",
+    "outdoor work"
+  ],
+  "best_fit_audiences": [
+    "campers",
+    "families preparing for warm-weather outages",
+    "travelers needing portable airflow"
+  ],
+  "primary_pain_point": "Heat and still air become a real problem when an outage or campsite has no dependable airflow.",
+  "proof_rule": "Use only published runtime, battery, airflow, lighting, and charging details.",
+  "recommended_cta": "Review the runtime and airflow details against where you plan to use it.",
+  "hashtag_themes": [
+    "PortableFan",
+    "CampingGear",
+    "OutageReady",
+    "EmergencyPreparedness"
+  ],
+  "visual_direction": "Show the real fan providing airflow in a campsite, room, vehicle, or outage setting.",
+  "forbidden_claims": [
+    "Do not invent specifications, compatibility, runtime, certifications, guarantees, or included accessories.",
+    "Do not describe the product as a different product type because of secondary features or broad categories.",
+    "Do not use power-device language for water, comfort, safety, or other non-power primary products."
+  ],
+  "source_image_url": "https://infenergypower.com/wp-content/uploads/2025/08/Hbe316b8ca5a444269dd4a903f37e1310i.jpg",
+  "updated_at_utc": "2026-08-10T20:36:45.421860+00:00"
+}

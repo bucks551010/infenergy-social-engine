@@ -1,0 +1,41 @@
+{
+  "product_id": "INF-9792-U2B",
+  "sku": "INF-9792-U2B",
+  "name": "Infenergy 9792 - \"Infenergy 9792 Unit + 2 - 9792Wh Expansion Battery\"",
+  "product_type": "expansion_battery",
+  "role": "modular power-system expansion battery",
+  "product_summary": "Infenergy 9792 - \"Infenergy 9792 Unit + 2 - 9792Wh Expansion Battery\" is a modular power-system expansion battery that adds stored-energy capacity to a compatible modular system.",
+  "categories": [],
+  "verified_facts": [],
+  "core_benefits": [
+    "adds stored-energy capacity to a compatible modular system",
+    "extends supported runtime when paired with documented equipment"
+  ],
+  "best_fit_use_cases": [
+    "home backup expansion",
+    "longer outage coverage",
+    "modular off-grid systems"
+  ],
+  "best_fit_audiences": [
+    "owners of the compatible base system",
+    "households extending backup runtime",
+    "modular-power buyers"
+  ],
+  "primary_pain_point": "An expansion battery creates value only when compatibility and added capacity match the installed system.",
+  "proof_rule": "Use only published capacity, chemistry, connection, compatibility, and expansion-limit details.",
+  "recommended_cta": "Verify base-system compatibility and added capacity before expanding your setup.",
+  "hashtag_themes": [
+    "ExpansionBattery",
+    "BackupPower",
+    "ModularPower",
+    "OutageReady"
+  ],
+  "visual_direction": "Show the real battery connected only to its documented compatible base system.",
+  "forbidden_claims": [
+    "Do not invent specifications, compatibility, runtime, certifications, guarantees, or included accessories.",
+    "Do not describe the product as a different product type because of secondary features or broad categories.",
+    "Do not use power-device language for water, comfort, safety, or other non-power primary products."
+  ],
+  "source_image_url": "https://infenergypower.com/wp-content/uploads/2025/06/微信图片_20250610163219_109-scaled.png",
+  "updated_at_utc": "2026-08-10T20:36:45.476452+00:00"
+}

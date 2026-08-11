@@ -1,0 +1,117 @@
+{
+  "agent": "product_intelligence",
+  "product_brief": {
+    "product_id": "e081cc5c45c7",
+    "sku": "",
+    "name": "HoneyVolt Slim Power Bank",
+    "product_type": "power_bank",
+    "role": "portable charging backup",
+    "product_summary": "HoneyVolt Slim Power Bank is a portable charging backup that keeps compatible daily devices charged away from outlets.",
+    "categories": [
+      "Travel Power > Phone Charging Cables",
+      "Travel Power > Phone Power Banks",
+      "Travel Power"
+    ],
+    "verified_facts": [
+      "10,000mAh",
+      "37Wh",
+      "5V",
+      "3A",
+      "HoneyVolt Slim Power Bank: Energize Your Day with Sweet Sophistication Unleash the perfect blend of power and elegance. The HoneyVolt Slim Power Bank is the ultimate portable charger for women who value style, function, and dependability . Keep your devices charged all day in chic pastel shades without compromising on bag space. The Only Charger You Need to Carry Simplify your life with the HoneyVolt Slim Power Bank with Built-in Cables . This all-in-one charging solution packs a massive 10,000m"
+    ],
+    "core_benefits": [
+      "keeps compatible daily devices charged away from outlets",
+      "adds compact charging continuity for travel and daily carry"
+    ],
+    "best_fit_use_cases": [
+      "daily carry",
+      "commuting",
+      "travel",
+      "small-device outage backup"
+    ],
+    "best_fit_audiences": [
+      "commuters",
+      "travelers",
+      "mobile-device users"
+    ],
+    "primary_pain_point": "A power bank misses the job when its capacity, ports, or charging speed do not match the devices carried.",
+    "proof_rule": "Use only published capacity, port, charging-speed, size, and compatibility details.",
+    "recommended_cta": "Compare capacity, ports, and charging speed with the devices you carry.",
+    "hashtag_themes": [
+      "PowerBank",
+      "PortableCharging",
+      "TravelPower",
+      "StayCharged"
+    ],
+    "visual_direction": "Show the real power bank charging a compatible daily device in a credible travel or commute setting.",
+    "forbidden_claims": [
+      "Do not invent specifications, compatibility, runtime, certifications, guarantees, or included accessories.",
+      "Do not describe the product as a different product type because of secondary features or broad categories.",
+      "Do not use power-device language for water, comfort, safety, or other non-power primary products."
+    ],
+    "source_image_url": "https://infenergypower.com/wp-content/uploads/2024/12/IMG_4806.jpg",
+    "updated_at_utc": "2026-08-10T20:26:39.291513+00:00"
+  },
+  "product_summary": "HoneyVolt Slim Power Bank is a portable charging backup that keeps compatible daily devices charged away from outlets.",
+  "best_fit_audiences": [
+    "commuters",
+    "travelers",
+    "mobile-device users",
+    "Primary audience segment: Practical Energy Optimizer"
+  ],
+  "core_benefits": [
+    "keeps compatible daily devices charged away from outlets",
+    "adds compact charging continuity for travel and daily carry"
+  ],
+  "proof_points": [
+    "10,000mAh",
+    "37Wh",
+    "5V",
+    "3A",
+    "HoneyVolt Slim Power Bank: Energize Your Day with Sweet Sophistication Unleash the perfect blend of power and elegance. The HoneyVolt Slim Power Bank is the ultimate portable charger for women who value style, function, and dependability . Keep your devices charged all day in chic pastel shades without compromising on bag space. The Only Charger You Need to Carry Simplify your life with the HoneyVolt Slim Power Bank with Built-in Cables . This all-in-one charging solution packs a massive 10,000m"
+  ],
+  "sales_angle": "Lead with the product-specific problem and make the cost of a poor fit concrete.",
+  "preferred_vocabulary": [
+    "portable charging backup",
+    "daily carry",
+    "commuting",
+    "travel",
+    "small-device outage backup"
+  ],
+  "emotional_outcomes": [
+    "confidence in product fit",
+    "clarity about the product's job",
+    "preparedness grounded in verified facts"
+  ],
+  "messaging_devices": [
+    "one product, one primary job",
+    "fact to use case to outcome",
+    "state compatibility limits clearly"
+  ],
+  "sales_copy_seed": "Where does HoneyVolt Slim Power Bank fit in a practical outage plan? A power bank misses the job when its capacity, ports, or charging speed do not match the devices carried. HoneyVolt Slim Power Bank is a portable charging backup that keeps compatible daily devices charged away from outlets. Map your must-run devices and build your outage-ready setup",
+  "handoff": {
+    "copywriter": [
+      "Primary product type: power_bank",
+      "Primary job: portable charging backup",
+      "Use cases: ['daily carry', 'commuting', 'travel', 'small-device outage backup']",
+      "Use only these facts: ['10,000mAh', '37Wh', '5V', '3A', 'HoneyVolt Slim Power Bank: Energize Your Day with Sweet Sophistication Unleash the perfect blend of power and elegance. The HoneyVolt Slim Power Bank is the ultimate portable charger for women who value style, function, and dependability . Keep your devices charged all day in chic pastel shades without compromising on bag space. The Only Charger You Need to Carry Simplify your life with the HoneyVolt Slim Power Bank with Built-in Cables . This all-in-one charging solution packs a massive 10,000m']",
+      "CTA direction: Map your must-run devices and build your outage-ready setup"
+    ],
+    "visual_director": [
+      "Show the real power bank charging a compatible daily device in a credible travel or commute setting.",
+      "Use the supplied real product image; do not synthesize a replacement product."
+    ],
+    "platform_editor": [
+      "Preserve the primary product job on every platform.",
+      "Keep the content native to this topic: Travel power checklist before your next road trip"
+    ],
+    "product_truth": [
+      "Use only published capacity, port, charging-speed, size, and compatibility details.",
+      "Do not invent specifications, compatibility, runtime, certifications, guarantees, or included accessories.",
+      "Do not describe the product as a different product type because of secondary features or broad categories.",
+      "Do not use power-device language for water, comfort, safety, or other non-power primary products."
+    ]
+  },
+  "brief_path": "C:\\Users\\v-jmoten\\infenergy-social-engine\\scripts\\..\\data\\product_briefs\\e081cc5c45c7.json",
+  "time_utc": "2026-08-10T20:26:39.300309+00:00"
+}

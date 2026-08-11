@@ -1,0 +1,22 @@
+{
+  "schema_version": "conversion.v1",
+  "description": "Spec Section 28. Awareness-aware CTA ladder. Complements the existing funnel-stage cta_library.",
+  "by_awareness": {
+    "UNAWARE": ["Discover how", "See how it works", "Learn more"],
+    "PROBLEM_AWARE": ["See what to power first", "Read the checklist", "Learn what to look for"],
+    "SOLUTION_AWARE": ["Explore the features", "See the difference", "Compare options"],
+    "PRODUCT_AWARE": ["Review the specs", "See who it fits", "Read the details"],
+    "MOST_AWARE": ["Shop now", "Get yours", "Choose yours", "Order today"]
+  },
+  "by_campaign_objective": {
+    "awareness": ["Discover how", "See how it works", "Learn more"],
+    "consideration": ["Explore the features", "See the difference", "Compare options"],
+    "purchase": ["Shop now", "Get yours", "Order today"],
+    "promotion": ["Claim the offer", "Shop the sale"]
+  },
+  "rules": [
+    "CTA must match the actual destination.",
+    "Never claim urgency without verifiable data.",
+    "Prefer specificity over hype."
+  ]
+}

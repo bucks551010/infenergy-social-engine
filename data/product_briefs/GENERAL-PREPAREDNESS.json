@@ -1,0 +1,41 @@
+{
+  "product_id": "GENERAL-PREPAREDNESS",
+  "sku": "",
+  "name": "Infenergy preparedness solution",
+  "product_type": "preparedness_product",
+  "role": "preparedness product",
+  "product_summary": "Infenergy preparedness solution is a preparedness product that fills a specific gap in a practical preparedness plan.",
+  "categories": [
+    "Preparedness"
+  ],
+  "verified_facts": [],
+  "core_benefits": [
+    "fills a specific gap in a practical preparedness plan"
+  ],
+  "best_fit_use_cases": [
+    "home preparedness",
+    "vehicle kit",
+    "travel kit"
+  ],
+  "best_fit_audiences": [
+    "prepared households",
+    "travelers",
+    "outdoor users"
+  ],
+  "primary_pain_point": "Generic recommendations leave buyers with the wrong tool for the job.",
+  "proof_rule": "Use only published product details and verified compatibility information.",
+  "recommended_cta": "Review the published details against the job this product needs to do.",
+  "hashtag_themes": [
+    "Preparedness",
+    "EmergencyKit",
+    "ReadyForAnything"
+  ],
+  "visual_direction": "Show the real product performing its documented job in a credible use case.",
+  "forbidden_claims": [
+    "Do not invent specifications, compatibility, runtime, certifications, guarantees, or included accessories.",
+    "Do not describe the product as a different product type because of secondary features or broad categories.",
+    "Do not use power-device language for water, comfort, safety, or other non-power primary products."
+  ],
+  "source_image_url": "",
+  "updated_at_utc": "2026-08-11T17:48:14.811594+00:00"
+}

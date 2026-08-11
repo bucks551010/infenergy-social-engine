@@ -1,0 +1,309 @@
+{
+  "monday": {
+    "morning": [
+      {
+        "platform": "linkedin",
+        "allowed_funnel_stages": [
+          "EDUCATION",
+          "TRUST"
+        ],
+        "enabled": true,
+        "preferred_content_formats": [
+          "authority_post",
+          "faq"
+        ]
+      }
+    ],
+    "midday": [
+      {
+        "platform": "facebook",
+        "allowed_funnel_stages": [
+          "ATTENTION",
+          "EDUCATION"
+        ],
+        "enabled": true,
+        "preferred_content_formats": [
+          "comparison",
+          "how_to",
+          "question_post"
+        ]
+      },
+      {
+        "platform": "linkedin",
+        "allowed_funnel_stages": [
+          "EDUCATION",
+          "TRUST"
+        ],
+        "enabled": true,
+        "preferred_content_formats": [
+          "authority_post",
+          "faq"
+        ]
+      }
+    ],
+    "evening": [
+      {
+        "platform": "instagram",
+        "allowed_funnel_stages": [
+          "ATTENTION",
+          "DESIRE"
+        ],
+        "enabled": true,
+        "preferred_content_formats": [
+          "use_case",
+          "carousel"
+        ]
+      }
+    ]
+  },
+  "tuesday": {
+    "morning": [
+      {
+        "platform": "facebook",
+        "allowed_funnel_stages": [
+          "ATTENTION",
+          "EDUCATION"
+        ],
+        "enabled": true,
+        "preferred_content_formats": [
+          "question_post",
+          "myth_bust"
+        ]
+      }
+    ],
+    "midday": [
+      {
+        "platform": "instagram",
+        "allowed_funnel_stages": [
+          "DESIRE",
+          "EDUCATION"
+        ],
+        "enabled": true,
+        "preferred_content_formats": [
+          "use_case",
+          "demonstration"
+        ]
+      }
+    ],
+    "evening": [
+      {
+        "platform": "facebook",
+        "allowed_funnel_stages": [
+          "DESIRE",
+          "TRUST"
+        ],
+        "enabled": true,
+        "preferred_content_formats": [
+          "scenario",
+          "use_case"
+        ]
+      }
+    ]
+  },
+  "wednesday": {
+    "morning": [
+      {
+        "platform": "linkedin",
+        "allowed_funnel_stages": [
+          "EDUCATION",
+          "TRUST"
+        ],
+        "enabled": true,
+        "preferred_content_formats": [
+          "authority_post",
+          "spec_breakdown"
+        ]
+      }
+    ],
+    "midday": [
+      {
+        "platform": "facebook",
+        "allowed_funnel_stages": [
+          "ATTENTION",
+          "EDUCATION"
+        ],
+        "enabled": true,
+        "preferred_content_formats": [
+          "question_post",
+          "myth_bust"
+        ]
+      }
+    ],
+    "evening": [
+      {
+        "platform": "instagram",
+        "allowed_funnel_stages": [
+          "EDUCATION",
+          "DESIRE"
+        ],
+        "enabled": true,
+        "preferred_content_formats": [
+          "checklist",
+          "carousel"
+        ]
+      }
+    ]
+  },
+  "thursday": {
+    "morning": [
+      {
+        "platform": "instagram",
+        "allowed_funnel_stages": [
+          "ATTENTION",
+          "DESIRE"
+        ],
+        "enabled": true,
+        "preferred_content_formats": [
+          "reel",
+          "use_case"
+        ]
+      }
+    ],
+    "midday": [
+      {
+        "platform": "linkedin",
+        "allowed_funnel_stages": [
+          "TRUST",
+          "EDUCATION"
+        ],
+        "enabled": true,
+        "preferred_content_formats": [
+          "spec_breakdown",
+          "authority_post"
+        ]
+      },
+      {
+        "platform": "instagram",
+        "allowed_funnel_stages": [
+          "TRUST",
+          "DESIRE"
+        ],
+        "enabled": true,
+        "preferred_content_formats": [
+          "demonstration",
+          "reel"
+        ]
+      }
+    ],
+    "evening": [
+      {
+        "platform": "facebook",
+        "allowed_funnel_stages": [
+          "CONVERSION",
+          "TRUST"
+        ],
+        "enabled": true,
+        "preferred_content_formats": [
+          "direct_cta",
+          "offer_post"
+        ]
+      }
+    ]
+  },
+  "friday": {
+    "morning": [
+      {
+        "platform": "facebook",
+        "allowed_funnel_stages": [
+          "EDUCATION",
+          "ATTENTION"
+        ],
+        "enabled": true,
+        "preferred_content_formats": [
+          "how_to",
+          "comparison"
+        ]
+      }
+    ],
+    "midday": [
+      {
+        "platform": "linkedin",
+        "allowed_funnel_stages": [
+          "TRUST",
+          "EDUCATION"
+        ],
+        "enabled": true,
+        "preferred_content_formats": [
+          "authority_post",
+          "faq"
+        ]
+      }
+    ],
+    "evening": [
+      {
+        "platform": "instagram",
+        "allowed_funnel_stages": [
+          "DESIRE",
+          "CONVERSION"
+        ],
+        "enabled": true,
+        "preferred_content_formats": [
+          "carousel",
+          "offer_post"
+        ]
+      }
+    ]
+  },
+  "saturday": {
+    "morning": [
+      {
+        "platform": "instagram",
+        "allowed_funnel_stages": [
+          "ATTENTION",
+          "DESIRE"
+        ],
+        "enabled": true,
+        "preferred_content_formats": [
+          "use_case",
+          "carousel"
+        ]
+      }
+    ],
+    "midday": [
+      {
+        "platform": "facebook",
+        "allowed_funnel_stages": [
+          "DESIRE",
+          "ATTENTION"
+        ],
+        "enabled": true,
+        "preferred_content_formats": [
+          "scenario",
+          "question_post"
+        ]
+      }
+    ],
+    "evening": []
+  },
+  "sunday": {
+    "morning": [],
+    "midday": [
+      {
+        "platform": "facebook",
+        "allowed_funnel_stages": [
+          "ATTENTION",
+          "DESIRE"
+        ],
+        "enabled": true,
+        "preferred_content_formats": [
+          "question_post",
+          "use_case"
+        ]
+      }
+    ],
+    "evening": [
+      {
+        "platform": "linkedin",
+        "allowed_funnel_stages": [
+          "TRUST",
+          "EDUCATION"
+        ],
+        "enabled": true,
+        "preferred_content_formats": [
+          "authority_post",
+          "faq"
+        ]
+      }
+    ]
+  }
+}

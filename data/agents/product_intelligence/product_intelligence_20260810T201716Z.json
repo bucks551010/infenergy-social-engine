@@ -1,0 +1,112 @@
+{
+  "agent": "product_intelligence",
+  "product_brief": {
+    "product_id": "AF-SOLAR",
+    "sku": "AF-SOLAR",
+    "name": "Aferiy Solar Panels",
+    "product_type": "power_station",
+    "role": "backup power station",
+    "product_summary": "Aferiy Solar Panels is a backup power station that supports priority devices during outages and off-grid use.",
+    "categories": [
+      "Solar Generators",
+      "Solar Panels"
+    ],
+    "verified_facts": [
+      "200W",
+      "400W",
+      "Aferiy Solar Panels: High-Efficiency Portable Power Harness the sun with Aferiy Portable Solar Panels, available in 200W and 400W options. Featuring a remarkable 23% conversion efficiency , a durable IP65 weatherproof design, and an easy-to-carry foldable format, these panels are the perfect companion for your power station. Power your adventures, off-grid living, and emergency backups with clean, reliable solar energy. Capture More Sun, Power More Life The Aferiy Solar Panels deliver best-in-cl"
+    ],
+    "core_benefits": [
+      "supports priority devices during outages and off-grid use",
+      "combines portable stored energy with published output options"
+    ],
+    "best_fit_use_cases": [
+      "home outage backup",
+      "RV and camping",
+      "mobile work",
+      "emergency preparedness"
+    ],
+    "best_fit_audiences": [
+      "households planning outage loads",
+      "RV and camping users",
+      "mobile professionals"
+    ],
+    "primary_pain_point": "Backup power choices fail when output, runtime, and charging limits are not matched to actual loads.",
+    "proof_rule": "Use only published capacity, output, runtime, battery chemistry, port, and charging details.",
+    "recommended_cta": "Compare the published capacity and output with the devices and runtime you need.",
+    "hashtag_themes": [
+      "BackupPower",
+      "PowerStation",
+      "OutageReady",
+      "EmergencyPreparedness"
+    ],
+    "visual_direction": "Show the real power station connected to a credible priority load in a home, RV, campsite, or mobile-work setting.",
+    "forbidden_claims": [
+      "Do not invent specifications, compatibility, runtime, certifications, guarantees, or included accessories.",
+      "Do not describe the product as a different product type because of secondary features or broad categories.",
+      "Do not use power-device language for water, comfort, safety, or other non-power primary products."
+    ],
+    "source_image_url": "https://infenergypower.com/wp-content/uploads/2025/08/AF-S400A1-1.jpg",
+    "updated_at_utc": "2026-08-10T20:17:16.575067+00:00"
+  },
+  "product_summary": "Aferiy Solar Panels is a backup power station that supports priority devices during outages and off-grid use.",
+  "best_fit_audiences": [
+    "households planning outage loads",
+    "RV and camping users",
+    "mobile professionals",
+    "Primary audience segment: Prepared Family Protector"
+  ],
+  "core_benefits": [
+    "supports priority devices during outages and off-grid use",
+    "combines portable stored energy with published output options"
+  ],
+  "proof_points": [
+    "200W",
+    "400W",
+    "Aferiy Solar Panels: High-Efficiency Portable Power Harness the sun with Aferiy Portable Solar Panels, available in 200W and 400W options. Featuring a remarkable 23% conversion efficiency , a durable IP65 weatherproof design, and an easy-to-carry foldable format, these panels are the perfect companion for your power station. Power your adventures, off-grid living, and emergency backups with clean, reliable solar energy. Capture More Sun, Power More Life The Aferiy Solar Panels deliver best-in-cl"
+  ],
+  "sales_angle": "Lead with the product-specific problem and make the cost of a poor fit concrete.",
+  "preferred_vocabulary": [
+    "backup power station",
+    "home outage backup",
+    "RV and camping",
+    "mobile work",
+    "emergency preparedness"
+  ],
+  "emotional_outcomes": [
+    "confidence in product fit",
+    "clarity about the product's job",
+    "preparedness grounded in verified facts"
+  ],
+  "messaging_devices": [
+    "one product, one primary job",
+    "fact to use case to outcome",
+    "state compatibility limits clearly"
+  ],
+  "sales_copy_seed": "Where does Aferiy Solar Panels fit in a practical outage plan? Backup power choices fail when output, runtime, and charging limits are not matched to actual loads. Aferiy Solar Panels is a backup power station that supports priority devices during outages and off-grid use. Comment with your answer.",
+  "handoff": {
+    "copywriter": [
+      "Primary product type: power_station",
+      "Primary job: backup power station",
+      "Use cases: ['home outage backup', 'RV and camping', 'mobile work', 'emergency preparedness']",
+      "Use only these facts: ['200W', '400W', 'Aferiy Solar Panels: High-Efficiency Portable Power Harness the sun with Aferiy Portable Solar Panels, available in 200W and 400W options. Featuring a remarkable 23% conversion efficiency , a durable IP65 weatherproof design, and an easy-to-carry foldable format, these panels are the perfect companion for your power station. Power your adventures, off-grid living, and emergency backups with clean, reliable solar energy. Capture More Sun, Power More Life The Aferiy Solar Panels deliver best-in-cl']",
+      "CTA direction: Comment with your answer."
+    ],
+    "visual_director": [
+      "Show the real power station connected to a credible priority load in a home, RV, campsite, or mobile-work setting.",
+      "Use the supplied real product image; do not synthesize a replacement product."
+    ],
+    "platform_editor": [
+      "Preserve the primary product job on every platform.",
+      "Keep the content native to this topic: How to match portable solar panels with your power station"
+    ],
+    "product_truth": [
+      "Use only published capacity, output, runtime, battery chemistry, port, and charging details.",
+      "Do not invent specifications, compatibility, runtime, certifications, guarantees, or included accessories.",
+      "Do not describe the product as a different product type because of secondary features or broad categories.",
+      "Do not use power-device language for water, comfort, safety, or other non-power primary products."
+    ]
+  },
+  "brief_path": "C:\\Users\\v-jmoten\\infenergy-social-engine\\scripts\\..\\data\\product_briefs\\AF-SOLAR.json",
+  "time_utc": "2026-08-10T20:17:16.579457+00:00"
+}

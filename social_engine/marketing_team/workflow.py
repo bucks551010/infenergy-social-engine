@@ -25,8 +25,21 @@ def _utc_stamp() -> str:
     return datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
 
 
+def _load_founder_manifesto(output_dir: str) -> dict[str, Any]:
+    path = os.path.join(output_dir, "founder_brand_manifesto.json")
+    if not os.path.exists(path):
+        return {}
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
 def _markdown_summary(strategy: dict[str, Any]) -> str:
     profile = strategy["brand_profile"]
+    manifesto = profile.get("founder_manifesto", {}) if isinstance(profile.get("founder_manifesto", {}), dict) else {}
     research = strategy["research"]
     audience = strategy["audience"]
     voice = strategy["voice"]
@@ -43,6 +56,8 @@ def _markdown_summary(strategy: dict[str, Any]) -> str:
     lines.append(f"- Top categories: {', '.join(profile.get('top_categories', [])[:6])}")
     lines.append(f"- Price tier: {profile.get('demographics', {}).get('value_tier', 'n/a')}")
     lines.append(f"- Authority: {profile.get('brand_voice', {}).get('authority_position', '')}")
+    if manifesto:
+        lines.append(f"- Founder mission: {manifesto.get('mission', '')}")
     lines.append("")
     lines.append("## Positioning")
     lines.append(f"- Market position: {research.get('market_position', '')}")
@@ -85,9 +100,13 @@ def _build_execution_pack(strategy: dict[str, Any]) -> dict[str, Any]:
     copy = strategy.get("copy", {})
     channels = strategy.get("channel_ops", {}).get("channels", {})
     audience = strategy.get("audience", {}).get("segments", [])
+    manifesto = strategy.get("brand_profile", {}).get("founder_manifesto", {})
     return {
         "hero": copy.get("hero", ""),
         "subhero": copy.get("subhero", ""),
+        "mission": manifesto.get("mission", ""),
+        "core_values": manifesto.get("core_values", []),
+        "value_narrative": copy.get("value_narrative", {}),
         "top_hooks": copy.get("social_hooks", [])[:5],
         "top_ctas": copy.get("cta_bank", [])[:5],
         "channel_frameworks": channels,
@@ -113,6 +132,9 @@ def run_marketing_team(
     output_dir = output_dir or os.path.join(root, "data", "marketing")
 
     profile = infer_brand_profile(site_url=site_url, products_dir=products_dir)
+    manifesto = _load_founder_manifesto(output_dir)
+    if manifesto:
+        profile["founder_manifesto"] = manifesto
     research = research_agent(profile)
     audience = audience_agent(profile, research)
     voice = voice_agent(profile)

@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Infenergy Social Card</title>
+    <style>
+        * { box-sizing: border-box; }
+        body { margin: 0; background: #070d14; font-family: 'Avenir Next Condensed', 'Oswald', 'Segoe UI', sans-serif; }
+        .card { width: 1200px; height: 627px; margin: 0 auto; color: #f3f8ff; position: relative; overflow: hidden;
+            background:
+                radial-gradient(1600px 920px at -20% -10%, rgba(52,117,176,0.38), transparent 56%),
+                radial-gradient(1200px 860px at 120% 120%, rgba(204,155,73,0.22), transparent 58%),
+                linear-gradient(146deg, #07111c 0%, #112740 49%, #0a1624 100%);
+        }
+        .edge { position:absolute; inset:20px; border:1px solid rgba(226,184,108,.54); border-radius:32px; }
+        .edge2 { position:absolute; inset:34px; border:1px solid rgba(130,205,255,.24); border-radius:28px; }
+        .slash-a { position:absolute; right:-120px; top:-80px; width:520px; height:260px; background: linear-gradient(140deg, rgba(89,157,221,.34), rgba(89,157,221,0)); transform: rotate(-18deg); }
+        .slash-b { position:absolute; left:-180px; bottom:-120px; width:620px; height:320px; background: linear-gradient(145deg, rgba(202,154,75,.28), rgba(202,154,75,0)); transform: rotate(21deg); }
+        .inner { position:absolute; inset:52px; border-radius:24px; padding:40px 42px 38px;
+            background: linear-gradient(165deg, rgba(9,24,39,.84), rgba(16,44,72,.76));
+            box-shadow: inset 0 1px 0 rgba(255,255,255,.07), 0 28px 54px rgba(0,0,0,.44);
+        }
+        .brand { font-size:34px; font-weight:700; letter-spacing:.01em; }
+        .stage { margin-top:10px; display:inline-block; color:#e1bf80; border:1px solid rgba(223,179,95,.55);
+            border-radius:999px; font-size:15px; letter-spacing:.16em; text-transform:uppercase; padding:7px 14px; }
+        .grid { margin-top:22px; display:grid; grid-template-columns: 1.02fr .98fr; gap:24px; align-items:start; }
+        .hook { margin:0; font-size:48px; line-height:.9; text-transform:uppercase; letter-spacing:.01em; font-weight:800; max-width:98%; }
+        .topic { margin-top:16px; color:#d4e8fb; font-size:21px; line-height:1.2; max-width:88%; }
+        .stat { display:inline-block; margin-top:14px; background:linear-gradient(90deg,#f7a30f,#ffd034); color:#121212; font-size:22px;
+            font-weight:820; letter-spacing:.03em; text-transform:uppercase; padding:8px 14px; border-radius:9px; }
+        .chips { margin-top:16px; display:flex; gap:10px; flex-wrap:wrap; }
+        .chip { font-size:15px; border:1px solid rgba(144,206,255,.5); border-radius:999px; padding:7px 12px; color:#cce6ff; background:rgba(11,33,52,.52); }
+        .product { margin-top:14px; color:#f0d5a0; font-size:24px; font-weight:640; max-width:88%; }
+        .benefits { margin-top:16px; display:grid; grid-template-columns:1fr; gap:8px; max-width:80%; }
+        .benefit { display:flex; align-items:center; gap:8px; color:#ffe3aa; font-size:16px; font-weight:620; }
+        .dot { color:#ffb11a; }
+        .media { justify-self:end; width:420px; height:420px;
+            border-radius:22px; border:1px solid rgba(163,214,255,.75); background: linear-gradient(170deg, rgba(255,255,255,.12), rgba(14,35,55,.32));
+            box-shadow: 0 30px 46px rgba(0,0,0,.46), inset 0 1px 0 rgba(255,255,255,.22);
+            position:relative; overflow:hidden; display:flex; align-items:center; justify-content:center; }
+        .media::before { content:''; position:absolute; inset:0; background: radial-gradient(80% 80% at 70% 20%, rgba(129,197,255,.26), transparent 68%); pointer-events:none; }
+        .media img { max-width:92%; max-height:92%; object-fit:contain; filter: drop-shadow(0 18px 20px rgba(0,0,0,.42)); position:relative; z-index:2; }
+        .badges { position:absolute; right:38px; bottom:124px; display:flex; flex-direction:column; gap:8px; z-index:3; }
+        .badge { display:inline-block; background:rgba(10,18,25,.82); color:#f5f8ff; border:1px solid rgba(255,190,58,.68); border-radius:999px; padding:7px 11px; font-size:12px; font-weight:640; }
+        .cta { position:absolute; left:42px; right:250px; bottom:62px;
+            font-size:24px; font-weight:700; letter-spacing:.01em;
+            color:#f6fcff; border-radius:16px; border:1px solid rgba(183,226,255,.56);
+            background: linear-gradient(90deg, #8f1e07, #c73412 52%, #e95d1f);
+            padding:15px 20px; box-shadow:0 14px 28px rgba(0,0,0,.35); }
+        .cta::before { content:''; position:absolute; left:0; right:0; top:0; height:4px; border-radius:16px 16px 0 0; background:#ffd13d; }
+        .cta::after { content:' ->'; color:#d7eeff; }
+        .card.premium_minimal .topic { font-size:20px; }
+        .card.premium_minimal .chips { display:none; }
+        .card.premium_minimal .product { display:none; }
+        .card.premium_editorial .hook { text-transform:none; line-height:1.02; font-size:46px; }
+        .card.premium_editorial .media { border-radius:14px; }
+        .card.premium_product_focus .media { border:2px solid rgba(145,214,255,.92); }
+        .card.nike_premium .hook { font-family:'Avenir Next Condensed','Bahnschrift','Impact',sans-serif; }
+        .card.nike_premium .topic { max-width:74%; }
+        .card.nike_premium .chips { display:none; }
+        .card.nike_premium .product { display:none; }
+        .card.nike_premium .inner::after { content:''; position:absolute; left:-120px; right:-80px; bottom:82px; height:230px;
+            background: linear-gradient(168deg, rgba(18,50,81,.9), rgba(18,50,81,.62)); transform: skewY(-6deg); z-index:0; }
+        .card.nike_premium .grid, .card.nike_premium .brand, .card.nike_premium .stage, .card.nike_premium .cta { position:relative; z-index:2; }
+        .card.power_shot {
+            background:
+                radial-gradient(980px 700px at 98% 62%, rgba(235,101,20,0.35), transparent 58%),
+                radial-gradient(760px 520px at 0% 0%, rgba(255,184,57,0.24), transparent 50%),
+                linear-gradient(155deg, #0d0d0d 0%, #201307 55%, #0c0f14 100%);
+        }
+        .card.power_shot .inner { background: linear-gradient(160deg, rgba(16,16,16,.9), rgba(47,23,8,.82)); }
+        .card.power_shot .hook { color:#ffd13d; }
+        .card.power_shot .topic { color:#fff2d0; max-width:70%; }
+        .card.power_shot .chips { display:none; }
+        .card.power_shot .product { display:none; }
+        .card.power_shot .media { border:2px solid rgba(255,186,52,.9); box-shadow: 0 34px 52px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.2); }
+    </style>
+</head>
+<body>
+    <div class="card power_shot">
+        <div class="slash-a"></div>
+        <div class="slash-b"></div>
+        <div class="edge"></div>
+        <div class="edge2"></div>
+        <div class="inner">
+            <div class="brand">Infenergy Power</div>
+            <div class="stage">ATTENTION</div>
+            <div class="grid">
+                <div>
+                    <h1 class="hook">DON&#x27;T WAIT FOR FAILURE</h1>
+                    <div class="stat">OUTAGE READY</div>
+                    <div class="topic">Sorein Modular Power System - EB 200 Extra Battery | its published prod...</div>
+                    <div class="benefits"><div class="benefit"><span class="dot">&gt;&gt;</span><span>Must-run device backup</span></div><div class="benefit"><span class="dot">&gt;&gt;</span><span>Home outage readiness</span></div><div class="benefit"><span class="dot">&gt;&gt;</span><span>Spec-backed resilience</span></div><div class="benefit"><span class="dot">&gt;&gt;</span><span>Confidence before storms</span></div></div>
+                    
+                    <div class="product">Featured product: Sorein Modular Power System | EB 200 Extra Battery</div>
+                </div>
+                <div class="media"><img src="https://infenergypower.com/wp-content/uploads/2025/06/Photoroom_20250613_004442.png" alt="Product visual" /></div>
+            </div>
+            <div class="badges"></div>
+            <div class="cta">Map your must-run devices and build your outage-ready setup</div>
+        </div>
+    </div>
+</body>
+</html>

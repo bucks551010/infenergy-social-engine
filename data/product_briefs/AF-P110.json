@@ -1,0 +1,52 @@
+{
+  "product_id": "AF-P110",
+  "sku": "AF-P110",
+  "name": "AFERIY AF-P110",
+  "product_type": "power_station",
+  "role": "backup power station",
+  "product_summary": "AFERIY AF-P110 is a backup power station that supports priority devices during outages and off-grid use.",
+  "categories": [
+    "Outdoors & Camping",
+    "Portable Power",
+    "Solar Generators"
+  ],
+  "verified_facts": [
+    "100W",
+    "500W",
+    "2.5 hours",
+    "120V",
+    "AFERIY AF-P110: 1200W Compact Powerhouse Unleash serious power with the AFERIY AF-P110. Engineered with a 1248Wh LiFePO₄ battery and a robust 1200W pure sine wave inverter , it's built to run heavy-duty appliances and tools for your RV, home backup, or job site. Featuring a 100W USB-C port and ultra-fast 500W solar charging, it's your reliable source for high-demand, off-grid energy. Reliable Portable Power Station for Demanding Applications The AFERIY AF-P110 is a compact yet formidable power s"
+  ],
+  "core_benefits": [
+    "supports priority devices during outages and off-grid use",
+    "combines portable stored energy with published output options"
+  ],
+  "best_fit_use_cases": [
+    "home outage backup",
+    "RV and camping",
+    "mobile work",
+    "emergency preparedness"
+  ],
+  "best_fit_audiences": [
+    "households planning outage loads",
+    "RV and camping users",
+    "mobile professionals"
+  ],
+  "primary_pain_point": "Backup power choices fail when output, runtime, and charging limits are not matched to actual loads.",
+  "proof_rule": "Use only published capacity, output, runtime, battery chemistry, port, and charging details.",
+  "recommended_cta": "Compare the published capacity and output with the devices and runtime you need.",
+  "hashtag_themes": [
+    "BackupPower",
+    "PowerStation",
+    "OutageReady",
+    "EmergencyPreparedness"
+  ],
+  "visual_direction": "Show the real power station connected to a credible priority load in a home, RV, campsite, or mobile-work setting.",
+  "forbidden_claims": [
+    "Do not invent specifications, compatibility, runtime, certifications, guarantees, or included accessories.",
+    "Do not describe the product as a different product type because of secondary features or broad categories.",
+    "Do not use power-device language for water, comfort, safety, or other non-power primary products."
+  ],
+  "source_image_url": "https://infenergypower.com/wp-content/uploads/2025/07/1200W-high-quality-6-scaled.jpg",
+  "updated_at_utc": "2026-08-10T21:43:56.088268+00:00"
+}

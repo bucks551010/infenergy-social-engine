@@ -1,0 +1,169 @@
+{
+  "agent": "conversion_strategist",
+  "generated_at": "2026-08-11T17:40:41.340931+00:00",
+  "brief": {
+    "product_id": "",
+    "product_name": "",
+    "campaign_goal": "awareness",
+    "audience_id": "preparedness_buyer",
+    "audience_name": "Preparedness / Contingency Buyer",
+    "awareness_stage": "PROBLEM_AWARE",
+    "funnel_stage": "EDUCATION",
+    "logic_principle": "contrapositive",
+    "emotional_driver_primary": "preparedness",
+    "emotional_driver_secondary": "security",
+    "copy_framework": "PAS",
+    "creative_type": "before_after",
+    "platform_priority": [
+      "facebook",
+      "instagram",
+      "linkedin"
+    ],
+    "persuasion": {
+      "who": "Preparedness / Contingency Buyer",
+      "when_context": "Household planning ahead of outages, storms, and emergencies.",
+      "problem": "No practical plan for keeping essential devices powered during an outage.",
+      "desire": "A clear, right-sized backup-power plan for the household.",
+      "product": "",
+      "feature": "",
+      "mechanism": "",
+      "benefit": "",
+      "outcome": "",
+      "proof": "Verified  specification",
+      "objection": "Anchor to a specific scenario the customer already recognizes; do not manufacture fear.",
+      "transformation_from": "dependent",
+      "transformation_to": "prepared"
+    },
+    "copy": {
+      "hook": "",
+      "headline": "",
+      "supporting_text": "",
+      "caption": "",
+      "cta": "Map your must-run devices and build your outage-ready setup",
+      "hashtags": []
+    },
+    "design": {
+      "visual_hook": "",
+      "hero_element": "",
+      "layout": "",
+      "text_overlay": [],
+      "visual_direction": "current_problem_to_solved_state",
+      "template": "before_after",
+      "image_prompt": ""
+    },
+    "quality": {
+      "conversion_quality_score": 0.0,
+      "claim_integrity": "",
+      "brand_score": 0.0,
+      "repetition_score": 0.0,
+      "component_scores": {}
+    },
+    "experiment": {
+      "variant_id": "ec6b12ebce",
+      "variables": {
+        "law": "contrapositive",
+        "structure": "PAS",
+        "primary_emotion": "preparedness",
+        "hook_category_hint": "problem_recognition"
+      }
+    },
+    "brief_id": "bbfebdc7",
+    "schema_version": "conversion.v1",
+    "generated_at": "2026-08-11T17:40:41.340861+00:00",
+    "source": "conversion_strategist",
+    "rationale": {
+      "awareness_stage": "funnel=EDUCATION + persona=preparedness_buyer",
+      "logic_principle": "eligible-for PROBLEM_AWARE, avoids recent []",
+      "emotional_driver": "persona-default for preparedness_buyer at PROBLEM_AWARE",
+      "copy_framework": "best-fit for contrapositive + PROBLEM_AWARE",
+      "objection": "persona.top_objection=necessity at PROBLEM_AWARE"
+    }
+  },
+  "summary": "[bbfebdc7] aud=preparedness_buyer aware=PROBLEM_AWARE law=contrapositive emo=preparedness struct=PAS product=-",
+  "hook_targets": {
+    "category_hint": "problem_recognition",
+    "preferred_categories": [
+      "pain",
+      "problem_recognition",
+      "question",
+      "identity"
+    ],
+    "primary_emotion": "preparedness",
+    "emotion_cues": [
+      "ahead of time",
+      "before the storm",
+      "ready when",
+      "plan"
+    ]
+  },
+  "structure_beats": [
+    "problem",
+    "agitation",
+    "solution"
+  ],
+  "law_narrative_template": [
+    "Name the desired result the customer wants.",
+    "Name what is preventing that result today.",
+    "Show the honest ongoing cost of that gap (inconvenience, delay, uncertainty).",
+    "Show how the product legitimately reduces that gap.",
+    "Close with what changes."
+  ],
+  "law_guardrails": [
+    "No fake fear.",
+    "No catastrophic outcomes unsupported by the product.",
+    "Cost-of-inaction must be truthful."
+  ],
+  "objection_reframe": {
+    "reframe_pattern": "Anchor to a specific scenario the customer already recognizes; do not manufacture fear.",
+    "supporting_proof_types": [
+      "scenario_recognition"
+    ]
+  },
+  "downstream_instructions": {
+    "must_include_in_caption": [
+      "the persona pain: No practical plan for keeping essential devices powered during an outage.",
+      "the desired outcome: A clear, right-sized backup-power plan for the household.",
+      "a proof point: Verified  specification"
+    ],
+    "must_avoid_in_caption": [
+      "manufactured urgency (unless verified promotion window)",
+      "fabricated statistics",
+      "invented testimonials",
+      "banned openers"
+    ],
+    "must_include": [
+      "the persona pain: No practical plan for keeping essential devices powered during an outage.",
+      "the desired outcome: A clear, right-sized backup-power plan for the household.",
+      "a proof point: Verified  specification"
+    ],
+    "must_avoid": [
+      "manufactured urgency (unless verified promotion window)",
+      "fabricated statistics",
+      "invented testimonials",
+      "banned openers"
+    ],
+    "narrative_order": "PAS",
+    "visual_alignment": {
+      "logic_principle": "contrapositive",
+      "template_family": "before_after",
+      "transformation": "dependent -> prepared"
+    },
+    "cta_pinned": "Map your must-run devices and build your outage-ready setup"
+  },
+  "winning_hints_applied": {
+    "logic_principle": [],
+    "copy_framework": [],
+    "emotional_driver_primary": [],
+    "audience_id": [],
+    "awareness_stage": []
+  },
+  "experiment": {
+    "variant_id": "ec6b12ebce",
+    "variables": {
+      "law": "contrapositive",
+      "structure": "PAS",
+      "primary_emotion": "preparedness",
+      "hook_category_hint": "problem_recognition"
+    }
+  }
+}

@@ -6,6 +6,8 @@ import os
 from datetime import datetime, timezone
 from typing import Any
 
+from scripts.campaign_runtime import DEFAULT_CHANNEL_SCHEDULE, DEFAULT_FUNNEL_CONFIG
+
 
 def _utc_stamp() -> str:
     return datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
@@ -106,13 +108,13 @@ def build_weekly_plan(output_dir: str) -> dict[str, Any]:
             ],
         },
         {
-            "name": "Solar Independence Week",
-            "primary_objective": "Increase solar-storage interest and trust",
+            "name": "Portable Power Lifestyle Week",
+            "primary_objective": "Increase product-fit consults for home, travel, and outdoor use",
             "hero_offer": offers[0],
             "narrative": [
-                "Day 1-2: rate-volatility pain",
-                "Day 3-4: modular pathway and costs",
-                "Day 5-7: practical consultation CTA",
+                "Day 1-2: everyday device dependence and risk",
+                "Day 3-4: practical setup pathways for families and mobile users",
+                "Day 5-7: conversion push with concrete next steps",
             ],
         },
     ]
@@ -138,14 +140,34 @@ def build_weekly_plan(output_dir: str) -> dict[str, Any]:
             "Evening slots prioritize conversion CTAs",
         ],
         "sequence": sequence,
+        "campaign_plan": {
+            "name": "infenergy_weekly_growth_sprint",
+            "funnel": DEFAULT_FUNNEL_CONFIG,
+            "channel_schedule": DEFAULT_CHANNEL_SCHEDULE,
+            "quality_targets": {
+                "minimum_quality_score": 78,
+                "required_numeric_evidence_per_post": 1,
+                "max_risky_claim_hits": 0,
+            },
+            "publishing_rules": {
+                "skip_recent_success_hours": 0,
+                "anti_repeat_topic_window": 60,
+                "anti_repeat_hook_window": 30,
+                "anti_repeat_cta_window": 30,
+            },
+        },
     }
 
     stamp = _utc_stamp()
     out_json = os.path.join(output_dir, f"weekly_plan_{stamp}.json")
     out_md = os.path.join(output_dir, f"weekly_plan_{stamp}.md")
+    campaign_json = os.path.join(output_dir, f"campaign_plan_{stamp}.json")
 
     with open(out_json, "w", encoding="utf-8") as f:
         json.dump(plan, f, indent=2)
+
+    with open(campaign_json, "w", encoding="utf-8") as f:
+        json.dump(plan["campaign_plan"], f, indent=2)
 
     lines = ["# INF Energy Weekly Marketing Plan", "", f"Generated: {plan['generated_at_utc']}", ""]
     lines.append("## Objective")
@@ -168,5 +190,9 @@ def build_weekly_plan(output_dir: str) -> dict[str, Any]:
     with open(out_md, "w", encoding="utf-8") as f:
         f.write("\n".join(lines))
 
-    plan["artifacts"] = {"weekly_plan_json": out_json, "weekly_plan_md": out_md}
+    plan["artifacts"] = {
+        "weekly_plan_json": out_json,
+        "weekly_plan_md": out_md,
+        "campaign_plan_json": campaign_json,
+    }
     return plan

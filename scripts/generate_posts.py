@@ -34,6 +34,7 @@ from anti_repeat import load_anti_repeat_windows
 from build_utm_url import build_utm_url
 from social_visuals import generate_visuals, normalize_brand_content, normalize_brand_text
 from agents import product_intelligence
+from agents import conversion_strategist
 from agent_control_plane import (
     SCHEMAS_VERSION,
     build_gate_record,
@@ -3095,6 +3096,86 @@ def _build_ai_image_prompt_bank(strategy: dict, product: dict | None) -> dict[st
     }
 
 
+def _apply_strategic_brief_to_visual(visual_plan: dict, run_context: dict, product: dict | None) -> dict:
+    """Phase F - unify visual plan with StrategicBrief.design (spec Section 20/23).
+
+    Enforces that the visual direction matches the law's visual strategy and
+    seeds a carousel storyboard from the law's narrative_template. Never
+    mutates strategic_brief itself; only augments visual_plan.
+    """
+    if not isinstance(visual_plan, dict):
+        return visual_plan
+    brief = run_context.get("strategic_brief") if isinstance(run_context.get("strategic_brief"), dict) else None
+    strategist = run_context.get("conversion_strategist") if isinstance(run_context.get("conversion_strategist"), dict) else None
+    if not brief:
+        return visual_plan
+    design = brief.get("design") if isinstance(brief.get("design"), dict) else {}
+    persuasion = brief.get("persuasion") if isinstance(brief.get("persuasion"), dict) else {}
+    strategist = strategist or {}
+
+    law_name = str(brief.get("logic_principle", "") or "").strip()
+    visual_direction = str(design.get("visual_direction", "") or "").strip()
+    template = str(design.get("template", "") or "").strip()
+
+    if visual_direction:
+        current_objective = str(visual_plan.get("visual_objective", "") or "").strip()
+        if visual_direction.lower() not in current_objective.lower():
+            visual_plan["visual_objective"] = (current_objective + " " + visual_direction).strip()
+        visual_plan["strategic_visual_direction"] = visual_direction
+
+    if template and not visual_plan.get("strategic_template_family"):
+        visual_plan["strategic_template_family"] = template
+
+    prompt = str(visual_plan.get("gemini_image_prompt", "") or "")
+    law_readable = law_name.replace("_", " ") if law_name else ""
+    if law_readable and law_readable not in prompt.lower():
+        # Prepend a directive rather than break the model's existing scene brief.
+        prefix = f"[{law_readable} visual strategy] "
+        visual_plan["gemini_image_prompt"] = (prefix + prompt).strip()
+
+    # Carousel storyboard aligned to the law's narrative_template
+    beats = list(strategist.get("law_narrative_template", []) or [])
+    if not beats:
+        beats = [
+            "Open with the persona in their situation",
+            "Show the problem or objection",
+            "Reveal the mechanism or reframe",
+            "Show the outcome or transformation",
+            "End with the pinned CTA",
+        ]
+    storyboard = []
+    from_state = str(persuasion.get("transformation_from", "") or "").strip()
+    to_state = str(persuasion.get("transformation_to", "") or "").strip()
+    proof_hint = str(persuasion.get("proof", "") or "").strip()
+    cta_pinned = str((strategist.get("downstream_instructions") or {}).get("cta_pinned", "") or "").strip()
+    for idx, beat in enumerate(beats[:5], start=1):
+        slide = {
+            "slide": idx,
+            "beat": beat,
+            "visual_direction": visual_direction or "photo-real, natural light, hero-shot composition",
+            "on_image_text_hint": "",
+        }
+        if idx == 1 and from_state:
+            slide["on_image_text_hint"] = from_state
+        elif idx == len(beats[:5]) and cta_pinned:
+            slide["on_image_text_hint"] = cta_pinned
+        elif to_state and idx == 4:
+            slide["on_image_text_hint"] = to_state
+        elif proof_hint and idx == 3:
+            slide["on_image_text_hint"] = proof_hint[:80]
+        storyboard.append(slide)
+
+    visual_plan["strategic_carousel_storyboard"] = storyboard
+    visual_plan["strategic_brief_alignment"] = {
+        "logic_principle": law_name,
+        "template_family": template,
+        "visual_direction_present": bool(visual_direction and visual_direction.lower() in str(visual_plan.get("visual_objective", "")).lower()),
+        "law_signal_in_prompt": law_readable in str(visual_plan.get("gemini_image_prompt", "")).lower() if law_readable else False,
+        "storyboard_slides": len(storyboard),
+    }
+    return visual_plan
+
+
 def _apply_logical_visual_strategy(visual_plan: dict, strategy: dict, product: dict | None) -> dict:
     prompt_bank = _build_ai_image_prompt_bank(strategy, product)
     visual_plan["logical_emotional_strategy"] = dict(strategy)
@@ -3951,6 +4032,335 @@ def _default_pre_generation_conference(selected_hook: str, selected_cta: str) ->
     }
 
 
+def _run_phase_c_conversion_gates(content: dict, run_context: dict, gate_records: list[dict]) -> dict:
+    """Phase C — 18-factor CQS + claim integrity gate before publish.
+
+    Runs conversion.claims.classify_text on every visible text field and
+    conversion.cqs.score on the primary caption. Attaches results to content
+    and appends gate records that the global gate evaluator will honour.
+    Never raises - always returns the content so downstream flow continues.
+    """
+    try:
+        from conversion import claims as _claims_mod
+        from conversion import cqs as _cqs_mod
+    except Exception as _err:
+        gate_records.append(
+            build_gate_record(
+                gate_id="phase_c_conversion_gates",
+                passed=False,
+                severity="warning",
+                reasons=[f"conversion_modules_unavailable:{_err}"],
+                details={},
+            )
+        )
+        return content
+
+    brief = run_context.get("strategic_brief") if isinstance(run_context.get("strategic_brief"), dict) else {}
+    brief = brief or {}
+    verified_facts = list(content.get("product_metrics") or []) + list(brief.get("verified_facts") or [])
+    verified_facts = [str(f) for f in verified_facts if f]
+    warranty_available = bool((content.get("product_facts") or "").lower().find("warranty") >= 0)
+
+    per_field: dict[str, dict] = {}
+    aggregate = {"prohibited": [], "unsupported": [], "reasonable_inference": [], "supported": [], "verified": []}
+    for field in ("wp_content", "fb_caption", "ig_caption", "li_text"):
+        text = str(content.get(field, "") or "")
+        if not text.strip():
+            continue
+        scan = _claims_mod.classify_text(text, verified_facts=verified_facts, warranty_available=warranty_available)
+        worst = _claims_mod.worst_tier(scan)
+        publishable, reasons = _claims_mod.is_publishable(scan)
+        per_field[field] = {
+            "worst_tier": worst,
+            "publishable": publishable,
+            "reasons": reasons,
+            "scan": scan,
+        }
+        for tier in aggregate:
+            for phrase in scan.get(tier, []) or []:
+                aggregate[tier].append({"field": field, "phrase": phrase})
+
+    claims_report = {
+        "per_field": per_field,
+        "aggregate": aggregate,
+        "publishable": not (aggregate["prohibited"] or aggregate["unsupported"]),
+    }
+    content["conversion_claims_report"] = claims_report
+
+    if aggregate["prohibited"]:
+        gate_records.append(
+            build_gate_record(
+                gate_id="phase_c_claim_integrity",
+                passed=False,
+                severity="error",
+                reasons=[f"prohibited:{item['field']}:{item['phrase']}" for item in aggregate["prohibited"][:5]],
+                details={"count": len(aggregate["prohibited"])},
+            )
+        )
+    else:
+        gate_records.append(
+            build_gate_record(
+                gate_id="phase_c_claim_integrity",
+                passed=True,
+                severity="error",
+                reasons=[],
+                details={"count": 0},
+            )
+        )
+
+    if aggregate["unsupported"]:
+        gate_records.append(
+            build_gate_record(
+                gate_id="phase_c_unsupported_claims",
+                passed=False,
+                severity="warning",
+                reasons=[f"unsupported:{item['field']}:{item['phrase']}" for item in aggregate["unsupported"][:5]],
+                details={"count": len(aggregate["unsupported"])},
+            )
+        )
+
+    hook_engine_scores = ((content.get("phase2_creative_stack") or {}).get("hook_engine") or {}).get("component_scores") or {}
+    if hook_engine_scores:
+        hook_engine_scores = dict(hook_engine_scores)
+        hook_engine_scores.setdefault("total", sum(v for v in hook_engine_scores.values() if isinstance(v, (int, float))))
+    visual_prompt = ""
+    visual_plan = content.get("visual_plan") if isinstance(content.get("visual_plan"), dict) else {}
+    if isinstance(visual_plan, dict):
+        visual_prompt = str(visual_plan.get("gemini_image_prompt", "") or "")
+    caption_for_score = str(content.get("fb_caption", "") or content.get("ig_caption", "") or content.get("li_text", "") or "")
+    hook_text = str(content.get("selected_hook", "") or "")
+    cta_text = str(content.get("selected_cta", "") or "")
+
+    try:
+        cqs_result = _cqs_mod.score(
+            caption=caption_for_score,
+            hook=hook_text,
+            cta=cta_text,
+            brief_dict=brief,
+            hook_scores=hook_engine_scores or None,
+            visual_prompt=visual_prompt,
+            recent_captions=[],
+            verified_facts=verified_facts,
+        )
+    except Exception as _cqs_err:
+        cqs_result = {"total": 0.0, "component_scores": {}, "band": "improve", "error": str(_cqs_err)}
+
+    content["conversion_quality_score"] = cqs_result
+    total = float(cqs_result.get("total") or 0.0)
+    band = str(cqs_result.get("band") or "")
+    if total < 60.0:
+        gate_records.append(
+            build_gate_record(
+                gate_id="phase_c_cqs_score",
+                passed=False,
+                severity="error",
+                reasons=[f"cqs_below_minimum:{total}"],
+                details={"total": total, "band": band, "minimum": 60.0},
+            )
+        )
+    elif total < 80.0:
+        gate_records.append(
+            build_gate_record(
+                gate_id="phase_c_cqs_score",
+                passed=False,
+                severity="warning",
+                reasons=[f"cqs_below_target:{total}"],
+                details={"total": total, "band": band, "target": 80.0},
+            )
+        )
+    else:
+        gate_records.append(
+            build_gate_record(
+                gate_id="phase_c_cqs_score",
+                passed=True,
+                severity="warning",
+                reasons=[],
+                details={"total": total, "band": band},
+            )
+        )
+
+    return content
+
+
+def _run_phase_d_brief_adherence(content: dict, run_context: dict, gate_records: list[dict]) -> dict:
+    """Phase D - verify captions actually honour the StrategicBrief's persuasion block.
+
+    Measures presence of: objection reframe, transformation from->to, proof anchor,
+    and must-include phrases from downstream_instructions. Emits an adherence
+    percentage as a warning gate; no text mutation.
+    """
+    brief = run_context.get("strategic_brief") if isinstance(run_context.get("strategic_brief"), dict) else {}
+    strategist = run_context.get("conversion_strategist") if isinstance(run_context.get("conversion_strategist"), dict) else {}
+    brief = brief or {}
+    strategist = strategist or {}
+    if not brief:
+        gate_records.append(
+            build_gate_record(
+                gate_id="phase_d_brief_adherence",
+                passed=True,
+                severity="warning",
+                reasons=[],
+                details={"enabled": False, "reason": "no_brief"},
+            )
+        )
+        return content
+
+    persuasion = brief.get("persuasion", {}) if isinstance(brief.get("persuasion"), dict) else {}
+    downstream = strategist.get("downstream_instructions", {}) if isinstance(strategist.get("downstream_instructions"), dict) else {}
+
+    combined_text = " ".join(
+        str(content.get(k, "") or "")
+        for k in ("wp_title", "wp_content", "wp_excerpt", "fb_caption", "ig_caption", "li_text")
+    ).lower()
+
+    def _has_signal(signal: str, min_words: int = 2) -> bool:
+        signal = (signal or "").lower().strip()
+        if not signal:
+            return True
+        tokens = [t for t in re.findall(r"[a-z]{3,}", signal)]
+        if len(tokens) < min_words:
+            return any(t in combined_text for t in tokens) if tokens else True
+        hits = sum(1 for t in tokens if t in combined_text)
+        return hits >= max(2, len(tokens) // 3)
+
+    checks: dict[str, bool] = {}
+    checks["objection_present"] = _has_signal(persuasion.get("objection", ""))
+    checks["transformation_from_present"] = _has_signal(persuasion.get("transformation_from", ""))
+    checks["transformation_to_present"] = _has_signal(persuasion.get("transformation_to", ""))
+    checks["proof_present"] = _has_signal(persuasion.get("proof", ""))
+    checks["desire_present"] = _has_signal(persuasion.get("desire", ""))
+    checks["problem_present"] = _has_signal(persuasion.get("problem", ""))
+
+    must_include = downstream.get("must_include", []) or []
+    if isinstance(must_include, list) and must_include:
+        included = 0
+        for phrase in must_include:
+            if _has_signal(str(phrase), min_words=1):
+                included += 1
+        checks["must_include_ratio"] = included / max(len(must_include), 1)
+    else:
+        checks["must_include_ratio"] = 1.0
+
+    must_avoid = downstream.get("must_avoid", []) or []
+    avoided_violations: list[str] = []
+    for phrase in must_avoid:
+        p = str(phrase).lower().strip()
+        if p and p in combined_text:
+            avoided_violations.append(phrase)
+    checks["must_avoid_respected"] = len(avoided_violations) == 0
+
+    bool_checks = [k for k, v in checks.items() if isinstance(v, bool)]
+    hits = sum(1 for k in bool_checks if checks[k])
+    total = max(len(bool_checks), 1)
+    adherence_ratio = hits / total
+    adherence_pct = round(adherence_ratio * 100.0, 1)
+
+    content["conversion_brief_adherence"] = {
+        "adherence_pct": adherence_pct,
+        "checks": checks,
+        "must_avoid_violations": avoided_violations,
+    }
+
+    if avoided_violations:
+        gate_records.append(
+            build_gate_record(
+                gate_id="phase_d_must_avoid_violation",
+                passed=False,
+                severity="warning",
+                reasons=[f"contains_forbidden:{v}" for v in avoided_violations[:5]],
+                details={"count": len(avoided_violations)},
+            )
+        )
+
+    if adherence_pct < 60.0:
+        gate_records.append(
+            build_gate_record(
+                gate_id="phase_d_brief_adherence",
+                passed=False,
+                severity="warning",
+                reasons=[f"low_adherence:{adherence_pct}"],
+                details={"adherence_pct": adherence_pct, "checks": checks},
+            )
+        )
+    else:
+        gate_records.append(
+            build_gate_record(
+                gate_id="phase_d_brief_adherence",
+                passed=True,
+                severity="warning",
+                reasons=[],
+                details={"adherence_pct": adherence_pct, "checks": checks},
+            )
+        )
+
+    return content
+
+
+def _run_phase_f_visual_alignment(content: dict, run_context: dict, gate_records: list[dict]) -> dict:
+    """Phase F - verify visual_plan is unified with StrategicBrief.design.
+
+    Scores alignment on four signals: visual_direction embedded in objective,
+    template family present, law signal present in gemini_image_prompt, and
+    storyboard slides emitted. Attaches summary to content and emits a warning
+    gate. No text mutation.
+    """
+    brief = run_context.get("strategic_brief") if isinstance(run_context.get("strategic_brief"), dict) else {}
+    if not brief:
+        gate_records.append(
+            build_gate_record(
+                gate_id="phase_f_visual_alignment",
+                passed=True,
+                severity="warning",
+                reasons=[],
+                details={"enabled": False, "reason": "no_brief"},
+            )
+        )
+        return content
+
+    visual_plan = content.get("visual_plan") if isinstance(content.get("visual_plan"), dict) else {}
+    alignment = visual_plan.get("strategic_brief_alignment") if isinstance(visual_plan.get("strategic_brief_alignment"), dict) else {}
+
+    checks = {
+        "visual_direction_present": bool(alignment.get("visual_direction_present", False)),
+        "law_signal_in_prompt": bool(alignment.get("law_signal_in_prompt", False)),
+        "template_family_present": bool(alignment.get("template_family")),
+        "storyboard_emitted": int(alignment.get("storyboard_slides", 0) or 0) >= 3,
+    }
+    passed_checks = sum(1 for v in checks.values() if v)
+    total = len(checks)
+    alignment_pct = round(100.0 * passed_checks / max(total, 1), 1)
+
+    content["conversion_visual_alignment"] = {
+        "alignment_pct": alignment_pct,
+        "checks": checks,
+        "logic_principle": alignment.get("logic_principle", ""),
+        "template_family": alignment.get("template_family", ""),
+        "storyboard_slides": alignment.get("storyboard_slides", 0),
+    }
+
+    if alignment_pct < 50.0:
+        gate_records.append(
+            build_gate_record(
+                gate_id="phase_f_visual_alignment",
+                passed=False,
+                severity="warning",
+                reasons=[f"low_visual_alignment:{alignment_pct}"],
+                details={"alignment_pct": alignment_pct, "checks": checks},
+            )
+        )
+    else:
+        gate_records.append(
+            build_gate_record(
+                gate_id="phase_f_visual_alignment",
+                passed=True,
+                severity="warning",
+                reasons=[],
+                details={"alignment_pct": alignment_pct, "checks": checks},
+            )
+        )
+    return content
+
+
 def _apply_control_plane_metadata(content: dict, run_context: dict, gate_records: list[dict]) -> dict:
     global_gate = evaluate_global_gates(gate_records)
     content["agent_control_plane"] = {
@@ -3959,6 +4369,24 @@ def _apply_control_plane_metadata(content: dict, run_context: dict, gate_records
         "gates": gate_records,
         "global_gate": global_gate,
     }
+    # Promote Phase 0 (Conversion Strategist) outputs to top-level fields so
+    # dashboard, history, and analytics can trace every post back to its
+    # strategic decisions (spec Section 44).
+    if isinstance(run_context.get("strategic_brief"), dict):
+        content["strategic_brief"] = run_context["strategic_brief"]
+    if isinstance(run_context.get("conversion_strategist"), dict):
+        content["conversion_strategist"] = run_context["conversion_strategist"]
+    if content.get("strategic_brief"):
+        content["copy_generation_source"] = content.get("copy_generation_source") or "conversion_strategist_v1"
+    # Phase E - expose experiment variables & variant_id on top level for A/B analytics.
+    _strategist_out = content.get("conversion_strategist") if isinstance(content.get("conversion_strategist"), dict) else {}
+    _exp = _strategist_out.get("experiment") if isinstance(_strategist_out.get("experiment"), dict) else {}
+    _brief_out = content.get("strategic_brief") if isinstance(content.get("strategic_brief"), dict) else {}
+    _brief_exp = _brief_out.get("experiment") if isinstance(_brief_out.get("experiment"), dict) else {}
+    _variant_id = _exp.get("variant_id") or _brief_exp.get("variant_id") or ""
+    if _variant_id:
+        content["conversion_variant_id"] = _variant_id
+        content["experiment_variables"] = _exp.get("variables") or _brief_exp.get("variables") or {}
     blocked = not bool(global_gate.get("passed", False))
     hard_block = str(os.environ.get("ORCHESTRATION_HARD_BLOCK", "false")).strip().lower() in {"1", "true", "yes", "on"}
     content["orchestration_blocked"] = blocked and hard_block
@@ -4199,6 +4627,54 @@ def generate(slot: str, *, funnel_stage_override: str = "", product_id_override:
     recent_products = _recent_unique_values(history, "product_name", limit=6)
     recent_ctas = _recent_unique_values(history, "selected_cta", limit=8)
     recent_topics = _recent_unique_values(history, "topic", limit=8)
+    recent_laws = _recent_unique_values(history, "logic_principle", limit=6)
+    recent_structures = _recent_unique_values(history, "copy_framework", limit=6)
+
+    # ------------------------------------------------------------------
+    # PHASE 0 - Conversion Strategist (spec Sections 42, 19, 44)
+    # Builds the StrategicBrief that owns awareness stage, logic law,
+    # emotional driver, copy structure, objection, transformation, and CTA.
+    # Every downstream phase must respect this brief.
+    # ------------------------------------------------------------------
+    _strategist_product = {
+        "product_id": product.get("id", "") if product else "",
+        "product_name": product.get("name", "") if product else "",
+        "product_type": (product.get("categories", [""])[0] if product and product.get("categories") else ""),
+        "features": (product.get("features") if product and product.get("features") else (product.get("metrics", []) if product else [])),
+        "mechanisms": [],
+        "benefits": (product.get("benefits", []) if product else []),
+        "verified_facts": (product.get("metrics", []) if product else []),
+        "landing_page_url": (product.get("product_url") if product and product.get("product_url") else SITE_URL),
+    }
+    if funnel_stage == "CONVERSION" and want_product:
+        _campaign_goal = "purchase"
+    elif funnel_stage in ("DESIRE", "TRUST"):
+        _campaign_goal = "consideration"
+    else:
+        _campaign_goal = "awareness"
+    try:
+        _strategist_output = conversion_strategist.plan(
+            funnel_stage=funnel_stage,
+            product=_strategist_product,
+            campaign_goal=_campaign_goal,
+            platform_priority=["facebook", "instagram", "linkedin"],
+            recent={
+                "hooks": recent_hooks,
+                "ctas": recent_ctas,
+                "topics": recent_topics,
+                "laws": recent_laws,
+                "structures": recent_structures,
+            },
+            explicit={"cta": selected_cta} if selected_cta else None,
+            data_dir=DATA_DIR,
+        )
+    except Exception as _strategist_err:  # pragma: no cover - never block generation
+        _strategist_output = {
+            "agent": "conversion_strategist",
+            "error": str(_strategist_err),
+            "brief": None,
+        }
+
     run_context = build_run_context(
         slot=slot,
         topic=topic,
@@ -4215,7 +4691,42 @@ def generate(slot: str, *, funnel_stage_override: str = "", product_id_override:
         recent_topics=recent_topics,
         recent_ctas=recent_ctas,
     )
+    if isinstance(_strategist_output, dict):
+        run_context["strategic_brief"] = _strategist_output.get("brief")
+        run_context["conversion_strategist"] = {
+            "summary": _strategist_output.get("summary", ""),
+            "hook_targets": _strategist_output.get("hook_targets", {}),
+            "structure_beats": _strategist_output.get("structure_beats", []),
+            "law_narrative_template": _strategist_output.get("law_narrative_template", []),
+            "law_guardrails": _strategist_output.get("law_guardrails", []),
+            "objection_reframe": _strategist_output.get("objection_reframe", {}),
+            "downstream_instructions": _strategist_output.get("downstream_instructions", {}),
+            "error": _strategist_output.get("error"),
+        }
     gate_records: list[dict] = []
+    if isinstance(_strategist_output, dict) and _strategist_output.get("brief"):
+        gate_records.append(
+            build_gate_record(
+                gate_id="phase0_conversion_strategist",
+                passed=True,
+                severity="warning",
+                reasons=[],
+                details={
+                    "brief_id": _strategist_output["brief"].get("brief_id", ""),
+                    "summary": _strategist_output.get("summary", ""),
+                },
+            )
+        )
+    else:
+        gate_records.append(
+            build_gate_record(
+                gate_id="phase0_conversion_strategist",
+                passed=False,
+                severity="warning",
+                reasons=[_strategist_output.get("error", "brief_not_produced")] if isinstance(_strategist_output, dict) else ["brief_not_produced"],
+                details={},
+            )
+        )
     conference_model = os.environ.get("GEMINI_CONFERENCE_MODEL", "").strip()
 
     phase2_enabled = os.environ.get("ENABLE_PHASE2_CREATIVE_STACK", "true").strip().lower() not in {"0", "false", "no"}
@@ -4275,6 +4786,98 @@ def generate(slot: str, *, funnel_stage_override: str = "", product_id_override:
     selected_hook = str(phase2_stack.get("hook_stress_test", {}).get("recommended_hook", "")).strip() or selected_hook
     selected_cta = str(phase2_stack.get("audience_psychographics", {}).get("cta_framing", "")).strip() or selected_cta
     audience_segment = str(phase2_stack.get("audience_psychographics", {}).get("primary_segment", "")).strip() or audience_segment
+
+    # Phase B: re-rank hook candidates with the conversion hook_engine (spec Section 22).
+    try:
+        from conversion import hook_engine as _hook_engine
+        from conversion import personas as _personas_mod
+
+        _hook_candidates: list[str] = []
+        for _concept in (phase2_stack.get("ideation_divergence", {}) or {}).get("concepts", []) or []:
+            _hc = str((_concept or {}).get("hook_candidate", "")).strip()
+            if _hc:
+                _hook_candidates.append(_hc)
+        for _hc in (phase2_stack.get("hook_stress_test", {}) or {}).get("candidate_hooks", []) or []:
+            _hc = str(_hc).strip()
+            if _hc:
+                _hook_candidates.append(_hc)
+        _stress_rec = str((phase2_stack.get("hook_stress_test", {}) or {}).get("recommended_hook", "")).strip()
+        if _stress_rec:
+            _hook_candidates.append(_stress_rec)
+        if selected_hook:
+            _hook_candidates.append(selected_hook)
+        # De-dup while preserving order
+        _seen: set[str] = set()
+        _dedup: list[str] = []
+        for _c in _hook_candidates:
+            if _c and _c not in _seen:
+                _seen.add(_c)
+                _dedup.append(_c)
+        _hook_candidates = _dedup
+        _brief_for_hook = (run_context.get("strategic_brief") or {}) if isinstance(run_context.get("strategic_brief"), dict) else {}
+        _audience_id = str(_brief_for_hook.get("audience_id", "")).strip()
+        _audience_kw = _personas_mod.audience_keywords(_audience_id) if _audience_id else []
+        _awareness_stage = str(_brief_for_hook.get("awareness_stage", "")).strip()
+        _winner_hook, _winner_scores, _all_scored = _hook_engine.pick_best(
+            _hook_candidates,
+            audience_keywords=_audience_kw,
+            product_name=product_name or None,
+            recent_hooks=recent_hooks,
+            platform="facebook",
+            min_total=0.0,
+        )
+        if _winner_hook:
+            if _winner_hook != selected_hook:
+                if isinstance(phase2_stack.get("hook_stress_test", {}), dict):
+                    phase2_stack["hook_stress_test"]["recommended_hook"] = _winner_hook
+                    phase2_stack["hook_stress_test"]["hook_engine_score"] = _winner_scores.get("total", 0)
+                selected_hook = _winner_hook
+            phase2_stack["hook_engine"] = {
+                "selected_hook": selected_hook,
+                "total_score": _winner_scores.get("total", 0),
+                "component_scores": {k: v for k, v in _winner_scores.items() if k != "total"},
+                "audience_keywords": _audience_kw,
+                "awareness_stage": _awareness_stage,
+                "candidate_count": len(_hook_candidates),
+                "top_alternates": [
+                    {"hook": item["hook"], "total": item["scores"].get("total", 0)}
+                    for item in (_all_scored[1:4] if len(_all_scored) > 1 else [])
+                ],
+            }
+            gate_records.append(
+                build_gate_record(
+                    gate_id="phase2_hook_engine_rank",
+                    passed=True,
+                    severity="warning",
+                    reasons=[],
+                    details={
+                        "total_score": _winner_scores.get("total", 0),
+                        "candidates": len(_hook_candidates),
+                        "awareness_stage": _awareness_stage,
+                    },
+                )
+            )
+        else:
+            gate_records.append(
+                build_gate_record(
+                    gate_id="phase2_hook_engine_rank",
+                    passed=False,
+                    severity="warning",
+                    reasons=["no_candidates_scored"],
+                    details={"candidates": len(_hook_candidates)},
+                )
+            )
+    except Exception as _hook_engine_err:  # pragma: no cover - never block generation
+        gate_records.append(
+            build_gate_record(
+                gate_id="phase2_hook_engine_rank",
+                passed=False,
+                severity="warning",
+                reasons=[str(_hook_engine_err)],
+                details={},
+            )
+        )
+
     diversified_hook, diversity_note = _enforce_hook_diversity(selected_hook, phase2_stack, recent_hooks)
     if diversified_hook != selected_hook:
         selected_hook = diversified_hook
@@ -4534,6 +5137,38 @@ def generate(slot: str, *, funnel_stage_override: str = "", product_id_override:
         f"- Banned phrases and patterns: {ideology_banned_phrases}\n"
     )
 
+    # Phase B: build the strategic brief context that instructs the copywriter to obey
+    # the conversion logic engine's decisions (awareness, law, emotion, copy structure).
+    _brief = run_context.get("strategic_brief") if isinstance(run_context.get("strategic_brief"), dict) else None
+    _strategist_meta = run_context.get("conversion_strategist") if isinstance(run_context.get("conversion_strategist"), dict) else None
+    if _brief:
+        _persuasion = _brief.get("persuasion", {}) if isinstance(_brief.get("persuasion"), dict) else {}
+        _downstream = (_strategist_meta or {}).get("downstream_instructions", {}) if _strategist_meta else {}
+        strategic_brief_context = (
+            "CONVERSION STRATEGIST BRIEF (MANDATORY — every choice below must be respected):\n"
+            f"- Audience persona: {_brief.get('audience_id', '')}\n"
+            f"- Awareness stage: {_brief.get('awareness_stage', '')}\n"
+            f"- Logic principle: {_brief.get('logic_principle', '')}\n"
+            f"- Copy structure (REQUIRED framework): {_brief.get('copy_framework', '')}\n"
+            f"- Structure beats to follow in order: {(_strategist_meta or {}).get('structure_beats', [])}\n"
+            f"- Primary emotional driver: {_brief.get('emotional_driver_primary', '')}\n"
+            f"- Emotion cues to weave in: {(_strategist_meta or {}).get('hook_targets', {}).get('emotion_cues', [])}\n"
+            f"- Core problem to name: {_persuasion.get('problem', '')}\n"
+            f"- Objection to reframe: {_persuasion.get('objection', '')}\n"
+            f"- Objection reframe pattern: {(_strategist_meta or {}).get('objection_reframe', {}).get('reframe_pattern', '')}\n"
+            f"- Desired transformation (from -> to): {_persuasion.get('transformation_from', '')} -> {_persuasion.get('transformation_to', '')}\n"
+            f"- Required proof to include: {_persuasion.get('proof', '')}\n"
+            f"- Law narrative template (respect ordering): {(_strategist_meta or {}).get('law_narrative_template', [])}\n"
+            f"- Law guardrails (do not violate): {(_strategist_meta or {}).get('law_guardrails', [])}\n"
+            f"- Must include phrases/ideas: {_downstream.get('must_include', [])}\n"
+            f"- Must avoid phrases/ideas: {_downstream.get('must_avoid', [])}\n"
+            f"- Pinned CTA (use verbatim or a near-identical variant): {_downstream.get('cta_pinned', '')}\n"
+            "- The final caption structure MUST follow the beats above in order.\n"
+            "- Every claim MUST trace back to a verifiable product fact or clearly-labeled reasonable inference.\n"
+        )
+    else:
+        strategic_brief_context = "CONVERSION STRATEGIST BRIEF: not available for this run (using default flow).\n"
+
     product_intelligence = _build_product_intelligence_handoff(
         product=product,
         topic=topic,
@@ -4638,6 +5273,7 @@ def generate(slot: str, *, funnel_stage_override: str = "", product_id_override:
         visual_plan["phase4_composition_adjustments"] = existing
         visual_plan["segment_preset"] = str(segment_constraints.get("segment_key", "")).strip()
     visual_plan = _apply_logical_visual_strategy(visual_plan, logical_strategy, product)
+    visual_plan = _apply_strategic_brief_to_visual(visual_plan, run_context, product)
 
     if want_product:
         product_directive = (
@@ -4715,6 +5351,8 @@ CONTENT DIRECTIVE: {slot_guidance}
 {phase3_context}
 
 {phase4_context}
+
+{strategic_brief_context}
 
 {segment_context}
 
@@ -4984,6 +5622,9 @@ Return ONLY valid JSON with these exact keys (no markdown, no code fences):
         content["quality_warnings"] = quality.warnings
         for p in content["platform_posts"].values():
             p["quality_score"] = float(quality.score)
+        content = _run_phase_c_conversion_gates(content, run_context, gate_records)
+        content = _run_phase_d_brief_adherence(content, run_context, gate_records)
+        content = _run_phase_f_visual_alignment(content, run_context, gate_records)
         content = _apply_control_plane_metadata(content, run_context, gate_records)
         content = _sanitize_legacy_cta_in_payload(content)
         content["editorial_decision"] = {
@@ -5250,6 +5891,9 @@ Return ONLY valid JSON with these exact keys (no markdown, no code fences):
     content["quality_warnings"] = quality.warnings
     for p in content["platform_posts"].values():
         p["quality_score"] = float(quality.score)
+    content = _run_phase_c_conversion_gates(content, run_context, gate_records)
+    content = _run_phase_d_brief_adherence(content, run_context, gate_records)
+    content = _run_phase_f_visual_alignment(content, run_context, gate_records)
     content = _apply_control_plane_metadata(content, run_context, gate_records)
     content = _sanitize_legacy_cta_in_payload(content)
     content["editorial_decision"] = {

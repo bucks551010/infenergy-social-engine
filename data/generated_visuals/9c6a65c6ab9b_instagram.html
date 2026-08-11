@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Infenergy Social Card</title>
+    <style>
+        * { box-sizing: border-box; }
+        body { margin: 0; background: #060b12; font-family: 'Avenir Next', 'Segoe UI', 'Montserrat', sans-serif; }
+        .card { width: 1200px; height: 1200px; margin: 0 auto; color: #f2f8ff; position: relative; overflow: hidden;
+            background:
+                radial-gradient(1300px 780px at -10% -20%, rgba(58,120,175,0.32), transparent 60%),
+                radial-gradient(1100px 700px at 120% 120%, rgba(201,157,84,0.18), transparent 58%),
+                linear-gradient(150deg, #07111c 0%, #12283e 48%, #0a1727 100%);
+        }
+        .noise { position:absolute; inset:0; opacity:.05; background-image: radial-gradient(#fff 0.5px, transparent 0.5px); background-size: 3px 3px; }
+        .frame { position: absolute; inset: 22px; border: 1px solid rgba(214, 183, 109, 0.62); border-radius: 34px; }
+        .frame2 { position: absolute; inset: 36px; border: 1px solid rgba(140, 210, 255, 0.22); border-radius: 28px; }
+        .inner { position: absolute; inset: 48px; border-radius: 24px; padding: 44px;
+            background: linear-gradient(165deg, rgba(9,22,36,0.85), rgba(16,42,68,0.78));
+            box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), 0 32px 60px rgba(0,0,0,0.44);
+        }
+        .brand { color: #e9f4ff; font-size: 34px; font-weight: 700; letter-spacing: 0.02em; }
+        .stage { display: inline-block; margin-top: 12px; color: #e4c585; font-size: 16px; text-transform: uppercase; letter-spacing: .16em;
+            border: 1px solid rgba(220,182,105,.45); border-radius: 999px; padding: 6px 14px; }
+        .layout { display: grid; grid-template-columns: 1.1fr .9fr; gap: 30px; margin-top: 28px; align-items: start; }
+        .hook { font-size: 62px; line-height: 1.02; font-weight: 780; max-width: 100%; text-wrap: balance; }
+        .topic { margin-top: 16px; color: #d7e8fa; font-size: 40px; line-height: 1.2; max-width: 95%; }
+        .chips { margin-top: 18px; display: flex; flex-wrap: wrap; gap: 10px; }
+        .chip { border: 1px solid rgba(151,206,255,.38); color: #cde8ff; padding: 8px 12px; border-radius: 999px; font-size: 16px; background: rgba(9,25,39,.45); }
+        .product { margin-top: 16px; color: #f1d8a2; font-size: 26px; font-weight: 650; max-width: 95%; }
+        .image-wrap { justify-self: end; width: 446px; height: 446px;
+            border-radius: 30px; border: 1px solid rgba(145, 214, 255, 0.72);
+            background: linear-gradient(170deg, rgba(255,255,255,0.12), rgba(11,24,38,0.24));
+            display: flex; align-items: center; justify-content: center; padding: 22px;
+            box-shadow: 0 26px 40px rgba(0,0,0,0.42), inset 0 1px 0 rgba(255,255,255,0.26);
+        }
+        .image-wrap img { max-width: 100%; max-height: 100%; object-fit: contain; filter: drop-shadow(0 16px 16px rgba(0,0,0,.33)); }
+        .cta { position: absolute; left: 44px; right: 44px; bottom: 44px;
+            background: linear-gradient(90deg, #1a4766, #2c7299 60%, #1f557a);
+            border: 1px solid rgba(184, 226, 255, 0.5);
+            border-radius: 18px; padding: 14px 22px; text-align: center; font-size: 28px; font-weight: 640; color: #f2fbff;
+            box-shadow: 0 12px 26px rgba(0,0,0,0.36);
+        }
+        .card.premium_minimal .chips { display:none; }
+        .card.premium_editorial .image-wrap { border-radius: 18px; }
+        .card.premium_product_focus .image-wrap { border: 2px solid rgba(145, 214, 255, 0.88); }
+    </style>
+</head>
+<body>
+    <div class="card premium_product_focus">
+        <div class="noise"></div>
+        <div class="frame"></div>
+        <div class="frame2"></div>
+        <div class="inner">
+            <div class="brand">Infenergy Power</div>
+            <div class="stage">ATTENTION</div>
+            <div class="layout">
+                <div>
+                    <div class="hook">Where does MagnaFlex Slim fit in a practical outage plan?</div>
+                    <div class="topic">Off-grid charging workflow for phones, laptops, and fridges</div>
+                    <div class="chips"><span class="chip">15W</span><span class="chip">20W</span></div>
+                    <div class="product">Featured product: MagnaFlex Slim</div>
+                </div>
+                <div class="image-wrap"><img src="https://infenergypower.com/wp-content/uploads/2025/01/img_4902.jpeg" alt="Product visual" /></div>
+            </div>
+            <div class="cta">See your custom runtime plan</div>
+        </div>
+    </div>
+</body>
+</html>

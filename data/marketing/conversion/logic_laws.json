@@ -1,0 +1,105 @@
+{
+  "schema_version": "conversion.v1",
+  "description": "Spec Section 2. Five conversion logic laws. One is selected per post.",
+  "laws": {
+    "contrapositive": {
+      "id": "L1",
+      "name": "Contrapositive / Cost-of-Inaction",
+      "formal": "P => Q therefore ~Q => ~P",
+      "when_to_use": ["PROBLEM_AWARE", "SOLUTION_AWARE"],
+      "narrative_template": [
+        "Name the desired result the customer wants.",
+        "Name what is preventing that result today.",
+        "Show the honest ongoing cost of that gap (inconvenience, delay, uncertainty).",
+        "Show how the product legitimately reduces that gap.",
+        "Close with what changes."
+      ],
+      "guardrails": [
+        "No fake fear.",
+        "No catastrophic outcomes unsupported by the product.",
+        "Cost-of-inaction must be truthful."
+      ],
+      "visual_strategy": "current_problem_to_solved_state",
+      "best_copy_structures": ["PAS", "BAB", "STORY"],
+      "example": "If you're still planning your day around the nearest outlet, your backup power isn't giving you enough freedom."
+    },
+    "disjunctive": {
+      "id": "L2",
+      "name": "Disjunctive Inference / Decision Simplification",
+      "formal": "P or Q; ~P therefore Q",
+      "when_to_use": ["SOLUTION_AWARE", "PRODUCT_AWARE"],
+      "narrative_template": [
+        "Name the current alternative the customer uses today.",
+        "Name what becomes possible with the product.",
+        "Show the honest comparison (not a false dichotomy).",
+        "Close with the simplified decision."
+      ],
+      "guardrails": [
+        "Never construct 'buy this or fail'.",
+        "Use legitimate categories: manual vs automated, dependent vs portable, multiple tools vs consolidated."
+      ],
+      "visual_strategy": "option_a_vs_option_b_split",
+      "best_copy_structures": ["COMPARISON", "BAB", "FAB"],
+      "example": "You can keep carrying multiple charging solutions or consolidate your backup power into one portable setup."
+    },
+    "double_implication": {
+      "id": "L3",
+      "name": "Double Implication / Promise-Delivery Alignment",
+      "formal": "P <=> Q",
+      "when_to_use": ["PRODUCT_AWARE", "MOST_AWARE"],
+      "narrative_template": [
+        "State the promise clearly.",
+        "Name the specific feature or mechanism that supports it.",
+        "Show verifiable evidence.",
+        "Close with the meaning to the customer."
+      ],
+      "guardrails": [
+        "Every major claim must have an underlying feature/spec/evidence.",
+        "Rewrite the claim if evidence does not support it.",
+        "Never invent statistics, savings, certifications, or reviews."
+      ],
+      "visual_strategy": "claim_plus_mechanism",
+      "best_copy_structures": ["PROOF-LED", "FAB", "OBJECTION"],
+      "example": "Fast power when time matters — backed by 20W USB-C PD."
+    },
+    "symmetrical_equivalence": {
+      "id": "L4",
+      "name": "Symmetrical Equivalence / Multiple Value Paths",
+      "formal": "p + q = R and q + p = R",
+      "when_to_use": ["SOLUTION_AWARE", "PRODUCT_AWARE"],
+      "narrative_template": [
+        "Pick one specific feature/attribute as the entry point.",
+        "Trace it to the same central value proposition.",
+        "Signal that this is one of several paths to the same outcome.",
+        "Close on the shared outcome."
+      ],
+      "guardrails": [
+        "Every entry point must legitimately connect to the same outcome.",
+        "Use to create creative diversity, not to rebrand the same claim."
+      ],
+      "visual_strategy": "multiple_features_one_outcome",
+      "best_copy_structures": ["FAB", "STORY", "DEMONSTRATION"],
+      "example": "Capacity gets you through the day. Speed gets you back on the road. Either way: dependable portable power."
+    },
+    "result_traceability": {
+      "id": "L5",
+      "name": "Result Traceability / Feature-to-Outcome Chain",
+      "formal": "FEATURE -> MECHANISM -> BENEFIT -> OUTCOME -> EVIDENCE",
+      "when_to_use": ["SOLUTION_AWARE", "PRODUCT_AWARE", "MOST_AWARE"],
+      "narrative_template": [
+        "Name the feature or spec.",
+        "Explain the mechanism (why it works).",
+        "State the benefit in customer terms.",
+        "Show the outcome in a real situation.",
+        "Anchor with verifiable evidence."
+      ],
+      "guardrails": [
+        "Never stop at the specification.",
+        "Every step must be legitimately supported by product data."
+      ],
+      "visual_strategy": "feature_mechanism_benefit_outcome_flow",
+      "best_copy_structures": ["FAB", "PROOF-LED", "DEMONSTRATION"],
+      "example": "20,000mAh -> stores backup energy -> extended portable charging -> more time away from outlets -> verified product spec."
+    }
+  }
+}

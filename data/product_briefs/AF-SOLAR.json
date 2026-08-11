@@ -1,0 +1,49 @@
+{
+  "product_id": "AF-SOLAR",
+  "sku": "AF-SOLAR",
+  "name": "Aferiy Solar Panels",
+  "product_type": "solar_panel",
+  "role": "portable solar charging panel",
+  "product_summary": "Aferiy Solar Panels is a portable solar charging panel that adds off-grid charging support for compatible equipment.",
+  "categories": [
+    "Solar Generators",
+    "Solar Panels"
+  ],
+  "verified_facts": [
+    "200W",
+    "400W",
+    "Aferiy Solar Panels: High-Efficiency Portable Power Harness the sun with Aferiy Portable Solar Panels, available in 200W and 400W options. Featuring a remarkable 23% conversion efficiency , a durable IP65 weatherproof design, and an easy-to-carry foldable format, these panels are the perfect companion for your power station. Power your adventures, off-grid living, and emergency backups with clean, reliable solar energy. Capture More Sun, Power More Life The Aferiy Solar Panels deliver best-in-cl"
+  ],
+  "core_benefits": [
+    "adds off-grid charging support for compatible equipment",
+    "extends charging options when suitable sunlight is available"
+  ],
+  "best_fit_use_cases": [
+    "camping and RV charging",
+    "off-grid travel",
+    "compatible power-station charging",
+    "emergency recharging"
+  ],
+  "best_fit_audiences": [
+    "power-station owners",
+    "campers and RV users",
+    "off-grid travelers"
+  ],
+  "primary_pain_point": "A solar panel is useful only when its output and connectors match the equipment it needs to charge.",
+  "proof_rule": "Use only published wattage, connector, voltage, efficiency, size, and compatibility details.",
+  "recommended_cta": "Verify wattage and connector compatibility with your equipment before buying.",
+  "hashtag_themes": [
+    "SolarPanel",
+    "OffGridPower",
+    "SolarCharging",
+    "CampingPower"
+  ],
+  "visual_direction": "Show the real panel deployed in sunlight and connected only to compatible equipment supported by product data.",
+  "forbidden_claims": [
+    "Do not invent specifications, compatibility, runtime, certifications, guarantees, or included accessories.",
+    "Do not describe the product as a different product type because of secondary features or broad categories.",
+    "Do not use power-device language for water, comfort, safety, or other non-power primary products."
+  ],
+  "source_image_url": "https://infenergypower.com/wp-content/uploads/2025/08/AF-S400A1-1.jpg",
+  "updated_at_utc": "2026-08-10T20:36:45.443814+00:00"
+}

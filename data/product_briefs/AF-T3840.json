@@ -1,0 +1,48 @@
+{
+  "product_id": "AF-T3840",
+  "sku": "AF-T3840",
+  "name": "Aferiy 3840",
+  "product_type": "power_station",
+  "role": "backup power station",
+  "product_summary": "Aferiy 3840 is a backup power station that supports priority devices during outages and off-grid use.",
+  "categories": [
+    "Portable Power",
+    "Solar Generators"
+  ],
+  "verified_facts": [
+    "1.6 hours",
+    "Aferiy 3840: Whole-Home Backup Power Stay powered through anything with the Aferiy 3840. This is a high-capacity 3840Wh LiFePO₄ power station with a massive 3600W output , ultra-fast solar charging, and seamless UPS backup. It's the ultimate solution for blackouts, RVs, off-grid living, and whole-home emergency use. Power Without Panic: The Ultimate Home Solar Generator Backup The Aferiy 3840 isn't just a portable power station; it's a complete energy security system. Engineered for maximum capa"
+  ],
+  "core_benefits": [
+    "supports priority devices during outages and off-grid use",
+    "combines portable stored energy with published output options"
+  ],
+  "best_fit_use_cases": [
+    "home outage backup",
+    "RV and camping",
+    "mobile work",
+    "emergency preparedness"
+  ],
+  "best_fit_audiences": [
+    "households planning outage loads",
+    "RV and camping users",
+    "mobile professionals"
+  ],
+  "primary_pain_point": "Backup power choices fail when output, runtime, and charging limits are not matched to actual loads.",
+  "proof_rule": "Use only published capacity, output, runtime, battery chemistry, port, and charging details.",
+  "recommended_cta": "Compare the published capacity and output with the devices and runtime you need.",
+  "hashtag_themes": [
+    "BackupPower",
+    "PowerStation",
+    "OutageReady",
+    "EmergencyPreparedness"
+  ],
+  "visual_direction": "Show the real power station connected to a credible priority load in a home, RV, campsite, or mobile-work setting.",
+  "forbidden_claims": [
+    "Do not invent specifications, compatibility, runtime, certifications, guarantees, or included accessories.",
+    "Do not describe the product as a different product type because of secondary features or broad categories.",
+    "Do not use power-device language for water, comfort, safety, or other non-power primary products."
+  ],
+  "source_image_url": "https://infenergypower.com/wp-content/uploads/2025/06/Hec708bba1c814bcf9cf24af2edea6464R.jpg",
+  "updated_at_utc": "2026-08-10T20:36:45.428651+00:00"
+}

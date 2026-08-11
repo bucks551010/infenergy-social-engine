@@ -1,0 +1,123 @@
+{
+  "distribution": {
+    "ATTENTION": 0.2,
+    "EDUCATION": 0.3,
+    "DESIRE": 0.25,
+    "TRUST": 0.15,
+    "CONVERSION": 0.1
+  },
+  "stages": {
+    "ATTENTION": {
+      "objective": "Capture attention and surface a relatable power problem.",
+      "approved_cta_types": [
+        "comment",
+        "share",
+        "save"
+      ],
+      "preferred_content_formats": [
+        "question_post",
+        "myth_bust",
+        "scenario"
+      ],
+      "prohibited_cta_types": [
+        "hard_sale",
+        "checkout_now"
+      ],
+      "preferred_hook_styles": [
+        "question",
+        "common_mistake",
+        "local_relevance"
+      ],
+      "primary_success_metric": "engagement_rate"
+    },
+    "EDUCATION": {
+      "objective": "Teach useful buyer knowledge with practical examples.",
+      "approved_cta_types": [
+        "save",
+        "read_more",
+        "compare"
+      ],
+      "preferred_content_formats": [
+        "checklist",
+        "comparison",
+        "how_to"
+      ],
+      "prohibited_cta_types": [
+        "hard_sale"
+      ],
+      "preferred_hook_styles": [
+        "checklist",
+        "myth",
+        "problem_recognition"
+      ],
+      "primary_success_metric": "saves_and_clicks"
+    },
+    "DESIRE": {
+      "objective": "Connect product value to daily customer outcomes.",
+      "approved_cta_types": [
+        "view_product",
+        "learn_more",
+        "compare"
+      ],
+      "preferred_content_formats": [
+        "use_case",
+        "demonstration",
+        "before_after"
+      ],
+      "prohibited_cta_types": [
+        "fear_only"
+      ],
+      "preferred_hook_styles": [
+        "scenario",
+        "comparison",
+        "product_use_case"
+      ],
+      "primary_success_metric": "product_page_ctr"
+    },
+    "TRUST": {
+      "objective": "Build credibility using verified details and transparent claims.",
+      "approved_cta_types": [
+        "review_specs",
+        "see_details",
+        "consult"
+      ],
+      "preferred_content_formats": [
+        "spec_breakdown",
+        "faq",
+        "authority_post"
+      ],
+      "prohibited_cta_types": [
+        "aggressive_discount"
+      ],
+      "preferred_hook_styles": [
+        "business_continuity",
+        "problem_recognition",
+        "demonstration"
+      ],
+      "primary_success_metric": "qualified_clicks"
+    },
+    "CONVERSION": {
+      "objective": "Drive a single clear next step toward purchase intent.",
+      "approved_cta_types": [
+        "shop",
+        "build_setup",
+        "book_call"
+      ],
+      "preferred_content_formats": [
+        "offer_post",
+        "decision_guide",
+        "direct_cta"
+      ],
+      "prohibited_cta_types": [
+        "multi_cta",
+        "bait"
+      ],
+      "preferred_hook_styles": [
+        "comparison",
+        "scenario",
+        "demonstration"
+      ],
+      "primary_success_metric": "conversion_rate"
+    }
+  }
+}

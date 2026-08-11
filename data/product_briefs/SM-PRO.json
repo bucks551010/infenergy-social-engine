@@ -1,0 +1,50 @@
+{
+  "product_id": "SM-PRO",
+  "sku": "SM-PRO",
+  "name": "SolarMax Pro 5kW-10kW",
+  "product_type": "power_station",
+  "role": "backup power station",
+  "product_summary": "SolarMax Pro 5kW-10kW is a backup power station that supports priority devices during outages and off-grid use.",
+  "categories": [
+    "Home Backup",
+    "Outdoors & Camping",
+    "Portable Power",
+    "Solar Generators"
+  ],
+  "verified_facts": [
+    "240W",
+    "SolarMax Pro: Your Expandable Solar Power Solution Embrace the future of energy with the SolarMax Pro, a revolutionary solar generator designed for unmatched power and flexibility. Start with a formidable 5,000-watt capacity and expand up to a massive 10,000 watts to power your entire home, RV, or off-grid adventures. Power Your World with the Sun Discover the benefits of a Whole Home Solar Generator and how it can transform your energy consumption. The SolarMax Pro is a complete, expandable ene"
+  ],
+  "core_benefits": [
+    "supports priority devices during outages and off-grid use",
+    "combines portable stored energy with published output options"
+  ],
+  "best_fit_use_cases": [
+    "home outage backup",
+    "RV and camping",
+    "mobile work",
+    "emergency preparedness"
+  ],
+  "best_fit_audiences": [
+    "households planning outage loads",
+    "RV and camping users",
+    "mobile professionals"
+  ],
+  "primary_pain_point": "Backup power choices fail when output, runtime, and charging limits are not matched to actual loads.",
+  "proof_rule": "Use only published capacity, output, runtime, battery chemistry, port, and charging details.",
+  "recommended_cta": "Compare the published capacity and output with the devices and runtime you need.",
+  "hashtag_themes": [
+    "BackupPower",
+    "PowerStation",
+    "OutageReady",
+    "EmergencyPreparedness"
+  ],
+  "visual_direction": "Show the real power station connected to a credible priority load in a home, RV, campsite, or mobile-work setting.",
+  "forbidden_claims": [
+    "Do not invent specifications, compatibility, runtime, certifications, guarantees, or included accessories.",
+    "Do not describe the product as a different product type because of secondary features or broad categories.",
+    "Do not use power-device language for water, comfort, safety, or other non-power primary products."
+  ],
+  "source_image_url": "https://infenergypower.com/wp-content/uploads/2024/08/1.png",
+  "updated_at_utc": "2026-08-10T20:36:45.515606+00:00"
+}

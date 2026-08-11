@@ -275,6 +275,23 @@ def _build_phase5_channel_readiness(effective_channels: dict[str, bool], dry_run
     }
 
 
+def _conversion_learning_fields(content: dict) -> dict:
+    """Shared history-record fields that feed the Phase E performance memory loop.
+
+    Every post_history.json append site must include these so future runs can
+    read back strategic_brief / CQS / brief_adherence for winning/losing hints.
+    """
+    brief = content.get("strategic_brief") if isinstance(content.get("strategic_brief"), dict) else {}
+    return {
+        "strategic_brief": content.get("strategic_brief"),
+        "logic_principle": brief.get("logic_principle", ""),
+        "copy_framework": brief.get("copy_framework", ""),
+        "conversion_quality_score": content.get("conversion_quality_score"),
+        "conversion_brief_adherence": content.get("conversion_brief_adherence"),
+        "conversion_variant_id": content.get("conversion_variant_id", ""),
+    }
+
+
 def _build_phase6_learning(
     *,
     content: dict,
@@ -655,6 +672,7 @@ def main() -> None:
             "topic_hash": preview_content.get("topic_hash"),
             "funnel_stage": preview_content.get("funnel_stage", "EDUCATION"),
             "quality_score": preview_content.get("quality_score"),
+            **_conversion_learning_fields(preview_content),
             "status": "skipped_channel_readiness",
             "channel_reasons": channel_reasons,
             "phase5_channel_readiness": phase5_readiness,
@@ -864,6 +882,7 @@ def main() -> None:
             "copy_generation_source": content.get("copy_generation_source", "unknown"),
             "quality_score": content.get("quality_score"),
             "quality_component_scores": content.get("quality_component_scores", {}),
+            **_conversion_learning_fields(content),
             "validation_status": content.get("validation_status"),
             "validation_errors": content.get("validation_errors", []),
             "duplicate_reasons": content.get("duplicate_check", {}).get("reasons", []),
@@ -970,6 +989,7 @@ def main() -> None:
             "funnel_stage": content.get("funnel_stage", "EDUCATION"),
             "quality_score": content.get("quality_score"),
             "quality_component_scores": content.get("quality_component_scores", {}),
+            **_conversion_learning_fields(content),
             "validation_status": content.get("validation_status"),
             "validation_errors": content.get("validation_errors", []),
             "duplicate_reasons": content.get("duplicate_check", {}).get("reasons", []),
@@ -1184,6 +1204,7 @@ def main() -> None:
         "quality_score": content.get("quality_score"),
         "quality_component_scores": content.get("quality_component_scores", {}),
         "quality_warnings": content.get("quality_warnings", []),
+        **_conversion_learning_fields(content),
         "validation_status": content.get("validation_status"),
         "validation_errors": content.get("validation_errors", []),
         "duplicate_reasons": content.get("duplicate_check", {}).get("reasons", []),

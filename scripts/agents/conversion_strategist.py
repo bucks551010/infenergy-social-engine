@@ -40,12 +40,14 @@ def plan(
     explicit: dict[str, str] | None = None,
     data_dir: str | None = None,
     winning_hints: dict[str, list[str]] | None = None,
+    losing_hints: dict[str, list[str]] | None = None,
 ) -> dict[str, Any]:
     """Produce the strategic brief and downstream execution hints.
 
-    When `winning_hints` is None and `data_dir` is provided, performance_memory
-    is auto-loaded so the engine can exploit historically successful combos
-    while still respecting recency-based diversity (spec Section 27).
+    When `winning_hints`/`losing_hints` are None and `data_dir` is provided,
+    performance_memory is auto-loaded so the engine can exploit historically
+    successful combos and avoid proven losers, while still respecting
+    recency-based diversity (spec Section 27).
     """
 
     if winning_hints is None and data_dir:
@@ -53,6 +55,12 @@ def plan(
             winning_hints = performance_memory_mod.winning_hints(data_dir=data_dir)
         except Exception:
             winning_hints = {}
+
+    if losing_hints is None and data_dir:
+        try:
+            losing_hints = performance_memory_mod.losing_hints(data_dir=data_dir)
+        except Exception:
+            losing_hints = {}
 
     engine = ConversionLogicEngine()
     brief: StrategicBrief = engine.build_brief(
@@ -64,6 +72,7 @@ def plan(
         recent=recent,
         explicit=explicit,
         winning_hints=winning_hints,
+        losing_hints=losing_hints,
     )
 
     law = brief.logic_principle
@@ -92,6 +101,7 @@ def plan(
         },
         "downstream_instructions": _downstream_instructions(brief),
         "winning_hints_applied": winning_hints or {},
+        "losing_hints_applied": losing_hints or {},
         "experiment": {
             "variant_id": brief.experiment.variant_id,
             "variables": dict(brief.experiment.variables),

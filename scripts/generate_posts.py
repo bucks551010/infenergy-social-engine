@@ -4701,6 +4701,9 @@ def generate(slot: str, *, funnel_stage_override: str = "", product_id_override:
             "law_guardrails": _strategist_output.get("law_guardrails", []),
             "objection_reframe": _strategist_output.get("objection_reframe", {}),
             "downstream_instructions": _strategist_output.get("downstream_instructions", {}),
+            "experiment": _strategist_output.get("experiment", {}),
+            "winning_hints_applied": _strategist_output.get("winning_hints_applied", {}),
+            "losing_hints_applied": _strategist_output.get("losing_hints_applied", {}),
             "error": _strategist_output.get("error"),
         }
     gate_records: list[dict] = []

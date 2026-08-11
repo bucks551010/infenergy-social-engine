@@ -53,6 +53,7 @@ class ConversionLogicEngine:
         recent: dict[str, list[str]] | None = None,
         explicit: dict[str, str] | None = None,
         winning_hints: dict[str, list[str]] | None = None,
+        losing_hints: dict[str, list[str]] | None = None,
     ) -> StrategicBrief:
         """Produce a fully populated StrategicBrief.
 
@@ -71,12 +72,19 @@ class ConversionLogicEngine:
                 audience_id, awareness_stage - each mapping to a list of
                 proven-winner values. Used to bias selection while still
                 respecting recency and eligibility.
+            losing_hints: performance-memory feedback (same shape as
+                winning_hints) listing proven-loser values. Merged into the
+                recency-exclusion lists so known-bad combos are deprioritized
+                the same way recently-used ones are, unless no alternative exists.
         """
         recent = recent or {}
         explicit = explicit or {}
         product = product or {}
         winning_hints = winning_hints or {}
+        losing_hints = losing_hints or {}
         platform_priority = platform_priority or ["facebook", "instagram", "linkedin"]
+        avoid_laws = list(dict.fromkeys(list(recent.get("laws") or []) + list(losing_hints.get("logic_principle") or [])))
+        avoid_structures = list(dict.fromkeys(list(recent.get("structures") or []) + list(losing_hints.get("copy_framework") or [])))
 
         # 1. Persona
         persona_id = audience_hint or personas_mod.infer_from_product_and_stage(
@@ -95,7 +103,7 @@ class ConversionLogicEngine:
         has_verified = bool(product.get("verified_facts"))
         law = logic_laws_mod.select(
             awareness_stage=awareness_stage,
-            recent_law_ids=recent.get("laws"),
+            recent_law_ids=avoid_laws,
             explicit=explicit.get("logic_principle"),
             product_has_verified_specs=has_verified,
             preferred=winning_hints.get("logic_principle"),
@@ -114,7 +122,7 @@ class ConversionLogicEngine:
         structure = copy_structures_mod.select(
             awareness_stage=awareness_stage,
             law_name=law,
-            recent_structures=recent.get("structures"),
+            recent_structures=avoid_structures,
             explicit=explicit.get("copy_framework"),
             preferred=winning_hints.get("copy_framework"),
         )

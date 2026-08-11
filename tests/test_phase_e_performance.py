@@ -91,6 +91,60 @@ def test_engine_biases_toward_preferred_law():
         assert b_default.experiment.variant_id != b_biased.experiment.variant_id
 
 
+def test_engine_avoids_losing_law_when_alternative_exists():
+    engine = ConversionLogicEngine()
+    product = {
+        "product_name": "Portable Power Station",
+        "product_type": "power_station",
+        "features": ["1500Wh capacity"],
+        "verified_facts": ["1500Wh"],
+        "benefits": ["run essentials for 24 hours"],
+    }
+    # MOST_AWARE has two eligible laws: double_implication, result_traceability.
+    # If result_traceability is a known loser, the engine should fall back to
+    # double_implication instead of picking the loser by default.
+    b = engine.build_brief(
+        funnel_stage="CONVERSION",
+        product=product,
+        recent={"laws": []},
+        explicit={"awareness_stage": "MOST_AWARE"},
+        losing_hints={"logic_principle": ["result_traceability"]},
+    )
+    assert b.logic_principle == "double_implication"
+
+
+def test_strategist_auto_loads_losing_hints(tmp_path):
+    from agents import conversion_strategist as cs
+
+    entries = [
+        {
+            "strategic_brief": {"logic_principle": "double_implication"},
+            "conversion_quality_score": {"total": 20.0},
+        },
+        {
+            "strategic_brief": {"logic_principle": "double_implication"},
+            "conversion_quality_score": {"total": 15.0},
+        },
+    ]
+    with open(str(tmp_path / "post_history.json"), "w", encoding="utf-8") as f:
+        json.dump({"posts": entries}, f)
+
+    product = {
+        "product_name": "Test Power Station",
+        "product_type": "power_station",
+        "features": ["1000Wh"],
+        "verified_facts": ["1000Wh"],
+    }
+    out = cs.plan(
+        funnel_stage="CONVERSION",
+        product=product,
+        explicit={"awareness_stage": "MOST_AWARE"},
+        data_dir=str(tmp_path),
+    )
+    assert "double_implication" in out["losing_hints_applied"].get("logic_principle", [])
+    assert out["brief"]["logic_principle"] == "result_traceability"
+
+
 def test_engine_ignores_preferred_when_recent():
     engine = ConversionLogicEngine()
     product = {

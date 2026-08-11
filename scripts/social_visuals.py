@@ -669,7 +669,6 @@ def _generate_gemini_full_creative(content: dict[str, Any], platform: str, visua
         model_candidates = [
             str(os.environ.get("GEMINI_IMAGE_MODEL", "")).strip(),
             "gemini-2.5-flash-image",
-            "gemini-2.0-flash-preview-image-generation",
         ]
         seen_models: set[str] = set()
         spec = _platform_visual_spec(platform)

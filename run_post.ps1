@@ -80,11 +80,16 @@ function Get-CurrentSlot {
 function Invoke-EngineRunNow {
     param([string]$Token, [string]$ProductId, [string]$FunnelStage, [string]$Slot)
     $params = @{
-        token        = $Token
-        slot         = $Slot
-        live         = "true"
-        product_id   = $ProductId
-        funnel_stage = $FunnelStage
+        token          = $Token
+        slot           = $Slot
+        live           = "true"
+        product_id     = $ProductId
+        funnel_stage   = $FunnelStage
+        # Manual on-demand runs should always go out on every channel and
+        # never be silently skipped by the automatic schedule's stage-per-slot
+        # rules or the scheduled-cadence duplicate window.
+        platforms      = "facebook,instagram,linkedin"
+        duplicate_mode = "allow_all"
     }
     $pairs = @()
     foreach ($key in $params.Keys) {
@@ -151,7 +156,7 @@ $genre = $genreOptions["6"]
 if ($genreOptions.Contains($genreChoice)) { $genre = $genreOptions[$genreChoice] }
 
 $slot = Get-CurrentSlot
-Write-Host "`nAbout to publish LIVE:" -ForegroundColor Yellow
+Write-Host "`nAbout to publish LIVE on Facebook, Instagram, and LinkedIn:" -ForegroundColor Yellow
 Write-Host "  Product:   $productLabel"
 Write-Host "  Post type: $($genre.Label)"
 Write-Host "  Slot:      $slot"

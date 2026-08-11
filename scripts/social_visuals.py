@@ -650,16 +650,17 @@ def _build_gemini_image_prompt(content: dict[str, Any], platform: str, visual_pl
     )
 
 
-def _generate_gemini_full_creative(content: dict[str, Any], platform: str, visual_plan: dict[str, Any], output_path: str) -> bool:
+def _generate_gemini_full_creative(content: dict[str, Any], platform: str, visual_plan: dict[str, Any], output_path: str) -> tuple[bool, str]:
     api_key = os.environ.get("GEMINI_API_KEY", "").strip()
     if not api_key:
-        return False
+        return False, "no_api_key"
 
     prompt = _build_gemini_image_prompt(content, platform, visual_plan)
     expected_headline, _ = _headline_lockup(content)
     expected_cta = normalize_brand_text(str(content.get("selected_cta") or "Learn more"))
     repo_context = _load_visual_repo_context()
     repo_refs = repo_context.get("references", []) if isinstance(repo_context, dict) else []
+    last_reason = "no_attempts_made"
     try:
         from google import genai  # type: ignore
         from google.genai import types  # type: ignore
@@ -714,30 +715,35 @@ def _generate_gemini_full_creative(content: dict[str, Any], platform: str, visua
                     )
                     raw = _extract_inline_image_bytes(response)
                     if not raw:
+                        last_reason = f"no_image_bytes:{model_name}"
                         continue
 
                     image_module, _, _ = _load_pillow()
                     if image_module is None:
-                        return False
+                        return False, "pillow_unavailable"
 
                     generated = image_module.open(io.BytesIO(raw)).convert("RGB")
-                    accepted, _ = _gemini_plate_quality(generated, platform)
+                    accepted, plate_reasons = _gemini_plate_quality(generated, platform)
                     if not accepted:
+                        last_reason = f"plate_quality_rejected:{model_name}:{','.join(plate_reasons)}"
                         continue
-                    accepted, _ = _gemini_semantic_plate_quality(client, types, raw, platform, expected_headline, expected_cta)
+                    accepted, semantic_reasons = _gemini_semantic_plate_quality(client, types, raw, platform, expected_headline, expected_cta)
                     if not accepted:
+                        last_reason = f"semantic_quality_rejected:{model_name}:{','.join(semantic_reasons)}"
                         continue
                     generated = _resize_cover(generated, spec["target"], image_module)
                     if generated.size != spec["target"]:
+                        last_reason = f"resize_mismatch:{model_name}"
                         continue
                     os.makedirs(os.path.dirname(output_path), exist_ok=True)
                     generated.save(output_path, format="PNG", optimize=True)
-                    return True
-                except Exception:
+                    return True, "ok"
+                except Exception as e:
+                    last_reason = f"api_exception:{model_name}:{type(e).__name__}:{str(e)[:160]}"
                     continue
-        return False
-    except Exception:
-        return False
+        return False, last_reason
+    except Exception as e:
+        return False, f"setup_exception:{type(e).__name__}:{str(e)[:160]}"
 
 
 def _metric_chips(content: dict[str, Any], limit: int = 2) -> list[str]:
@@ -856,7 +862,7 @@ def generate_visuals(content: dict[str, Any], visual_plan: dict[str, Any] | None
 
         # Gemini generates the entire finished creative directly. There is no HTML
         # preview and no local PIL fallback: if Gemini fails, the platform gets no visual.
-        rendered = _generate_gemini_full_creative(content, platform, plan, file_path)
+        rendered, reason = _generate_gemini_full_creative(content, platform, plan, file_path)
         if rendered:
             render_engines[platform] = "gemini"
             product_overlay_applied[platform] = product_specific_source_present
@@ -864,7 +870,7 @@ def generate_visuals(content: dict[str, Any], visual_plan: dict[str, Any] | None
         else:
             render_engines[platform] = "failed"
             product_overlay_applied[platform] = False
-            fallback_reasons[platform] = "gemini_unavailable_or_rejected_no_fallback"
+            fallback_reasons[platform] = reason
 
     visuals["template"] = template_name
     visuals["image_strategy"] = image_strategy

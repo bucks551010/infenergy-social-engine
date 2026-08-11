@@ -201,6 +201,7 @@ class PublisherVisualTests(unittest.TestCase):
 
     def test_live_visual_gate_rejects_local_render_and_missing_product(self) -> None:
         content = {
+            "product_id": "SFT-20K",
             "generated_visuals": {
                 "facebook": "card.png",
                 "render_engines": {"facebook": "local_render"},
@@ -212,6 +213,23 @@ class PublisherVisualTests(unittest.TestCase):
         self.assertIn("product_specific_image_source_missing", errors)
         self.assertIn("facebook_visual_not_gemini", errors)
         self.assertIn("facebook_product_overlay_missing", errors)
+
+    def test_live_visual_gate_skips_product_checks_when_no_product_anchored(self) -> None:
+        # Educational/pillar content with no product_id must not be blocked by
+        # product-specific image requirements — those only apply when a product
+        # is actually anchored to the post.
+        content = {
+            "generated_visuals": {
+                "facebook": "card.png",
+                "render_engines": {"facebook": "local_render"},
+                "product_overlay_applied": {"facebook": False},
+                "product_specific_source_present": "false",
+            }
+        }
+        errors = _live_visual_gate_errors(content, {"facebook": True}, dry_run=False)
+        self.assertNotIn("product_specific_image_source_missing", errors)
+        self.assertNotIn("facebook_product_overlay_missing", errors)
+        self.assertIn("facebook_visual_not_gemini", errors)
 
     def test_live_visual_gate_accepts_gemini_product_composite(self) -> None:
         content = {

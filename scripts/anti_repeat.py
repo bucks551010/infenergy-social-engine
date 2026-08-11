@@ -96,6 +96,11 @@ def check_duplicates(content: dict[str, Any], history: dict[str, Any], windows: 
         cfg.update(windows)
 
     posts = [p for p in (history.get("posts", []) if isinstance(history, dict) else []) if isinstance(p, dict)]
+    # Never-published attempts (validation/quality/duplicate/channel-readiness skips)
+    # must not poison future duplicate checks — only compare against posts that were
+    # actually published (or attempted live), otherwise a single skip can perpetually
+    # block every future run on the same topic/hook/structure.
+    posts = [p for p in posts if not str(p.get("status", "")).startswith("skipped")]
 
     reasons: list[str] = []
 
@@ -191,15 +196,12 @@ def check_duplicates(content: dict[str, Any], history: dict[str, Any], windows: 
             reasons.append("duplicate_educational_lesson_within_window")
             break
 
-    for p in _recent_posts(posts, cfg["hook_days"]):
-        if str(p.get("format_signature", "")) == format_signature and format_signature:
-            reasons.append("duplicate_content_format_within_window")
-            break
-
-    for p in _recent_posts(posts, cfg["hook_days"]):
-        if str(p.get("structure_signature", "")) == structure_signature and structure_signature:
-            reasons.append("duplicate_platform_structure_within_window")
-            break
+    # NOTE: content_format and visual_direction are assigned deterministically per
+    # platform/funnel_stage template (not derived from the creative content itself),
+    # so format_signature/structure_signature are identical across nearly all posts
+    # sharing a funnel stage. They are computed and stored for analytics only — they
+    # must never gate publishing, or "same funnel stage" would be treated as
+    # "duplicate content" and block almost every post after the first.
 
     return {
         "ok": len(reasons) == 0,

@@ -462,7 +462,8 @@ def _live_visual_gate_errors(content: dict, effective_channels: dict[str, bool],
     render_engines = visuals.get("render_engines") if isinstance(visuals.get("render_engines"), dict) else {}
     overlays = visuals.get("product_overlay_applied") if isinstance(visuals.get("product_overlay_applied"), dict) else {}
     require_gemini = os.environ.get("LIVE_REQUIRE_GEMINI_VISUAL", "true").strip().lower() in {"1", "true", "yes", "on"}
-    require_product = os.environ.get("LIVE_REQUIRE_PRODUCT_VISUAL", "true").strip().lower() in {"1", "true", "yes", "on"}
+    has_anchored_product = bool(str(content.get("product_id") or "").strip())
+    require_product = has_anchored_product and os.environ.get("LIVE_REQUIRE_PRODUCT_VISUAL", "true").strip().lower() in {"1", "true", "yes", "on"}
 
     errors: list[str] = []
     if require_product and str(visuals.get("product_specific_source_present", "false")).lower() != "true":
@@ -690,12 +691,12 @@ def main() -> None:
         return
 
     print("[1/5] Generating content with Gemini...")
-    # Phase 8: max two generation attempts with score/validation gating.
+    # Phase 8: up to three generation attempts with score/validation gating.
     attempts: list[dict] = []
     windows = load_anti_repeat_windows()
     content = preview_content
     t_generation = time.perf_counter()
-    for idx in range(2):
+    for idx in range(3):
         if idx > 0:
             content = generate_posts.generate(
                 slot,
@@ -822,8 +823,8 @@ def main() -> None:
         if idx == 0 and scoring.get("decision") == "regenerate_once":
             continue
 
-        # Otherwise stop on second attempt or hard rejection.
-        if idx == 1 or scoring.get("decision") == "reject":
+        # Otherwise stop on final attempt or hard rejection.
+        if idx == 2 or scoring.get("decision") == "reject":
             break
     _apply_phase8_budget(runtime_metrics, "generation", time.perf_counter() - t_generation, generation_budget)
 

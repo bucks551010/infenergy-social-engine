@@ -5746,6 +5746,9 @@ Return ONLY valid JSON with these exact keys (no markdown, no code fences):
                 )
             )
         content, visual_plan = _apply_conference_refinements(content, visual_plan, conference_summary)
+        # Conference may have replaced gemini_image_prompt; re-assert the brief's
+        # visual direction so alignment metadata reflects the final prompt.
+        visual_plan = _apply_strategic_brief_to_visual(visual_plan, run_context, product)
         selected_cta = _ensure_explicit_cta(str(content.get("selected_cta", selected_cta)), funnel_stage)
         content["selected_cta"] = selected_cta
         for key in ("fb_caption", "ig_caption", "li_text"):

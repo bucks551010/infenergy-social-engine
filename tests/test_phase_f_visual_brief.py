@@ -135,3 +135,32 @@ def test_phase_f_gate_disabled_when_no_brief():
     gate = next(g for g in gates if g["gate_id"] == "phase_f_visual_alignment")
     assert gate["passed"] is True
     assert gate["details"]["enabled"] is False
+
+
+def test_reapplying_after_conference_overwrite_restores_law_signal():
+    """Regression: the agent conference can replace visual_plan['gemini_image_prompt']
+    after the first injection. Re-calling _apply_strategic_brief_to_visual (as
+    generate_posts.py now does post-conference) must re-assert the law prefix
+    instead of leaving stale/incorrect alignment metadata."""
+    rc = _make_run_context()
+    vp = {"visual_objective": "", "gemini_image_prompt": "original scene"}
+    vp = gp._apply_strategic_brief_to_visual(vp, rc, product=None)
+    assert vp["gemini_image_prompt"].startswith("[contrapositive visual strategy]")
+
+    # Simulate the agent conference replacing the prompt outright.
+    vp["gemini_image_prompt"] = "a brand new scene with no law reference"
+    vp = gp._apply_strategic_brief_to_visual(vp, rc, product=None)
+    assert vp["gemini_image_prompt"].startswith("[contrapositive visual strategy]")
+    assert vp["strategic_brief_alignment"]["law_signal_in_prompt"] is True
+
+
+def test_reapplying_is_idempotent_when_prompt_unchanged():
+    rc = _make_run_context()
+    vp = {"visual_objective": "", "gemini_image_prompt": "scene"}
+    vp = gp._apply_strategic_brief_to_visual(vp, rc, product=None)
+    first_prompt = vp["gemini_image_prompt"]
+    first_objective = vp["visual_objective"]
+    vp = gp._apply_strategic_brief_to_visual(vp, rc, product=None)
+    assert vp["gemini_image_prompt"] == first_prompt
+    assert vp["visual_objective"] == first_objective
+

@@ -121,9 +121,11 @@ def summarize(entries: list[dict], min_success: float = 65.0) -> dict[str, Any]:
             })
         ranked.sort(key=lambda x: (x["avg_score"], x["count"]), reverse=True)
         # loser threshold - anything at or below 40 counts as an avoid signal.
+        # Sort losers ascending so the worst performers surface first.
+        losers = sorted((r for r in ranked if r["avg_score"] <= 40.0), key=lambda x: x["avg_score"])
         summary["fields"][f] = {
             "top": [r["value"] for r in ranked[:5] if r["avg_score"] >= min_success],
-            "avoid": [r["value"] for r in ranked if r["avg_score"] <= 40.0][:5],
+            "avoid": [r["value"] for r in losers[:5]],
             "ranked": ranked[:20],
         }
     summary["sample_size"] = len(entries or [])

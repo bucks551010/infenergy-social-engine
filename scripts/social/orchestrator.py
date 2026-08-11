@@ -485,6 +485,28 @@ class SocialIntelligenceOrchestrator:
                 },
                 data_dir=self.data_dir,
             )
+            memory_intelligence.append_post_history_record(
+                {
+                    "post_id": post_id,
+                    "engine": engine_name,
+                    "platform": platform,
+                    "funnel_stage": "CONVERSION" if engine_name == "A" else "EDUCATION",
+                    "pillar_id": brief.pillar.get("id"),
+                    "genre_id": brief.genre.get("id"),
+                    "topic": brief.topic_path.get("topic"),
+                    "microtopic": brief.topic_path.get("microtopic"),
+                    "hook": hook_text,
+                    "hook_type": brief.genre.get("id"),
+                    "memory_anchor": anchor,
+                    "tone": brief.tone,
+                    "quality": q.as_dict(),
+                    "claim_ledger": ledger.as_dict(),
+                    "anchored_offering": bi_offering,
+                    "engagement_metrics": {},
+                    "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                },
+                data_dir=self.data_dir,
+            )
 
         return package
 

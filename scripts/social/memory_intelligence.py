@@ -37,6 +37,11 @@ def visual_memory_path(data_dir: str | None = None) -> str:
     return os.path.join(d, "social", "visual_memory.json")
 
 
+def post_history_path(data_dir: str | None = None) -> str:
+    d = data_dir or _default_data_dir()
+    return os.path.join(d, "post_history.json")
+
+
 def _load(path: str) -> dict[str, Any]:
     if not os.path.isfile(path):
         return {"records": []}
@@ -82,6 +87,53 @@ def append_visual_record(
     if len(data["records"]) > keep_last:
         data["records"] = data["records"][-keep_last:]
     _save(path, data)
+
+
+def append_post_history_record(
+    record: dict[str, Any],
+    *,
+    data_dir: str | None = None,
+    keep_last: int = 2000,
+) -> None:
+    path = post_history_path(data_dir)
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            data = json.load(fh)
+    except (OSError, json.JSONDecodeError):
+        data = {"posts": []}
+    if not isinstance(data, dict) or not isinstance(data.get("posts"), list):
+        data = {"posts": []}
+    posts = data["posts"]
+    post_id = str(record.get("post_id", ""))
+    if post_id and any(str(existing.get("post_id", "")) == post_id for existing in posts if isinstance(existing, dict)):
+        return
+    posts.append(record)
+    if len(posts) > keep_last:
+        data["posts"] = posts[-keep_last:]
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    temp_path = f"{path}.tmp"
+    with open(temp_path, "w", encoding="utf-8") as fh:
+        json.dump(data, fh, indent=2)
+    os.replace(temp_path, path)
+
+
+def backfill_post_history_from_content_memory(data_dir: str | None = None) -> int:
+    content = _load(content_memory_path(data_dir)).get("records", [])
+    before_path = post_history_path(data_dir)
+    try:
+        with open(before_path, "r", encoding="utf-8") as fh:
+            before = len(json.load(fh).get("posts", []))
+    except (OSError, json.JSONDecodeError, AttributeError):
+        before = 0
+    for record in content:
+        if isinstance(record, dict):
+            append_post_history_record(record, data_dir=data_dir)
+    try:
+        with open(before_path, "r", encoding="utf-8") as fh:
+            after = len(json.load(fh).get("posts", []))
+    except (OSError, json.JSONDecodeError, AttributeError):
+        after = before
+    return max(0, after - before)
 
 
 # --- Recency projections (used by strategy/opportunity engines) -------------

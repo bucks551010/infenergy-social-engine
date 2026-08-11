@@ -6,6 +6,7 @@ Commands:
   compile-conversion Print the conversion context (optional segment/offering)
   compile-creative   Print the creative context (optional territory/segment)
   compile-orchestrator Print the orchestrator context
+    conference         Run the all-agent interoperability conference
 """
 
 from __future__ import annotations
@@ -35,6 +36,7 @@ def main(argv: list[str] | None = None) -> int:
     p_creative.add_argument("--segment", default="")
 
     sub.add_parser("compile-orchestrator")
+    sub.add_parser("conference")
 
     args = parser.parse_args(argv)
 
@@ -58,6 +60,8 @@ def main(argv: list[str] | None = None) -> int:
         out = api.compile_creative_context(territory_id=args.territory, segment_id=args.segment)
     elif args.cmd == "compile-orchestrator":
         out = api.compile_orchestrator_context()
+    elif args.cmd == "conference":
+        out = api.run_agent_conference()
     else:
         parser.print_help()
         return 2

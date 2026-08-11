@@ -768,3 +768,100 @@ def test_generate_posts_run_social_intelligence_with_bi(bi_env, monkeypatch):
     assert len(posts) == 1
     assert posts[0].get("business_context") is not None
     assert posts[0].get("anchored_offering") is not None
+
+
+# =====================================================================
+# All-agent conference room
+# =====================================================================
+
+
+def test_conference_roster_covers_every_registered_agent(bi_env):
+    from agents.dispatcher import available_agents
+    from business_intelligence import conference
+
+    names = {spec.name for spec in conference.roster()}
+    assert set(available_agents()).issubset(names)
+    assert "conversion_strategist" in names
+    assert {
+        "research_agent", "audience_agent", "voice_agent", "offer_agent",
+        "copy_agent", "creative_agent", "channel_ops_agent", "seo_agent",
+        "lifecycle_email_agent", "experimentation_agent", "qa_agent",
+    }.issubset(names)
+    assert len(names) == 28
+
+
+def test_conference_identifies_empty_history_as_real_blocker(bi_env):
+    _seed_all(bi_env)
+    with open(bi_env / "topic_queue.json", "w", encoding="utf-8") as fh:
+        json.dump({"topics": {"preparedness": ["outage priority list"]}}, fh)
+    with open(bi_env / "post_history.json", "w", encoding="utf-8") as fh:
+        json.dump({"posts": []}, fh)
+    from business_intelligence import api, conference
+
+    api.rebuild_profile()
+    report = conference.run_conference(persist=False)
+    assert report["summary"]["can_work_together"] is False
+    assert report["summary"]["unresolved_external_inputs"] == ["post_history"]
+    assert report["summary"]["status_counts"]["blocked"] > 0
+
+
+def test_conference_resolves_collaboration_when_history_exists(bi_env):
+    _seed_all(bi_env)
+    with open(bi_env / "topic_queue.json", "w", encoding="utf-8") as fh:
+        json.dump({"topics": {"preparedness": ["outage priority list"]}}, fh)
+    with open(bi_env / "post_history.json", "w", encoding="utf-8") as fh:
+        json.dump({"posts": [{"post_id": "p1", "platform": "instagram", "quality": 82}]}, fh)
+    from business_intelligence import api, conference
+
+    api.rebuild_profile()
+    report = conference.run_conference(persist=False)
+    assert report["summary"]["can_work_together"] is True
+    assert report["summary"]["status_counts"]["blocked"] == 0
+    assert report["collaboration_edges"]
+
+
+def test_conference_persists_latest_report(bi_env):
+    _seed_all(bi_env)
+    from business_intelligence import api, conference
+
+    api.rebuild_profile()
+    report = conference.run_conference(persist=True)
+    latest = bi_env / "business_intelligence" / "conference" / "latest.json"
+    assert latest.is_file()
+    saved = json.loads(latest.read_text(encoding="utf-8"))
+    assert saved["summary"] == report["summary"]
+
+
+def test_conference_cli_command(bi_env, capsys):
+    _seed_all(bi_env)
+    from business_intelligence import api, __main__ as cli
+
+    api.rebuild_profile()
+    rc = cli.main(["conference"])
+    payload = json.loads(capsys.readouterr().out)
+    assert rc == 0
+    assert payload["conference_version"] == "agent-conference.v1"
+    assert payload["summary"]["agents_present"] == 28
+
+
+def test_social_memory_writes_deduplicated_shared_history(bi_env):
+    from social import memory_intelligence
+
+    record = {"post_id": "shared-1", "hook": "A test hook", "engagement_metrics": {}}
+    memory_intelligence.append_post_history_record(record, data_dir=str(bi_env))
+    memory_intelligence.append_post_history_record(record, data_dir=str(bi_env))
+    saved = json.loads((bi_env / "post_history.json").read_text(encoding="utf-8"))
+    assert len(saved["posts"]) == 1
+    assert saved["posts"][0]["post_id"] == "shared-1"
+
+
+def test_social_memory_backfills_existing_content_records(bi_env):
+    social_dir = bi_env / "social"
+    with open(social_dir / "content_memory.json", "w", encoding="utf-8") as fh:
+        json.dump({"records": [{"post_id": "old-1"}, {"post_id": "old-2"}]}, fh)
+    from social import memory_intelligence
+
+    assert memory_intelligence.backfill_post_history_from_content_memory(str(bi_env)) == 2
+    assert memory_intelligence.backfill_post_history_from_content_memory(str(bi_env)) == 0
+    saved = json.loads((bi_env / "post_history.json").read_text(encoding="utf-8"))
+    assert {post["post_id"] for post in saved["posts"]} == {"old-1", "old-2"}

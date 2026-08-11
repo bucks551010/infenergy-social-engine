@@ -11,6 +11,7 @@ from typing import Any
 from . import (
     bootstrap as bootstrap_mod,
     compilers,
+    conference,
     critic,
     evidence,
     learning,
@@ -71,6 +72,10 @@ def compile_creative_context(*, territory_id: str = "", segment_id: str = "") ->
 
 def compile_orchestrator_context() -> dict[str, Any]:
     return compilers.compile_orchestrator_context()
+
+
+def run_agent_conference(*, persist: bool = True) -> dict[str, Any]:
+    return conference.run_conference(persist=persist)
 
 
 # --- Write-side --------------------------------------------------------

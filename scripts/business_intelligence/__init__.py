@@ -15,6 +15,7 @@ __all__ = [
     "api",
     "bootstrap",
     "compilers",
+    "conference",
     "evidence",
     "offerings",
     "audience",

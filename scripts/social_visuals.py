@@ -660,7 +660,7 @@ def _generate_gemini_full_creative(content: dict[str, Any], platform: str, visua
     expected_cta = normalize_brand_text(str(content.get("selected_cta") or "Learn more"))
     repo_context = _load_visual_repo_context()
     repo_refs = repo_context.get("references", []) if isinstance(repo_context, dict) else []
-    last_reason = "no_attempts_made"
+    reasons_by_model: dict[str, str] = {}
     try:
         from google import genai  # type: ignore
         from google.genai import types  # type: ignore
@@ -669,7 +669,7 @@ def _generate_gemini_full_creative(content: dict[str, Any], platform: str, visua
         model_candidates = [
             str(os.environ.get("GEMINI_IMAGE_MODEL", "")).strip(),
             "gemini-2.5-flash-image",
-            "gemini-2.5-flash",
+            "gemini-2.0-flash-preview-image-generation",
         ]
         seen_models: set[str] = set()
         spec = _platform_visual_spec(platform)
@@ -715,7 +715,7 @@ def _generate_gemini_full_creative(content: dict[str, Any], platform: str, visua
                     )
                     raw = _extract_inline_image_bytes(response)
                     if not raw:
-                        last_reason = f"no_image_bytes:{model_name}"
+                        reasons_by_model[model_name] = "no_image_bytes"
                         continue
 
                     image_module, _, _ = _load_pillow()
@@ -725,23 +725,24 @@ def _generate_gemini_full_creative(content: dict[str, Any], platform: str, visua
                     generated = image_module.open(io.BytesIO(raw)).convert("RGB")
                     accepted, plate_reasons = _gemini_plate_quality(generated, platform)
                     if not accepted:
-                        last_reason = f"plate_quality_rejected:{model_name}:{','.join(plate_reasons)}"
+                        reasons_by_model[model_name] = f"plate_quality_rejected:{','.join(plate_reasons)}"
                         continue
                     accepted, semantic_reasons = _gemini_semantic_plate_quality(client, types, raw, platform, expected_headline, expected_cta)
                     if not accepted:
-                        last_reason = f"semantic_quality_rejected:{model_name}:{','.join(semantic_reasons)}"
+                        reasons_by_model[model_name] = f"semantic_quality_rejected:{','.join(semantic_reasons)}"
                         continue
                     generated = _resize_cover(generated, spec["target"], image_module)
                     if generated.size != spec["target"]:
-                        last_reason = f"resize_mismatch:{model_name}"
+                        reasons_by_model[model_name] = "resize_mismatch"
                         continue
                     os.makedirs(os.path.dirname(output_path), exist_ok=True)
                     generated.save(output_path, format="PNG", optimize=True)
                     return True, "ok"
                 except Exception as e:
-                    last_reason = f"api_exception:{model_name}:{type(e).__name__}:{str(e)[:160]}"
+                    reasons_by_model[model_name] = f"api_exception:{type(e).__name__}:{str(e)[:160]}"
                     continue
-        return False, last_reason
+        summary = "; ".join(f"{model}={reason}" for model, reason in reasons_by_model.items()) or "no_attempts_made"
+        return False, summary
     except Exception as e:
         return False, f"setup_exception:{type(e).__name__}:{str(e)[:160]}"
 

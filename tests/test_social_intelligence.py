@@ -17,6 +17,8 @@ import pytest
 _REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(_REPO, "scripts"))
 
+import generate_posts  # noqa: E402
+
 from social import (  # noqa: E402
     audience_intelligence,
     carousel_director,
@@ -33,6 +35,30 @@ from social import (  # noqa: E402
     visual_intelligence,
     visual_provider,
 )
+
+
+# --- generator wiring ------------------------------------------------------
+
+
+def test_generate_uses_social_intelligence_when_enabled(monkeypatch):
+    monkeypatch.setenv("ENABLE_SOCIAL_INTELLIGENCE", "1")
+    monkeypatch.setenv("ENABLE_BUSINESS_INTELLIGENCE", "1")
+    expected = {
+        "post_id": "social-123",
+        "business_context": {"identity": {"name": "Infenergy Power"}},
+        "anchored_offering": {"name": "Portable power station"},
+        "copy": {"hook": "Why your outage plan fails without a power hierarchy"},
+        "visual": {"visual_format": "fact_card"},
+        "quality": {"overall": 92},
+    }
+
+    monkeypatch.setattr(generate_posts, "run_social_intelligence", lambda count=1, platform="instagram_feed", **kw: [expected])
+
+    result = generate_posts._route_generate_orchestrator("morning", platform="instagram_feed")
+
+    assert result["post_id"] == "social-123"
+    assert result["business_context"]["identity"]["name"] == "Infenergy Power"
+    assert result["anchored_offering"]["name"] == "Portable power station"
 
 
 # --- libraries --------------------------------------------------------------

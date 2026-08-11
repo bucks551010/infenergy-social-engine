@@ -60,6 +60,38 @@ def run_social_intelligence(count: int = 1, platform: str = "instagram_feed", **
     return [p.as_dict() for p in batch]
 
 
+def _route_generate_orchestrator(slot: str = "", *, platform: str = "instagram_feed", **kw: Any) -> dict[str, Any]:
+    """Return the first orchestrated post package in the legacy payload shape used by the runtime."""
+    batch = run_social_intelligence(count=1, platform=platform, **kw)
+    if not batch:
+        return {}
+
+    first = batch[0]
+    copy_pkg = first.get("copy") or {}
+    visual_pkg = first.get("visual") or {}
+    quality_pkg = first.get("quality") or {}
+
+    legacy = {
+        "post_id": first.get("post_id"),
+        "copy_generation_source": "social_intelligence_orchestrator",
+        "business_context": first.get("business_context") or {},
+        "anchored_offering": first.get("anchored_offering") or {},
+        "selected_hook": copy_pkg.get("hook") or "",
+        "selected_cta": copy_pkg.get("cta") or "",
+        "copy": copy_pkg,
+        "visual": visual_pkg,
+        "quality_score": quality_pkg.get("overall", 0),
+        "quality_checks": quality_pkg.get("checks", []),
+        "quality_warnings": quality_pkg.get("warnings", []),
+        "quality": quality_pkg,
+        "slot": slot,
+        "platform": platform,
+    }
+    for key in ("hook", "body_text", "takeaway", "memory_anchor"):
+        legacy.setdefault(key, copy_pkg.get(key))
+    return legacy
+
+
 try:
     import inventory_db
 except ImportError:  # pragma: no cover
@@ -4502,6 +4534,9 @@ def _apply_control_plane_metadata(content: dict, run_context: dict, gate_records
 
 
 def generate(slot: str, *, funnel_stage_override: str = "", product_id_override: str = "") -> dict:
+    if _social_intelligence_enabled():
+        return _route_generate_orchestrator(slot, platform=os.environ.get("POST_PLATFORMS", "instagram_feed").split(",")[0].strip() or "instagram_feed")
+
     ensure_runtime_data()
     preferred_model = os.environ.get("GEMINI_MODEL", "").strip()
     model_candidates = [

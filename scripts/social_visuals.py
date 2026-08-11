@@ -184,6 +184,39 @@ def _primary_stat(content: dict[str, Any]) -> str:
     return "SMART POWER"
 
 
+def _category_benefit_defaults(content: dict[str, Any]) -> list[str]:
+    topic = str(content.get("topic") or "").lower()
+    product_name = str(content.get("product_name") or "").lower()
+    categories = " ".join(str(x or "") for x in (content.get("product_categories") or [])).lower() if isinstance(content.get("product_categories"), list) else str(content.get("product_categories") or "").lower()
+    if any(token in product_name or token in categories for token in ("power bank", "charger", "travel power")):
+        return [
+            "Reliable backup charging",
+            "Travel-ready power",
+            "Device-safe recharge",
+            "Everyday carry readiness",
+        ]
+    if any(token in product_name or token in categories for token in ("jump starter", "car", "vehicle")):
+        return [
+            "Roadside backup power",
+            "Vehicle emergency support",
+            "Portable emergency readiness",
+            "Faster recovery on the road",
+        ]
+    if any(token in topic or token in categories for token in ("outage", "backup", "home backup")):
+        return [
+            "Must-run device backup",
+            "Home outage readiness",
+            "Spec-backed resilience",
+            "Confidence before storms",
+        ]
+    return [
+        "Outage-ready backup",
+        "Real-world device fit",
+        "Spec-backed confidence",
+        "Faster preparedness",
+    ]
+
+
 def _benefit_rows(content: dict[str, Any]) -> list[str]:
     metrics = _metric_chips(content, limit=6)
     rows: list[str] = []
@@ -193,42 +226,25 @@ def _benefit_rows(content: dict[str, Any]) -> list[str]:
             rows.append(cleaned)
         if len(rows) >= 4:
             break
-    topic = str(content.get("topic") or "").lower()
-    product_name = str(content.get("product_name") or "").lower()
-    categories = " ".join(str(x or "") for x in (content.get("product_categories") or [])).lower() if isinstance(content.get("product_categories"), list) else str(content.get("product_categories") or "").lower()
-    defaults = [
-        "Outage-ready backup",
-        "Real-world device fit",
-        "Spec-backed confidence",
-        "Faster preparedness",
-    ]
-    if any(token in product_name or token in categories for token in ("power bank", "charger", "travel power")):
-        defaults = [
-            "Reliable backup charging",
-            "Travel-ready power",
-            "Device-safe recharge",
-            "Everyday carry readiness",
-        ]
-    elif any(token in product_name or token in categories for token in ("jump starter", "car", "vehicle")):
-        defaults = [
-            "Roadside backup power",
-            "Vehicle emergency support",
-            "Portable emergency readiness",
-            "Faster recovery on the road",
-        ]
-    elif any(token in topic or token in categories for token in ("outage", "backup", "home backup")):
-        defaults = [
-            "Must-run device backup",
-            "Home outage readiness",
-            "Spec-backed resilience",
-            "Confidence before storms",
-        ]
-    for d in defaults:
+    for d in _category_benefit_defaults(content):
         if len(rows) >= 4:
             break
         if d not in rows:
             rows.append(d)
     return rows[:4]
+
+
+def _benefit_chip_rows(content: dict[str, Any], exclude: list[str] | None = None, limit: int = 3) -> list[str]:
+    """Qualitative outcome benefits, kept distinct from the numeric spec badge rows."""
+    exclude_lower = {str(item or "").strip().lower() for item in (exclude or [])}
+    rows: list[str] = []
+    for benefit in _category_benefit_defaults(content):
+        if benefit.lower() in exclude_lower or benefit in rows:
+            continue
+        rows.append(benefit)
+        if len(rows) >= limit:
+            break
+    return rows
 
 
 def _proof_banner_text(content: dict[str, Any]) -> str:
@@ -504,6 +520,7 @@ def _build_gemini_image_prompt(content: dict[str, Any], platform: str, visual_pl
     headline_text, subline_text = _headline_lockup(content)
     banner_text = _proof_banner_text(content)
     spec_rows = _spec_badge_rows(content, limit=4)
+    benefit_rows = _benefit_chip_rows(content, exclude=spec_rows, limit=3)
     trust_badges = _trust_badges(content)
 
     exact_copy_lines = [
@@ -516,7 +533,9 @@ def _build_gemini_image_prompt(content: dict[str, Any], platform: str, visual_pl
         f"- Proof/urgency banner pill: \"{banner_text}\"",
     ]
     for i, row in enumerate(spec_rows, start=1):
-        exact_copy_lines.append(f"- Spec badge row {i} (bordered pill with a small chevron mark): \"{row}\"")
+        exact_copy_lines.append(f"- Spec badge row {i} (bordered pill with a small matching icon glyph and a chevron mark): \"{row}\"")
+    for i, benefit in enumerate(benefit_rows, start=1):
+        exact_copy_lines.append(f"- Benefit chip {i} (small rounded pill directly beneath the spec badges, with a checkmark icon glyph, visually distinct in shape or fill from the spec badges): \"{benefit}\"")
     for i, badge in enumerate(trust_badges, start=1):
         exact_copy_lines.append(f"- Trust badge {i} (small pill in a horizontal row): \"{badge}\"")
     exact_copy_lines.append(f"- Call-to-action banner (bottom of the copy column): \"{cta}\"")
@@ -573,13 +592,22 @@ def _build_gemini_image_prompt(content: dict[str, Any], platform: str, visual_pl
         "carry deliberate visual weight, with zero flat, empty, or unfinished-looking space anywhere in the frame, for the "
         f"{spec['copy_zone']}. This is a complete creative, not a background plate. "
         "Structure the copy column top-to-bottom exactly as listed above: brand wordmark, status tag pill, headline, subheading, "
-        "proof banner pill, a vertical stack of bordered spec badge rows each with a small chevron mark, a horizontal row of "
-        "small trust badge pills (only if any are listed above), and a wide call-to-action banner. The headline must dominate the "
-        "copy column as the single largest, heaviest-weight typographic element on the entire canvas — noticeably larger than "
-        "every other text element, filling nearly the full available width. Give every text element strong contrast, generous "
-        "padding, and crisp, legible, correctly kerned typography — no overlapping or clipped letters. Add one continuous visual "
-        "connector (a light shaft, reflection line, or material accent) that bridges the copy column and the product zone so the "
-        "whole canvas reads as a single unified image rather than two separate halves. "
+        "proof banner pill, a vertical stack of bordered spec badge rows each with a small icon glyph and chevron mark, a row of "
+        "benefit chips each with a checkmark icon glyph directly beneath the spec badges (only if any are listed above), a "
+        "horizontal row of small trust badge pills (only if any are listed above), and a wide call-to-action banner. The headline "
+        "must dominate the copy column as the single largest, heaviest-weight typographic element on the entire canvas — "
+        "noticeably larger than every other text element, filling nearly the full available width. Give every text element "
+        "strong contrast, generous padding, and crisp, legible, correctly kerned typography — no overlapping or clipped letters. "
+        "Add one continuous visual connector (a light shaft, reflection line, or material accent) that bridges the copy column "
+        "and the product zone so the whole canvas reads as a single unified image rather than two separate halves. "
+    )
+    design_element_direction = (
+        "Enrich the copy column with deliberate, restrained design elements beyond plain text blocks: give the spec badges and "
+        "benefit chips small, simple line-icon glyphs matched to their meaning (a bolt for power output, a clock for runtime, a "
+        "shield for durability/protection, a battery for capacity, a droplet for weather resistance, a leaf for solar/eco), a thin "
+        "accent rule or gradient divider separating the headline block from the badge stack, and one subtle geometric accent "
+        "motif (a faint diagonal light beam, a soft radial glow, or a thin corner chevron pattern) layered behind the copy column "
+        "for depth. These accents must stay secondary and never compete with or crowd the text for attention. "
     )
     atmosphere_direction = (
         "Build atmosphere with one coherent cinematic light direction, premium material textures, layered shadows, restrained "
@@ -612,6 +640,7 @@ def _build_gemini_image_prompt(content: dict[str, Any], platform: str, visual_pl
         f"{material_direction}"
         f"{product_stage_direction}"
         f"{layout_direction} "
+        f"{design_element_direction}"
         f"{atmosphere_direction}"
         f"{campaign_direction}"
         f"{negative_direction}"

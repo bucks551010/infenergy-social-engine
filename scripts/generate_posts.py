@@ -3638,15 +3638,28 @@ def _model_caption_overrides(content: dict) -> dict[str, dict[str, str]]:
     }
 
 
+def _join_paragraphs(*parts: str) -> str:
+    """Join non-empty caption paragraphs with blank lines, skipping empty ones cleanly."""
+    return "\n\n".join(str(p).strip() for p in parts if str(p or "").strip())
+
+
 def _build_fallback_content(
     slot: str,
     topic: str,
     product: dict | None,
     marketing_strategy: dict | None,
     talking_point: dict | None = None,
+    strategic_brief: dict | None = None,
 ) -> dict:
     marketing_strategy = marketing_strategy or {}
     talking_point = talking_point or {}
+    # Even when Gemini is unavailable, honor the Conversion Logic Engine's decisions
+    # (problem/objection/transformation) instead of falling back to a generic template.
+    persuasion = (strategic_brief or {}).get("persuasion", {}) if isinstance((strategic_brief or {}).get("persuasion"), dict) else {}
+    brief_problem = str(persuasion.get("problem", "") or "").strip()
+    brief_objection = str(persuasion.get("objection", "") or "").strip()
+    transformation_from = str(persuasion.get("transformation_from", "") or "").strip()
+    transformation_to = str(persuasion.get("transformation_to", "") or "").strip()
     marketing_copy = marketing_strategy.get("copy", {})
     name = (product or {}).get("name", "INF Energy Power solution")
     sku = (product or {}).get("sku", "")
@@ -3681,6 +3694,8 @@ def _build_fallback_content(
     brief_benefits = [str(value).strip() for value in brief.get("core_benefits", []) if str(value).strip()]
     benefit = brief_benefits[0] if brief_benefits else "fills a specific gap in a practical preparedness plan"
     pain_point = str(brief.get("primary_pain_point", "") or pain_point)
+    if brief_problem:
+        pain_point = brief_problem
     # NOTE: brief["proof_rule"] is an internal validation instruction, never customer copy —
     # derive proof_anchor from customer-safe verified_facts instead (see _build_product_intelligence_handoff).
     brief_verified_facts = [str(v).strip() for v in brief.get("verified_facts", []) if str(v).strip()]
@@ -3700,6 +3715,16 @@ def _build_fallback_content(
         if metric_line
         else f"Review the published {role} details and compatibility for your setup."
     )
+    transformation_line = (
+        f"The real shift here is {transformation_from} to {transformation_to}."
+        if transformation_from and transformation_to
+        else ""
+    )
+    objection_line = (
+        f'If you\'re thinking "{brief_objection}" — that\'s exactly the gap worth closing before you need it.'
+        if brief_objection
+        else ""
+    )
 
     wp_title = f"{name}: What To Know Before You Buy"
     if len(wp_title) > 64:
@@ -3715,32 +3740,34 @@ def _build_fallback_content(
         f"<h2>Next Step</h2><p>{first_step}</p>"
     )
 
-    fb_caption = (
-        f"{pain_point}\n\n"
-        f"Meet {name}, a {role} that {benefit}.{price_line}\n\n"
-        f"{proof_line}\n\n"
-        f"{usage_line}\n\n"
-        f"{first_step}\n"
-        f"What's the one device you can't afford to lose power to?\n"
-        f"{hashtag_line}"
+    fb_caption = _join_paragraphs(
+        pain_point,
+        f"Meet {name}, a {role} that {benefit}.{price_line}",
+        proof_line,
+        transformation_line,
+        objection_line,
+        usage_line,
+        f"{first_step}\nWhat's the one device you can't afford to lose power to?\n{hashtag_line}",
     )
 
-    ig_caption = (
-        f"{name}: {role}.\n\n"
-        f"{pain_point}\n\n"
-        f"{benefit.capitalize()}.{price_line}\n\n"
-        f"{proof_line}\n\n"
-        f"{usage_line}\n\n"
-        f"{first_step}\n"
-        f"{hashtag_line}"
+    ig_caption = _join_paragraphs(
+        f"{name}: {role}.",
+        pain_point,
+        f"{benefit.capitalize()}.{price_line}",
+        proof_line,
+        transformation_line,
+        usage_line,
+        f"{first_step}\n{hashtag_line}",
     )
 
-    li_text = (
-        f"{pain_point}\n\n"
-        f"{name}{' (' + sku + ')' if sku else ''} is a {role} that {benefit}.{price_line}\n\n"
-        f"{proof_line}\n\n"
-        f"For households and mobile teams, the practical value is continuity without a complicated setup.\n\n"
-        f"{first_step}"
+    li_text = _join_paragraphs(
+        pain_point,
+        f"{name}{' (' + sku + ')' if sku else ''} is a {role} that {benefit}.{price_line}",
+        proof_line,
+        transformation_line,
+        objection_line,
+        "For households and mobile teams, the practical value is continuity without a complicated setup.",
+        first_step,
     )
 
     return {
@@ -3775,6 +3802,7 @@ def _build_fallback_content_no_product(
     pillar: str,
     marketing_strategy: dict | None,
     talking_point: dict | None = None,
+    strategic_brief: dict | None = None,
 ) -> dict:
     """Deterministic fallback content for business-first posts with no product attached.
 
@@ -3784,10 +3812,18 @@ def _build_fallback_content_no_product(
     """
     marketing_strategy = marketing_strategy or {}
     talking_point = talking_point or _build_talking_point_no_product(topic, "EDUCATION", pillar)
-    pain_point = str(talking_point.get("pain_point") or "").strip()
+    persuasion = (strategic_brief or {}).get("persuasion", {}) if isinstance((strategic_brief or {}).get("persuasion"), dict) else {}
+    pain_point = str(persuasion.get("problem", "") or talking_point.get("pain_point") or "").strip()
     angle = str(talking_point.get("angle") or topic).strip()
     first_step = str(talking_point.get("first_step") or "Comment below, we read every reply.").strip()
     hashtag_line = _PILLAR_HASHTAGS.get(pillar, "#Preparedness #InfenergyPower")
+    transformation_from = str(persuasion.get("transformation_from", "") or "").strip()
+    transformation_to = str(persuasion.get("transformation_to", "") or "").strip()
+    transformation_line = (
+        f"The real shift here is {transformation_from} to {transformation_to}."
+        if transformation_from and transformation_to
+        else ""
+    )
 
     wp_title = _one_line(topic, 64) if len(topic) <= 64 else _one_line(topic, 60)
     wp_content = (
@@ -3797,27 +3833,16 @@ def _build_fallback_content_no_product(
         f"<h2>Next Step</h2><p>{first_step}</p>"
     )
 
-    fb_caption = (
-        f"{pain_point}\n\n"
-        f"{topic}\n\n"
-        f"{angle}\n\n"
-        f"{first_step}\n"
-        f"{hashtag_line}"
-    )
+    fb_caption = _join_paragraphs(pain_point, topic, angle, transformation_line, f"{first_step}\n{hashtag_line}")
 
-    ig_caption = (
-        f"{topic}\n\n"
-        f"{pain_point}\n\n"
-        f"{angle}\n\n"
-        f"{first_step}\n"
-        f"{hashtag_line}"
-    )
+    ig_caption = _join_paragraphs(topic, pain_point, angle, transformation_line, f"{first_step}\n{hashtag_line}")
 
-    li_text = (
-        f"{pain_point}\n\n"
-        f"{angle}\n\n"
-        f"For households, caregivers, travelers, and small operators, this kind of practical clarity is what actually reduces risk.\n\n"
-        f"{first_step}"
+    li_text = _join_paragraphs(
+        pain_point,
+        angle,
+        transformation_line,
+        "For households, caregivers, travelers, and small operators, this kind of practical clarity is what actually reduces risk.",
+        first_step,
     )
 
     return {
@@ -3830,32 +3855,40 @@ def _build_fallback_content_no_product(
     }
 
 
-def _generate_json_with_gemini(prompt: str, model_candidates: list[str]) -> dict | None:
+def _generate_json_with_gemini(prompt: str, model_candidates: list[str], attempts_per_model: int = 2) -> dict | None:
     api_key = os.environ.get("GEMINI_API_KEY", "").strip()
     if not api_key:
+        print("[Gemini] caption generation skipped: GEMINI_API_KEY not set")
         return None
 
     client = genai.Client(api_key=api_key)
+    last_error = "no_model_candidates_configured"
 
     for model_name in model_candidates:
-        try:
-            response = client.models.generate_content(
-                model=model_name,
-                contents=prompt,
-                config=types.GenerateContentConfig(response_mime_type="application/json"),
-            )
-            raw = (response.text or "").strip()
-            if not raw:
+        for attempt in range(max(1, attempts_per_model)):
+            try:
+                response = client.models.generate_content(
+                    model=model_name,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(response_mime_type="application/json"),
+                )
+                raw = (response.text or "").strip()
+                if not raw:
+                    last_error = f"{model_name}:empty_response"
+                    continue
+                if raw.startswith("```"):
+                    parts = raw.split("```")
+                    raw = parts[1]
+                    if raw.lower().startswith("json"):
+                        raw = raw[4:]
+                return json.loads(raw.strip())
+            except Exception as e:
+                last_error = f"{model_name}:attempt{attempt + 1}:{type(e).__name__}:{str(e)[:200]}"
                 continue
-            if raw.startswith("```"):
-                parts = raw.split("```")
-                raw = parts[1]
-                if raw.lower().startswith("json"):
-                    raw = raw[4:]
-            return json.loads(raw.strip())
-        except Exception:
-            continue
 
+    # Every model/attempt failed. Log the real reason so this is diagnosable in
+    # Railway logs instead of silently reverting to the disconnected legacy template.
+    print(f"[Gemini] caption generation failed after retries, using deterministic fallback: {last_error}")
     return None
 
 
@@ -5485,9 +5518,9 @@ Return ONLY valid JSON with these exact keys (no markdown, no code fences):
 
     if content is None:
         content = (
-            _build_fallback_content(slot, topic, product, marketing_strategy, talking_point=talking_point)
+            _build_fallback_content(slot, topic, product, marketing_strategy, talking_point=talking_point, strategic_brief=_brief)
             if want_product
-            else _build_fallback_content_no_product(slot, topic, pillar, marketing_strategy, talking_point=talking_point)
+            else _build_fallback_content_no_product(slot, topic, pillar, marketing_strategy, talking_point=talking_point, strategic_brief=_brief)
         )
         content["copy_generation_source"] = copy_generation_source
         content["topic"] = topic

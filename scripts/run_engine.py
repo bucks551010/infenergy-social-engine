@@ -754,6 +754,10 @@ def main() -> None:
         content["duplicate_check"] = duplicates
         content.update(duplicates.get("signatures", {}))
 
+        # Conversion Logic Engine rule (spec section 23): below 80 CQS, automatically
+        # attempt improvement before publishing rather than accepting a "warning"-only gate.
+        cqs_total = float((content.get("conversion_quality_score") or {}).get("total", 100) or 100)
+
         attempts.append(
             {
                 "attempt": idx + 1,
@@ -763,10 +767,11 @@ def main() -> None:
                 "validation_errors": validation.get("errors", []),
                 "duplicates_ok": duplicates.get("ok"),
                 "duplicate_reasons": duplicates.get("reasons", []),
+                "conversion_quality_score": cqs_total,
             }
         )
 
-        if validation.get("passed") and scoring.get("total", 0) >= 82 and duplicates.get("ok"):
+        if validation.get("passed") and scoring.get("total", 0) >= 82 and duplicates.get("ok") and cqs_total >= 80:
             break
 
         # Manual live override path: if operator explicitly requests allow_all, swap to a known-safe
@@ -837,6 +842,11 @@ def main() -> None:
         content["validation_errors"] = list(content.get("validation_errors", [])) + visual_gate_errors
         content.setdefault("quality_warnings", []).append("live_visual_gate_blocked")
         final_validation_ok = False
+
+    final_cqs_total = float((content.get("conversion_quality_score") or {}).get("total", 100) or 100)
+    if final_cqs_total < 80:
+        content.setdefault("quality_warnings", []).append(f"cqs_below_target_after_retries:{final_cqs_total}")
+        print(f"[QUALITY] Published with Conversion Quality Score {final_cqs_total} after exhausting retries (target 80).")
 
     if (not final_validation_ok) or final_score < 82 or (not duplicate_ok):
         print("[SKIP] Content did not pass validation/quality thresholds; recording skipped run")

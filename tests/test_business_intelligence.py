@@ -801,11 +801,13 @@ def test_conference_identifies_empty_history_as_real_blocker(bi_env):
     api.rebuild_profile()
     report = conference.run_conference(persist=False)
     assert report["summary"]["can_work_together"] is False
-    assert report["summary"]["unresolved_external_inputs"] == ["post_history"]
+    assert {"post_history", "published_platform_ids"}.issubset(
+        set(report["summary"]["unresolved_external_inputs"])
+    )
     assert report["summary"]["status_counts"]["blocked"] > 0
 
 
-def test_conference_resolves_collaboration_when_history_exists(bi_env):
+def test_conference_is_generation_ready_before_first_publication(bi_env):
     _seed_all(bi_env)
     with open(bi_env / "topic_queue.json", "w", encoding="utf-8") as fh:
         json.dump({"topics": {"preparedness": ["outage priority list"]}}, fh)
@@ -815,9 +817,30 @@ def test_conference_resolves_collaboration_when_history_exists(bi_env):
 
     api.rebuild_profile()
     report = conference.run_conference(persist=False)
-    assert report["summary"]["can_work_together"] is True
-    assert report["summary"]["status_counts"]["blocked"] == 0
+    assert report["summary"]["generation_ready"] is True
+    assert report["summary"]["learning_cycle_ready"] is False
+    assert "published_platform_ids" in report["summary"]["unresolved_external_inputs"]
     assert report["collaboration_edges"]
+
+
+def test_conference_full_cycle_ready_with_publication_metrics(bi_env):
+    _seed_all(bi_env)
+    with open(bi_env / "topic_queue.json", "w", encoding="utf-8") as fh:
+        json.dump({"topics": {"preparedness": ["outage priority list"]}}, fh)
+    with open(bi_env / "post_history.json", "w", encoding="utf-8") as fh:
+        json.dump({"posts": [{
+            "post_id": "p1",
+            "ig_id": "real-media-id",
+            "engagement_metrics": {"instagram": {"likes": 4, "comments": 1}},
+        }]}, fh)
+    from business_intelligence import api, conference
+
+    api.rebuild_profile()
+    report = conference.run_conference(persist=False)
+    assert report["summary"]["can_work_together"] is True
+    assert report["summary"]["generation_ready"] is True
+    assert report["summary"]["learning_cycle_ready"] is True
+    assert report["summary"]["status_counts"]["blocked"] == 0
 
 
 def test_conference_persists_latest_report(bi_env):

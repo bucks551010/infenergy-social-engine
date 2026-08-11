@@ -25,7 +25,7 @@ class AgentSpec:
 
 _OPERATIONAL: tuple[AgentSpec, ...] = (
     AgentSpec("conversion_strategist", "operational", "Plans funnel-stage conversion strategy", ("conversion_brief", "audience_direction", "cta_direction"), ("business_profile", "product_catalog", "audience_model"), ("performance_history",)),
-    AgentSpec("engagement_ingestion", "operational", "Imports channel engagement metrics", ("engagement_metrics",), ("post_history",), ("meta_credentials",)),
+    AgentSpec("engagement_ingestion", "operational", "Imports channel engagement metrics", ("engagement_metrics",), ("post_history", "published_platform_ids"), ("meta_credentials",)),
     AgentSpec("performance_reflection", "operational", "Finds winning and losing creative patterns", ("performance_patterns",), ("post_history", "engagement_metrics")),
     AgentSpec("learning_ingestion", "operational", "Turns outcomes into reusable learning signals", ("learning_signals",), ("post_history", "engagement_metrics")),
     AgentSpec("topic_intelligence", "operational", "Maintains timely topic opportunities", ("topic_opportunities",), ("topic_queue", "content_territories"), ("external_research_access",)),
@@ -90,9 +90,27 @@ def _history_has_engagement(path: str) -> bool:
         return False
     for post in posts:
         metrics = post.get("engagement_metrics", {}) if isinstance(post, dict) else {}
-        if isinstance(metrics, dict) and any(bool(value) for value in metrics.values()):
-            return True
+        if not isinstance(metrics, dict):
+            continue
+        for platform in ("facebook", "instagram", "linkedin"):
+            values = metrics.get(platform, {})
+            if isinstance(values, dict) and any(isinstance(value, (int, float)) for value in values.values()):
+                return True
     return False
+
+
+def _history_has_platform_ids(path: str) -> bool:
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            posts = json.load(fh).get("posts", [])
+    except (OSError, json.JSONDecodeError, AttributeError):
+        return False
+    invalid = {"", "skipped", "dry-run"}
+    return any(
+        str(post.get(key, "")).strip() not in invalid
+        for post in posts if isinstance(post, dict)
+        for key in ("fb_id", "ig_id", "li_id")
+    )
 
 
 def _inventory_product_count() -> int:
@@ -139,6 +157,7 @@ def inspect_data() -> dict[str, dict[str, Any]]:
         "voice_dna": (bool(profile_data.get("voice")), "profile.voice"),
         "visual_dna": (bool(profile_data.get("visual")), "profile.visual"),
         "post_history": (post_count > 0, f"records={post_count}"),
+        "published_platform_ids": (_history_has_platform_ids(paths.post_history_path()), "post_history fb_id/ig_id/li_id"),
         "engagement_metrics": (_history_has_engagement(paths.post_history_path()), "post_history.engagement_metrics"),
         "topic_queue": (topic_count > 0, f"topics={topic_count}"),
         "generated_visuals": (bool(visuals), f"assets={len(visuals)}"),
@@ -197,6 +216,7 @@ def run_conference(*, persist: bool = True) -> dict[str, Any]:
         })
 
     counts = {status: sum(1 for item in assessments if item["status"] == status) for status in ("ready", "ready_after_collaboration", "blocked")}
+    generation_blockers = {"business_profile", "founder_manifesto", "product_catalog", "product_briefs", "audience_model", "content_territories", "creative_context", "voice_dna", "visual_dna", "topic_queue"}
     report = {
         "conference_version": "agent-conference.v1",
         "generated_at": datetime.now(timezone.utc).isoformat(),
@@ -204,6 +224,8 @@ def run_conference(*, persist: bool = True) -> dict[str, Any]:
             "agents_present": len(specs),
             "teams_present": sorted({spec.team for spec in specs}),
             "can_work_together": counts["blocked"] == 0,
+            "generation_ready": not bool(unresolved & generation_blockers),
+            "learning_cycle_ready": data["engagement_metrics"]["available"],
             "status_counts": counts,
             "unresolved_external_inputs": sorted(unresolved),
         },

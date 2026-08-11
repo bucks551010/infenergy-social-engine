@@ -1,0 +1,147 @@
+{
+  "$schema_version": "social.v1",
+  "description": "Configurable brand content pillars (Master Build §7). Each pillar has weight (base allocation), audience_relevance, and evergreen/timely designation. Extendable without code changes.",
+  "pillars": {
+    "energy_education": {
+      "name": "Energy Education",
+      "description": "How electricity, power, and energy actually work in daily life.",
+      "weight": 1.4,
+      "evergreen": true,
+      "engine_fit": ["audience_value", "brand"],
+      "example_topics": ["watt-hours vs amp-hours", "how inverters work", "phantom loads", "efficiency losses"]
+    },
+    "portable_power": {
+      "name": "Portable Power",
+      "description": "Power stations, power banks, and battery-based portable energy.",
+      "weight": 1.2,
+      "evergreen": true,
+      "engine_fit": ["conversion", "audience_value"],
+      "example_topics": ["capacity ratings", "charging speed", "output types", "device compatibility"]
+    },
+    "battery_knowledge": {
+      "name": "Battery Knowledge",
+      "description": "Chemistry, lifespan, care, and the science of stored energy.",
+      "weight": 1.1,
+      "evergreen": true,
+      "engine_fit": ["audience_value", "brand"],
+      "example_topics": ["degradation", "temperature effects", "cycle counts", "80% health meaning"]
+    },
+    "solar": {
+      "name": "Solar",
+      "description": "Portable solar, panels, sunlight-to-power realities.",
+      "weight": 0.9,
+      "evergreen": true,
+      "engine_fit": ["conversion", "audience_value"],
+      "example_topics": ["panel efficiency", "shading effects", "portable solar practicality"]
+    },
+    "preparedness": {
+      "name": "Preparedness",
+      "description": "Emergency readiness, outage response, resilient living.",
+      "weight": 1.3,
+      "evergreen": true,
+      "engine_fit": ["conversion", "audience_value", "brand"],
+      "example_topics": ["outage kits", "medical device backup", "communication continuity"]
+    },
+    "travel_power": {
+      "name": "Travel Power",
+      "description": "Power for road trips, camping, remote work, van life.",
+      "weight": 0.8,
+      "evergreen": true,
+      "engine_fit": ["conversion", "audience_value"],
+      "example_topics": ["off-grid workflows", "vehicle charging", "campsite power"]
+    },
+    "outdoor_power": {
+      "name": "Outdoor Power",
+      "description": "Backcountry, jobsite, event, and field power needs.",
+      "weight": 0.7,
+      "evergreen": true,
+      "engine_fit": ["audience_value", "brand"],
+      "example_topics": ["cold weather performance", "tool runtime", "weather-resistance"]
+    },
+    "emergency_readiness": {
+      "name": "Emergency Readiness",
+      "description": "Storms, wildfires, grid instability, medical continuity.",
+      "weight": 1.2,
+      "evergreen": true,
+      "engine_fit": ["audience_value", "conversion"],
+      "example_topics": ["seasonal outage risk", "medical backup planning", "family communication plans"]
+    },
+    "device_care": {
+      "name": "Device Care",
+      "description": "How to keep power devices working longer and safer.",
+      "weight": 0.9,
+      "evergreen": true,
+      "engine_fit": ["audience_value"],
+      "example_topics": ["storage rules", "firmware updates", "cable hygiene"]
+    },
+    "buying_smarter": {
+      "name": "Buying Smarter",
+      "description": "How to evaluate specs, avoid overpaying, and match products to needs.",
+      "weight": 1.0,
+      "evergreen": true,
+      "engine_fit": ["conversion", "audience_value"],
+      "example_topics": ["capacity vs runtime", "what specs actually mean", "matching needs to product"]
+    },
+    "everyday_electricity": {
+      "name": "Everyday Electricity",
+      "description": "Household power realities most people never think about.",
+      "weight": 0.8,
+      "evergreen": true,
+      "engine_fit": ["audience_value", "brand"],
+      "example_topics": ["appliance draw", "surge behavior", "outlet capacity"]
+    },
+    "science_behind_power": {
+      "name": "Science Behind Power",
+      "description": "Physics, chemistry, and engineering that make power possible.",
+      "weight": 0.7,
+      "evergreen": true,
+      "engine_fit": ["audience_value"],
+      "example_topics": ["voltage vs current intuition", "why batteries age", "conversion losses"]
+    },
+    "efficiency": {
+      "name": "Efficiency",
+      "description": "Getting more done with less energy.",
+      "weight": 0.7,
+      "evergreen": true,
+      "engine_fit": ["audience_value", "brand"],
+      "example_topics": ["standby drain", "efficiency-rated devices", "smart charging habits"]
+    },
+    "future_technology": {
+      "name": "Future Technology",
+      "description": "Emerging chemistries, grid trends, near-future capability.",
+      "weight": 0.6,
+      "evergreen": false,
+      "engine_fit": ["audience_value", "brand"],
+      "example_topics": ["solid-state trends", "grid resilience trends", "distributed energy"]
+    },
+    "product_education": {
+      "name": "Product Education",
+      "description": "How our own products work, what they solve, real-world application.",
+      "weight": 1.0,
+      "evergreen": true,
+      "engine_fit": ["conversion"],
+      "example_topics": ["port options explained", "runtime for common loads", "carrying and setup"]
+    },
+    "brand_philosophy": {
+      "name": "Brand Philosophy",
+      "description": "What we believe, why we build the way we build.",
+      "weight": 0.6,
+      "evergreen": true,
+      "engine_fit": ["brand"],
+      "example_topics": ["why quiet reliability matters", "the case for owned power", "building for real households"]
+    },
+    "community": {
+      "name": "Community",
+      "description": "Real user stories, conversations, questions, shared preparedness.",
+      "weight": 0.7,
+      "evergreen": true,
+      "engine_fit": ["brand", "audience_value"],
+      "example_topics": ["customer scenarios", "reader questions", "community preparedness threads"]
+    }
+  },
+  "defaults": {
+    "cooldown_slots": 3,
+    "max_consecutive_repeats": 1,
+    "min_pillar_variety_window": 5
+  }
+}

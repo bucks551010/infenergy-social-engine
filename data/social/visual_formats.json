@@ -1,0 +1,209 @@
+{
+  "$schema_version": "social.v1",
+  "description": "Visual format registry (Master Build §27). Each format declares semantic purpose fit, deterministic-render ability, and platform fit.",
+  "formats": {
+    "no_visual": {
+      "name": "No Visual",
+      "semantic_purposes": ["MEMORIALIZE", "MAKE_ME_THINK"],
+      "carousel": false,
+      "deterministic_render": true,
+      "requires_image_gen": false,
+      "platform_fit": ["linkedin", "facebook"],
+      "when_to_use": "Text-only insights, thought-provokers where a visual would distract."
+    },
+    "fact_card": {
+      "name": "Fact Card",
+      "semantic_purposes": ["STOP", "MAKE_SAVEABLE", "MEMORIALIZE"],
+      "carousel": false,
+      "deterministic_render": true,
+      "requires_image_gen": false,
+      "platform_fit": ["instagram", "facebook"],
+      "when_to_use": "Single striking fact or takeaway that benefits from clean typography."
+    },
+    "statistic_card": {
+      "name": "Statistic Card",
+      "semantic_purposes": ["PROVE", "STOP", "MEMORIALIZE"],
+      "carousel": false,
+      "deterministic_render": true,
+      "requires_image_gen": false,
+      "platform_fit": ["instagram", "linkedin"],
+      "when_to_use": "One verified statistic or comparison — big number, minimal chrome."
+    },
+    "question_card": {
+      "name": "Question Card",
+      "semantic_purposes": ["CREATE_CURIOSITY", "STOP"],
+      "carousel": false,
+      "deterministic_render": true,
+      "requires_image_gen": false,
+      "platform_fit": ["instagram", "facebook"],
+      "when_to_use": "A single question meant to prompt engagement."
+    },
+    "typographic_poster": {
+      "name": "Typographic Poster",
+      "semantic_purposes": ["STOP", "MEMORIALIZE", "MAKE_SAVEABLE"],
+      "carousel": false,
+      "deterministic_render": true,
+      "requires_image_gen": false,
+      "platform_fit": ["instagram", "facebook"],
+      "when_to_use": "Short punchy statement, quote, or one-line insight."
+    },
+    "checklist": {
+      "name": "Checklist",
+      "semantic_purposes": ["ORGANIZE", "MAKE_SAVEABLE", "SIMPLIFY"],
+      "carousel": true,
+      "deterministic_render": true,
+      "requires_image_gen": false,
+      "platform_fit": ["instagram", "facebook", "linkedin"],
+      "when_to_use": "Multi-item list the reader will want to reference."
+    },
+    "comparison_graphic": {
+      "name": "Comparison Graphic",
+      "semantic_purposes": ["COMPARE", "SIMPLIFY", "EXPLAIN"],
+      "carousel": true,
+      "deterministic_render": true,
+      "requires_image_gen": false,
+      "platform_fit": ["instagram", "facebook", "linkedin"],
+      "when_to_use": "Direct side-by-side of two options, concepts, or approaches."
+    },
+    "myth_reality_graphic": {
+      "name": "Myth vs Reality Graphic",
+      "semantic_purposes": ["COMPARE", "EXPLAIN"],
+      "carousel": true,
+      "deterministic_render": true,
+      "requires_image_gen": false,
+      "platform_fit": ["instagram", "facebook"],
+      "when_to_use": "Myth-vs-reality genre."
+    },
+    "diagram": {
+      "name": "Diagram",
+      "semantic_purposes": ["EXPLAIN", "SHOW", "DEMONSTRATE"],
+      "carousel": false,
+      "deterministic_render": true,
+      "requires_image_gen": false,
+      "platform_fit": ["instagram", "linkedin", "facebook"],
+      "when_to_use": "Mechanism explanation, flow, or relationship."
+    },
+    "flowchart": {
+      "name": "Flowchart",
+      "semantic_purposes": ["EXPLAIN", "ORGANIZE", "SIMPLIFY"],
+      "carousel": false,
+      "deterministic_render": true,
+      "requires_image_gen": false,
+      "platform_fit": ["instagram", "linkedin"],
+      "when_to_use": "Decision flow or step-by-step logic."
+    },
+    "decision_tree": {
+      "name": "Decision Tree",
+      "semantic_purposes": ["ORGANIZE", "SIMPLIFY", "EXPLAIN"],
+      "carousel": false,
+      "deterministic_render": true,
+      "requires_image_gen": false,
+      "platform_fit": ["linkedin", "instagram"],
+      "when_to_use": "Buying or troubleshooting decisions."
+    },
+    "timeline": {
+      "name": "Timeline",
+      "semantic_purposes": ["CONTEXTUALIZE", "TELL_STORY"],
+      "carousel": true,
+      "deterministic_render": true,
+      "requires_image_gen": false,
+      "platform_fit": ["instagram", "linkedin"],
+      "when_to_use": "Historical trajectory or process across time."
+    },
+    "process_graphic": {
+      "name": "Process Graphic",
+      "semantic_purposes": ["DEMONSTRATE", "EXPLAIN", "ORGANIZE"],
+      "carousel": true,
+      "deterministic_render": true,
+      "requires_image_gen": false,
+      "platform_fit": ["instagram", "linkedin"],
+      "when_to_use": "How-to sequences or step-by-step actions."
+    },
+    "conceptual_illustration": {
+      "name": "Conceptual Illustration",
+      "semantic_purposes": ["STOP", "EMOTIONALIZE", "TELL_STORY"],
+      "carousel": false,
+      "deterministic_render": false,
+      "requires_image_gen": true,
+      "platform_fit": ["instagram", "facebook"],
+      "when_to_use": "Metaphorical concept where an editorial illustration is stronger than a photo."
+    },
+    "technical_illustration": {
+      "name": "Technical Illustration",
+      "semantic_purposes": ["EXPLAIN", "SHOW", "DEMONSTRATE"],
+      "carousel": false,
+      "deterministic_render": false,
+      "requires_image_gen": true,
+      "platform_fit": ["instagram", "linkedin"],
+      "when_to_use": "Non-brand-specific technical rendering (cross-section, anatomy)."
+    },
+    "ai_photorealistic_scene": {
+      "name": "AI Photorealistic Scene",
+      "semantic_purposes": ["EMOTIONALIZE", "CONTEXTUALIZE", "STOP"],
+      "carousel": false,
+      "deterministic_render": false,
+      "requires_image_gen": true,
+      "platform_fit": ["instagram", "facebook"],
+      "when_to_use": "Emotional or contextual scene not involving specific real products."
+    },
+    "ai_editorial_photo": {
+      "name": "AI Editorial Photo",
+      "semantic_purposes": ["STOP", "EMOTIONALIZE"],
+      "carousel": false,
+      "deterministic_render": false,
+      "requires_image_gen": true,
+      "platform_fit": ["instagram"],
+      "when_to_use": "Editorial mood images for lifestyle or brand posts."
+    },
+    "real_product_asset": {
+      "name": "Real Product Asset",
+      "semantic_purposes": ["PROVE", "SUPPORT_BRAND", "SHOW"],
+      "carousel": false,
+      "deterministic_render": true,
+      "requires_image_gen": false,
+      "platform_fit": ["instagram", "facebook", "linkedin"],
+      "when_to_use": "When a specific real product is being represented — never let AI recreate product details."
+    },
+    "photo_with_overlay": {
+      "name": "Photo With Overlay",
+      "semantic_purposes": ["STOP", "EXPLAIN", "MAKE_SAVEABLE"],
+      "carousel": false,
+      "deterministic_render": true,
+      "requires_image_gen": false,
+      "platform_fit": ["instagram", "facebook"],
+      "when_to_use": "Real photo with headline overlay via code, not baked into the pixel generation."
+    },
+    "scenario_illustration": {
+      "name": "Scenario Illustration",
+      "semantic_purposes": ["TELL_STORY", "EMOTIONALIZE", "CONTEXTUALIZE"],
+      "carousel": false,
+      "deterministic_render": false,
+      "requires_image_gen": true,
+      "platform_fit": ["instagram", "facebook"],
+      "when_to_use": "A specific situation the reader recognizes emotionally."
+    },
+    "before_after": {
+      "name": "Before / After",
+      "semantic_purposes": ["COMPARE", "DEMONSTRATE"],
+      "carousel": true,
+      "deterministic_render": true,
+      "requires_image_gen": false,
+      "platform_fit": ["instagram", "facebook"],
+      "when_to_use": "Direct transformation showing outcome of an action or product."
+    },
+    "carousel": {
+      "name": "Carousel",
+      "semantic_purposes": ["ORGANIZE", "TELL_STORY", "EXPLAIN", "MAKE_SAVEABLE"],
+      "carousel": true,
+      "deterministic_render": true,
+      "requires_image_gen": false,
+      "platform_fit": ["instagram", "facebook", "linkedin"],
+      "when_to_use": "When the idea benefits from sequential reveal or has too much content for one image."
+    }
+  },
+  "semantic_purposes": [
+    "STOP", "EXPLAIN", "SHOW", "COMPARE", "DEMONSTRATE",
+    "ORGANIZE", "EMOTIONALIZE", "SIMPLIFY", "PROVE", "CONTEXTUALIZE",
+    "MEMORIALIZE", "CREATE_CURIOSITY", "MAKE_SAVEABLE", "TELL_STORY", "SUPPORT_BRAND"
+  ]
+}

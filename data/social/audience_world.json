@@ -1,0 +1,194 @@
+{
+  "$schema_version": "social.v1",
+  "description": "Structured audience world model (Master Build §5). Segments carry problems, questions, misconceptions, curiosities, information gaps, and lifestyle context that drive topic and angle selection.",
+  "segments": {
+    "preparedness_focused_household": {
+      "name": "Preparedness-Focused Household",
+      "experience_level": "intermediate",
+      "problems": [
+        "Unexpected power outages disrupting daily life",
+        "Uncertainty about how much backup power is enough",
+        "Medical devices depending on grid power",
+        "Food spoilage risk during multi-day outages"
+      ],
+      "questions": [
+        "How many hours can a fridge run on a power station?",
+        "What size backup power do we actually need?",
+        "How do I know when to charge my power station?",
+        "Can I run a CPAP through the night on battery?"
+      ],
+      "misconceptions": [
+        "Bigger capacity is always better",
+        "A generator and a power station are interchangeable",
+        "Modern power stations are only useful during hurricanes",
+        "Solar recharging is fast in most conditions"
+      ],
+      "curiosities": [
+        "How outages actually happen",
+        "What real households do during long outages",
+        "Which appliances draw the most power",
+        "How battery capacity translates to real runtime"
+      ],
+      "information_gaps": [
+        "Watt-hours vs runtime for specific appliances",
+        "How temperature affects battery capacity",
+        "Realistic solar recharge times",
+        "What to do during a multi-day outage"
+      ],
+      "goals": ["family safety", "continuity of daily routines", "peace of mind"],
+      "fears": ["not being prepared enough", "wasting money on wrong equipment"],
+      "decisions": ["what backup power to buy", "how to prioritize outage-critical loads"],
+      "objections": ["price sensitivity", "how often will I really use it"],
+      "lifestyle_context": ["home-based", "storm-prone or grid-instability regions", "children or aging parents"],
+      "emotional_drivers": ["preparedness", "safety", "confidence"],
+      "purchase_context": ["seasonal spike around storm season", "after a nearby outage event"]
+    },
+    "mobile_professional": {
+      "name": "Mobile Professional",
+      "experience_level": "intermediate",
+      "problems": [
+        "Running out of laptop battery during travel",
+        "Unreliable outlet access at cafes and coworking spaces",
+        "Camera and drone batteries dying mid-shoot",
+        "Weight and TSA constraints on power banks"
+      ],
+      "questions": [
+        "Which power bank works with my USB-C laptop?",
+        "How large can a battery be for a flight?",
+        "How fast does this actually charge my laptop?",
+        "Can I trust airport outlets for critical charges?"
+      ],
+      "misconceptions": [
+        "All USB-C ports charge laptops",
+        "Fast charging is always safe",
+        "Watt-hour limits don't apply to compact power banks"
+      ],
+      "curiosities": [
+        "How PD wattage translates to laptop performance",
+        "How to use a phone as a mobile power reserve",
+        "Which chargers actually deliver rated power"
+      ],
+      "information_gaps": [
+        "USB-C PD compatibility with common laptops",
+        "TSA rules on watt-hour ratings",
+        "Cable quality effect on charging speed"
+      ],
+      "goals": ["always ready to work", "packable and lightweight setup", "reliable outlets on the go"],
+      "fears": ["losing work due to a dead device", "missing a critical meeting"],
+      "decisions": ["what to carry in a laptop bag", "which power bank to buy"],
+      "objections": ["weight and bulk", "flight compliance"],
+      "lifestyle_context": ["frequent travel", "hybrid work", "photography or creator workflows"],
+      "emotional_drivers": ["control", "confidence", "autonomy"],
+      "purchase_context": ["before a trip", "after a workflow interruption"]
+    },
+    "outdoor_enthusiast": {
+      "name": "Outdoor Enthusiast",
+      "experience_level": "advanced_novice",
+      "problems": [
+        "Keeping devices charged multiple days off-grid",
+        "Cold weather draining batteries quickly",
+        "Balancing pack weight and power capacity",
+        "Solar charging inconsistency in the field"
+      ],
+      "questions": [
+        "How much solar do I need for a weekend?",
+        "Will my battery survive freezing overnight?",
+        "How much runtime for a headlamp and phone?"
+      ],
+      "misconceptions": [
+        "Solar always works if it is daytime",
+        "Cold weather permanently damages batteries",
+        "Any USB output works with any device"
+      ],
+      "curiosities": [
+        "How efficient portable solar really is",
+        "How professional expedition teams manage power",
+        "Which battery chemistries handle cold best"
+      ],
+      "information_gaps": [
+        "Temperature performance curves",
+        "Real-world solar output vs rating",
+        "Weight-to-watt-hour tradeoffs"
+      ],
+      "goals": ["stay powered without heavy carry", "not miss a shot or emergency call"],
+      "fears": ["dead phone in an emergency", "cold-weather battery failure"],
+      "decisions": ["which power bank/panel to take", "when to stop using power"],
+      "objections": ["weight", "cost per watt-hour"],
+      "lifestyle_context": ["camping", "hiking", "adventure travel"],
+      "emotional_drivers": ["freedom", "self-reliance", "preparedness"],
+      "purchase_context": ["before a trip", "post-trip lessons learned"]
+    },
+    "small_business_operator": {
+      "name": "Small Business Operator",
+      "experience_level": "novice",
+      "problems": [
+        "Losing revenue during power outages",
+        "Critical equipment vulnerable to surges",
+        "Uncertainty about backup power sizing",
+        "Employees unable to work during outages"
+      ],
+      "questions": [
+        "How long can I keep a POS system running?",
+        "Can backup power protect from surges?",
+        "What loads should I prioritize during an outage?"
+      ],
+      "misconceptions": [
+        "Only big businesses need backup power",
+        "Any UPS is enough",
+        "Insurance always covers outage losses"
+      ],
+      "curiosities": [
+        "How other small businesses stay operational",
+        "What backup solutions professionals recommend"
+      ],
+      "information_gaps": [
+        "Sizing backup for point-of-sale + lights + WiFi",
+        "Surge protection vs backup power distinction",
+        "Load prioritization"
+      ],
+      "goals": ["business continuity", "customer trust", "revenue protection"],
+      "fears": ["lost revenue during outages", "damage to equipment"],
+      "decisions": ["what backup solution fits budget", "which loads to protect"],
+      "objections": ["cost", "space", "installation complexity"],
+      "lifestyle_context": ["retail", "food service", "professional services"],
+      "emotional_drivers": ["control", "peace_of_mind", "preparedness"],
+      "purchase_context": ["after a costly outage", "before storm season"]
+    },
+    "curious_learner": {
+      "name": "Curious Learner",
+      "experience_level": "beginner",
+      "problems": [
+        "Doesn't understand watt-hours vs amp-hours",
+        "Confused by battery specifications",
+        "Unsure how to read product listings"
+      ],
+      "questions": [
+        "What does mAh actually mean?",
+        "Why do batteries lose capacity over time?",
+        "How does solar convert light to electricity?"
+      ],
+      "misconceptions": [
+        "Higher mAh always means better",
+        "Batteries should be fully drained before recharging",
+        "All charging cables are the same"
+      ],
+      "curiosities": [
+        "The physics behind batteries",
+        "How the electrical grid works",
+        "Why some devices charge faster than others"
+      ],
+      "information_gaps": [
+        "Basic electrical terminology",
+        "How to read spec sheets",
+        "Charging science"
+      ],
+      "goals": ["understand the topic", "make informed buying decisions", "avoid being misled by marketing"],
+      "fears": ["being taken advantage of", "buying the wrong product"],
+      "decisions": ["whether to buy at all", "how to compare products"],
+      "objections": ["overwhelm", "distrust of marketing"],
+      "lifestyle_context": ["general curiosity", "pre-purchase research"],
+      "emotional_drivers": ["curiosity", "recognition", "confidence"],
+      "purchase_context": ["exploratory research phase"]
+    }
+  }
+}

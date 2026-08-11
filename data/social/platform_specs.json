@@ -1,0 +1,51 @@
+{
+  "$schema_version": "social.v1",
+  "description": "Platform-specific dimensional and safe-area specs (Master Build §56). Referenced by graphic renderer and platform adapter.",
+  "platforms": {
+    "instagram_feed": {
+      "aspect_ratios": ["1:1", "4:5"],
+      "recommended_export_px": {"1:1": [1080, 1080], "4:5": [1080, 1350]},
+      "safe_area_padding_px": 96,
+      "logo_zone_px": 160,
+      "story_ui_overlap_top_px": 0,
+      "story_ui_overlap_bottom_px": 0,
+      "max_text_lines_per_card": 6,
+      "carousel_max_slides": 10
+    },
+    "instagram_story": {
+      "aspect_ratios": ["9:16"],
+      "recommended_export_px": {"9:16": [1080, 1920]},
+      "safe_area_padding_px": 128,
+      "logo_zone_px": 140,
+      "story_ui_overlap_top_px": 240,
+      "story_ui_overlap_bottom_px": 350,
+      "max_text_lines_per_card": 5,
+      "carousel_max_slides": 1
+    },
+    "facebook_feed": {
+      "aspect_ratios": ["1:1", "4:5", "16:9"],
+      "recommended_export_px": {"1:1": [1200, 1200], "4:5": [1200, 1500], "16:9": [1200, 675]},
+      "safe_area_padding_px": 96,
+      "logo_zone_px": 160,
+      "story_ui_overlap_top_px": 0,
+      "story_ui_overlap_bottom_px": 0,
+      "max_text_lines_per_card": 6,
+      "carousel_max_slides": 10
+    },
+    "linkedin_feed": {
+      "aspect_ratios": ["1:1", "4:5", "16:9"],
+      "recommended_export_px": {"1:1": [1200, 1200], "4:5": [1200, 1500], "16:9": [1200, 627]},
+      "safe_area_padding_px": 80,
+      "logo_zone_px": 140,
+      "story_ui_overlap_top_px": 0,
+      "story_ui_overlap_bottom_px": 0,
+      "max_text_lines_per_card": 7,
+      "carousel_max_slides": 10
+    }
+  },
+  "defaults": {
+    "min_contrast_ratio": 4.5,
+    "min_headline_px": 56,
+    "min_body_px": 28
+  }
+}

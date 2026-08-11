@@ -1,0 +1,80 @@
+{
+  "$schema_version": "social.v1",
+  "description": "Brand design tokens (Master Build §51). Used by the deterministic graphic renderer and to guide art direction.",
+  "brand_colors": {
+    "primary": "#0A2540",
+    "secondary": "#1C7C9B",
+    "accent": "#F5A623",
+    "success": "#2E8B57",
+    "warning": "#C0392B"
+  },
+  "neutral_palette": {
+    "ink": "#0D1B2A",
+    "graphite": "#2C3E50",
+    "cloud": "#F4F6F8",
+    "paper": "#FFFFFF",
+    "line": "#D8DEE4"
+  },
+  "typography": {
+    "heading_font": "Inter",
+    "heading_weights": [700, 800],
+    "body_font": "Inter",
+    "body_weights": [400, 500, 600],
+    "min_headline_size_px": 56,
+    "min_body_size_px": 28,
+    "min_footer_size_px": 20
+  },
+  "logo": {
+    "wordmark_text": "Infenergy Power",
+    "clear_space_ratio": 0.5,
+    "min_size_px": 96,
+    "placement_preferences": ["bottom_right", "bottom_center"]
+  },
+  "layout_system": {
+    "border_radius_px": 24,
+    "grid_gutter_px": 32,
+    "safe_padding_px": 64,
+    "min_contrast_ratio": 4.5,
+    "shadow": "0 8px 24px rgba(10, 37, 64, 0.12)"
+  },
+  "photography_style": {
+    "mood_words": ["honest", "grounded", "calm-competent", "real-world"],
+    "avoid": ["stock cliché", "generic smiling business person", "neon holograms", "cyberpunk overlays"],
+    "lens_feel": "natural, unstyled, moderate depth of field",
+    "lighting_default": "even natural daylight or warm interior tungsten",
+    "color_grade": "muted, slightly desaturated, warm shadows"
+  },
+  "illustration_style": {
+    "mood_words": ["clean", "editorial", "flat with subtle depth"],
+    "avoid": ["overly cartoonish", "generic tech gradients", "impossible circuitry"]
+  },
+  "graphic_density": {
+    "max_text_lines_per_card": 6,
+    "max_words_per_headline": 12,
+    "max_bullets_per_card": 5
+  },
+  "background_style": {
+    "solid_preferred": true,
+    "texture_ok_when": "subtle paper grain",
+    "gradient_ok_when": "very subtle, single-hue"
+  },
+  "brand_mood": {
+    "primary_words": ["prepared", "clear-headed", "trustworthy", "no-nonsense"],
+    "avoid_words": ["hype", "urgency-obsessed", "aspirational-luxury"]
+  },
+  "visual_energy": {
+    "default": "medium",
+    "range": ["quiet", "medium", "high-contrast"]
+  },
+  "must_avoid_in_generated_imagery": [
+    "impossible hands",
+    "duplicate objects",
+    "fake certification labels",
+    "unnatural product designs",
+    "meaningless futuristic holograms",
+    "generic smiling business person",
+    "random neon glow",
+    "nonsense circuitry patterns",
+    "excessive lens flare"
+  ]
+}

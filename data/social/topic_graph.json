@@ -1,0 +1,160 @@
+{
+  "$schema_version": "social.v1",
+  "description": "Topic graph (Master Build §8). TOPIC → SUBTOPIC → MICROTOPIC → ANGLE hierarchy so the system produces depth without repetition. Extendable.",
+  "topics": {
+    "batteries": {
+      "name": "Batteries",
+      "pillar": "battery_knowledge",
+      "subtopics": {
+        "charging": {
+          "microtopics": ["overnight charging myth", "fast charging safety", "trickle charging", "top-off habit"],
+          "angles": [
+            "why overnight charging isn't the villain most people think",
+            "what actually happens when you fast charge",
+            "the storage charge level that extends battery life"
+          ]
+        },
+        "degradation": {
+          "microtopics": ["cycle count", "calendar aging", "80% health", "unused battery aging"],
+          "angles": [
+            "why unused batteries still age",
+            "what 80% health actually means for daily use",
+            "cycle count is not the whole story"
+          ]
+        },
+        "temperature": {
+          "microtopics": ["cold weather capacity", "hot car storage", "operating range"],
+          "angles": [
+            "cold batteries look dead but usually aren't",
+            "what a hot car actually does to a battery",
+            "the temperature range you should worry about"
+          ]
+        },
+        "storage": {
+          "microtopics": ["ideal storage charge", "long-term storage rules", "storage temperature"],
+          "angles": [
+            "the ideal charge level for storing a power bank",
+            "why 100% storage is worse than you'd think"
+          ]
+        },
+        "chemistry": {
+          "microtopics": ["lithium ion basics", "LFP vs NMC", "solid state trend"],
+          "angles": [
+            "why LFP batteries are quietly winning",
+            "chemistry differences that actually matter to you"
+          ]
+        },
+        "capacity_ratings": {
+          "microtopics": ["watt-hours", "amp-hours", "mAh", "usable vs rated"],
+          "angles": [
+            "why mAh alone doesn't tell you what you'll get",
+            "watt-hours: the number that actually matters",
+            "usable capacity vs marketing capacity"
+          ]
+        }
+      }
+    },
+    "solar": {
+      "name": "Solar",
+      "pillar": "solar",
+      "subtopics": {
+        "panel_efficiency": {
+          "microtopics": ["rated vs actual", "temperature derating", "monocrystalline vs polycrystalline"],
+          "angles": [
+            "why solar panels rarely hit their rated output",
+            "how panel temperature quietly reduces output"
+          ]
+        },
+        "weather_and_conditions": {
+          "microtopics": ["cloud cover", "angle to sun", "seasonal sun hours"],
+          "angles": [
+            "clouds and solar: less bad than you think",
+            "how panel angle changes real-world output"
+          ]
+        },
+        "portable_solar_reality": {
+          "microtopics": ["field setup", "expected charge times", "sizing for a weekend"],
+          "angles": [
+            "portable solar recharge times: honest expectations",
+            "how much solar to actually cover a weekend"
+          ]
+        }
+      }
+    },
+    "power_stations": {
+      "name": "Power Stations",
+      "pillar": "portable_power",
+      "subtopics": {
+        "runtime_math": {
+          "microtopics": ["fridge runtime", "CPAP runtime", "laptop runtime", "conversion losses"],
+          "angles": [
+            "how to estimate real fridge runtime on backup power",
+            "conversion losses no one tells you about",
+            "CPAP runtime: what to actually plan for"
+          ]
+        },
+        "output_types": {
+          "microtopics": ["pure sine wave", "USB-C PD", "12V ports", "surge output"],
+          "angles": [
+            "why pure sine wave matters for sensitive electronics",
+            "USB-C PD wattage explained simply"
+          ]
+        },
+        "charging_speed": {
+          "microtopics": ["AC input", "solar input", "car input", "0 to 80"],
+          "angles": [
+            "why the first 80% is fast and the last 20% is slow",
+            "practical charging strategies during an outage"
+          ]
+        }
+      }
+    },
+    "outages": {
+      "name": "Outages",
+      "pillar": "preparedness",
+      "subtopics": {
+        "causes": {
+          "microtopics": ["weather", "grid overload", "equipment failure", "planned maintenance"],
+          "angles": [
+            "why summer heat causes outages you don't expect",
+            "the outage cause most people never plan for"
+          ]
+        },
+        "response": {
+          "microtopics": ["first 15 minutes", "food safety window", "communication plan"],
+          "angles": [
+            "the first 15 minutes of an outage matter most",
+            "the exact window before food starts spoiling"
+          ]
+        },
+        "medical_continuity": {
+          "microtopics": ["CPAP", "oxygen concentrators", "refrigerated medications"],
+          "angles": [
+            "backup planning if someone in the home uses a CPAP",
+            "the medication storage window during an outage"
+          ]
+        }
+      }
+    },
+    "phone_and_device_power": {
+      "name": "Phone and Device Power",
+      "pillar": "everyday_electricity",
+      "subtopics": {
+        "everyday_drain": {
+          "microtopics": ["background apps", "screen brightness", "signal strength drain"],
+          "angles": [
+            "the biggest battery drain most people never notice",
+            "why weak signal drains your phone faster"
+          ]
+        },
+        "emergency_conservation": {
+          "microtopics": ["low power mode", "airplane mode strategy", "conserving during outages"],
+          "angles": [
+            "how to make one phone charge last three days if you have to",
+            "airplane mode is the emergency power move"
+          ]
+        }
+      }
+    }
+  }
+}

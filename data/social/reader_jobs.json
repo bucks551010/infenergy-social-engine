@@ -1,0 +1,108 @@
+{
+  "$schema_version": "social.v1",
+  "description": "Jobs-to-be-Done taxonomy for social content (Master Build §6). Each post performs one job for the reader. Extendable.",
+  "jobs": {
+    "TEACH_ME": {
+      "description": "Explain something new the reader benefits from knowing.",
+      "success_signals": ["saves", "follows", "shares"],
+      "cta_preferences": ["SAVE", "SHARE"],
+      "typical_emotion": "curiosity"
+    },
+    "HELP_ME": {
+      "description": "Solve or simplify a practical problem.",
+      "success_signals": ["saves", "profile_visits"],
+      "cta_preferences": ["SAVE", "TRY_THIS"],
+      "typical_emotion": "relief"
+    },
+    "EXPLAIN_THIS": {
+      "description": "Clarify a specific concept the reader has partial knowledge of.",
+      "success_signals": ["saves", "shares", "completion"],
+      "cta_preferences": ["SAVE"],
+      "typical_emotion": "recognition"
+    },
+    "SHOW_ME": {
+      "description": "Visually demonstrate something.",
+      "success_signals": ["completion", "shares"],
+      "cta_preferences": ["SHARE", "COMMENT"],
+      "typical_emotion": "fascination"
+    },
+    "WARN_ME": {
+      "description": "Alert to a risk, mistake, or overlooked danger.",
+      "success_signals": ["saves", "shares", "comments"],
+      "cta_preferences": ["SAVE", "SHARE"],
+      "typical_emotion": "caution"
+    },
+    "PREPARE_ME": {
+      "description": "Get the reader ready for something coming.",
+      "success_signals": ["saves", "shares"],
+      "cta_preferences": ["SAVE", "TRY_THIS"],
+      "typical_emotion": "preparedness"
+    },
+    "HELP_ME_CHOOSE": {
+      "description": "Reduce decision friction between options.",
+      "success_signals": ["saves", "profile_visits", "clicks"],
+      "cta_preferences": ["CHOOSE", "SAVE"],
+      "typical_emotion": "confidence"
+    },
+    "SAVE_ME_TIME": {
+      "description": "Compress an insight the reader would otherwise research.",
+      "success_signals": ["saves", "shares"],
+      "cta_preferences": ["SAVE"],
+      "typical_emotion": "relief"
+    },
+    "SAVE_ME_MONEY": {
+      "description": "Prevent unnecessary spending.",
+      "success_signals": ["saves", "shares", "comments"],
+      "cta_preferences": ["SAVE", "SHARE"],
+      "typical_emotion": "confidence"
+    },
+    "MAKE_ME_CURIOUS": {
+      "description": "Open a knowledge gap the reader now wants to close.",
+      "success_signals": ["profile_visits", "follows"],
+      "cta_preferences": ["FOLLOW", "COMMENT"],
+      "typical_emotion": "curiosity"
+    },
+    "SURPRISE_ME": {
+      "description": "Deliver an unexpected fact or truth.",
+      "success_signals": ["shares", "comments"],
+      "cta_preferences": ["SHARE", "NO_CTA"],
+      "typical_emotion": "surprise"
+    },
+    "MAKE_ME_THINK": {
+      "description": "Prompt real reflection.",
+      "success_signals": ["comments", "saves"],
+      "cta_preferences": ["REFLECT", "COMMENT"],
+      "typical_emotion": "reflection"
+    },
+    "GIVE_ME_CONFIDENCE": {
+      "description": "Reassure the reader they understand or handle something well.",
+      "success_signals": ["shares", "saves", "follows"],
+      "cta_preferences": ["SAVE", "SHARE"],
+      "typical_emotion": "empowerment"
+    },
+    "HELP_ME_AVOID_A_MISTAKE": {
+      "description": "Prevent a specific, common error.",
+      "success_signals": ["saves", "shares"],
+      "cta_preferences": ["SAVE", "SHARE"],
+      "typical_emotion": "caution"
+    },
+    "GIVE_ME_A_REFERENCE": {
+      "description": "Provide something worth bookmarking for later use.",
+      "success_signals": ["saves"],
+      "cta_preferences": ["SAVE"],
+      "typical_emotion": "confidence"
+    },
+    "START_A_CONVERSATION": {
+      "description": "Invite meaningful discussion.",
+      "success_signals": ["comments", "shares"],
+      "cta_preferences": ["COMMENT", "REFLECT"],
+      "typical_emotion": "recognition"
+    },
+    "CHANGE_MY_PERSPECTIVE": {
+      "description": "Shift how the reader sees a familiar topic.",
+      "success_signals": ["saves", "shares", "comments"],
+      "cta_preferences": ["REFLECT", "SHARE"],
+      "typical_emotion": "wonder"
+    }
+  }
+}

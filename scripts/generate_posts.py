@@ -11,6 +11,35 @@ from datetime import date, datetime, timezone, timedelta
 from typing import Any
 from google import genai
 from google.genai import types
+
+
+# ---------------------------------------------------------------------------
+# Autonomous Social Creative Intelligence hook (Master Build §107).
+# Enabled by setting ENABLE_SOCIAL_INTELLIGENCE=1. When enabled, callers can
+# invoke ``run_social_intelligence(count, platform)`` to generate posts via
+# the new orchestrator (engines A/B/C, audience-value pipeline, quality gate,
+# creative director test). Falls back to the existing generator when the
+# flag is not set, so the default behavior is unchanged.
+# ---------------------------------------------------------------------------
+
+
+def _social_intelligence_enabled() -> bool:
+    return os.environ.get("ENABLE_SOCIAL_INTELLIGENCE", "").lower() in {"1", "true", "yes", "on"}
+
+
+def run_social_intelligence(count: int = 1, platform: str = "instagram_feed", **kw: Any) -> list[dict[str, Any]]:
+    """Generate ``count`` posts through the new Social Intelligence layer.
+
+    Returns a list of package dicts. Safe to import — the ``social`` package
+    is only touched when this function is actually called.
+    """
+    from social.orchestrator import SocialIntelligenceOrchestrator
+
+    orchestrator = SocialIntelligenceOrchestrator()
+    batch = orchestrator.create_batch(count=count, platform=platform, **kw)
+    return [p.as_dict() for p in batch]
+
+
 try:
     import inventory_db
 except ImportError:  # pragma: no cover

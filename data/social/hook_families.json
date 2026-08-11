@@ -1,0 +1,115 @@
+{
+  "$schema_version": "social.v1",
+  "description": "Hook family library (Master Build §18). Distinct from the conversion hook_categories — these serve Engine B (Audience Value) and Engine C (Brand).",
+  "families": {
+    "curiosity": {
+      "description": "Open a knowledge gap the reader now wants to close.",
+      "example_starters": ["The reason", "What most people miss about", "Almost nobody knows"],
+      "banned_openers": ["ever wondered", "have you ever thought"],
+      "reader_job_fit": ["MAKE_ME_CURIOUS", "TEACH_ME", "SURPRISE_ME"]
+    },
+    "specific_discovery": {
+      "description": "State a specific, concrete finding.",
+      "example_starters": ["A single degree of", "Charging at 80% vs 100%", "One overlooked setting"],
+      "banned_openers": ["you won't believe", "shocking truth"],
+      "reader_job_fit": ["TEACH_ME", "EXPLAIN_THIS", "SAVE_ME_MONEY"]
+    },
+    "knowledge_gap": {
+      "description": "Name a gap between what the reader thinks they know and reality.",
+      "example_starters": ["What most people think about", "The reason", "Why"],
+      "banned_openers": ["did you know that", "fun fact"],
+      "reader_job_fit": ["TEACH_ME", "EXPLAIN_THIS", "CHANGE_MY_PERSPECTIVE"]
+    },
+    "question": {
+      "description": "Ask a real, useful question the reader wants answered.",
+      "example_starters": ["How many hours of", "What actually happens when", "Which draws more"],
+      "banned_openers": ["ever wondered", "have you ever"],
+      "reader_job_fit": ["MAKE_ME_CURIOUS", "EXPLAIN_THIS", "START_A_CONVERSATION"]
+    },
+    "scenario": {
+      "description": "Paint a concrete situation the reader recognizes.",
+      "example_starters": ["It's 2 a.m. and the power just went out.", "You reach for your phone at 3%."],
+      "banned_openers": ["imagine this", "picture this"],
+      "reader_job_fit": ["PREPARE_ME", "WARN_ME", "MAKE_ME_THINK"]
+    },
+    "counterintuitive": {
+      "description": "Present a truth that runs against common assumption.",
+      "example_starters": ["The bigger power bank isn't always", "Cold weather doesn't kill batteries — cold storage does."],
+      "banned_openers": ["shocking", "you won't believe"],
+      "reader_job_fit": ["SURPRISE_ME", "CHANGE_MY_PERSPECTIVE", "MAKE_ME_THINK"]
+    },
+    "direct_value": {
+      "description": "State the benefit up front, no wind-up.",
+      "example_starters": ["Two settings that", "A three-second habit that", "The one number that"],
+      "banned_openers": ["let me show you", "check this out"],
+      "reader_job_fit": ["HELP_ME", "SAVE_ME_TIME", "GIVE_ME_A_REFERENCE"]
+    },
+    "mistake": {
+      "description": "Name a specific mistake the reader might be making.",
+      "example_starters": ["The storage habit that quietly", "The common charging mistake that"],
+      "banned_openers": ["you're doing it wrong", "stop making this mistake"],
+      "reader_job_fit": ["WARN_ME", "HELP_ME_AVOID_A_MISTAKE"]
+    },
+    "warning": {
+      "description": "Flag a real, non-hyped risk.",
+      "example_starters": ["A hot car does more to a lithium battery than", "The one appliance that quietly"],
+      "banned_openers": ["dangerous", "you must", "urgent"],
+      "reader_job_fit": ["WARN_ME", "PREPARE_ME"]
+    },
+    "observation": {
+      "description": "Notice something the reader hasn't but immediately recognizes.",
+      "example_starters": ["Every long outage has the same first-hour pattern.", "The chargers most people use"],
+      "banned_openers": ["I've noticed", "here's a thing"],
+      "reader_job_fit": ["MAKE_ME_THINK", "START_A_CONVERSATION", "TEACH_ME"]
+    },
+    "comparison": {
+      "description": "Set up a direct comparison the reader wants resolved.",
+      "example_starters": ["LFP vs NMC in one line:", "Fast charging vs slow charging over 500 cycles:"],
+      "banned_openers": ["let's compare", "battle of"],
+      "reader_job_fit": ["HELP_ME_CHOOSE", "EXPLAIN_THIS"]
+    },
+    "pattern_interrupt": {
+      "description": "Break the reader's scroll rhythm with an unexpected framing.",
+      "example_starters": ["Watt-hours don't lie. Marketing does.", "A dead battery isn't dead."],
+      "banned_openers": ["wait", "hold on", "stop scrolling"],
+      "reader_job_fit": ["SURPRISE_ME", "MAKE_ME_THINK"]
+    },
+    "challenge": {
+      "description": "Invite the reader to test something themselves.",
+      "example_starters": ["Try this the next time your phone hits 20%.", "Look at the label on your charger."],
+      "banned_openers": ["I challenge you", "prove me wrong"],
+      "reader_job_fit": ["TRY_THIS", "MAKE_ME_THINK"]
+    },
+    "confession_style": {
+      "description": "Admit a genuine, useful observation the audience will recognize.",
+      "example_starters": ["We had to redesign our", "It took us three prototypes to figure out"],
+      "banned_openers": ["confession time", "unpopular opinion"],
+      "reader_job_fit": ["START_A_CONVERSATION", "MAKE_ME_THINK"]
+    },
+    "micro_story": {
+      "description": "A tiny concrete story with a real lesson.",
+      "example_starters": ["A customer sent us", "Last week during the storm in"],
+      "banned_openers": ["story time", "true story"],
+      "reader_job_fit": ["TEACH_ME", "MAKE_ME_THINK", "START_A_CONVERSATION"]
+    },
+    "explanation_gap": {
+      "description": "Frame a familiar thing whose 'why' the reader can't articulate.",
+      "example_starters": ["The reason phones charge slower at 80% is", "Fast charging tapers because"],
+      "banned_openers": ["let's explain", "here's why"],
+      "reader_job_fit": ["EXPLAIN_THIS", "TEACH_ME"]
+    }
+  },
+  "global_banned_openers": [
+    "in today's fast-paced world",
+    "unlock",
+    "elevate",
+    "game changer",
+    "revolutionize",
+    "ever wondered",
+    "look no further",
+    "here's the thing",
+    "the truth is",
+    "let me tell you",
+    "buckle up"
+  ]
+}

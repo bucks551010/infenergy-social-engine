@@ -1,0 +1,18 @@
+{
+  "records": [
+    {
+      "post_id": "6d05a540cb92",
+      "engine": "A",
+      "pillar_id": "product_education",
+      "genre_id": "how_it_works",
+      "topic": "Batteries",
+      "microtopic": "overnight charging myth",
+      "hook": "What does mAh actually mean?",
+      "memory_anchor": "Remember: why overnight charging isn't the villain most people think.",
+      "tone": "thoughtful",
+      "cta_type": "SAVE",
+      "quality_overall": 79.6107142857143,
+      "created_at": "2026-08-11T18:50:58Z"
+    }
+  ]
+}

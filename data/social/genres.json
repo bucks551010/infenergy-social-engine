@@ -1,0 +1,248 @@
+{
+  "$schema_version": "social.v1",
+  "description": "Extensible content genre registry (Master Build §9). Each genre carries structural properties, visual affinity, preferred reader jobs, and typical hook families. Add new genres by editing this file only.",
+  "genres": {
+    "educational": {
+      "name": "Educational",
+      "description": "Teach a concept the reader benefits from understanding.",
+      "info_structure": "hook_answer_explanation_example_takeaway",
+      "reader_jobs": ["TEACH_ME", "EXPLAIN_THIS", "MAKE_ME_THINK"],
+      "hook_families": ["knowledge_gap", "curiosity", "specific_discovery"],
+      "visual_format_preferences": ["fact_card", "diagram", "conceptual_illustration", "carousel"],
+      "cta_preferences": ["SAVE", "SHARE"],
+      "avg_information_density": 0.75,
+      "carousel_friendly": true
+    },
+    "tips_and_tricks": {
+      "name": "Tips & Tricks",
+      "description": "Practical, immediately useful tips.",
+      "info_structure": "hook_answer_explanation_example_takeaway",
+      "reader_jobs": ["HELP_ME", "SAVE_ME_TIME", "SAVE_ME_MONEY"],
+      "hook_families": ["direct_value", "specific_discovery"],
+      "visual_format_preferences": ["checklist", "fact_card", "photo_with_overlay", "carousel"],
+      "cta_preferences": ["SAVE", "TRY_THIS", "SHARE"],
+      "avg_information_density": 0.8,
+      "carousel_friendly": true
+    },
+    "did_you_know": {
+      "name": "Did You Know",
+      "description": "A single striking fact the audience did not know.",
+      "info_structure": "question_surprising_answer_why_application",
+      "reader_jobs": ["SURPRISE_ME", "TEACH_ME", "MAKE_ME_CURIOUS"],
+      "hook_families": ["counterintuitive", "specific_discovery", "knowledge_gap"],
+      "visual_format_preferences": ["fact_card", "statistic_card", "typographic_poster"],
+      "cta_preferences": ["SAVE", "SHARE", "NO_CTA"],
+      "avg_information_density": 0.6,
+      "carousel_friendly": false
+    },
+    "myth_vs_reality": {
+      "name": "Myth vs Reality",
+      "description": "Correct a widely believed misconception.",
+      "info_structure": "myth_reality_explanation_implication",
+      "reader_jobs": ["EXPLAIN_THIS", "HELP_ME_AVOID_A_MISTAKE", "CHANGE_MY_PERSPECTIVE"],
+      "hook_families": ["counterintuitive", "warning", "confession_style"],
+      "visual_format_preferences": ["myth_reality_graphic", "comparison_graphic", "carousel"],
+      "cta_preferences": ["SHARE", "SAVE"],
+      "avg_information_density": 0.75,
+      "carousel_friendly": true
+    },
+    "common_mistakes": {
+      "name": "Common Mistakes",
+      "description": "Warn about widespread mistakes.",
+      "info_structure": "problem_why_what_happens_what_to_do",
+      "reader_jobs": ["WARN_ME", "HELP_ME_AVOID_A_MISTAKE"],
+      "hook_families": ["warning", "mistake", "confession_style"],
+      "visual_format_preferences": ["checklist", "fact_card", "carousel"],
+      "cta_preferences": ["SAVE", "SHARE"],
+      "avg_information_density": 0.7,
+      "carousel_friendly": true
+    },
+    "how_it_works": {
+      "name": "How It Works",
+      "description": "Explain the mechanism behind something.",
+      "info_structure": "hook_answer_explanation_example_takeaway",
+      "reader_jobs": ["EXPLAIN_THIS", "SHOW_ME", "TEACH_ME"],
+      "hook_families": ["explanation_gap", "question"],
+      "visual_format_preferences": ["diagram", "technical_illustration", "carousel", "flowchart"],
+      "cta_preferences": ["SAVE", "SHARE"],
+      "avg_information_density": 0.8,
+      "carousel_friendly": true
+    },
+    "why_does_this_happen": {
+      "name": "Why Does This Happen",
+      "description": "Explain the cause behind a familiar effect.",
+      "info_structure": "question_surprising_answer_why_application",
+      "reader_jobs": ["EXPLAIN_THIS", "MAKE_ME_CURIOUS"],
+      "hook_families": ["question", "explanation_gap"],
+      "visual_format_preferences": ["diagram", "conceptual_illustration"],
+      "cta_preferences": ["SAVE", "REFLECT"],
+      "avg_information_density": 0.7,
+      "carousel_friendly": false
+    },
+    "checklist": {
+      "name": "Checklist",
+      "description": "A curated list of items to check or do.",
+      "info_structure": "hook_answer_explanation_example_takeaway",
+      "reader_jobs": ["HELP_ME", "PREPARE_ME", "GIVE_ME_A_REFERENCE"],
+      "hook_families": ["direct_value", "warning"],
+      "visual_format_preferences": ["checklist", "carousel"],
+      "cta_preferences": ["SAVE", "SHARE"],
+      "avg_information_density": 0.85,
+      "carousel_friendly": true
+    },
+    "this_vs_that": {
+      "name": "This vs That",
+      "description": "Direct comparison between two options or concepts.",
+      "info_structure": "hook_answer_explanation_example_takeaway",
+      "reader_jobs": ["HELP_ME_CHOOSE", "EXPLAIN_THIS"],
+      "hook_families": ["comparison", "counterintuitive"],
+      "visual_format_preferences": ["comparison_graphic", "before_after", "carousel"],
+      "cta_preferences": ["CHOOSE", "SAVE", "SHARE"],
+      "avg_information_density": 0.7,
+      "carousel_friendly": true
+    },
+    "counterintuitive_insight": {
+      "name": "Counterintuitive Insight",
+      "description": "A truth that runs against the obvious answer.",
+      "info_structure": "question_surprising_answer_why_application",
+      "reader_jobs": ["MAKE_ME_THINK", "CHANGE_MY_PERSPECTIVE", "SURPRISE_ME"],
+      "hook_families": ["counterintuitive", "confession_style"],
+      "visual_format_preferences": ["typographic_poster", "fact_card"],
+      "cta_preferences": ["REFLECT", "SHARE", "NO_CTA"],
+      "avg_information_density": 0.65,
+      "carousel_friendly": false
+    },
+    "problem_consequence_solution": {
+      "name": "Problem → Consequence → Solution",
+      "description": "Name a problem, show the cost, guide to a solution.",
+      "info_structure": "problem_why_what_happens_what_to_do",
+      "reader_jobs": ["WARN_ME", "HELP_ME", "PREPARE_ME"],
+      "hook_families": ["scenario", "warning"],
+      "visual_format_preferences": ["scenario_illustration", "carousel", "photo_with_overlay"],
+      "cta_preferences": ["SOFT_PRODUCT_BRIDGE", "TRY_THIS", "SAVE"],
+      "avg_information_density": 0.75,
+      "carousel_friendly": true
+    },
+    "what_if": {
+      "name": "What Would Happen If",
+      "description": "Explore a scenario the reader has not considered.",
+      "info_structure": "scenario_consequence_lesson",
+      "reader_jobs": ["MAKE_ME_THINK", "PREPARE_ME"],
+      "hook_families": ["scenario", "question"],
+      "visual_format_preferences": ["scenario_illustration", "conceptual_illustration"],
+      "cta_preferences": ["REFLECT", "COMMENT"],
+      "avg_information_density": 0.6,
+      "carousel_friendly": false
+    },
+    "quick_win": {
+      "name": "Quick Win",
+      "description": "One small action with disproportionate benefit.",
+      "info_structure": "hook_answer_explanation_example_takeaway",
+      "reader_jobs": ["HELP_ME", "SAVE_ME_TIME"],
+      "hook_families": ["direct_value", "specific_discovery"],
+      "visual_format_preferences": ["fact_card", "photo_with_overlay"],
+      "cta_preferences": ["TRY_THIS", "SAVE"],
+      "avg_information_density": 0.7,
+      "carousel_friendly": false
+    },
+    "one_thing_to_remember": {
+      "name": "One Thing To Remember",
+      "description": "Compress a topic into one memorable takeaway.",
+      "info_structure": "hook_answer_explanation_example_takeaway",
+      "reader_jobs": ["GIVE_ME_A_REFERENCE", "TEACH_ME"],
+      "hook_families": ["direct_value", "specific_discovery"],
+      "visual_format_preferences": ["typographic_poster", "fact_card"],
+      "cta_preferences": ["SAVE", "SHARE"],
+      "avg_information_density": 0.55,
+      "carousel_friendly": false
+    },
+    "faq": {
+      "name": "FAQ / Beginner Question",
+      "description": "Answer a real question beginners actually ask.",
+      "info_structure": "question_surprising_answer_why_application",
+      "reader_jobs": ["EXPLAIN_THIS", "TEACH_ME", "GIVE_ME_A_REFERENCE"],
+      "hook_families": ["question", "explanation_gap"],
+      "visual_format_preferences": ["question_card", "fact_card", "carousel"],
+      "cta_preferences": ["SAVE", "COMMENT"],
+      "avg_information_density": 0.7,
+      "carousel_friendly": true
+    },
+    "term_explainer": {
+      "name": "Term Explainer",
+      "description": "Define a jargon term in plain language.",
+      "info_structure": "question_surprising_answer_why_application",
+      "reader_jobs": ["EXPLAIN_THIS", "TEACH_ME"],
+      "hook_families": ["knowledge_gap", "explanation_gap"],
+      "visual_format_preferences": ["fact_card", "diagram"],
+      "cta_preferences": ["SAVE", "SHARE"],
+      "avg_information_density": 0.65,
+      "carousel_friendly": false
+    },
+    "troubleshooting": {
+      "name": "Troubleshooting",
+      "description": "Diagnose and fix a specific problem.",
+      "info_structure": "problem_why_what_happens_what_to_do",
+      "reader_jobs": ["HELP_ME", "SAVE_ME_TIME"],
+      "hook_families": ["direct_value", "warning"],
+      "visual_format_preferences": ["decision_tree", "checklist", "carousel"],
+      "cta_preferences": ["SAVE", "TRY_THIS"],
+      "avg_information_density": 0.8,
+      "carousel_friendly": true
+    },
+    "decision_guide": {
+      "name": "Decision Guide",
+      "description": "Help the reader pick between options.",
+      "info_structure": "hook_answer_explanation_example_takeaway",
+      "reader_jobs": ["HELP_ME_CHOOSE", "EXPLAIN_THIS"],
+      "hook_families": ["comparison", "direct_value"],
+      "visual_format_preferences": ["decision_tree", "comparison_graphic", "carousel"],
+      "cta_preferences": ["CHOOSE", "SAVE"],
+      "avg_information_density": 0.75,
+      "carousel_friendly": true
+    },
+    "seasonal_relevance": {
+      "name": "Seasonal Relevance",
+      "description": "Timely relevance for a season or event.",
+      "info_structure": "hook_answer_explanation_example_takeaway",
+      "reader_jobs": ["PREPARE_ME", "MAKE_ME_CURIOUS"],
+      "hook_families": ["direct_value", "warning", "scenario"],
+      "visual_format_preferences": ["scenario_illustration", "photo_with_overlay", "checklist"],
+      "cta_preferences": ["SAVE", "SHARE"],
+      "avg_information_density": 0.7,
+      "carousel_friendly": true
+    },
+    "thought_provoker": {
+      "name": "Thought Provoker",
+      "description": "A question or observation that makes the reader think.",
+      "info_structure": "question_surprising_answer_why_application",
+      "reader_jobs": ["MAKE_ME_THINK", "START_A_CONVERSATION", "CHANGE_MY_PERSPECTIVE"],
+      "hook_families": ["question", "counterintuitive", "observation"],
+      "visual_format_preferences": ["typographic_poster", "no_visual"],
+      "cta_preferences": ["REFLECT", "COMMENT", "NO_CTA"],
+      "avg_information_density": 0.5,
+      "carousel_friendly": false
+    },
+    "community_question": {
+      "name": "Community Question",
+      "description": "Ask the audience a real, specific, useful question.",
+      "info_structure": "question_surprising_answer_why_application",
+      "reader_jobs": ["START_A_CONVERSATION", "GIVE_ME_CONFIDENCE"],
+      "hook_families": ["question", "observation"],
+      "visual_format_preferences": ["typographic_poster", "photo_with_overlay", "no_visual"],
+      "cta_preferences": ["COMMENT", "NO_CTA"],
+      "avg_information_density": 0.4,
+      "carousel_friendly": false
+    },
+    "behind_the_technology": {
+      "name": "Behind The Technology",
+      "description": "Show the engineering, testing, or thinking behind a product or category.",
+      "info_structure": "hook_answer_explanation_example_takeaway",
+      "reader_jobs": ["SHOW_ME", "TEACH_ME", "EXPLAIN_THIS"],
+      "hook_families": ["specific_discovery", "explanation_gap"],
+      "visual_format_preferences": ["technical_illustration", "photo_with_overlay", "carousel"],
+      "cta_preferences": ["SAVE", "COMMENT"],
+      "avg_information_density": 0.75,
+      "carousel_friendly": true
+    }
+  }
+}

@@ -1,0 +1,49 @@
+{
+  "$schema_version": "social.v1",
+  "description": "Content series registry (Master Build §10). Recurring recognizable series for the audience. Use sparingly.",
+  "series": {
+    "power_myth_monday": {
+      "name": "Power Myth Monday",
+      "cadence": "weekly",
+      "genres": ["myth_vs_reality"],
+      "pillars": ["battery_knowledge", "energy_education", "buying_smarter"],
+      "visual_identity": "myth vs reality split card, red/green corner tags",
+      "min_gap_days": 6
+    },
+    "sixty_second_power_school": {
+      "name": "60-Second Power School",
+      "cadence": "weekly",
+      "genres": ["educational", "term_explainer", "how_it_works"],
+      "pillars": ["energy_education", "science_behind_power"],
+      "visual_identity": "chalkboard-style typographic card with clock icon",
+      "min_gap_days": 6
+    },
+    "things_nobody_explains": {
+      "name": "Things Nobody Explains",
+      "cadence": "biweekly",
+      "genres": ["did_you_know", "counterintuitive_insight", "why_does_this_happen"],
+      "pillars": ["energy_education", "everyday_electricity", "battery_knowledge"],
+      "visual_identity": "large single-line question, small paragraph answer below",
+      "min_gap_days": 12
+    },
+    "before_you_buy_it": {
+      "name": "Before You Buy It",
+      "cadence": "biweekly",
+      "genres": ["decision_guide", "this_vs_that", "checklist"],
+      "pillars": ["buying_smarter", "product_education"],
+      "visual_identity": "checklist card with amber accent bar",
+      "min_gap_days": 10
+    },
+    "emergency_ready": {
+      "name": "Emergency Ready",
+      "cadence": "monthly_or_situational",
+      "genres": ["checklist", "problem_consequence_solution", "seasonal_relevance"],
+      "pillars": ["preparedness", "emergency_readiness"],
+      "visual_identity": "urgent but calm; deep navy background with white checklist",
+      "min_gap_days": 25
+    }
+  },
+  "defaults": {
+    "max_series_share_of_feed_pct": 20
+  }
+}

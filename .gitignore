@@ -10,3 +10,6 @@ data/marketing/campaigns/*.json
 !data/marketing/founder_brand_manifesto.json
 data/agents/**/*.json
 data/post_history.json
+data/business_intelligence/
+data/social/content_memory.json
+data/social/visual_memory.json

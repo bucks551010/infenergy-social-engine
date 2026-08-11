@@ -5,8 +5,16 @@
   "product_type": "expansion_battery",
   "role": "modular power-system expansion battery",
   "product_summary": "Sorein Modular Power System - EB 200 Extra Battery is a modular power-system expansion battery that adds stored-energy capacity to a compatible modular system.",
-  "categories": [],
-  "verified_facts": [],
+  "categories": [
+    "Home Backup"
+  ],
+  "verified_facts": [
+    "1 hour",
+    "1.8 hours",
+    "1,800W",
+    "1,000W",
+    "Add hours of extra runtime to any Sorein Main Base setup. The EB 200 Extra Battery module plugs into the modular ecosystem for massively increased capacity. Engineered by Sorein Innovation Co., Limited, with a core team from Anker Innovations and TP-Link. Built on EV-grade LFP (Lithium Iron Phosphate) battery cells rated for 3,500+ charge and discharge cycles at 80% capacity retention. A true 0ms UPS switchover keeps sensitive electronics like computers, servers, and medical devices from flicker"
+  ],
   "core_benefits": [
     "adds stored-energy capacity to a compatible modular system",
     "extends supported runtime when paired with documented equipment"
@@ -37,5 +45,5 @@
     "Do not use power-device language for water, comfort, safety, or other non-power primary products."
   ],
   "source_image_url": "https://infenergypower.com/wp-content/uploads/2025/06/Photoroom_20250613_004442.png",
-  "updated_at_utc": "2026-08-10T20:36:45.566333+00:00"
+  "updated_at_utc": "2026-08-11T20:52:18.977810+00:00"
 }

@@ -1,3 +1,46 @@
 {
-  "posts": []
+  "posts": [
+    {
+      "post_id": "6d05a540cb92",
+      "engine": "A",
+      "pillar_id": "product_education",
+      "genre_id": "how_it_works",
+      "topic": "Batteries",
+      "microtopic": "overnight charging myth",
+      "hook": "What does mAh actually mean?",
+      "memory_anchor": "Remember: why overnight charging isn't the villain most people think.",
+      "tone": "thoughtful",
+      "cta_type": "SAVE",
+      "quality_overall": 79.6107142857143,
+      "created_at": "2026-08-11T18:50:58Z"
+    },
+    {
+      "post_id": "6be2d504cce4",
+      "engine": "A",
+      "pillar_id": "energy_education",
+      "genre_id": "checklist",
+      "topic": "Batteries",
+      "microtopic": "fast charging safety",
+      "hook": "Can I run a CPAP through the night on battery?",
+      "memory_anchor": "Remember: why overnight charging isn't the villain most people think.",
+      "tone": "authoritative",
+      "cta_type": "TRY_THIS",
+      "quality_overall": 78.5642857142857,
+      "created_at": "2026-08-11T20:23:37Z"
+    },
+    {
+      "post_id": "49cf824c8de8",
+      "engine": "A",
+      "pillar_id": "energy_education",
+      "genre_id": "problem_consequence_solution",
+      "topic": "Batteries",
+      "microtopic": "trickle charging",
+      "hook": "Modern power stations are only useful during hurricanes",
+      "memory_anchor": "why overnight charging isn't the villain most people think",
+      "tone": "authoritative",
+      "cta_type": "SOFT_PRODUCT_BRIDGE",
+      "quality_overall": 78.44285714285715,
+      "created_at": "2026-08-11T20:25:01Z"
+    }
+  ]
 }

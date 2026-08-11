@@ -11,9 +11,11 @@
     "Solar Panels"
   ],
   "verified_facts": [
+    "100W",
     "200W",
     "400W",
-    "Discover the SOREIN Foldable Solar Panel Your ultimate solution for portable solar power, available in 200W and 400W options. Perfect for outdoor adventures, RVing, emergency preparedness, and off-grid living. ✨ High Efficiency (23%) ✨ Ultra Durable &amp; Flexible ✨ IP67 Waterproof ✨ Compact &amp; Portable ✨ Monocrystalline Cells Select your desired power output and experience the freedom of reliable, clean energy anywhere! /* Basic styling for the container */ .sorein-full-description { font-fa"
+    "1,000W",
+    "The Sorein Foldable Solar Panel pairs with any Sorein Modular Power System configuration for portable solar charging, available in 100W, 200W, and 400W versions. Built with A+ Grade Advanced Monocrystalline cells rated up to 24% efficiency. IP67 waterproof and dustproof with a durable ETFE coating, and a kickstand with adjustable angles of 35, 45, and 55 degrees. Feeds up to 1,000W of combined solar input into a Sorein Main Base setup. Ideal for outdoor adventures, RVing, emergency preparedness,"
   ],
   "core_benefits": [
     "adds off-grid charging support for compatible equipment",
@@ -46,5 +48,5 @@
     "Do not use power-device language for water, comfort, safety, or other non-power primary products."
   ],
   "source_image_url": "https://infenergypower.com/wp-content/uploads/2025/08/Hb47bafe5afad478583bf6578653b0c4b0-scaled.jpg",
-  "updated_at_utc": "2026-08-10T21:48:32.523676+00:00"
+  "updated_at_utc": "2026-08-11T20:52:17.369795+00:00"
 }

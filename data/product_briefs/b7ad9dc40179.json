@@ -5,8 +5,18 @@
   "product_type": "power_bank",
   "role": "portable charging backup",
   "product_summary": "PowerCharge Pro - Black is a portable charging backup that keeps compatible daily devices charged away from outlets.",
-  "categories": [],
-  "verified_facts": [],
+  "categories": [
+    "Emergency Power",
+    "Travel Power > Phone Power Banks",
+    "Travel Power"
+  ],
+  "verified_facts": [
+    "10,000mAh",
+    "15W",
+    "240V",
+    "20W",
+    "The PowerCharge Pro in matte black, a 5-in-1 charging hub combining a 10,000mAh power bank, wall charger, 15W wireless charger, and built-in Apple & Android cables with a fold-out stand. A 5-in-1 charging hub built around a 10,000mAh power bank, a fast wall charger, a 15W wireless charging pad, and built-in Lightning and USB-C cables with a fold-out phone stand. The integrated AC wall plug (100-240V) recharges the power bank directly from any outlet, and the USB-C port delivers PD 20W output, no"
+  ],
   "core_benefits": [
     "keeps compatible daily devices charged away from outlets",
     "adds compact charging continuity for travel and daily carry"
@@ -38,5 +48,5 @@
     "Do not use power-device language for water, comfort, safety, or other non-power primary products."
   ],
   "source_image_url": "https://infenergypower.com/wp-content/uploads/2024/02/IMG_0022.png",
-  "updated_at_utc": "2026-08-10T20:36:45.499420+00:00"
+  "updated_at_utc": "2026-08-11T20:52:19.326846+00:00"
 }

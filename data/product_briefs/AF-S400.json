@@ -5,8 +5,14 @@
   "product_type": "solar_panel",
   "role": "portable solar charging panel",
   "product_summary": "Aferiy Solar Panels - 400W is a portable solar charging panel that adds off-grid charging support for compatible equipment.",
-  "categories": [],
-  "verified_facts": [],
+  "categories": [
+    "Solar Generators",
+    "Solar Panels"
+  ],
+  "verified_facts": [
+    "400W",
+    "The 400W Aferiy Solar Panel, foldable, IP65 weatherproof, 23% efficient monocrystalline solar charging for faster off-grid recharging. Built with advanced monocrystalline silicon cells rated at 23% conversion efficiency, a multi-layered ETFE lamination, and an IP65 waterproof rating. The lightweight, one-piece foldable design includes a built-in adjustable kickstand, and USB-A, USB-C, and MC4 connectors let it charge devices directly or connect to virtually any solar generator. This 400W panel d"
+  ],
   "core_benefits": [
     "adds off-grid charging support for compatible equipment",
     "extends charging options when suitable sunlight is available"
@@ -38,5 +44,5 @@
     "Do not use power-device language for water, comfort, safety, or other non-power primary products."
   ],
   "source_image_url": "https://infenergypower.com/wp-content/uploads/2025/08/AF-S400A1-1.jpg",
-  "updated_at_utc": "2026-08-10T20:36:45.452387+00:00"
+  "updated_at_utc": "2026-08-11T20:52:19.674488+00:00"
 }

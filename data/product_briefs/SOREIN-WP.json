@@ -5,8 +5,16 @@
   "product_type": "power_system_bundle",
   "role": "configured modular power-system bundle",
   "product_summary": "Sorein Modular Power System - Weekender Pro is a configured modular power-system bundle that combines documented system components for a defined backup-power configuration.",
-  "categories": [],
-  "verified_facts": [],
+  "categories": [
+    "Home Backup"
+  ],
+  "verified_facts": [
+    "1 hour",
+    "1.8 hours",
+    "1,800W",
+    "1,000W",
+    "A compact, getaway-ready Sorein configuration built for weekend trips, tailgates, and short-duration backup. Engineered by Sorein Innovation Co., Limited, with a core team from Anker Innovations and TP-Link. Built on EV-grade LFP (Lithium Iron Phosphate) battery cells rated for 3,500+ charge and discharge cycles at 80% capacity retention. A true 0ms UPS switchover keeps sensitive electronics like computers, servers, and medical devices from flickering or rebooting during an outage. An advanced B"
+  ],
   "core_benefits": [
     "combines documented system components for a defined backup-power configuration",
     "simplifies selection when the included components fit the required loads"
@@ -38,5 +46,5 @@
     "Do not use power-device language for water, comfort, safety, or other non-power primary products."
   ],
   "source_image_url": "https://infenergypower.com/wp-content/uploads/2025/06/Photoroom_20250613_030000.png",
-  "updated_at_utc": "2026-08-10T20:36:45.606253+00:00"
+  "updated_at_utc": "2026-08-11T20:52:18.422892+00:00"
 }

@@ -5,8 +5,17 @@
   "product_type": "expansion_battery",
   "role": "modular power-system expansion battery",
   "product_summary": "Infenergy 9792 - \"Infenergy 9792 Unit + 2 - 9792Wh Expansion Battery\" is a modular power-system expansion battery that adds stored-energy capacity to a compatible modular system.",
-  "categories": [],
-  "verified_facts": [],
+  "categories": [
+    "Home Backup",
+    "Solar Generators"
+  ],
+  "verified_facts": [
+    "9,792Wh",
+    "29,376Wh",
+    "3,600W",
+    "7,200W",
+    "The Infenergy 9792 Unit plus two 9,792Wh expansion batteries, for the system's maximum 29,376Wh of capacity. Built on automotive-grade LiFePO4 battery cells rated for 6,000+ charge cycles. Delivers a continuous 3,600W pure sine wave output (7,200W surge) with a seamless sub-10ms EPS switchover during grid failures. Recharges 0-100% in under 3 hours via 3,600W AC input, or off-grid via up to 3,700W of dual-MPPT solar input. This configuration pairs the base unit with two 9,792Wh expansion batteri"
+  ],
   "core_benefits": [
     "adds stored-energy capacity to a compatible modular system",
     "extends supported runtime when paired with documented equipment"
@@ -37,5 +46,5 @@
     "Do not use power-device language for water, comfort, safety, or other non-power primary products."
   ],
   "source_image_url": "https://infenergypower.com/wp-content/uploads/2025/06/微信图片_20250610163219_109-scaled.png",
-  "updated_at_utc": "2026-08-10T20:36:45.476452+00:00"
+  "updated_at_utc": "2026-08-11T20:49:22.115368+00:00"
 }

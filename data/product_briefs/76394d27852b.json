@@ -5,8 +5,16 @@
   "product_type": "power_system_bundle",
   "role": "configured modular power-system bundle",
   "product_summary": "SolarMax Pro 5kW-10kW - SolarMax Pro w/3 240W Solar Panels is a configured modular power-system bundle that combines documented system components for a defined backup-power configuration.",
-  "categories": [],
-  "verified_facts": [],
+  "categories": [
+    "Home Backup",
+    "Outdoors & Camping",
+    "Portable Power",
+    "Solar Generators"
+  ],
+  "verified_facts": [
+    "240W",
+    "A single SolarMax Pro unit paired with three high-efficiency 240W solar panels for true energy independence. Built on the SolarMax Pro platform: a 5,000-watt solar generator that links with a second unit to double output to 10,000 watts, enough to power an entire home, RV, or off-grid setup. Ideal for emergency home backup, RV and van life, or professional job sites. This configuration pairs one 5,000-watt SolarMax Pro unit with three 240W solar panels, so you can recharge directly from the sun."
+  ],
   "core_benefits": [
     "combines documented system components for a defined backup-power configuration",
     "simplifies selection when the included components fit the required loads"
@@ -38,5 +46,5 @@
     "Do not use power-device language for water, comfort, safety, or other non-power primary products."
   ],
   "source_image_url": "https://infenergypower.com/wp-content/uploads/2024/08/H574d7c5391ff4f0d8d9a9f36d137d351W.avif",
-  "updated_at_utc": "2026-08-10T21:46:09.193295+00:00"
+  "updated_at_utc": "2026-08-11T20:49:22.598376+00:00"
 }

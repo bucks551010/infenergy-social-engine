@@ -5,8 +5,17 @@
   "product_type": "power_station",
   "role": "backup power station",
   "product_summary": "Infenergy 9792 - \"Infenergy 9792 Unit\" is a backup power station that supports priority devices during outages and off-grid use.",
-  "categories": [],
-  "verified_facts": [],
+  "categories": [
+    "Home Backup",
+    "Solar Generators"
+  ],
+  "verified_facts": [
+    "9,792Wh",
+    "3,600W",
+    "7,200W",
+    "3 hours",
+    "The Infenergy 9792 Unit, a 9,792Wh LiFePO4 home power hub with 3,600W continuous output, expandable with additional battery modules. Built on automotive-grade LiFePO4 battery cells rated for 6,000+ charge cycles. Delivers a continuous 3,600W pure sine wave output (7,200W surge) with a seamless sub-10ms EPS switchover during grid failures. Recharges 0-100% in under 3 hours via 3,600W AC input, or off-grid via up to 3,700W of dual-MPPT solar input. This configuration is the standalone base unit wi"
+  ],
   "core_benefits": [
     "supports priority devices during outages and off-grid use",
     "combines portable stored energy with published output options"
@@ -38,5 +47,5 @@
     "Do not use power-device language for water, comfort, safety, or other non-power primary products."
   ],
   "source_image_url": "https://infenergypower.com/wp-content/uploads/2025/06/a0fc14752770c414bd090fa2f986454-1-scaled.png",
-  "updated_at_utc": "2026-08-10T20:36:45.479478+00:00"
+  "updated_at_utc": "2026-08-11T20:52:16.806109+00:00"
 }

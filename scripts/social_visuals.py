@@ -480,6 +480,15 @@ def _gemini_semantic_plate_quality(
     return True, ["semantic_review_unavailable"]
 
 
+_CONSUMER_STAGE_LABELS = {
+    "ATTENTION": "Featured",
+    "EDUCATION": "New Arrival",
+    "DESIRE": "Popular Choice",
+    "TRUST": "Verified Fit",
+    "CONVERSION": "Ready to Ship",
+}
+
+
 def _build_gemini_image_prompt(content: dict[str, Any], platform: str, visual_plan: dict[str, Any]) -> str:
     spec = _platform_visual_spec(platform)
     platform_cfg = _safe_json_dict((visual_plan.get("platform_overrides") or {}).get(platform))
@@ -489,7 +498,8 @@ def _build_gemini_image_prompt(content: dict[str, Any], platform: str, visual_pl
     key_hook = normalize_brand_text(str(content.get("selected_hook") or content.get("topic") or "Power planning"))
     topic = normalize_brand_text(str(content.get("topic") or ""))
     product_name = normalize_brand_text(str(content.get("product_name") or ""))
-    stage = normalize_brand_text(str(content.get("funnel_stage") or "ATTENTION"))
+    stage = normalize_brand_text(str(content.get("funnel_stage") or "ATTENTION")).strip().upper()
+    stage_label = _CONSUMER_STAGE_LABELS.get(stage, "Featured")
     cta = normalize_brand_text(str(content.get("selected_cta") or "Map your must-run devices and build your outage-ready setup."))
     headline_text, subline_text = _headline_lockup(content)
     banner_text = _proof_banner_text(content)
@@ -499,10 +509,10 @@ def _build_gemini_image_prompt(content: dict[str, Any], platform: str, visual_pl
     exact_copy_lines = [
         "Render exactly this on-image copy, spelled exactly as given, and nothing else. Do not invent, "
         "alter, translate, or add any other text, numbers, specs, badges, or claims:",
-        "- Brand wordmark (top-left): \"Infenergy Power\"",
-        f"- Funnel-stage tag pill (beneath the wordmark): \"{stage}\"",
-        f"- Headline (large, bold, top of the copy column): \"{headline_text}\"",
-        f"- Subheading (directly below the headline): \"{subline_text}\"",
+        "- Brand wordmark (top-left, small and understated): \"Infenergy Power\"",
+        f"- Small consumer-facing status tag pill (beneath the wordmark, never show internal marketing-funnel jargon): \"{stage_label}\"",
+        f"- Headline (the single largest, boldest element on the entire canvas, filling most of the copy column's width): \"{headline_text}\"",
+        f"- Subheading (directly below the headline, one line, do not wrap): \"{subline_text}\"",
         f"- Proof/urgency banner pill: \"{banner_text}\"",
     ]
     for i, row in enumerate(spec_rows, start=1):
@@ -548,21 +558,33 @@ def _build_gemini_image_prompt(content: dict[str, Any], platform: str, visual_pl
         "natural depth haze, and controlled highlights. Keep materials physically believable. "
     )
     product_stage_direction = (
-        f"Stage the real product in the {spec['product_zone']}. If a reference product photo is attached as an input image, "
-        "depict that exact real product accurately, matching its true shape, color, proportions, and details from the "
-        "attached photo — do not invent a different or generic device. If no reference photo is attached, render a "
-        "plausible, physically credible portable power station consistent with the product context below. "
+        f"Stage the real product physically and to true scale in the {spec['product_zone']}, integrated into the scene as a real "
+        "object someone could touch — never as a floating listing card, phone screenshot, marketplace thumbnail, or boxed-in UI panel. "
+        "If a reference product photo is attached as an input image, reproduce that exact real product's true shape, proportions, "
+        "color, ports, and physical details from the attached photo — do not invent a different or generic device. However, you "
+        "must strip and replace any third-party manufacturer logo, competitor brand name, model badge, or printed text visible on "
+        "the reference photo's product surface with a clean, unbranded matte surface (or, if a small logo is unavoidable, the "
+        "Infenergy Power wordmark only) — the published creative must never display any competitor or OEM brand name. If no "
+        "reference photo is attached, render a plausible, physically credible device consistent with the product context below, "
+        "with clean unbranded surfaces. "
     )
     layout_direction = (
-        f"Compose a finished, ready-to-publish premium social ad card for the {spec['copy_zone']}, not a background plate. "
-        "Structure the copy column top-to-bottom exactly as listed above: brand wordmark, stage pill, headline, subheading, "
+        f"Compose a finished, ready-to-publish premium social ad card that uses 100% of the canvas — every corner and edge must "
+        "carry deliberate visual weight, with zero flat, empty, or unfinished-looking space anywhere in the frame, for the "
+        f"{spec['copy_zone']}. This is a complete creative, not a background plate. "
+        "Structure the copy column top-to-bottom exactly as listed above: brand wordmark, status tag pill, headline, subheading, "
         "proof banner pill, a vertical stack of bordered spec badge rows each with a small chevron mark, a horizontal row of "
-        "small trust badge pills, and a wide call-to-action banner. Give every text element strong contrast, generous padding, "
-        "and crisp, legible, correctly kerned typography — no overlapping or clipped letters."
+        "small trust badge pills (only if any are listed above), and a wide call-to-action banner. The headline must dominate the "
+        "copy column as the single largest, heaviest-weight typographic element on the entire canvas — noticeably larger than "
+        "every other text element, filling nearly the full available width. Give every text element strong contrast, generous "
+        "padding, and crisp, legible, correctly kerned typography — no overlapping or clipped letters. Add one continuous visual "
+        "connector (a light shaft, reflection line, or material accent) that bridges the copy column and the product zone so the "
+        "whole canvas reads as a single unified image rather than two separate halves. "
     )
     atmosphere_direction = (
         "Build atmosphere with one coherent cinematic light direction, premium material textures, layered shadows, restrained "
-        "reflections, and natural depth haze around the copy column and product stage. "
+        "reflections, and rich in-focus environmental detail filling the product zone completely — the background scene behind "
+        "and around the product must feel alive and specific to the setting described below, never generic, plain, or blank. "
     )
     campaign_direction = (
         "This should feel like a premium, top-tier performance-campaign creative: visually confident, physically credible, "
@@ -570,8 +592,10 @@ def _build_gemini_image_prompt(content: dict[str, Any], platform: str, visual_pl
     )
     negative_direction = (
         "Do not make it look like a cheap flyer, Canva template, ecommerce tile, generic infographic, cartoon, or synthetic "
-        "AI poster. Avoid misspellings, garbled or duplicated letters, invented specs, extra claims, random decoration, "
-        "muddy contrast, excessive glow, impossible reflections, or visual clutter. "
+        "AI poster. Do not render the product inside a phone mockup, marketplace listing card, floating UI panel, price tag, or "
+        "screenshot-style frame. Do not show any competitor or third-party manufacturer logo, brand name, or model number on the "
+        "product or anywhere in the frame. Avoid misspellings, garbled or duplicated letters, invented specs, extra claims, "
+        "random decoration, muddy contrast, excessive glow, impossible reflections, or visual clutter. "
     )
     return (
         "Create a finished, ready-to-publish premium social ad creative for Infenergy Power — the complete image, "

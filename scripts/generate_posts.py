@@ -2785,6 +2785,12 @@ LOGICAL_EMOTIONAL_PRINCIPLES = {
         "visual_concept": "Show the vulnerable moment that exposes the absence of a workable plan.",
         "caption_strategy": "Start with the desired result, then show why waiting until that result is impossible reveals the missing preparation.",
         "on_image_headline": "DON'T WAIT FOR FAILURE",
+        "headline_variants": [
+            "DON'T WAIT FOR FAILURE",
+            "THE MOMENT IT MATTERS",
+            "WHAT SILENCE COSTS YOU",
+            "NO PLAN IS A PLAN TO FAIL",
+        ],
     },
     "disjunctive_syllogism": {
         "name": "Law of Disjunctive Syllogism",
@@ -2792,6 +2798,12 @@ LOGICAL_EMOTIONAL_PRINCIPLES = {
         "visual_concept": "Contrast the cluttered, reactive method with a measured and prepared method.",
         "caption_strategy": "Present two paths, disqualify the wasteful or unreliable path with evidence, then make the product-fit path the rational conclusion.",
         "on_image_headline": "REACTIVE OR READY?",
+        "headline_variants": [
+            "REACTIVE OR READY?",
+            "GUESSWORK OR GEAR THAT WORKS",
+            "HOPE IS NOT A STRATEGY",
+            "PICK YOUR SIDE OF THE OUTAGE",
+        ],
     },
     "double_implication": {
         "name": "Law of Double Implication",
@@ -2799,6 +2811,12 @@ LOGICAL_EMOTIONAL_PRINCIPLES = {
         "visual_concept": "Present a high-status new-standard scene where practical preparation and control visibly belong together.",
         "caption_strategy": "Define real preparedness through verified capability and fit, without claiming one product is the only possible solution.",
         "on_image_headline": "THE NEW READY STANDARD",
+        "headline_variants": [
+            "THE NEW READY STANDARD",
+            "WHAT 24 HOURS NEEDS",
+            "BUILT FOR WHEN IT MATTERS",
+            "ZERO COMPROMISE POWER",
+        ],
     },
     "symmetrical_equivalence": {
         "name": "Principle of Symmetrical Equivalence",
@@ -2806,6 +2824,12 @@ LOGICAL_EMOTIONAL_PRINCIPLES = {
         "visual_concept": "Show that the setting can change while the emotional result of control stays consistent.",
         "caption_strategy": "Move across credible use settings and hold the same proof-backed outcome constant.",
         "on_image_headline": "CONTROL TRAVELS WITH YOU",
+        "headline_variants": [
+            "CONTROL TRAVELS WITH YOU",
+            "YOUR GRID, YOUR RULES",
+            "POWER THAT EARNS TRUST",
+            "SAME CONFIDENCE, ANY SETTING",
+        ],
     },
     "implication_of_result": {
         "name": "Principle of Implication of the Result",
@@ -2813,6 +2837,12 @@ LOGICAL_EMOTIONAL_PRINCIPLES = {
         "visual_concept": "Show the successful human result, then trace it back to the verified features and preparation that enabled it.",
         "caption_strategy": "Lead with the save-the-day result and explain which real product facts made that outcome plausible.",
         "on_image_headline": "READY BEFORE IT MATTERS",
+        "headline_variants": [
+            "READY BEFORE IT MATTERS",
+            "THE RESULT SPEAKS FIRST",
+            "EARNED, NOT LUCKY",
+            "PROOF BEFORE PROMISES",
+        ],
     },
 }
 
@@ -2822,18 +2852,82 @@ AUDIENCE_ARCHETYPES = {
         "name": "The Mobile Professional / Digital Nomad",
         "emotion": "calm productivity and control away from a fixed outlet",
         "environment": "urban travel, a clean shared workspace, or a compact everyday-carry setup",
+        "environments": [
+            "a modern co-working lounge at dusk, floor-to-ceiling windows showing a city skyline, warm task lighting on a shared desk",
+            "an airport lounge corner, soft ambient light, a window overlooking the tarmac at golden hour",
+            "a boutique hotel work nook, warm brass lamp light, a laptop and notebook on a marble side table",
+            "a rooftop coffee bar at sunrise, city rooftops in soft focus, a small bistro table catching first light",
+            "a train carriage window seat at dusk, blurred city lights streaking past, warm interior cabin glow",
+        ],
     },
     "preparedness_buyer": {
         "name": "The Preparedness / Contingency Buyer",
         "emotion": "relief and family confidence before a disruption",
         "environment": "a credible home outage, storm-readiness, vehicle-kit, or contingency setting",
+        "environments": [
+            "a living room at night during a storm, rain streaking the window, a single warm lamp glowing against the dark",
+            "a garage workshop with a single overhead work light, tools and a workbench softly visible in the background",
+            "a kitchen counter at dusk during a blackout, candle and phone glow mixing with fading window light",
+            "a family entryway with storm gear staged by the door, moody blue exterior light through the glass",
+            "a suburban driveway at twilight with a vehicle trunk open, warm dome light spilling onto the pavement",
+        ],
     },
     "outdoor_adventurer": {
         "name": "The Outdoor / Adventure Enthusiast",
         "emotion": "off-grid freedom without losing practical control",
         "environment": "a realistic campsite, trailhead, RV stop, or rugged travel setting",
+        "environments": [
+            "an alpine campsite at golden hour, a tent glowing warmly, pine silhouettes against a fading sky",
+            "a forest clearing at dawn with soft mist through the trees and a low campfire ember glow",
+            "a desert campsite at dusk with the first stars appearing and warm firelight on nearby rocks",
+            "a lakeside dock at sunset, still water reflecting the sky, a canoe pulled up on the shore",
+            "an RV pull-off at a scenic overlook, warm string lights strung along the awning at twilight",
+        ],
+    },
+    "water_purity_seeker": {
+        "name": "The Trail & Hydration Purist",
+        "emotion": "clear-headed trust in the water they carry",
+        "environment": "a mountain stream, alpine lake shore, or backcountry trail water source",
+        "environments": [
+            "a clear mountain stream flowing over smooth stones, forest framing soft-focus in the background",
+            "an alpine lake shoreline at midday, snow-capped peaks reflected in still water",
+            "a backcountry trail creek crossing, dappled sunlight through the canopy above",
+            "a mossy waterfall base with fine mist catching the light, ferns framing the scene",
+        ],
     },
 }
+
+
+def _stable_pick(seed_text: str, options: list) -> Any:
+    """Deterministic rotation: same product+stage always yields the same pick, different ones vary."""
+    if not options:
+        return None
+    digest = hashlib.sha256(str(seed_text or "").encode("utf-8")).hexdigest()
+    index = int(digest[:8], 16) % len(options)
+    return options[index]
+
+
+def _resolve_proof_anchor(product: dict | None) -> str:
+    """Real spec first; never fall back to a literal placeholder phrase."""
+    metrics = [str(item).strip() for item in ((product or {}).get("metrics", []) or []) if str(item).strip()]
+    if metrics:
+        return metrics[0]
+    fact_snippet = re.sub(r"\s+", " ", str((product or {}).get("fact_snippet") or "")).strip()
+    if fact_snippet:
+        return fact_snippet[:48].rstrip()
+    configuration = re.sub(r"\s+", " ", str((product or {}).get("configuration") or "")).strip()
+    if configuration:
+        return configuration
+    sale_price = str((product or {}).get("sale_price") or "").strip()
+    if sale_price:
+        return f"${sale_price}"
+    price = str((product or {}).get("price") or "").strip()
+    if price:
+        return f"${price}"
+    sku = str((product or {}).get("sku") or "").strip()
+    if sku:
+        return sku
+    return ""
 
 
 def _select_logical_emotional_strategy(product: dict | None, audience_segment: str, funnel_stage: str) -> dict:
@@ -2853,7 +2947,9 @@ def _select_logical_emotional_strategy(product: dict | None, audience_segment: s
             str(audience_segment or ""),
         ]
     ).lower()
-    if any(token in product_text for token in ("camp", "outdoor", "rv", "trail", "hiking", "adventure")):
+    if any(token in product_text for token in ("water filter", "water purifier", "purification", "filtration", "filter straw", "hydration", "drinking water")):
+        archetype_key = "water_purity_seeker"
+    elif any(token in product_text for token in ("camp", "outdoor", "rv", "trail", "hiking", "adventure")):
         archetype_key = "outdoor_adventurer"
     elif any(token in product_text for token in ("professional", "digital nomad", "office", "business", "commuter", "airport", "power bank", "charger")):
         archetype_key = "mobile_professional"
@@ -2862,31 +2958,37 @@ def _select_logical_emotional_strategy(product: dict | None, audience_segment: s
 
     principle = LOGICAL_EMOTIONAL_PRINCIPLES[principle_key]
     archetype = AUDIENCE_ARCHETYPES[archetype_key]
-    metrics = [str(item).strip() for item in ((product or {}).get("metrics", []) or []) if str(item).strip()]
+    product_id = str((product or {}).get("id") or (product or {}).get("sku") or (product or {}).get("name") or "generic").strip()
+    variety_seed = f"{product_id}|{principle_key}|{archetype_key}"
     product_name = str((product or {}).get("name") or "the selected Infenergy product").strip()
-    proof_anchor = metrics[0] if metrics else "its published product details"
+    proof_anchor = _resolve_proof_anchor(product)
+    proof_clause = f"and {proof_anchor} " if proof_anchor else ""
+    anchor_clause = f": {proof_anchor} " if proof_anchor else " "
     logic_copy = {
         "contrapositive": (
             "If staying powered matters, waiting until power is gone is not a plan.",
-            f"The missing preparation becomes obvious at the exact moment {product_name} and {proof_anchor} would have mattered.",
+            f"The missing preparation becomes obvious at the exact moment {product_name} {proof_clause}would have mattered.",
         ),
         "disjunctive_syllogism": (
             "Keep reacting at the last minute, or build around verified fit.",
-            f"Once guesswork is ruled out, {product_name} can be judged by what matters: {proof_anchor} and the job you need it to do.",
+            f"Once guesswork is ruled out, {product_name} can be judged by what matters{anchor_clause}and the job you need it to do.",
         ),
         "double_implication": (
             "Preparedness is a standard, not a shopping mood.",
-            f"Real readiness connects {product_name} and {proof_anchor} to a defined use case instead of an unsupported promise.",
+            f"Real readiness connects {product_name} {proof_clause}to a defined use case instead of an unsupported promise.",
         ),
         "symmetrical_equivalence": (
             "The setting changes. The need for control does not.",
-            f"At home, in transit, or off-grid, evaluate {product_name} through the same anchor: {proof_anchor} matched to the real task.",
+            f"At home, in transit, or off-grid, evaluate {product_name} through the same anchor{anchor_clause}matched to the real task.",
         ),
         "implication_of_result": (
             "The save-the-day moment starts before the crisis.",
-            f"That successful result traces back to choosing {product_name} for the right job and verifying details such as {proof_anchor} first.",
+            f"That successful result traces back to choosing {product_name} for the right job{(' and verifying details such as ' + proof_anchor) if proof_anchor else ''} first.",
         ),
     }[principle_key]
+    headline = _stable_pick(variety_seed, principle.get("headline_variants") or [principle["on_image_headline"]]) or principle["on_image_headline"]
+    environment = _stable_pick(variety_seed, archetype.get("environments") or [archetype["environment"]]) or archetype["environment"]
+    subline = f"{product_name} | {proof_anchor}" if proof_anchor else product_name
     return {
         "principle_key": principle_key,
         "principle_name": principle["name"],
@@ -2896,23 +2998,54 @@ def _select_logical_emotional_strategy(product: dict | None, audience_segment: s
         "archetype_key": archetype_key,
         "audience_archetype": archetype["name"],
         "emotional_outcome": archetype["emotion"],
-        "environment": archetype["environment"],
+        "environment": environment,
+        "variety_seed": variety_seed,
         "logic_hook": logic_copy[0],
         "logic_bridge": logic_copy[1],
-        "on_image_headline": principle["on_image_headline"],
-        "on_image_subline": f"{product_name} | {proof_anchor}",
+        "on_image_headline": headline,
+        "on_image_subline": subline,
     }
+
+
+LIGHTING_SCHEMES = [
+    "warm golden-hour rim light from one side with a soft cool fill from the other, long soft shadows",
+    "a single dramatic practical light source such as a lamp, headlamp, or dashboard glow cutting through near-darkness",
+    "diffused overcast daylight with gentle even shadows and true-to-life color",
+    "cinematic blue-hour ambient light mixed with one warm practical source, moody but legible",
+    "crisp golden morning sidelight with long shadows and clean highlight separation",
+    "soft window or canopy light with visible atmosphere in the air, quiet and intimate",
+]
+
+CANVAS_ENERGY_NOTES = [
+    "let one continuous diagonal light shaft or reflection connect the copy zone to the product zone so the whole frame reads as one image, not two halves",
+    "use a soft environmental gradient of haze, smoke, or bokeh drifting from the product zone toward the copy zone so no area of the canvas feels empty or unfinished",
+    "carry one repeating material or color accent from the background into the foreground so every zone of the frame feels connected",
+    "let soft depth-of-field foreground elements gently enter the extreme edges of the frame so the composition never feels like a flat cutout",
+]
+
+CATEGORY_TEXTURES = {
+    "preparedness_buyer": "brushed metal, matte charcoal surfaces, warm amber practical light, soft reflections, natural depth haze",
+    "mobile_professional": "brushed aluminum, warm walnut wood, soft leather textures, clean glass reflections, ambient city bokeh",
+    "outdoor_adventurer": "weathered wood, canvas and rope textures, granite and pine textures, campfire-lit particulate haze",
+    "water_purity_seeker": "wet stone, moss, clear flowing water with natural light caustics, cool mineral tones, fine water mist",
+}
 
 
 def _build_ai_image_prompt_bank(strategy: dict, product: dict | None) -> dict[str, str]:
     product_name = str((product or {}).get("name") or "the selected product").strip()
     concept = str(strategy.get("visual_concept", "")).strip()
     environment = str(strategy.get("environment", "")).strip()
+    archetype_key = str(strategy.get("archetype_key") or "preparedness_buyer").strip()
+    variety_seed = str(strategy.get("variety_seed") or f"{product_name}|{archetype_key}").strip()
+    lighting = _stable_pick(variety_seed + "|lighting", LIGHTING_SCHEMES)
+    canvas_note = _stable_pick(variety_seed + "|canvas", CANVAS_ENERGY_NOTES)
+    texture = CATEGORY_TEXTURES.get(archetype_key, CATEGORY_TEXTURES["preparedness_buyer"])
     shared = (
         f"Create a photorealistic commercial background scene plate informed by this concept: {concept} "
         f"Audience environment: {environment}. The real {product_name} product cutout will be added later. "
         "Do not render any product, device, package, placeholder, text, letters, numerals, logos, labels, signs, screens, UI, badges, buttons, charts, or watermarks. "
-        "Use physically believable materials, one coherent light direction, natural human emotion where appropriate, and restrained charcoal, deep navy, amber, and warm-gold color accents. "
+        f"Use physically believable materials such as {texture}, one coherent light direction ({lighting}), and natural human emotion where appropriate. "
+        f"Fill the entire frame with rich, in-focus environmental detail — no flat, empty, or dead space anywhere in the canvas; {canvas_note}. "
     )
     return {
         "lifestyle_aesthetic": shared + "Instagram/Pinterest direction: refined lifestyle editorial photography, 1:1 square, mobile-first focal depth, calm low-detail left 42%, grounded open right 38%, clear bottom 16%.",

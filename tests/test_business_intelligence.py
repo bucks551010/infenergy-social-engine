@@ -593,3 +593,69 @@ def test_missing_source_does_not_crash(bi_env):
     # Identity may be empty but should still be a BusinessProfile
     assert hasattr(p, "identity")
     assert hasattr(p, "audience_segments")
+
+
+# =====================================================================
+# Downstream wiring: Social Intelligence orchestrator hydration
+# =====================================================================
+
+
+def test_orchestrator_ignores_bi_when_flag_off(bi_env, monkeypatch):
+    _seed_all(bi_env)
+    monkeypatch.delenv("ENABLE_BUSINESS_INTELLIGENCE", raising=False)
+    from social import orchestrator as orch
+    ctx = orch._load_bi_creative_context()
+    assert ctx is None
+
+
+def test_orchestrator_hydrates_from_bi_when_flag_on(bi_env, monkeypatch):
+    _seed_all(bi_env)
+    from business_intelligence import api
+    api.rebuild_profile()
+    monkeypatch.setenv("ENABLE_BUSINESS_INTELLIGENCE", "1")
+
+    # Reload orchestrator so its module-level _bi_enabled sees the flag
+    for name in list(sys.modules):
+        if name.startswith("social."):
+            del sys.modules[name]
+
+    from social import orchestrator as orch
+    ctx = orch._load_bi_creative_context()
+    assert ctx is not None
+    assert orch._bi_preferred_pillar(ctx) in ("preparedness", "portable_power")
+    assert orch._bi_audience_hint(ctx) == "preparedness_focused_household"
+
+
+def test_post_package_carries_business_context_field(bi_env):
+    from social.orchestrator import PostPackage
+    pkg = PostPackage(
+        post_id="x", engine="B", brief={}, copy={}, visual={},
+        carousel=None, claim_ledger={}, quality={}, creative_director={},
+        text_visual_allocation={}, provider_result={},
+    )
+    # Default is None, must round-trip via as_dict()
+    assert pkg.business_context is None
+    assert "business_context" in pkg.as_dict()
+
+
+def test_cli_status_command(bi_env, monkeypatch, capsys):
+    _seed_all(bi_env)
+    from business_intelligence import api, __main__ as cli
+    api.rebuild_profile()
+    rc = cli.main(["status"])
+    captured = capsys.readouterr()
+    assert rc == 0
+    payload = json.loads(captured.out)
+    assert payload["identity"]["business_name"]
+    assert payload["offerings"] >= 1
+
+
+def test_cli_rebuild_command(bi_env, capsys):
+    _seed_all(bi_env)
+    from business_intelligence import __main__ as cli
+    rc = cli.main(["rebuild", "--reset-evidence"])
+    captured = capsys.readouterr()
+    assert rc == 0
+    payload = json.loads(captured.out)
+    assert payload["offerings"] == 2
+    assert payload["verdict"]["passed"] is True

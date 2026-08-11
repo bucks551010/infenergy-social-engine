@@ -20,6 +20,7 @@ and image generators are plugged in via the ``VisualProvider`` and
 
 from __future__ import annotations
 
+import os
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -36,6 +37,51 @@ from . import (
     visual_intelligence,
     visual_provider,
 )
+
+
+# Optional Business Intelligence Foundation hookup. Gated on the
+# ENABLE_BUSINESS_INTELLIGENCE env flag so all existing behavior is
+# preserved when the foundation is not enabled.
+def _bi_enabled() -> bool:
+    return os.environ.get("ENABLE_BUSINESS_INTELLIGENCE", "").lower() in {"1", "true", "yes", "on"}
+
+
+def _load_bi_creative_context() -> dict[str, Any] | None:
+    if not _bi_enabled():
+        return None
+    try:
+        from business_intelligence import api as bi_api
+    except ImportError:
+        return None
+    try:
+        return bi_api.compile_creative_context()
+    except Exception:
+        return None
+
+
+def _bi_preferred_pillar(ctx: dict[str, Any] | None) -> str | None:
+    if not ctx:
+        return None
+    territories = ctx.get("content_territories") or []
+    ranked = sorted(
+        territories,
+        key=lambda t: (t.get("brand_relevance", 0.0) + t.get("audience_relevance", 0.0)),
+        reverse=True,
+    )
+    return ranked[0]["territory_id"] if ranked else None
+
+
+def _bi_audience_hint(ctx: dict[str, Any] | None) -> str | None:
+    if not ctx:
+        return None
+    seg = ctx.get("audience_segment") or {}
+    return seg.get("segment_id") or None
+
+
+def _bi_verified_facts(ctx: dict[str, Any] | None) -> list[str]:
+    if not ctx:
+        return []
+    return list(ctx.get("verified_facts", []))
 
 
 # --- Engine rotation --------------------------------------------------------
@@ -111,6 +157,7 @@ class PostPackage:
     provider_result: dict[str, Any]
     published: bool = False
     published_at: str | None = None
+    business_context: dict[str, Any] | None = None
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -127,6 +174,7 @@ class PostPackage:
             "provider_result": self.provider_result,
             "published": self.published,
             "published_at": self.published_at,
+            "business_context": self.business_context,
         }
 
 
@@ -160,6 +208,17 @@ class SocialIntelligenceOrchestrator:
     ) -> PostPackage:
         # 0. Recent state → recency-aware decisions
         recent = memory_intelligence.recent(self.data_dir, limit=20)
+
+        # 0b. Optional BI Foundation hydration — only when the caller
+        # didn't already specify a value and the flag is on.
+        bi_ctx = _load_bi_creative_context()
+        if bi_ctx:
+            if not preferred_pillar:
+                preferred_pillar = _bi_preferred_pillar(bi_ctx)
+            if not audience_hint:
+                audience_hint = _bi_audience_hint(bi_ctx)
+            if not verified_facts:
+                verified_facts = _bi_verified_facts(bi_ctx)
 
         # 1. Engine
         engine_name = (preferred_engine or _pick_engine(rotation_index)).upper()
@@ -339,6 +398,7 @@ class SocialIntelligenceOrchestrator:
                 "relationship": alloc.relationship,
             },
             provider_result=provider_result.as_dict(),
+            business_context=bi_ctx,
         )
 
         # 10. Memory

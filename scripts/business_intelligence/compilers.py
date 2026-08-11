@@ -78,6 +78,12 @@ def compile_creative_context(*, territory_id: str = "", segment_id: str = "") ->
     territories = p.get("content_territories", [])
     territory = next((t for t in territories if t.get("territory_id") == territory_id), None) if territory_id else None
     seg = _pick_segment(p, segment_id)
+    all_offerings = p.get("offerings", [])
+    verified_facts: list[str] = []
+    forbidden_claims: list[str] = []
+    for o in all_offerings:
+        verified_facts.extend(o.get("verified_facts", []) or [])
+        forbidden_claims.extend(o.get("forbidden_claims", []) or [])
     payload = {
         "business_identity": p.get("identity", {}),
         "why": p.get("why", {}),
@@ -93,6 +99,8 @@ def compile_creative_context(*, territory_id: str = "", segment_id: str = "") ->
         "audience_segment": seg,
         "customer_moments": p.get("customer_moments", []),
         "transformations": p.get("transformations", []),
+        "verified_facts": sorted(set(verified_facts)),
+        "forbidden_claims": sorted(set(forbidden_claims)),
         "brand_prohibitions": {
             "voice": p.get("voice", {}).get("prohibited_phrases", []),
             "visual": p.get("visual", {}).get("prohibited_visual_patterns", []),

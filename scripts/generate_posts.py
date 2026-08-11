@@ -1145,6 +1145,17 @@ def _build_brand_profile_seed(marketing_strategy: dict, manifesto: dict) -> dict
     return seed
 
 
+def _products_csv_fingerprint() -> str:
+    products_dir = os.path.join(BASE_DATA_DIR, "products")
+    csv_paths = sorted(glob.glob(os.path.join(products_dir, "*.csv")))
+    digest = hashlib.sha256()
+    for csv_path in csv_paths:
+        digest.update(csv_path.encode("utf-8"))
+        with open(csv_path, "rb") as f:
+            digest.update(f.read())
+    return digest.hexdigest()
+
+
 def sync_inventory_database(force: bool = False) -> dict:
     inventory_db.init_inventory_db(DATA_DIR)
     before_count = inventory_db.products_count(DATA_DIR)
@@ -1152,11 +1163,19 @@ def sync_inventory_database(force: bool = False) -> dict:
     brand_seeded = False
     ideology_seeded = False
 
-    should_seed_products = force or before_count == 0 or bool(_discover_local_product_image_files())
+    current_fingerprint = _products_csv_fingerprint()
+    stored_fingerprint = inventory_db.get_products_source_fingerprint(DATA_DIR)
+    csv_changed = bool(current_fingerprint) and current_fingerprint != stored_fingerprint
+
+    should_seed_products = (
+        force or before_count == 0 or csv_changed or bool(_discover_local_product_image_files())
+    )
     if should_seed_products:
         csv_products = _load_products_from_csv()
         if csv_products:
             products_seeded = inventory_db.upsert_products(DATA_DIR, csv_products, source="wc_csv")
+        if current_fingerprint:
+            inventory_db.set_products_source_fingerprint(DATA_DIR, current_fingerprint)
 
     if force or not inventory_db.has_brand_profile(DATA_DIR):
         strategy = _load_latest_marketing_strategy()
@@ -1174,6 +1193,7 @@ def sync_inventory_database(force: bool = False) -> dict:
         "products_before": before_count,
         "products_seeded": products_seeded,
         "products_after": after_count,
+        "products_csv_changed": csv_changed,
         "brand_seeded": brand_seeded,
         "ideology_seeded": ideology_seeded,
         "brand_profile_present": inventory_db.has_brand_profile(DATA_DIR),

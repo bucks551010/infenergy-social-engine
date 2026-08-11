@@ -133,10 +133,44 @@ def init_inventory_db(data_dir: str) -> str:
                 visual_product_image_override_url TEXT,
                 updated_at_utc TEXT NOT NULL
             );
+
+            CREATE TABLE IF NOT EXISTS product_sync_state (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                source_fingerprint TEXT,
+                updated_at_utc TEXT NOT NULL
+            );
             """
         )
         conn.commit()
         return get_db_path(data_dir)
+    finally:
+        conn.close()
+
+
+def get_products_source_fingerprint(data_dir: str) -> str:
+    conn = _connect(data_dir)
+    try:
+        row = conn.execute("SELECT source_fingerprint FROM product_sync_state WHERE id = 1").fetchone()
+        return str(row["source_fingerprint"] or "").strip() if row else ""
+    finally:
+        conn.close()
+
+
+def set_products_source_fingerprint(data_dir: str, fingerprint: str) -> bool:
+    conn = _connect(data_dir)
+    try:
+        conn.execute(
+            """
+            INSERT INTO product_sync_state (id, source_fingerprint, updated_at_utc)
+            VALUES (1, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                source_fingerprint = excluded.source_fingerprint,
+                updated_at_utc = excluded.updated_at_utc
+            """,
+            (str(fingerprint or "").strip(), _utc_now()),
+        )
+        conn.commit()
+        return True
     finally:
         conn.close()
 

@@ -3643,6 +3643,22 @@ def _join_paragraphs(*parts: str) -> str:
     return "\n\n".join(str(p).strip() for p in parts if str(p or "").strip())
 
 
+def _build_scenario_fingerprint(talking_point: dict | None, components: dict) -> str:
+    """Text used for anti-repeat scenario-duplicate detection.
+
+    Must reflect the actually-varying creative decision (talking_point angle/pain_point,
+    diversified by ideation divergence / the conversion strategist brief) rather than
+    components["situation"], which is a static per-product-category template (only a
+    handful of fixed strings across the whole catalog) that would otherwise guarantee a
+    "duplicate scenario" false positive for any two posts sharing a product category.
+    """
+    talking_point = talking_point or {}
+    return _join_paragraphs(
+        str(talking_point.get("angle", "") or ""),
+        str(talking_point.get("pain_point", "") or ""),
+    ) or components.get("situation", "")
+
+
 def _build_fallback_content(
     slot: str,
     topic: str,
@@ -5629,7 +5645,9 @@ Return ONLY valid JSON with these exact keys (no markdown, no code fences):
         content = normalize_brand_content(content)
         content["post_id"] = post_id
         content["platform_posts"] = platform_posts
-        content["scenario"] = components.get("situation", "")
+        # See note above: category-template "situation" text is near-static per product
+        # category and would guarantee false-positive scenario-duplicate blocks.
+        content["scenario"] = _build_scenario_fingerprint(talking_point, components)
         content["educational_lesson"] = components.get("info", "")
         content["fb_caption"] = platform_posts["facebook"]["caption"]
         content["ig_caption"] = platform_posts["instagram"]["caption"]
@@ -5916,7 +5934,9 @@ Return ONLY valid JSON with these exact keys (no markdown, no code fences):
     content = normalize_brand_content(content)
     content["post_id"] = post_id
     content["platform_posts"] = platform_posts
-    content["scenario"] = components.get("situation", "")
+    # See note above: category-template "situation" text is near-static per product
+    # category and would guarantee false-positive scenario-duplicate blocks.
+    content["scenario"] = _build_scenario_fingerprint(talking_point, components)
     content["educational_lesson"] = components.get("info", "")
     # Preserve publisher compatibility with existing flat keys.
     content["fb_caption"] = platform_posts["facebook"]["caption"]

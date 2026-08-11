@@ -136,3 +136,28 @@ def test_fallback_content_still_works_without_strategic_brief():
     )
     assert content_no_product["fb_caption"].strip()
     assert "\n\n\n" not in content_no_product["fb_caption"]
+
+
+def test_scenario_fingerprint_differs_for_same_category_products():
+    # Regression: components["situation"] (category_pain) only has a handful of fixed
+    # values across the whole catalog, so two different solar-panel products used to
+    # collide on scenario_signature and trip a false-positive duplicate-scenario skip.
+    same_category_components = {"situation": "Many buyers assume any solar panel will recharge their gear the way they need."}
+
+    fingerprint_a = generate_posts._build_scenario_fingerprint(
+        {"angle": "Comparing wattage before buying", "pain_point": "Buyers guess at solar output instead of checking it."},
+        same_category_components,
+    )
+    fingerprint_b = generate_posts._build_scenario_fingerprint(
+        {"angle": "Why panel compatibility matters more than price", "pain_point": "Cheap panels fail to match the power station they're paired with."},
+        same_category_components,
+    )
+
+    assert fingerprint_a != fingerprint_b
+
+
+def test_scenario_fingerprint_falls_back_to_situation_when_talking_point_empty():
+    components = {"situation": "Fallback situation text."}
+    assert generate_posts._build_scenario_fingerprint({}, components) == "Fallback situation text."
+    assert generate_posts._build_scenario_fingerprint(None, components) == "Fallback situation text."
+

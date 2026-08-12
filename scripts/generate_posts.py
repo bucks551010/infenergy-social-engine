@@ -90,6 +90,18 @@ def _route_generate_orchestrator(slot: str = "", *, platform: str = "instagram_f
     quality_pkg = first.get("quality") or {}
     offering = first.get("anchored_offering") or {}
 
+    # The BI Offering schema has no purchase-URL/CSV-row fields (product_url,
+    # price, in_stock, etc.) that the legacy product-claims validator
+    # requires -- resolve the matching catalog row (same sku/id, always
+    # available via the CSV loader) to fill those in.
+    catalog_product: dict[str, Any] | None = None
+    offering_lookup_id = str(offering.get("sku") or offering.get("offering_id") or "").strip()
+    if offering_lookup_id:
+        try:
+            catalog_product = _pick_product_by_id(load_products(), offering_lookup_id)
+        except Exception:
+            catalog_product = None
+
     legacy = {
         "post_id": first.get("post_id"),
         "copy_generation_source": "social_intelligence_orchestrator",
@@ -99,6 +111,13 @@ def _route_generate_orchestrator(slot: str = "", *, platform: str = "instagram_f
         "product_name": offering.get("name", ""),
         "product_sku": offering.get("sku", ""),
         "product_image_url": (offering.get("images") or [""])[0],
+        "product_url": (catalog_product or {}).get("product_url", ""),
+        "destination_url": SITE_URL,
+        "product_price": (catalog_product or {}).get("price", ""),
+        "product_sale_price": (catalog_product or {}).get("sale_price", ""),
+        "product_metrics": (catalog_product or {}).get("metrics", []) or list(offering.get("verified_facts", [])),
+        "product_facts": (catalog_product or {}).get("fact_snippet", "") or offering.get("description_clean", ""),
+        "product_in_stock": (catalog_product or {}).get("in_stock", "") or offering.get("stock_status", ""),
         "selected_hook": copy_pkg.get("hook") or "",
         "selected_cta": copy_pkg.get("cta") or "",
         "copy": copy_pkg,

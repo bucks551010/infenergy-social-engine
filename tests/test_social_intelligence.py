@@ -190,9 +190,23 @@ def test_living_loop_creates_bounded_opportunity_and_selects_strategy(tmp_path, 
         "factual_candidates": [], "marketing_language": [], "decision_use": "positioning",
     })
     result = living_intelligence.heartbeat(str(tmp_path), website_url="https://example.test")
-    assert result["opportunities"][0]["state"] == "NEW"
+    assert result["opportunities"][0]["state"] == "READY"
+    assert result["opportunities"][0]["support"][0]["type"] == "FIRST_PARTY_EVIDENCE"
     decision = living_intelligence.council(living_intelligence.load(str(tmp_path)), strategy_inputs={"audience": "household"})
+    assert decision["decision"] == "do_not_generate"
+
+
+def test_living_loop_integrates_consumer_competition_to_multiple_angles(tmp_path):
+    result = living_intelligence.heartbeat(
+        str(tmp_path), level="STANDARD_HEARTBEAT", business_personality="calm practical preparedness",
+        capability="500W AC output", offering_truth=["500W AC output"],
+        consumer_signals=[{"audience": "preparedness household", "customer_moment": "storm outage", "situation": "home loses power", "question": "What should I power first?", "human_need": "confidence", "offering": "power station", "source": "customer-language", "provenance": "support transcript", "confidence": 0.9}],
+        competitor_observations=[{"name": "Example Co", "category": "portable power", "messages": ["more watts"], "benefits": ["more watts"], "customer_moments": ["camping"], "human_values": ["freedom"], "questions": [], "territories": ["specs"], "visual_patterns": ["product on black"], "source": "public page", "confidence": 0.8}],
+    )
+    assert "What should I power first?" in result["category_conversation"]["unresolved_questions"]
+    decision = living_intelligence.council(living_intelligence.load(str(tmp_path)), strategy_inputs={"customer": result["consumer_relationships"][0] | {"situation": "home loses power"}, "capability": "500W AC output", "benefit": "prioritize essentials", "positioning": result["positioning"], "competitor_context": "spec-led market"})
     assert decision["decision"] == "strategy_selected"
+    assert len(decision["candidate_strategies"]) == 2
 
 
 # --- content strategy ------------------------------------------------------

@@ -1515,12 +1515,23 @@ def run_slot(
 morning_utc = os.environ.get("POST_SCHEDULE_MORNING", "13:00")
 midday_utc  = os.environ.get("POST_SCHEDULE_MIDDAY",  "17:00")
 evening_utc = os.environ.get("POST_SCHEDULE_EVENING", "23:00")
+intelligence_light_utc = os.environ.get("INTELLIGENCE_SCHEDULE_LIGHT", "11:00")
+intelligence_standard_utc = os.environ.get("INTELLIGENCE_SCHEDULE_STANDARD", "03:00")
+
+
+def run_intelligence_heartbeat(level: str) -> None:
+    """Scheduled observation is independent from and incapable of publishing."""
+    from social.living_intelligence import heartbeat
+    result = heartbeat(_data_dir(), level=level, website_url=os.environ.get("FIRST_PARTY_SITE_URL", ""))
+    print(f"[INTELLIGENCE] {level}: {len(result.get('observations', []))} observations")
 
 def main() -> None:
     schedule.clear()
     schedule.every().day.at(morning_utc).do(run_slot, "morning")
     schedule.every().day.at(midday_utc).do(run_slot, "midday")
     schedule.every().day.at(evening_utc).do(run_slot, "evening")
+    schedule.every().day.at(intelligence_light_utc).do(run_intelligence_heartbeat, "LIGHT_HEARTBEAT")
+    schedule.every().monday.at(intelligence_standard_utc).do(run_intelligence_heartbeat, "STANDARD_HEARTBEAT")
 
     start_health_server()
 

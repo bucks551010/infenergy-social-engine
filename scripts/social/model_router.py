@@ -33,6 +33,18 @@ def route_for(task: str) -> str:
     return DEFAULT_MODEL_ROUTES.get(task, "gemini-2.5-flash")
 
 
+_LAST_ERROR: str | None = None
+
+
+def last_error() -> str | None:
+    """Reason the most recent generate_json() call fell back to None, if any.
+
+    Lets callers surface *why* a post used deterministic template copy
+    instead of real Gemini copy without needing separate server log access.
+    """
+    return _LAST_ERROR
+
+
 # --- Real Gemini text calls --------------------------------------------------
 #
 # Mirrors the exact client/config pattern already proven in generate_posts.py,
@@ -50,11 +62,14 @@ def generate_json(task: str, prompt: str, *, system_instruction: str = "") -> di
     """
     api_key = os.environ.get("GEMINI_API_KEY", "").strip()
     if not api_key:
+        global _LAST_ERROR
+        _LAST_ERROR = "GEMINI_API_KEY not set"
         return None
     try:
         from google import genai
         from google.genai import types
     except ImportError:
+        _LAST_ERROR = "google-genai SDK not importable"
         return None
 
     model = route_for(task)
@@ -70,10 +85,19 @@ def generate_json(task: str, prompt: str, *, system_instruction: str = "") -> di
         )
         text = str(getattr(response, "text", "") or "").strip()
         if not text:
+            _LAST_ERROR = f"task={task} model={model}: empty response text"
+            print(f"[model_router] {_LAST_ERROR}")
             return None
         parsed = json.loads(text)
-        return parsed if isinstance(parsed, dict) else None
-    except Exception:
+        if not isinstance(parsed, dict):
+            _LAST_ERROR = f"task={task} model={model}: response was not a JSON object"
+            print(f"[model_router] {_LAST_ERROR}")
+            return None
+        _LAST_ERROR = None
+        return parsed
+    except Exception as exc:
+        _LAST_ERROR = f"task={task} model={model}: {type(exc).__name__}: {exc}"
+        print(f"[model_router] {_LAST_ERROR}")
         return None
 
 

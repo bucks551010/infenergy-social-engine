@@ -424,7 +424,10 @@ class SocialIntelligenceOrchestrator:
         # 3. Copy assembly — real Gemini copy when available, deterministic
         # template assembly as the network-free fallback (§15 Copy Architect).
         beats = copy_intelligence.structure_for(brief.genre)
-        beat_content = _llm_copy_beats(brief, beats, bi_ctx, bi_offering) or _assemble_copy(brief=brief, structure_beats=beats)
+        llm_beats = _llm_copy_beats(brief, beats, bi_ctx, bi_offering)
+        beat_content = llm_beats or _assemble_copy(brief=brief, structure_beats=beats)
+        copy_generation_method = "llm" if llm_beats else "template_fallback"
+        copy_fallback_reason = None if llm_beats else model_router.last_error()
         hook_text = beat_content.get("hook") or beat_content.get("question") or beat_content.get("problem") or ""
         body_text = " ".join(v for k, v in beat_content.items() if k != "hook" and v)
         takeaway = beat_content.get("takeaway") or beat_content.get("lesson") or beat_content.get("implication") or brief.angle
@@ -573,6 +576,8 @@ class SocialIntelligenceOrchestrator:
                 "memory_anchor": anchor,
                 "tone": brief.tone,
                 "cta": selected_cta,
+                "generation_method": copy_generation_method,
+                "fallback_reason": copy_fallback_reason,
             },
             visual={
                 "semantic_role": semantic_role,

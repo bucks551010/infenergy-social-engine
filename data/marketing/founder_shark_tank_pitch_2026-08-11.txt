@@ -1,0 +1,101 @@
+INFENERGY POWER — FULL SHARK TANK PITCH (founder-authored)
+Captured: 2026-08-11
+Source type: founder pitch deck / investor narrative (NOT verified market research; NOT pre-approved social copy)
+
+---
+
+INTRO – A Brand Born From Blackout
+
+Sharks... this is what it felt like. I'll never forget the Winter Storm that put Houston in a Blackout. Everything stopped: no phone, no lights, no heat or AC. Just tears, and the fear on my children's faces, looking to me for answers I didn't have. That moment changed everything.
+
+I'm Joseph Moten, and I created Infenergy: renewable and reliable power solutions designed to keep families disaster proof safe and connected during emergencies. Our brand is built for preparedness, for creating peace in chaotic times. Here's the terrifying truth: 92% of American homes lack backup power. This isn't a market gap; it's a national crisis and a major vulnerability.
+
+I'm seeking $50,000 for 15% equity. With your support, we can transform Infenergy into the "Red Cross of personal power and energy" -- the trusted brand people rely on daily, in emergencies, and when the lights go out.
+
+Infenergy didn't start with a tech team in a boardroom. That Winter Storm night, I realized: energy isn't a luxury -- it's a necessity, a lifeline, and survival. It's the difference between calm and chaos, between connection and isolation, between safety and fear. When emergencies are at our door and the grid fails, families shouldn't feel helpless.
+
+---
+
+THE PROBLEM – Who's Got Your Back When the Lights Go Out?
+
+Sharks, the U.S. power grid is failing, rated a D+ by engineers. Last year alone, over 5 million Americans were without power for three days or more, wishing they had at least one of Infenergy's Disaster Proof Products. Another 50 million are just one storm away from the same fate. Blackouts from storms, wildfires, heatwaves, and cyberattacks aren't rare anomalies anymore; they're becoming the new normal, leaving people in the dark for days, even weeks.
+
+In those terrifying moments -- when there are no lights, no power, and no backup plan -- people realize they have nowhere to turn. Most electronics companies sell gadgets, not a preparedness lifestyle, or lifelines for disasters. We have tech companies and energy companies, but we lack a dedicated "power company for people" -- a go-to, trusted brand that owns the preparedness and emergency energy space.
+
+That's why I built Infenergy. We aim to be the name families think of when their world goes dark. We offer more than just power; we provide preparedness. More than just gear; we deliver guaranteed peace of mind. When staying connected means survival, Infenergy is the critical difference between being powerless and being secure and protected.
+
+---
+
+THE PRODUCT LINE – Power That Shows Up When Life Doesn't
+
+Product line: DPP, Disaster Proof Products.
+
+- PowerCharge Pro -- 5-in-1 multifunctional wall charger / power bank, fast-charging Android and Apple cables, kickstand, magnetic wireless charging.
+- Solar Flex Titan -- rugged, high-capacity solar power bank. Blackout-proof, grid-free, built for commuting and outdoors.
+- Solar Light Bulb -- charge by day, use at night; camping or outage use.
+- USB Rechargeable Batteries -- reusable AA/AAA batteries, rechargeable via USB.
+- Sorein -- Modular Power System. Power station for appliances, refrigerators, medical devices, Wi-Fi routers, TVs, laptops, space heaters, AC units; solar-ready, expandable.
+
+Preemptive response to "what stops a bigger player from copying this": "Nothing... if all you're chasing is wattage and plastic. But Infenergy isn't built on specs. It's built on soul and fire... We're not just selling power, we're selling protection and security... Infenergy is a movement. A mindset. A lifeline."
+
+---
+
+WHO WE SERVE
+
+- Working families in storm-prone areas
+- Adventurers, Campers, off-gridders, and van-lifers
+- Students, daily commuters, and frequent travelers
+- Emergency preppers and first responders
+- Seniors and households who just want to feel safe
+
+---
+
+PRODUCT PRICING & PROFIT MARGINS (founder-provided, internal/investor figures -- NOT verified against current live catalog)
+
+- PowerCharge Pro: cost $30.45 -> sells $59.99, profit $29.54, margin 49.2%
+- Solar Flex Titan: cost $35.60 -> sells $64.99, profit $29.39, margin 45.2%
+- Solar Light Bulb: cost $10.60 -> sells $24.99, profit $14.39, margin 57.6%
+- USB Rechargeable Batteries: cost $6.55 -> sells $19.99, profit $13.44, margin 67.2%
+- Solar Max Pro: cost $2,650 -> sells $3,499.99, profit $849.99, margin 24.3%
+- Solar Max Pro (3 panels): cost $3,320 -> sells $4,599.99, profit $1,279.99, margin 27.8%
+
+---
+
+TRACTION
+
+Just under $5,000 in sales to date, no ad budget, no dedicated e-commerce team. Founder has personally invested over $12,000 into building the brand while working, raising four children, and self-teaching every facet of the business.
+
+---
+
+MARKET OPPORTUNITY (founder pitch estimates -- unverified against independent research)
+
+- Power bank market: $15 billion
+- Solar lighting: $10 billion
+- Rechargeable battery market: $18 billion
+- Portable batteries: $18B+
+- Over 30 million U.S. homes at high risk of power loss
+
+---
+
+THE ASK
+
+$50,000 for 15% equity. Use of funds: bulk inventory at better margins, real online presence, digital/influencer marketing, emergency-preparedness bundles.
+
+---
+
+FOUNDER BACKGROUND / PERSONAL NARRATIVE (Q&A excerpts)
+
+- Founder: Joseph Moten, single parent of four children.
+- Origin: A storm hit Texas (Houston) and left home completely without power -- no lights, no backup, no help.
+- Full-time on the business; self-funded $12,000-$15,000 to date.
+- Positioning: "I am the customer I serve."
+- Vision: "Infenergy is built to be the next Red Cross of personal power." In every dorm, go-bag, emergency kit; sold in prep aisles next to first-aid; on QVC, in Walmart, or in your glove box; supporting homes and humanitarian efforts. "When the lights go out -- we don't just power devices -- we power people."
+
+---
+
+NOTE ON CLASSIFICATION (added by BI ingestion, 2026-08-11):
+This document contains a mix of:
+  (a) genuine founder/identity facts (name, family context, origin city/storm, self-funding amount) -- OWNER_ASSERTION, high confidence;
+  (b) investor-only figures (equity ask, cost/margin, use-of-funds) -- out of scope for the social-media Business Intelligence Foundation;
+  (c) unverified market-size and statistical claims (92% of homes lack backup power, $15B/$10B/$18B TAM figures, 30M homes at risk) -- EXTERNAL_RESEARCH / DOCUMENTED_CLAIM, unverified, must not be used as a factual claim in customer-facing content without independent verification;
+  (d) marketing language that directly conflicts with the already-locked brand voice and founder_brand_manifesto.json guardrails (crisis/fear-forward framing, "Disaster Proof Products" naming, "guaranteed peace of mind", "terrifying truth") -- logged as a conflict, not merged into voice/reputation/visual identity.

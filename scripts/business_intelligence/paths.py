@@ -6,6 +6,7 @@ All BI state lives under ``data/business_intelligence/``. Overridable via
 
 from __future__ import annotations
 
+import glob
 import os
 
 
@@ -18,6 +19,36 @@ def data_dir() -> str:
     if override and os.path.isdir(override):
         return override
     return os.path.join(_repo_root(), "data")
+
+
+def _repo_data_dir() -> str:
+    return os.path.join(_repo_root(), "data")
+
+
+def _resolve_source_dir(name: str, pattern: str = "*") -> str:
+    """Resolve a discovered-source directory under ``name``.
+
+    Prefers the ``DATA_DIR`` override (a generic, shared persistent volume
+    in deployment), but falls back to the repo-bundled ``data/<name>`` copy
+    when the override path doesn't actually contain the expected files.
+    This matters because a deployment volume may exist (and be used for
+    other runtime state) without ever being seeded with the git-tracked
+    catalog/library data that ships with every checkout.
+
+    ``BI_DATA_DIR`` is treated as an explicit, authoritative BI-only data
+    root (used for test isolation and deliberately scoped setups) and is
+    NEVER subject to this fallback — an empty catalog there means the
+    business genuinely has no offerings, not that data is missing.
+    """
+    candidate = os.path.join(data_dir(), name)
+    if glob.glob(os.path.join(candidate, pattern)):
+        return candidate
+    if os.environ.get("BI_DATA_DIR"):
+        return candidate
+    fallback = os.path.join(_repo_data_dir(), name)
+    if glob.glob(os.path.join(fallback, pattern)):
+        return fallback
+    return candidate
 
 
 def bi_dir() -> str:
@@ -97,15 +128,15 @@ def overrides_dir() -> str:
 
 
 def products_csv_dir() -> str:
-    return os.path.join(data_dir(), "products")
+    return _resolve_source_dir("products", "*.csv")
 
 
 def product_briefs_dir() -> str:
-    return os.path.join(data_dir(), "product_briefs")
+    return _resolve_source_dir("product_briefs", "*.json")
 
 
 def marketing_dir() -> str:
-    return os.path.join(data_dir(), "marketing")
+    return _resolve_source_dir("marketing", "*")
 
 
 def founder_manifesto_path() -> str:

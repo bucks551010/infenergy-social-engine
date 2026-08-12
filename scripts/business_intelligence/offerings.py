@@ -22,6 +22,20 @@ from .schemas import Offering, OfferingGraphEdge
 
 
 _NUMERIC = re.compile(r"(-?\d+(?:[.,]\d+)?)")
+_HTML_BLOCK_BREAK = re.compile(r"(?i)</(p|div|li|h[1-6]|br)\s*/?>|<br\s*/?>")
+_HTML_TAG = re.compile(r"<[^>]+>")
+_WHITESPACE = re.compile(r"[ \t]+")
+
+
+def _strip_html(value: str) -> str:
+    """WooCommerce exports only ever have raw-HTML Description columns
+    (no pre-cleaned "_clean" variant exists), so clean it here."""
+    if not value:
+        return ""
+    text = _HTML_BLOCK_BREAK.sub("\n", value)
+    text = _HTML_TAG.sub(" ", text)
+    lines = [_WHITESPACE.sub(" ", line).strip() for line in text.splitlines()]
+    return "\n".join(l for l in lines if l)
 
 
 def _to_float(value: Any) -> float | None:
@@ -98,7 +112,12 @@ def build_from_csv() -> list[Offering]:
             product_id = (row.get("ID") or sku or uuid.uuid4().hex[:10]).strip()
             if product_id in all_offerings:
                 continue
-            desc_clean = row.get("Description_clean") or row.get("Short_description_clean") or ""
+            desc_clean = (
+                row.get("Description_clean")
+                or row.get("Short_description_clean")
+                or _strip_html(row.get("Description", ""))
+                or _strip_html(row.get("Short description", ""))
+            )
             categories = _split_csv_field(row.get("Categories", ""))
             tags = _split_csv_field(row.get("Tags", ""))
             images = _split_csv_field(row.get("Images", ""))
@@ -128,6 +147,13 @@ def build_from_csv() -> list[Offering]:
             )
 
             brief = briefs.get(sku) or briefs.get(product_id)
+            if not brief:
+                # Color/wattage variation rows have no SKU/brief of their own —
+                # inherit the parent product's brief instead of going empty.
+                parent_ref = (row.get("Parent") or "").strip()
+                parent_sku = parent_ref[3:] if parent_ref.lower().startswith("id:") else parent_ref
+                if parent_sku:
+                    brief = briefs.get(parent_sku)
             if brief:
                 offering.use_cases = list(brief.get("best_fit_use_cases", []))
                 offering.functional_benefits = list(brief.get("core_benefits", []))

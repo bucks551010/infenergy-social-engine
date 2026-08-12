@@ -155,6 +155,59 @@
           ]
         }
       }
+    },
+    "electric_bikes": {
+      "name": "Electric Bikes",
+      "pillar": "electric_mobility",
+      "subtopics": {
+        "range_and_battery": {
+          "microtopics": ["real world range vs rated range", "60Ah vs 20Ah packs", "range anxiety", "week-long charge cycles"],
+          "angles": [
+            "why most e-bikes quote range numbers you'll never actually hit",
+            "what a 60Ah pack means for range compared to a typical 20Ah e-bike",
+            "the charging habit that turns range anxiety into a non-issue"
+          ]
+        },
+        "power_and_performance": {
+          "microtopics": ["motor wattage vs torque", "incline capability", "top speed vs usable speed", "motorcycle-grade comparisons"],
+          "angles": [
+            "why motor wattage alone doesn't tell you if a hill will beat you",
+            "the incline grade most e-bikes quietly can't handle",
+            "when an e-bike starts performing more like a motorcycle than a bicycle"
+          ]
+        },
+        "car_replacement_commuting": {
+          "microtopics": ["daily commute math", "gas savings", "parking and traffic avoidance", "errand-running range"],
+          "angles": [
+            "the daily commute distance where an e-bike quietly beats a car",
+            "what actually gets replaced when a household adds a long-range e-bike",
+            "the errand-running range most commuters actually need"
+          ]
+        },
+        "ride_comfort_and_safety": {
+          "microtopics": ["suspension setup", "braking systems", "tire type and terrain", "passenger seating"],
+          "angles": [
+            "why suspension quality matters more than top speed for daily riding",
+            "the braking difference riders only notice in an emergency stop",
+            "what tire choice actually changes about ride safety"
+          ]
+        },
+        "smart_features": {
+          "microtopics": ["keyless entry", "app pairing", "ride tracking dashboards", "integrated audio"],
+          "angles": [
+            "why keyless entry is becoming the e-bike theft deterrent that matters",
+            "what a smart dash actually shows you that a basic speedometer doesn't"
+          ]
+        },
+        "rules_and_responsible_use": {
+          "microtopics": ["local e-bike wattage limits", "off-road vs street-legal classification", "checking regulations before riding"],
+          "angles": [
+            "why higher-wattage e-bikes aren't automatically street-legal everywhere",
+            "the one thing to check locally before riding a high-power e-bike on public roads",
+            "off-road capability doesn't mean off-road-only, but it's worth knowing the difference"
+          ]
+        }
+      }
     }
   }
 }

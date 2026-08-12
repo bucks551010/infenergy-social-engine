@@ -1,0 +1,26 @@
+{
+  "research_enabled": false,
+  "allowed_source_types": [
+    "technical_datasheet",
+    "manufacturer_spec"
+  ],
+  "preferred_sources": [
+    "manufacturer_docs"
+  ],
+  "blocked_sources": [
+    "random blogs",
+    "affiliate roundups",
+    "user-generated forums"
+  ],
+  "freshness_requirements": {
+    "seasonal": 7,
+    "market": 30,
+    "technical": 180
+  },
+  "max_research_depth": 1,
+  "high_risk_verification_required": true,
+  "competitor_research_enabled": false,
+  "current_event_research_enabled": false,
+  "technical_research_enabled": true,
+  "research_cache_ttl_days": 14
+}

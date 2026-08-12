@@ -116,6 +116,17 @@ def _bi_visual_prohibitions(ctx: dict[str, Any] | None) -> list[str]:
     return list((ctx.get("brand_prohibitions") or {}).get("visual", []))
 
 
+_CATEGORY_PILLAR_MAP = {
+    "electric bikes": "electric_mobility",
+    "e-bikes": "electric_mobility",
+    "ebikes": "electric_mobility",
+}
+
+
+def _category_to_pillar(category: str) -> str | None:
+    return _CATEGORY_PILLAR_MAP.get(str(category or "").strip().lower())
+
+
 def _bi_brand_voice(ctx: dict[str, Any] | None) -> dict[str, Any] | None:
     if not ctx:
         return None
@@ -187,6 +198,7 @@ def _llm_copy_beats(
     brief: engines.EngineBrief,
     structure_beats: list[str],
     bi_ctx: dict[str, Any] | None,
+    offering: dict[str, Any] | None = None,
 ) -> dict[str, str] | None:
     """Ask Gemini to write the actual beat copy (Master Build §15 Copy Architect).
 
@@ -194,8 +206,13 @@ def _llm_copy_beats(
     deterministic template assembly below.
     """
     voice = _bi_brand_voice(bi_ctx) or {}
-    verified = _bi_verified_facts(bi_ctx)
-    forbidden = _bi_forbidden_claims(bi_ctx)
+    # Prefer the specifically-anchored offering's own facts/benefits over the
+    # generic business-wide context so forced-product posts are actually
+    # about that product instead of a generic topic-library angle.
+    verified = list((offering or {}).get("verified_facts") or []) or _bi_verified_facts(bi_ctx)
+    forbidden = list((offering or {}).get("forbidden_claims") or []) or _bi_forbidden_claims(bi_ctx)
+    benefits = list((offering or {}).get("functional_benefits") or [])
+    pain_points = list((offering or {}).get("problems_addressed") or [])
 
     prompt_parts = [
         "You are the copy architect for Infenergy Power's social content engine.",
@@ -205,6 +222,15 @@ def _llm_copy_beats(
         f"Audience segment: {brief.audience_segment}. Tone: {brief.tone}.",
         f"Genre: {brief.genre.get('id', '')}.",
     ]
+    if offering and offering.get("name"):
+        prompt_parts.append(
+            f"This post must be specifically about this anchored product: {offering.get('name')}. "
+            "Ground the angle/hook/body in this product, not a generic category topic."
+        )
+    if benefits:
+        prompt_parts.append("Core benefits to draw from: " + "; ".join(benefits) + ".")
+    if pain_points:
+        prompt_parts.append("Primary pain point it addresses: " + "; ".join(pain_points) + ".")
     if brief.misconception:
         prompt_parts.append(f"Misconception to correct: {brief.misconception}.")
     if voice.get("brand_personality"):
@@ -368,6 +394,8 @@ class SocialIntelligenceOrchestrator:
             forced_offering = _bi_get_offering(product_id_override)
             if forced_offering:
                 bi_offering = forced_offering
+                if not preferred_pillar:
+                    preferred_pillar = _category_to_pillar(forced_offering.get("category", ""))
         if bi_ctx:
             if not preferred_pillar:
                 preferred_pillar = _bi_preferred_pillar(bi_ctx)
@@ -396,7 +424,7 @@ class SocialIntelligenceOrchestrator:
         # 3. Copy assembly — real Gemini copy when available, deterministic
         # template assembly as the network-free fallback (§15 Copy Architect).
         beats = copy_intelligence.structure_for(brief.genre)
-        beat_content = _llm_copy_beats(brief, beats, bi_ctx) or _assemble_copy(brief=brief, structure_beats=beats)
+        beat_content = _llm_copy_beats(brief, beats, bi_ctx, bi_offering) or _assemble_copy(brief=brief, structure_beats=beats)
         hook_text = beat_content.get("hook") or beat_content.get("question") or beat_content.get("problem") or ""
         body_text = " ".join(v for k, v in beat_content.items() if k != "hook" and v)
         takeaway = beat_content.get("takeaway") or beat_content.get("lesson") or beat_content.get("implication") or brief.angle

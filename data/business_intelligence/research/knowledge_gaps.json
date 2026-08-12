@@ -1,0 +1,69 @@
+{
+  "gaps": [
+    {
+      "gap_id": "gap-target-reputation",
+      "domain": "reputation",
+      "question": "What single sentence do we want a customer to tell another person about Infenergy?",
+      "importance": "high",
+      "reason_needed": "",
+      "downstream_impact": "",
+      "researchable": false,
+      "owner_input_required": true,
+      "priority": 1,
+      "status": "OPEN",
+      "notes": "Candidate answer surfaced in founder's Shark Tank pitch: 'the most trusted name in personal power', aspiring to become the \"Red Cross of personal power and energy.\" Not yet confirmed as final by owner \u2014 still OPEN. Source: doc:founder_shark_tank_pitch_2026-08-11.txt"
+    },
+    {
+      "gap_id": "gap-prohibited-topics",
+      "domain": "content_policy",
+      "question": "Are there topics we explicitly forbid on our social feed (politics, specific weather scare tactics, etc.)?",
+      "importance": "high",
+      "reason_needed": "",
+      "downstream_impact": "",
+      "researchable": false,
+      "owner_input_required": true,
+      "priority": 2,
+      "status": "OPEN",
+      "notes": ""
+    },
+    {
+      "gap_id": "gap-geo-priority",
+      "domain": "market",
+      "question": "Are we prioritizing specific US regions for outage/preparedness messaging?",
+      "importance": "medium",
+      "reason_needed": "",
+      "downstream_impact": "",
+      "researchable": false,
+      "owner_input_required": true,
+      "priority": 4,
+      "status": "OPEN",
+      "notes": "Pitch references founder's own Houston/TX storm origin and general 'storm-prone areas' but does not establish an explicit regional prioritization directive. Still OPEN. Source: doc:founder_shark_tank_pitch_2026-08-11.txt"
+    },
+    {
+      "gap_id": "gap-cert-verification",
+      "domain": "product_specification",
+      "question": "Which specific certifications (UL, FCC, DOE) are actually held per product family?",
+      "importance": "high",
+      "reason_needed": "",
+      "downstream_impact": "",
+      "researchable": true,
+      "owner_input_required": false,
+      "priority": 3,
+      "status": "PARTIALLY_RESEARCHED",
+      "notes": "Live infenergypower.com product page for the Black Warrior 1500W e-bike (SKU BW-1500W-60AH) states no UL/DOT/safety certification and instead carries an explicit legal disclaimer: 'Intended for off-road use or on private property. Please check local regulations regarding 1500W e-bike operations in your area.' This has been added to the product brief's forbidden_claims so copy never implies unrestricted street-legality or implies a certification that hasn't been confirmed. No certification badges/logos were found on the site for any other product family during this pass — still OPEN for the power-station/solar lines specifically; would need either site page-by-page review or direct owner/spec-sheet input to confirm UL/FCC/DOE status per family. Source: fetch of https://infenergypower.com/product/black-warrior-1500w-long-range-edition on this date."
+    },
+    {
+      "gap_id": "eaf207f88829",
+      "domain": "brand_voice",
+      "question": "Should Infenergy adopt the founder's Shark Tank pitch framing (crisis/urgency language, 'Disaster Proof Products' naming, statistics like '92% of homes lack backup power'), or preserve the current calm, non-fear-based locked voice? These directly conflict.",
+      "importance": "high",
+      "reason_needed": "Founder-authored Shark Tank pitch conflicts with locked brand voice and guardrails already established in founder_brand_manifesto.json.",
+      "downstream_impact": "Determines whether future copy may reference crisis statistics or 'Disaster Proof' branding at all.",
+      "researchable": false,
+      "owner_input_required": true,
+      "priority": 1,
+      "status": "OPEN",
+      "notes": "Live-site evidence (infenergypower.com homepage, fetched this date) shows the business is CURRENTLY publishing urgency/crisis-adjacent framing in production already: hero copy 'WHEN THE LIGHTS GO OUT, WILL YOU BE READY?', 'Don't let unexpected outages leave you vulnerable', and a section literally headlined 'LIFE-SAVING POWER'. This directly contradicts the locked founder_brand_manifesto.json VoiceDNA.prohibited_phrases entry banning the phrase 'life-saving', and shows the calm-only voice is not being followed on the live storefront today. This is presented as evidence only, not a resolution — deliberately NOT auto-applied to the locked voice guardrails, because loosening the 'life-saving' prohibition carries potential product-liability/false-guarantee risk for power equipment and should get explicit owner sign-off rather than being inferred from what the site currently happens to say. Recommend the owner either (a) confirm the calm-voice guardrail is correct and have the live site copy updated to match, or (b) explicitly approve limited, non-absolute urgency framing (e.g. 'be ready' style) while keeping the strongest banned terms (SHTF, doomsday, panic, guaranteed, unbreakable) off-limits."
+    }
+  ]
+}

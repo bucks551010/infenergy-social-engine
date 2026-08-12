@@ -122,6 +122,14 @@
       "engine_fit": ["conversion"],
       "example_topics": ["port options explained", "runtime for common loads", "carrying and setup"]
     },
+    "electric_mobility": {
+      "name": "Electric Mobility",
+      "description": "Electric bikes and powered personal mobility as a car-replacement.",
+      "weight": 1.0,
+      "evergreen": true,
+      "engine_fit": ["conversion", "audience_value"],
+      "example_topics": ["range vs marketing capacity", "car-replacement commuting", "off-road vs street-legal use", "ride comfort and safety"]
+    },
     "brand_philosophy": {
       "name": "Brand Philosophy",
       "description": "What we believe, why we build the way we build.",

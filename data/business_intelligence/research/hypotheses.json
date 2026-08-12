@@ -1,0 +1,71 @@
+{
+  "hypotheses": [
+    {
+      "hypothesis_id": "hyp-preparedness-position",
+      "statement": "Preparedness-first positioning (not survivalist, not commodity) is the strongest differentiator for Infenergy.",
+      "domain": "positioning",
+      "confidence": 0.7,
+      "supporting_evidence": [
+        "founder_manifesto.mission",
+        "catalog category mix"
+      ],
+      "contradicting_evidence": [],
+      "validation_method": "",
+      "status": "WEAK_SIGNAL"
+    },
+    {
+      "hypothesis_id": "hyp-audience-parents",
+      "statement": "Working parents in storm-prone regions are the highest-value segment.",
+      "domain": "audience",
+      "confidence": 0.55,
+      "supporting_evidence": [
+        "founder_manifesto.audience_segments"
+      ],
+      "contradicting_evidence": [],
+      "validation_method": "",
+      "status": "UNTESTED"
+    },
+    {
+      "hypothesis_id": "hyp-education-first",
+      "statement": "Education-first social content builds trust faster than product-push content in this category.",
+      "domain": "content_strategy",
+      "confidence": 0.6,
+      "supporting_evidence": [
+        "founder_manifesto.tone_rules"
+      ],
+      "contradicting_evidence": [],
+      "validation_method": "",
+      "status": "UNTESTED"
+    },
+    {
+      "hypothesis_id": "0f246bb4845a",
+      "statement": "Combined U.S. TAM across power bank (~$15B), solar lighting (~$10B), and rechargeable battery (~$18B) categories may exceed $40B; figures are founder-pitch estimates, unverified against independent market research.",
+      "domain": "market",
+      "confidence": 0.3,
+      "supporting_evidence": [],
+      "contradicting_evidence": [],
+      "validation_method": "",
+      "status": "UNTESTED"
+    },
+    {
+      "hypothesis_id": "886dae9668d7",
+      "statement": "Roughly 30 million U.S. homes may be at high risk of power loss, and over 5 million Americans experienced 3+ day outages in the past year, per founder pitch estimate; unverified.",
+      "domain": "market",
+      "confidence": 0.3,
+      "supporting_evidence": [],
+      "contradicting_evidence": [],
+      "validation_method": "",
+      "status": "UNTESTED"
+    },
+    {
+      "hypothesis_id": "16dc546870f7",
+      "statement": "Seniors/caregivers prioritizing continuity and safety, and first responders, may be distinct high-value audience sub-segments worth modeling separately (already named in founder_brand_manifesto.json audience_segments but not yet distinctly represented in the compiled profile's 5 audience_segments).",
+      "domain": "audience",
+      "confidence": 0.45,
+      "supporting_evidence": [],
+      "contradicting_evidence": [],
+      "validation_method": "",
+      "status": "UNTESTED"
+    }
+  ]
+}

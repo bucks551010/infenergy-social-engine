@@ -32,8 +32,11 @@ from social import (  # noqa: E402
     opportunity_engine,
     orchestrator,
     publish_decision,
+    performance_learning,
+    public_research,
     quality_intelligence,
     research_router,
+    strategy_lock,
     visual_intelligence,
     visual_provider,
     lean_intelligence,
@@ -204,9 +207,48 @@ def test_living_loop_integrates_consumer_competition_to_multiple_angles(tmp_path
         competitor_observations=[{"name": "Example Co", "category": "portable power", "messages": ["more watts"], "benefits": ["more watts"], "customer_moments": ["camping"], "human_values": ["freedom"], "questions": [], "territories": ["specs"], "visual_patterns": ["product on black"], "source": "public page", "confidence": 0.8}],
     )
     assert "What should I power first?" in result["category_conversation"]["unresolved_questions"]
-    decision = living_intelligence.council(living_intelligence.load(str(tmp_path)), strategy_inputs={"customer": result["consumer_relationships"][0] | {"situation": "home loses power"}, "capability": "500W AC output", "benefit": "prioritize essentials", "positioning": result["positioning"], "competitor_context": "spec-led market"})
+    decision = living_intelligence.council(living_intelligence.load(str(tmp_path)), strategy_inputs={"customer": result["consumer_relationships"][0] | {"situation": "home loses power"}, "capability": "500W AC output", "benefit": "prioritize essentials", "positioning": result["positioning"], "competitor_context": "spec-led market", "human_value": "preparedness", "topic": "power priorities", "reader_job": "PREPARE_ME", "important_capability": "500W AC output", "human_outcome": "confidence", "proof": ["500W AC output"], "claim_limits": "Use only supported capability language", "visual_objective": "show a home priority ladder", "CTA_strategy": "Learn more"})
     assert decision["decision"] == "strategy_selected"
-    assert len(decision["candidate_strategies"]) == 2
+    assert len(decision["candidate_strategies"]) == 3
+
+
+def test_strategy_lock_branches_identical_strategy_into_copy_and_visual():
+    candidate = {"audience": "preparedness household", "customer_moment": "storm outage", "human_need": "confidence", "offering": "power station", "positioning": "calm preparedness", "non_price_edge": {"edge_type": "PRODUCT_EDGE"}, "angle": "Explain what to power first", "reader_memory": "Prioritize essentials"}
+    locked = strategy_lock.lock(candidate, context={"human_value": "preparedness", "topic": "power priorities", "reader_job": "PREPARE_ME", "important_capability": "500W AC", "benefit": "prioritize essentials", "human_outcome": "confidence", "competitive_context": "spec-led competitors", "proof": ["500W AC"], "claim_limits": "Use only supported capability language", "visual_objective": "show a home priority ladder", "CTA_strategy": "Learn more"})
+    copy = strategy_lock.copy_expression(locked)
+    visual = strategy_lock.visual_expression(locked)
+    for key in ("audience", "customer_moment", "human_need", "angle", "positioning", "non_price_edge", "benefit", "human_outcome", "claim_limits"):
+        assert copy[key] == visual[key] == locked[key]
+
+
+def test_orchestrator_preserves_approved_strategy_in_copy_and_visual(monkeypatch):
+    locked = strategy_lock.lock({"audience": "preparedness household", "customer_moment": "storm outage", "human_need": "confidence", "offering": "power station", "positioning": "calm preparedness", "non_price_edge": {"edge_type": "PRODUCT_EDGE"}, "angle": "Explain what to power first", "reader_memory": "Prioritize essentials"}, context={"human_value": "preparedness", "topic": "power priorities", "reader_job": "PREPARE_ME", "important_capability": "500W AC", "benefit": "prioritize essentials", "human_outcome": "confidence", "competitive_context": "spec-led competitors", "proof": ["500W AC"], "claim_limits": "Use only supported capability language", "visual_objective": "show a home priority ladder", "CTA_strategy": "Learn more"})
+    monkeypatch.setattr(orchestrator, "_llm_copy_beats", lambda *args: None)
+    post = orchestrator.SocialIntelligenceOrchestrator().create_post(approved_strategy=locked, record_memory=False)
+    assert post.copy["strategy_lock"]["angle"] == post.visual["strategy_lock"]["angle"] == locked["angle"]
+    assert post.copy["strategy_lock"]["audience"] == post.visual["strategy_lock"]["audience"] == locked["audience"]
+    assert "human_connection_review" in post.creative_director
+
+
+def test_performance_signal_remains_cautious_and_provenanced():
+    signal = performance_learning.observe(strategy={"audience": "household", "angle": "prioritize essentials"}, metrics={"saves": 2}, platform="instagram")
+    assert signal["type"] == "PERFORMANCE_EVIDENCE"
+    assert signal["confidence"] < 0.5
+    assert "cannot establish causality" in signal["uncertainty"]
+
+
+def test_performance_observation_creates_a_future_opportunity(tmp_path):
+    learning = performance_learning.observe(strategy={"audience": "household", "angle": "prioritize essentials"}, metrics={"saves": 4}, platform="instagram")
+    result = living_intelligence.heartbeat(str(tmp_path), performance_observations=[learning])
+    assert any(item["support"][0]["type"] == "PERFORMANCE_EVIDENCE" for item in result["opportunities"])
+
+
+def test_public_research_preserves_routed_source_and_provenance(monkeypatch):
+    task = research_router.route(question="Which competitor messages are repeated?", why_needed="find positioning whitespace", entity="portable power competitor", decision_affected="positioning")
+    monkeypatch.setattr(research_router, "inspect_first_party", lambda url: {"content_hash": "hash", "marketing_language": ["More watts for every trip"], "factual_candidates": []})
+    evidence = public_research.collect(task=task, urls=["https://example.test"])
+    assert evidence[0]["provenance"] == "https://example.test"
+    assert evidence[0]["decision_affected"] == "positioning"
 
 
 # --- content strategy ------------------------------------------------------

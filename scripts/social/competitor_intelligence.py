@@ -5,6 +5,8 @@ import json
 from hashlib import sha256
 from typing import Any
 
+from . import public_research, research_router
+
 
 FIELDS = ("positioning", "messages", "benefits", "customer_moments", "human_values", "questions", "territories", "visual_patterns")
 
@@ -32,3 +34,9 @@ def observe(observations: list[dict[str, Any]], previous: dict[str, Any]) -> tup
         if fingerprint != prior.get("fingerprint"):
             changes.append({"competitor": name, "category": record["category"], "change": "new" if not prior else "marketing_message_changed", "confidence": record["confidence"]})
     return updated, changes
+
+
+def research(*, category: str, urls: list[str]) -> list[dict[str, Any]]:
+    """Retrieve a small public competitor sample with provenance and freshness hashes."""
+    task = research_router.route(question="What positioning and benefits do competitors repeat?", why_needed="find credible competitive whitespace", entity=f"{category} competitor market", decision_affected="positioning")
+    return public_research.collect(task=task, urls=urls)

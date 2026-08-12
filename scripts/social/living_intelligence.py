@@ -6,9 +6,9 @@ import os
 from datetime import datetime, timezone
 from typing import Any
 
-from . import consumer_intelligence, competitor_intelligence, market_strategy, opportunity_graph, research_router
+from . import consumer_intelligence, competitor_intelligence, market_strategy, opportunity_graph, performance_learning, research_router, strategy_lock
 
-HEARTBEAT_LEVELS = {"LIGHT_HEARTBEAT", "STANDARD_HEARTBEAT", "DEEP_REFRESH"}
+HEARTBEAT_LEVELS = {"LIGHT_HEARTBEAT", "STANDARD_HEARTBEAT", "DEEP_HEARTBEAT", "DEEP_REFRESH"}
 
 
 def _path(data_dir: str) -> str:
@@ -37,9 +37,9 @@ def human_connection(*, audience: str, moment: str, situation: str, need: str, c
         meaning = "preparedness and confidence"
     elif any(word in text for word in ("travel", "commute", "away")):
         meaning = "freedom and convenience"
-        return {"person": audience, "situation": situation, "what_matters": need, "responsibility_or_expectation": responsibility,
-            "friction": friction, "human_need": need, "offering_capability": capability, "benefit": benefit,
-            "outcome": outcome, "human_meaning": meaning}
+    return {"person": audience, "situation": situation, "what_matters": need, "responsibility_or_expectation": responsibility,
+        "friction": friction, "human_need": need, "offering_capability": capability, "benefit": benefit,
+        "outcome": outcome, "human_meaning": meaning}
 
 
 def non_price_edge(*, capability: str, benefit: str, evidence: list[str], communication_edge: str = "") -> dict[str, str]:
@@ -57,6 +57,8 @@ def heartbeat(
     website_url: str = "",
     consumer_signals: list[dict[str, Any]] | None = None,
     competitor_observations: list[dict[str, Any]] | None = None,
+    research_evidence: list[dict[str, Any]] | None = None,
+    performance_observations: list[dict[str, Any]] | None = None,
     business_personality: str = "",
     capability: str = "",
     offering_truth: list[str] | None = None,
@@ -66,6 +68,7 @@ def heartbeat(
         raise ValueError(f"unsupported heartbeat level: {level}")
     state = load(data_dir)
     observations: list[dict[str, Any]] = []
+    evidence = list(research_evidence or []) + list(performance_observations or [])
     consumers = consumer_intelligence.normalize(consumer_signals or [])
     competitors, competitor_changes = competitor_intelligence.observe(competitor_observations or [], state.get("competitors", {}))
     state["competitors"] = competitors
@@ -86,9 +89,19 @@ def heartbeat(
     for consumer in consumers:
         support = [{"type": "CUSTOMER_EVIDENCE", "provenance": consumer.get("provenance") or consumer["source"], "confidence": consumer["confidence"]}]
         opportunity_graph.upsert(state["opportunities"], reason=consumer.get("question") or consumer["human_need"], support=support)
+    for item in evidence:
+        if float(item.get("confidence", 0) or 0) <= 0:
+            continue
+        opportunity_graph.upsert(state["opportunities"], reason=item.get("interpretation") or item.get("decision_affected") or "evidence update", support=[item])
     state["last_heartbeat"] = {"level": level, "observations": len(observations), "at": datetime.now(timezone.utc).isoformat()}
+    if level in {"DEEP_HEARTBEAT", "DEEP_REFRESH"}:
+        state["deep_review"] = {
+            "assumptions_to_challenge": ["audience fit", "customer moments", "positioning defensibility", "overused needs and angles"],
+            "research_needed": not bool(consumers and competitors),
+            "action": "research_more" if not (consumers and competitors) else "review_current_evidence",
+        }
     save(data_dir, state)
-    return {"status": "ok", "observations": observations, "consumer_relationships": consumer_intelligence.relationships(consumers),
+    return {"status": "ok", "observations": observations, "research_evidence": evidence, "consumer_relationships": consumer_intelligence.relationships(consumers),
             "category_conversation": category_map, "whitespace": gap, "positioning": position, "opportunities": state["opportunities"]}
 
 
@@ -103,11 +116,18 @@ def council(state: dict[str, Any], *, strategy_inputs: dict[str, Any]) -> dict[s
         participants.append("Competitor Strategist")
     customer = strategy_inputs.get("customer", {})
     edge = market_strategy.non_price_edge(customer=customer, capability=strategy_inputs.get("capability", ""), benefit=strategy_inputs.get("benefit", ""), evidence=opportunity.get("support", []), competitor_context=strategy_inputs.get("competitor_context", ""))
-    candidates = market_strategy.angles(customer=customer, positioning_result=strategy_inputs.get("positioning", {}), edge=edge, why_now=opportunity["reason"])
+    candidates = market_strategy.angles(customer=customer, positioning_result=strategy_inputs.get("positioning", {}), edge=edge, why_now=opportunity["reason"], limit=int(strategy_inputs.get("candidate_count", 3)))
     if not candidates:
         return {"decision": "do_not_generate", "reason": "no credible positioning-backed angle", "participants": participants}
     # Roles evaluate different criteria, not separate fictional agents.
-    evaluations = {"Audience Advocate": bool(customer.get("customer_moment")), "Human Connection Strategist": bool(customer.get("human_need")), "Brand Steward": bool(strategy_inputs.get("positioning", {}).get("credible")), "Adversarial Critic": edge["edge_type"] != "NO_DEFENSIBLE_EDGE"}
+    evaluations = {"Audience Advocate": bool(customer.get("customer_moment")), "Human Connection Strategist": bool(customer.get("human_need")), "Brand Steward": bool(strategy_inputs.get("positioning", {}).get("credible")), "Research/Claim Officer": edge["edge_type"] != "NO_DEFENSIBLE_EDGE", "Adversarial Critic": edge["edge_type"] != "NO_DEFENSIBLE_EDGE"}
+    blockers = [role for role, passed in evaluations.items() if not passed and role in {"Brand Steward", "Research/Claim Officer", "Adversarial Critic"}]
+    if blockers:
+        return {"decision": "research_more", "reason": "non-overridable evidence or identity objection", "participants": participants, "evaluations": evaluations, "disagreements": blockers}
     selected = candidates[0]
+    try:
+        locked = strategy_lock.lock(selected, context=strategy_inputs)
+    except ValueError as exc:
+        return {"decision": "research_more", "reason": str(exc), "participants": participants, "evaluations": evaluations}
     return {"decision": "strategy_selected", "participants": participants, "opportunity_id": opportunity["id"], "candidate_strategies": candidates,
-            "evaluations": evaluations, "approved_strategy": selected | {"opportunity_id": opportunity["id"], "claim_limits": edge["claim_limit"]}}
+            "evaluations": evaluations, "approved_strategy": locked | {"opportunity_id": opportunity["id"], "claim_limits": edge["claim_limit"]}}

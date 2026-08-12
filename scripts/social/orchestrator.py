@@ -36,6 +36,7 @@ from . import (
     memory_intelligence,
     model_router,
     quality_intelligence,
+    strategy_lock,
     visual_intelligence,
     visual_provider,
 )
@@ -387,6 +388,7 @@ class SocialIntelligenceOrchestrator:
         verified_facts: list[str] | None = None,
         record_memory: bool = True,
         product_id_override: str = "",
+        approved_strategy: dict[str, Any] | None = None,
     ) -> PostPackage:
         # 0. Recent state → recency-aware decisions
         recent = memory_intelligence.recent(self.data_dir, limit=20)
@@ -429,6 +431,16 @@ class SocialIntelligenceOrchestrator:
             preferred_pillar=preferred_pillar,
             rotation_index=rotation_index,
         )
+        # A Council-approved strategy is the parent object for both production
+        # branches. The engine may supply structure, never a replacement angle.
+        if approved_strategy:
+            locked = strategy_lock.lock(approved_strategy, context=approved_strategy)
+            brief.audience_segment = locked["audience"]
+            brief.angle = locked["angle"]
+            brief.topic_path["topic"] = locked["topic"]
+            brief.reader_job = locked["reader_job"]
+        else:
+            locked = None
 
         # 3. Copy assembly — real Gemini copy when available, deterministic
         # template assembly as the network-free fallback (§15 Copy Architect).
@@ -445,7 +457,7 @@ class SocialIntelligenceOrchestrator:
         brief.body_beats = beat_content
         brief.takeaway = takeaway
         brief.memory_anchor = anchor
-        selected_cta = _DEFAULT_CTA_BY_JOB.get(brief.reader_job, "Learn more")
+        selected_cta = (locked or {}).get("CTA_strategy") or _DEFAULT_CTA_BY_JOB.get(brief.reader_job, "Learn more")
 
         # 4. Visual direction
         necessity = visual_intelligence.visual_necessity_score(
@@ -587,6 +599,7 @@ class SocialIntelligenceOrchestrator:
                 "cta": selected_cta,
                 "generation_method": copy_generation_method,
                 "fallback_reason": copy_fallback_reason,
+                "strategy_lock": locked,
             },
             visual={
                 "semantic_role": semantic_role,
@@ -606,6 +619,7 @@ class SocialIntelligenceOrchestrator:
                     headline_position="top",
                 ),
                 "concepts": [{"label": c.label, "description": c.description, "total": c.total} for c in concepts],
+                "strategy_lock": locked,
             },
             carousel=carousel_pkg,
             claim_ledger=ledger.as_dict(),
@@ -620,6 +634,12 @@ class SocialIntelligenceOrchestrator:
             business_context=bi_ctx,
             anchored_offering=bi_offering,
         )
+        if locked:
+            package.creative_director["human_connection_review"] = strategy_lock.human_connection_critique(
+                strategy=locked,
+                copy=package.copy,
+                visual=package.visual,
+            )
 
         # 10. Memory
         if record_memory:

@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from . import public_research, research_router
+
 
 REQUIRED = ("audience", "customer_moment", "human_need", "offering", "source", "confidence")
 
@@ -28,3 +30,9 @@ def relationships(records: list[dict[str, Any]]) -> list[dict[str, str]]:
     return [{key: str(record.get(key, "")) for key in (
         "audience", "customer_moment", "question", "human_need", "topic", "offering"
     )} for record in records]
+
+
+def research(*, question: str, entity: str, urls: list[str]) -> list[dict[str, Any]]:
+    """Seek public customer evidence only for an angle-selection question."""
+    task = research_router.route(question=question, why_needed="test customer understanding", entity=entity, decision_affected="audience and angle selection")
+    return public_research.collect(task=task, urls=urls)

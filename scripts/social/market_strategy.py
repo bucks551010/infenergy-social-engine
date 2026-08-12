@@ -40,9 +40,10 @@ def non_price_edge(*, customer: dict[str, Any], capability: str, benefit: str, e
     return {"edge_type": "NO_DEFENSIBLE_EDGE", "edge": "", "customer": customer.get("audience", ""), "customer_moment": customer.get("customer_moment", ""), "competitor_context": competitor_context, "support": [], "confidence": 0.0, "claim_limit": "Do not imply superiority", "how_to_use_in_content": "Choose education or do not generate."}
 
 
-def angles(*, customer: dict[str, Any], positioning_result: dict[str, Any], edge: dict[str, Any], why_now: str) -> list[dict[str, Any]]:
+def angles(*, customer: dict[str, Any], positioning_result: dict[str, Any], edge: dict[str, Any], why_now: str, limit: int = 3) -> list[dict[str, Any]]:
     if not positioning_result.get("credible"):
         return []
     base = {"audience": customer.get("audience", ""), "customer_moment": customer.get("customer_moment", ""), "human_need": customer.get("human_need", ""), "offering": customer.get("offering", ""), "positioning": positioning_result["territory"], "non_price_edge": edge, "why_now": why_now}
     topic = customer.get("question") or customer.get("topic") or customer.get("human_need")
-    return [base | {"angle": f"Explain {topic}", "reader_memory": f"Know what matters before choosing {customer.get('offering', 'a solution')}"}, base | {"angle": f"Show the decision behind {topic}", "reader_memory": "Make the next step clearer, not louder"}]
+    variants = [(f"Explain {topic}", f"Know what matters before choosing {customer.get('offering', 'a solution')}"), (f"Show the decision behind {topic}", "Make the next step clearer, not louder"), (f"Prepare for {customer.get('customer_moment', 'the moment')} before it happens", "Preparation begins with a clearer next step"), (f"Compare what matters for {topic}", "Use the right question before choosing")]
+    return [base | {"angle": angle, "reader_memory": memory} for angle, memory in variants[:max(1, limit)]]

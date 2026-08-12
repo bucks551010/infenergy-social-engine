@@ -37,6 +37,24 @@ def _business_intelligence_enabled() -> bool:
     return os.environ.get("ENABLE_BUSINESS_INTELLIGENCE", "").lower() in {"1", "true", "yes", "on"}
 
 
+_PIPELINE_ALIASES = {
+    "legacy": "legacy", "classic": "legacy", "conversion": "legacy",
+    "orchestrator": "orchestrator", "social_intelligence": "orchestrator", "new": "orchestrator",
+    "best_of": "best_of", "both": "best_of", "combined": "best_of", "compare": "best_of",
+}
+
+
+def _pipeline_mode(explicit: str = "") -> str:
+    """Resolve which pipeline(s) to run for this call.
+
+    Precedence: explicit ``pipeline_override`` kwarg > ``CONTENT_PIPELINE``/
+    ``POST_PIPELINE_OVERRIDE`` env vars > legacy ``ENABLE_SOCIAL_INTELLIGENCE``
+    flag (handled by the caller when this returns "").
+    """
+    raw = (explicit or os.environ.get("CONTENT_PIPELINE", "") or os.environ.get("POST_PIPELINE_OVERRIDE", "")).strip().lower()
+    return _PIPELINE_ALIASES.get(raw, "")
+
+
 def run_social_intelligence(count: int = 1, platform: str = "instagram_feed", **kw: Any) -> list[dict[str, Any]]:
     """Generate ``count`` posts through the new Social Intelligence layer.
 
@@ -4533,9 +4551,53 @@ def _apply_control_plane_metadata(content: dict, run_context: dict, gate_records
     return content
 
 
-def generate(slot: str, *, funnel_stage_override: str = "", product_id_override: str = "") -> dict:
-    if _social_intelligence_enabled():
-        return _route_generate_orchestrator(slot, platform=os.environ.get("POST_PLATFORMS", "instagram_feed").split(",")[0].strip() or "instagram_feed")
+def _generate_best_of(slot: str, *, funnel_stage_override: str = "", product_id_override: str = "") -> dict:
+    """Run both pipelines for the same slot and keep the higher-scoring result."""
+    try:
+        from score_content import score_content
+    except ImportError:  # pragma: no cover
+        from scripts.score_content import score_content
+
+    candidates: list[dict] = []
+    for forced_mode in ("legacy", "orchestrator"):
+        candidate = generate(
+            slot,
+            funnel_stage_override=funnel_stage_override,
+            product_id_override=product_id_override,
+            pipeline_override=forced_mode,
+        )
+        try:
+            candidate["quality_score"] = score_content(candidate).get("total", candidate.get("quality_score", 0))
+        except Exception:
+            candidate.setdefault("quality_score", 0)
+        candidate["pipeline_used"] = forced_mode
+        candidates.append(candidate)
+
+    candidates.sort(key=lambda c: float(c.get("quality_score") or 0), reverse=True)
+    winner = candidates[0]
+    winner["pipeline_selected"] = winner.get("pipeline_used")
+    winner["pipeline_comparison"] = [
+        {"pipeline": c.get("pipeline_used"), "quality_score": c.get("quality_score")} for c in candidates
+    ]
+    return winner
+
+
+def generate(
+    slot: str,
+    *,
+    funnel_stage_override: str = "",
+    product_id_override: str = "",
+    pipeline_override: str = "",
+) -> dict:
+    mode = _pipeline_mode(pipeline_override)
+    platform = os.environ.get("POST_PLATFORMS", "instagram_feed").split(",")[0].strip() or "instagram_feed"
+
+    if mode == "best_of":
+        return _generate_best_of(slot, funnel_stage_override=funnel_stage_override, product_id_override=product_id_override)
+    if mode == "orchestrator":
+        return _route_generate_orchestrator(slot, platform=platform)
+    if mode != "legacy" and _social_intelligence_enabled():
+        return _route_generate_orchestrator(slot, platform=platform)
 
     ensure_runtime_data()
     preferred_model = os.environ.get("GEMINI_MODEL", "").strip()

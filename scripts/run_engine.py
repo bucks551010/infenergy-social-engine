@@ -549,6 +549,7 @@ def main() -> None:
     dry_run = os.environ.get("SOCIAL_DRY_RUN", "true").lower() == "true"
     product_id_override = os.environ.get("POST_PRODUCT_ID_OVERRIDE", "").strip()
     funnel_stage_override = os.environ.get("POST_FUNNEL_STAGE_OVERRIDE", "").strip().upper()
+    pipeline_override = os.environ.get("POST_PIPELINE_OVERRIDE", "").strip().lower()
     manual_platforms = [
         x.strip().lower()
         for x in os.environ.get("POST_PLATFORMS", "").split(",")
@@ -577,6 +578,7 @@ def main() -> None:
         slot,
         funnel_stage_override=funnel_stage_override,
         product_id_override=product_id_override,
+        pipeline_override=pipeline_override,
     )
     _apply_phase8_budget(runtime_metrics, "preview_generation", time.perf_counter() - t_preview, generation_budget)
     funnel_stage = str(preview_content.get("funnel_stage", "EDUCATION"))
@@ -702,6 +704,7 @@ def main() -> None:
                 slot,
                 funnel_stage_override=funnel_stage_override,
                 product_id_override=product_id_override,
+                pipeline_override=pipeline_override,
             )
 
         validation = validate_generated_content(content)
@@ -788,6 +791,7 @@ def main() -> None:
                 slot,
                 funnel_stage_override="ATTENTION",
                 product_id_override="INF-9792",
+                pipeline_override=pipeline_override,
             )
             validation = validate_generated_content(content)
             strict_runtime_claims = str(os.environ.get("STRICT_RUNTIME_CLAIMS", "false")).strip().lower() in {"1", "true", "yes", "on"}

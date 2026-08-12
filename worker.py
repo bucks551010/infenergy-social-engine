@@ -396,17 +396,21 @@ def _parse_preview_params(params: dict) -> dict:
     slot = str(params.get("slot", ["morning"])[0]).strip().lower()
     funnel_stage = str(params.get("funnel_stage", [""])[0]).strip().upper()
     product_id = str(params.get("product_id", [""])[0]).strip()
+    pipeline = str(params.get("pipeline", [""])[0]).strip().lower()
     if slot not in ("morning", "midday", "evening"):
         slot = "morning"
     if platform and platform not in ("facebook", "instagram", "linkedin", "wordpress"):
         platform = ""
     if funnel_stage and funnel_stage not in ("ATTENTION", "EDUCATION", "DESIRE", "TRUST", "CONVERSION"):
         funnel_stage = ""
+    if pipeline not in ("legacy", "orchestrator", "best_of", "both"):
+        pipeline = ""
     return {
         "platform": platform,
         "slot": slot,
         "funnel_stage": funnel_stage,
         "product_id": product_id,
+        "pipeline": pipeline,
     }
 
 
@@ -415,6 +419,7 @@ def _content_preview(preview_params: dict) -> dict:
         preview_params["slot"],
         funnel_stage_override=str(preview_params.get("funnel_stage", "")),
         product_id_override=str(preview_params.get("product_id", "")),
+        pipeline_override=str(preview_params.get("pipeline", "")),
     )
     platform = preview_params.get("platform", "")
     requested_stage = preview_params.get("funnel_stage", "")
@@ -549,6 +554,7 @@ def _start_slot_thread(
     readiness_block_override: str = "",
     product_id_override: str = "",
     funnel_stage_override: str = "",
+    pipeline_override: str = "",
 ) -> bool:
     if RUN_LOCK.locked():
         return False
@@ -563,6 +569,7 @@ def _start_slot_thread(
             readiness_block_override,
             product_id_override,
             funnel_stage_override,
+            pipeline_override,
         ),
         daemon=True,
     )
@@ -1212,12 +1219,17 @@ class HealthHandler(BaseHTTPRequestHandler):
             readiness_block_override = params.get("readiness_block", [""])[0].strip().lower()
             product_id_override = params.get("product_id", [""])[0].strip()
             funnel_stage_override = params.get("funnel_stage", [""])[0].strip().upper()
+            pipeline_override = params.get("pipeline", [""])[0].strip().lower()
             if duplicate_mode and duplicate_mode not in ("strict", "exact_only", "allow_all"):
                 duplicate_mode = ""
             if readiness_block_override and readiness_block_override not in ("true", "false", "1", "0", "yes", "no"):
                 readiness_block_override = ""
             if funnel_stage_override and funnel_stage_override not in ("ATTENTION", "EDUCATION", "TRUST", "DESIRE", "CONVERSION"):
                 funnel_stage_override = ""
+            if pipeline_override in ("both", "combined", "compare"):
+                pipeline_override = "best_of"
+            if pipeline_override and pipeline_override not in ("legacy", "orchestrator", "best_of"):
+                pipeline_override = ""
             if slot not in ("morning", "midday", "evening"):
                 slot = "morning"
 
@@ -1247,6 +1259,7 @@ class HealthHandler(BaseHTTPRequestHandler):
                 readiness_block_override=readiness_block_override,
                 product_id_override=product_id_override,
                 funnel_stage_override=funnel_stage_override,
+                pipeline_override=pipeline_override,
             )
             payload = {
                 "accepted": started,
@@ -1257,6 +1270,7 @@ class HealthHandler(BaseHTTPRequestHandler):
                 "readiness_block": readiness_block_override or "env_default",
                 "product_id": product_id_override or "auto",
                 "funnel_stage": funnel_stage_override or "auto",
+                "pipeline": pipeline_override or "env_default",
                 "message": "run started" if started else "run already in progress",
                 "time_utc": _utc_now(),
             }
@@ -1387,6 +1401,7 @@ def run_slot(
     readiness_block_override: str = "",
     product_id_override: str = "",
     funnel_stage_override: str = "",
+    pipeline_override: str = "",
 ) -> None:
     with RUN_LOCK:
         LAST_RUN["status"] = "running"
@@ -1402,6 +1417,7 @@ def run_slot(
         previous_readiness_block = os.environ.get("CHANNEL_READINESS_BLOCK_ON_RED", "")
         previous_product_override = os.environ.get("POST_PRODUCT_ID_OVERRIDE", "")
         previous_funnel_stage_override = os.environ.get("POST_FUNNEL_STAGE_OVERRIDE", "")
+        previous_pipeline_override = os.environ.get("POST_PIPELINE_OVERRIDE", "")
         os.environ["POST_SLOT"] = slot
         os.environ["POST_PLATFORMS"] = platforms_override
         if duplicate_mode:
@@ -1412,6 +1428,8 @@ def run_slot(
             os.environ["POST_PRODUCT_ID_OVERRIDE"] = product_id_override
         if funnel_stage_override:
             os.environ["POST_FUNNEL_STAGE_OVERRIDE"] = funnel_stage_override
+        if pipeline_override:
+            os.environ["POST_PIPELINE_OVERRIDE"] = pipeline_override
         if force_live:
             os.environ["SOCIAL_DRY_RUN"] = "false"
 
@@ -1477,6 +1495,10 @@ def run_slot(
                 os.environ["POST_FUNNEL_STAGE_OVERRIDE"] = previous_funnel_stage_override
             elif "POST_FUNNEL_STAGE_OVERRIDE" in os.environ:
                 del os.environ["POST_FUNNEL_STAGE_OVERRIDE"]
+            if previous_pipeline_override:
+                os.environ["POST_PIPELINE_OVERRIDE"] = previous_pipeline_override
+            elif "POST_PIPELINE_OVERRIDE" in os.environ:
+                del os.environ["POST_PIPELINE_OVERRIDE"]
             LAST_RUN["finished_at_utc"] = _utc_now()
 
 

@@ -129,6 +129,7 @@ function Invoke-RunNow {
     $platforms = Read-WithDefault -Prompt "Platforms (comma-separated, blank = default)" -Default ""
     $productId = Read-WithDefault -Prompt "Force a specific product_id (blank = auto)" -Default ""
     $funnelStage = Read-WithDefault -Prompt "Force funnel_stage (ATTENTION/EDUCATION/TRUST/DESIRE/CONVERSION, blank = auto)" -Default ""
+    $pipeline = Read-WithDefault -Prompt "pipeline (legacy/orchestrator/best_of, blank = env default)" -Default ""
     $duplicateMode = Read-WithDefault -Prompt "duplicate_mode (strict/exact_only/allow_all, blank = env default)" -Default ""
     $readinessBlock = Read-WithDefault -Prompt "readiness_block override (true/false, blank = env default)" -Default ""
 
@@ -143,6 +144,7 @@ function Invoke-RunNow {
         platforms       = $platforms
         product_id      = $productId
         funnel_stage    = $funnelStage
+        pipeline        = $pipeline
         duplicate_mode  = $duplicateMode
         readiness_block = $readinessBlock
     }

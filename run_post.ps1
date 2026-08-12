@@ -78,13 +78,14 @@ function Get-CurrentSlot {
 }
 
 function Invoke-EngineRunNow {
-    param([string]$Token, [string]$ProductId, [string]$FunnelStage, [string]$Slot)
+    param([string]$Token, [string]$ProductId, [string]$FunnelStage, [string]$Slot, [string]$Pipeline)
     $params = @{
         token          = $Token
         slot           = $Slot
         live           = "true"
         product_id     = $ProductId
         funnel_stage   = $FunnelStage
+        pipeline       = $Pipeline
         # Manual on-demand runs should always go out on every channel and
         # never be silently skipped by the automatic schedule's stage-per-slot
         # rules or the scheduled-cadence duplicate window.
@@ -155,10 +156,25 @@ $genreChoice = Read-Host "`nPost type number"
 $genre = $genreOptions["6"]
 if ($genreOptions.Contains($genreChoice)) { $genre = $genreOptions[$genreChoice] }
 
+$pipelineOptions = [ordered]@{
+    "1" = @{ Label = "Auto (env default / ENABLE_SOCIAL_INTELLIGENCE)"; Value = "" }
+    "2" = @{ Label = "Legacy pipeline (generate_posts + social_visuals)"; Value = "legacy" }
+    "3" = @{ Label = "Social Intelligence Orchestrator"; Value = "orchestrator" }
+    "4" = @{ Label = "Best of both (run both, keep the higher-scoring post)"; Value = "best_of" }
+}
+Write-Host "`nPick a content pipeline:" -ForegroundColor Cyan
+foreach ($key in $pipelineOptions.Keys) {
+    Write-Host ("  {0}) {1}" -f $key, $pipelineOptions[$key].Label)
+}
+$pipelineChoice = Read-Host "`nPipeline number"
+$pipeline = $pipelineOptions["1"]
+if ($pipelineOptions.Contains($pipelineChoice)) { $pipeline = $pipelineOptions[$pipelineChoice] }
+
 $slot = Get-CurrentSlot
 Write-Host "`nAbout to publish LIVE on Facebook, Instagram, and LinkedIn:" -ForegroundColor Yellow
 Write-Host "  Product:   $productLabel"
 Write-Host "  Post type: $($genre.Label)"
+Write-Host "  Pipeline:  $($pipeline.Label)"
 Write-Host "  Slot:      $slot"
 $confirm = Read-Host "`nPublish this now? [y/N]"
 if ($confirm -notmatch "^(y|yes)$") {
@@ -168,7 +184,7 @@ if ($confirm -notmatch "^(y|yes)$") {
 
 $token = Get-Token
 try {
-    $result = Invoke-EngineRunNow -Token $token -ProductId $productId -FunnelStage $genre.Stage -Slot $slot
+    $result = Invoke-EngineRunNow -Token $token -ProductId $productId -FunnelStage $genre.Stage -Slot $slot -Pipeline $pipeline.Value
 } catch {
     Write-Host "Failed to start the run: $($_.Exception.Message)" -ForegroundColor Red
     if ($_.ErrorDetails.Message) { Write-Host $_.ErrorDetails.Message -ForegroundColor Yellow }

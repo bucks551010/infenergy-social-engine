@@ -33,10 +33,27 @@ from . import (
     engines,
     libraries,
     memory_intelligence,
+    model_router,
     quality_intelligence,
     visual_intelligence,
     visual_provider,
 )
+
+
+_DEFAULT_CTA_BY_JOB = {
+    "TEACH_ME": "Learn more",
+    "HELP_ME": "See how it works",
+    "EXPLAIN_THIS": "Learn more",
+    "SHOW_ME": "See how it works",
+    "WARN_ME": "See how to stay ready",
+    "PREPARE_ME": "Get outage-ready",
+    "HELP_ME_CHOOSE": "Compare options",
+    "SAVE_ME_TIME": "Shop the fix",
+    "SAVE_ME_MONEY": "Compare options",
+    "MAKE_ME_CURIOUS": "Learn more",
+    "GIVE_ME_A_REFERENCE": "Save this",
+    "START_A_CONVERSATION": "Share your take",
+}
 
 
 # Optional Business Intelligence Foundation hookup. Gated on the
@@ -141,6 +158,73 @@ def _pick_engine(rotation_index: int, engine_mix: tuple[str, ...] = ("A", "B", "
 # --- Copy assembly ---------------------------------------------------------
 
 
+def _llm_copy_beats(
+    brief: engines.EngineBrief,
+    structure_beats: list[str],
+    bi_ctx: dict[str, Any] | None,
+) -> dict[str, str] | None:
+    """Ask Gemini to write the actual beat copy (Master Build §15 Copy Architect).
+
+    Returns ``None`` on any failure so the caller falls back to the
+    deterministic template assembly below.
+    """
+    voice = _bi_brand_voice(bi_ctx) or {}
+    verified = _bi_verified_facts(bi_ctx)
+    forbidden = _bi_forbidden_claims(bi_ctx)
+
+    prompt_parts = [
+        "You are the copy architect for Infenergy Power's social content engine.",
+        f"Reader job: {brief.reader_job}. Topic: {brief.topic_path.get('topic', '')}.",
+        f"Angle/insight: {brief.angle}.",
+        f"Information gap or curiosity: {brief.curiosity or brief.information_gap}.",
+        f"Audience segment: {brief.audience_segment}. Tone: {brief.tone}.",
+        f"Genre: {brief.genre.get('id', '')}.",
+    ]
+    if brief.misconception:
+        prompt_parts.append(f"Misconception to correct: {brief.misconception}.")
+    if voice.get("brand_personality"):
+        prompt_parts.append(f"Brand voice: {voice.get('brand_personality')}.")
+    if verified:
+        prompt_parts.append("Verified facts you may cite: " + "; ".join(verified) + ".")
+    if forbidden:
+        prompt_parts.append("Never state or imply: " + "; ".join(forbidden) + ".")
+    prompt_parts.append(
+        "Write truthful, specific, non-generic copy. Avoid AI-slop phrases such as "
+        "'game-changer', 'unlock', 'revolutionize', 'in today's fast-paced world', 'buckle up'."
+    )
+    prompt_parts.append(
+        "Return a JSON object with exactly these keys, each a short 1-2 sentence string, "
+        "no markdown: " + ", ".join(structure_beats) + "."
+    )
+
+    result = model_router.generate_json("copy_editing", " ".join(prompt_parts))
+    if not isinstance(result, dict):
+        return None
+    if not all(str(result.get(b, "")).strip() for b in structure_beats):
+        return None
+    return {b: str(result[b]).strip() for b in structure_beats}
+
+
+def _llm_concept_stems(brief: engines.EngineBrief, anchor: str) -> list[str] | None:
+    """Ask Gemini for creative-concept stems (Master Build §30 / §15 Art Director)."""
+    prompt = (
+        "You are the creative director for Infenergy Power's social content engine. "
+        f"Topic/angle: {brief.angle}. Memory anchor: {anchor or brief.angle}. "
+        f"Genre: {brief.genre.get('id', '')}. "
+        "Propose exactly 3 distinct, concrete visual concepts for a social graphic that "
+        "communicates this idea (no camera jargon, one sentence each). "
+        "Return JSON: {\"concepts\": [\"...\", \"...\", \"...\"]}."
+    )
+    result = model_router.generate_json("visual_direction", prompt)
+    if not isinstance(result, dict):
+        return None
+    stems = result.get("concepts")
+    if not isinstance(stems, list) or len(stems) < 2:
+        return None
+    cleaned = [str(s).strip() for s in stems if str(s).strip()]
+    return cleaned or None
+
+
 def _assemble_copy(*, brief: engines.EngineBrief, structure_beats: list[str]) -> dict[str, str]:
     """Populate beat content from the strategic brief.
 
@@ -229,7 +313,7 @@ class SocialIntelligenceOrchestrator:
         quality_threshold: float = 78.0,
         data_dir: str | None = None,
     ) -> None:
-        self.provider = provider or visual_provider.TemplateRenderProvider()
+        self.provider = provider or visual_provider.default_provider()
         self.quality_threshold = quality_threshold
         self.data_dir = data_dir
 
@@ -279,9 +363,10 @@ class SocialIntelligenceOrchestrator:
             rotation_index=rotation_index,
         )
 
-        # 3. Copy assembly
+        # 3. Copy assembly — real Gemini copy when available, deterministic
+        # template assembly as the network-free fallback (§15 Copy Architect).
         beats = copy_intelligence.structure_for(brief.genre)
-        beat_content = _assemble_copy(brief=brief, structure_beats=beats)
+        beat_content = _llm_copy_beats(brief, beats, bi_ctx) or _assemble_copy(brief=brief, structure_beats=beats)
         hook_text = beat_content.get("hook") or beat_content.get("question") or beat_content.get("problem") or ""
         body_text = " ".join(v for k, v in beat_content.items() if k != "hook" and v)
         takeaway = beat_content.get("takeaway") or beat_content.get("lesson") or beat_content.get("implication") or brief.angle
@@ -290,6 +375,7 @@ class SocialIntelligenceOrchestrator:
         brief.body_beats = beat_content
         brief.takeaway = takeaway
         brief.memory_anchor = anchor
+        selected_cta = _DEFAULT_CTA_BY_JOB.get(brief.reader_job, "Learn more")
 
         # 4. Visual direction
         necessity = visual_intelligence.visual_necessity_score(
@@ -320,6 +406,7 @@ class SocialIntelligenceOrchestrator:
             memory_anchor=anchor,
             semantic_role=semantic_role,
             genre_id=brief.genre.get("id", ""),
+            concept_stems=_llm_concept_stems(brief, anchor),
         )
         top_concept = concepts[0]
         art = visual_intelligence.build_art_direction(
@@ -399,15 +486,23 @@ class SocialIntelligenceOrchestrator:
             worth_reader_time=bool(anchor),
         )
 
-        # 9. Provider (optional visual generation)
+        # 9. Provider (real Gemini image generation, or template fallback)
+        post_id = uuid.uuid4().hex[:12]
+        art_dict = art.as_dict()
+        art_dict["post_id"] = post_id
+        art_dict["cta"] = selected_cta
+        if bi_offering:
+            art_dict["product_name"] = bi_offering.get("name", "")
+            offering_images = bi_offering.get("images") or []
+            if offering_images:
+                art_dict["product_image_url"] = offering_images[0]
         provider_result = self.provider.generate(
-            art_direction=art.as_dict(),
+            art_direction=art_dict,
             positive_prompt=positive_prompt,
             negative_prompt=negative_prompt,
             platform=platform,
         )
 
-        post_id = uuid.uuid4().hex[:12]
         package = PostPackage(
             post_id=post_id,
             engine=engine_name,
@@ -419,6 +514,7 @@ class SocialIntelligenceOrchestrator:
                 "takeaway": takeaway,
                 "memory_anchor": anchor,
                 "tone": brief.tone,
+                "cta": selected_cta,
             },
             visual={
                 "semantic_role": semantic_role,

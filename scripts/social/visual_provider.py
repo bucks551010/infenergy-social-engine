@@ -1,13 +1,16 @@
 """Visual provider interface + template fallback (Master Build §92).
 
 The abstract ``VisualProvider`` decouples the pipeline from any specific
-image-generation SDK.  A real Gemini/Imagen provider can subclass it;
-``TemplateRenderProvider`` returns a deterministic "recipe" object that
-can be handed to a downstream graphic renderer (Pillow/HTML template).
+image-generation SDK.  ``GeminiVisualProvider`` is the real provider
+(delegates pixel generation to the already-proven ``social_visuals``
+Gemini image pipeline, per §34 — don't reinvent what existing code does
+well). ``TemplateRenderProvider`` returns a deterministic "recipe" object
+used as an automatic fallback when Gemini is unavailable or fails.
 """
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
@@ -76,3 +79,103 @@ class TemplateRenderProvider:
             recipe=recipe,
             provider_meta={"platform": platform},
         )
+
+
+# --- Real Gemini provider ----------------------------------------------------
+
+
+class GeminiVisualProvider:
+    """Generates the actual finished creative via Gemini.
+
+    Delegates to ``social_visuals.generate_visuals`` (the same pipeline the
+    legacy generator uses in production: prompt compilation, brand/product
+    reference images, plate + semantic quality QA, retries). Falls back to
+    ``TemplateRenderProvider`` output whenever Gemini is unavailable or the
+    call fails, so the orchestrator never breaks without network access.
+    """
+
+    name = "gemini"
+
+    def __init__(self) -> None:
+        self._fallback = TemplateRenderProvider()
+
+    def generate(
+        self,
+        *,
+        art_direction: dict[str, Any],
+        positive_prompt: str,
+        negative_prompt: str,
+        platform: str,
+    ) -> VisualResult:
+        if not os.environ.get("GEMINI_API_KEY", "").strip():
+            return self._fallback.generate(
+                art_direction=art_direction,
+                positive_prompt=positive_prompt,
+                negative_prompt=negative_prompt,
+                platform=platform,
+            )
+        try:
+            try:
+                import social_visuals  # type: ignore
+            except ImportError:
+                from scripts import social_visuals  # type: ignore
+        except Exception as exc:
+            fb = self._fallback.generate(
+                art_direction=art_direction,
+                positive_prompt=positive_prompt,
+                negative_prompt=negative_prompt,
+                platform=platform,
+            )
+            fb.provider_meta["gemini_import_error"] = str(exc)
+            return fb
+
+        content = {
+            "post_id": art_direction.get("post_id") or "preview",
+            "topic": art_direction.get("primary_subject", ""),
+            "selected_hook": art_direction.get("visual_message", ""),
+            "selected_cta": art_direction.get("cta", ""),
+            "product_name": art_direction.get("product_name", ""),
+            "product_image_url": art_direction.get("product_image_url", ""),
+            "on_image_headline": art_direction.get("visual_message", ""),
+        }
+        visual_plan = {"image_strategy": "gemini_generated"}
+        plat_key = platform.split("_", 1)[0]
+
+        try:
+            result = social_visuals.generate_visuals(content, visual_plan)
+        except Exception as exc:
+            fb = self._fallback.generate(
+                art_direction=art_direction,
+                positive_prompt=positive_prompt,
+                negative_prompt=negative_prompt,
+                platform=platform,
+            )
+            fb.provider_meta["gemini_error"] = str(exc)
+            return fb
+
+        asset_path = result.get(plat_key) if isinstance(result, dict) else None
+        if not asset_path:
+            fb = self._fallback.generate(
+                art_direction=art_direction,
+                positive_prompt=positive_prompt,
+                negative_prompt=negative_prompt,
+                platform=platform,
+            )
+            fb.provider_meta["gemini_fallback_reason"] = (result.get("fallback_reasons", {}) or {}).get(plat_key, "no_asset")
+            return fb
+
+        return VisualResult(
+            provider=self.name,
+            kind="generated_image",
+            prompt=positive_prompt,
+            negative_prompt=negative_prompt,
+            asset_path=asset_path,
+            provider_meta={"platform": platform, **{k: v for k, v in result.items() if k != plat_key}},
+        )
+
+
+def default_provider() -> "VisualProvider":
+    """Auto-select the real Gemini provider when a key is configured."""
+    if os.environ.get("GEMINI_API_KEY", "").strip():
+        return GeminiVisualProvider()
+    return TemplateRenderProvider()

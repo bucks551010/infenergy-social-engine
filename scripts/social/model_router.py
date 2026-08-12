@@ -33,6 +33,50 @@ def route_for(task: str) -> str:
     return DEFAULT_MODEL_ROUTES.get(task, "gemini-2.5-flash")
 
 
+# --- Real Gemini text calls --------------------------------------------------
+#
+# Mirrors the exact client/config pattern already proven in generate_posts.py,
+# social_visuals.py and the agents/ modules (genai.Client + GenerateContentConfig).
+# Every caller must tolerate a ``None`` return (no API key / call failure) and
+# fall back to its deterministic behavior — this keeps the whole ``social``
+# package safe to run without network access, per its existing design.
+
+
+def generate_json(task: str, prompt: str, *, system_instruction: str = "") -> dict[str, Any] | None:
+    """Call Gemini for the given task and parse a JSON object response.
+
+    Returns ``None`` when GEMINI_API_KEY is unset, the SDK is unavailable,
+    or the call/parse fails for any reason.
+    """
+    api_key = os.environ.get("GEMINI_API_KEY", "").strip()
+    if not api_key:
+        return None
+    try:
+        from google import genai
+        from google.genai import types
+    except ImportError:
+        return None
+
+    model = route_for(task)
+    try:
+        client = genai.Client(api_key=api_key)
+        config_kwargs: dict[str, Any] = {"response_mime_type": "application/json"}
+        if system_instruction:
+            config_kwargs["system_instruction"] = system_instruction
+        response = client.models.generate_content(
+            model=model,
+            contents=prompt,
+            config=types.GenerateContentConfig(**config_kwargs),
+        )
+        text = str(getattr(response, "text", "") or "").strip()
+        if not text:
+            return None
+        parsed = json.loads(text)
+        return parsed if isinstance(parsed, dict) else None
+    except Exception:
+        return None
+
+
 # --- Prompt versioning (§96) -----------------------------------------------
 
 

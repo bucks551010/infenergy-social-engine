@@ -1523,7 +1523,7 @@ intelligence_deep_utc = os.environ.get("INTELLIGENCE_SCHEDULE_DEEP", "02:00")
 def run_intelligence_heartbeat(level: str) -> None:
     """Scheduled observation is independent from and incapable of publishing."""
     from social.living_intelligence import heartbeat
-    result = heartbeat(_data_dir(), level=level, website_url=os.environ.get("FIRST_PARTY_SITE_URL", ""))
+    result = heartbeat(_data_dir(), level=level, website_url=os.environ.get("FIRST_PARTY_SITE_URL", ""), publication_records=_load_history(limit=200))
     print(f"[INTELLIGENCE] {level}: {len(result.get('observations', []))} observations")
 
 def main() -> None:

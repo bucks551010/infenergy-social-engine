@@ -8,6 +8,25 @@ from typing import Any
 import requests
 
 
+DEFAULT_WINDOWS_HOURS = (24, 168, 720)
+
+
+def due(record: dict[str, Any], *, now: datetime | None = None, windows_hours: tuple[int, ...] = DEFAULT_WINDOWS_HOURS) -> str | None:
+    """Return the next observation stage without treating absent metrics as zero."""
+    raw = str(record.get("published_at") or "").replace("Z", "+00:00")
+    try:
+        published = datetime.fromisoformat(raw)
+    except ValueError:
+        return None
+    now = now or datetime.now(timezone.utc)
+    age = (now - (published if published.tzinfo else published.replace(tzinfo=timezone.utc))).total_seconds() / 3600
+    collected = {str(item.get("window", "")) for item in record.get("analytics_observations", [])}
+    for label, threshold in zip(("EARLY", "INTERMEDIATE", "MATURE"), windows_hours):
+        if age >= threshold and label not in collected:
+            return label
+    return None
+
+
 def collect_meta(record: dict[str, Any]) -> list[dict[str, Any]]:
     """Fetch only metrics Graph returns for existing Facebook/Instagram IDs."""
     token = os.environ.get("META_PAGE_ACCESS_TOKEN", "").strip()
@@ -27,5 +46,5 @@ def collect_meta(record: dict[str, Any]) -> list[dict[str, Any]]:
             values = item.get("values") or []
             if values and isinstance(values[0], dict) and isinstance(values[0].get("value"), (int, float)):
                 metrics[name] = float(values[0]["value"])
-        observations.append({"platform_post_id": post_id, "platform": platform, "published_at": record.get("published_at", ""), "metrics": metrics, "collected_at": datetime.now(timezone.utc).isoformat()})
+        observations.append({"platform_post_id": post_id, "platform": platform, "published_at": record.get("published_at", ""), "raw_observation": {"metrics": metrics}, "derived_metrics": {}, "collected_at": datetime.now(timezone.utc).isoformat()})
     return observations

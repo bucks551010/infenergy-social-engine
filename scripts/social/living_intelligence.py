@@ -6,7 +6,7 @@ import os
 from datetime import datetime, timezone
 from typing import Any
 
-from . import consumer_intelligence, competitor_intelligence, market_strategy, opportunity_graph, performance_learning, research_router, strategy_lock
+from . import analytics_ingestion, consumer_intelligence, competitor_intelligence, market_strategy, opportunity_graph, performance_learning, research_router, strategy_lock
 
 HEARTBEAT_LEVELS = {"LIGHT_HEARTBEAT", "STANDARD_HEARTBEAT", "DEEP_HEARTBEAT", "DEEP_REFRESH"}
 
@@ -59,6 +59,7 @@ def heartbeat(
     competitor_observations: list[dict[str, Any]] | None = None,
     research_evidence: list[dict[str, Any]] | None = None,
     performance_observations: list[dict[str, Any]] | None = None,
+    publication_records: list[dict[str, Any]] | None = None,
     business_personality: str = "",
     capability: str = "",
     offering_truth: list[str] | None = None,
@@ -69,6 +70,13 @@ def heartbeat(
     state = load(data_dir)
     observations: list[dict[str, Any]] = []
     evidence = list(research_evidence or []) + list(performance_observations or [])
+    for record in publication_records or []:
+        stage = analytics_ingestion.due(record)
+        if not stage:
+            continue
+        for observation in analytics_ingestion.collect_meta(record):
+            observation["window"] = stage
+            evidence.append(performance_learning.learn(publication_record=record, observation=observation))
     consumers = consumer_intelligence.normalize(consumer_signals or [])
     competitors, competitor_changes = competitor_intelligence.observe(competitor_observations or [], state.get("competitors", {}))
     state["competitors"] = competitors

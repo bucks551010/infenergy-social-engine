@@ -35,6 +35,7 @@ from social import (  # noqa: E402
     performance_learning,
     public_research,
     human_connection_review,
+    analytics_ingestion,
     quality_intelligence,
     research_router,
     strategy_lock,
@@ -262,6 +263,15 @@ def test_autonomous_source_discovery_starts_with_task_not_final_url(monkeypatch)
 def test_independent_human_review_rejects_exploitative_copy():
     verdict = human_connection_review.review(strategy={"customer_moment": "storm outage", "human_need": "confidence", "important_capability": "500W AC", "benefit": "prioritize essentials", "human_outcome": "confidence"}, copy={"body": "Fear will leave your family in panic."}, visual={"message": "confidence"})
     assert verdict["verdict"] == "DO_NOT_PUBLISH"
+
+
+def test_due_publication_analytics_becomes_cautious_future_opportunity(tmp_path, monkeypatch):
+    record = {"published_at": "2025-01-01T00:00:00+00:00", "fb_id": "123", "strategic_brief": {"audience": "household", "angle": "prioritize essentials"}}
+    monkeypatch.setattr(analytics_ingestion, "collect_meta", lambda item: [{"platform_post_id": "123", "platform": "facebook", "raw_observation": {"metrics": {"shares": 3}}, "derived_metrics": {}}])
+    result = living_intelligence.heartbeat(str(tmp_path), publication_records=[record])
+    support = result["opportunities"][0]["support"][0]
+    assert support["type"] == "PERFORMANCE_EVIDENCE"
+    assert support["state"] == "NEW_HYPOTHESIS"
 
 
 # --- content strategy ------------------------------------------------------

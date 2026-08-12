@@ -1411,6 +1411,13 @@ def run_slot(
         LAST_RUN["error"] = None
 
         print(f"\n[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}] Starting {slot} run...")
+        # A scheduled slot convenes an informed decision before generation; the
+        # heartbeat itself never publishes or generates copy.
+        try:
+            from social.living_intelligence import heartbeat
+            heartbeat(_data_dir(), level="LIGHT_HEARTBEAT", website_url=os.environ.get("FIRST_PARTY_SITE_URL", ""))
+        except Exception as exc:
+            print(f"[INTELLIGENCE] heartbeat unavailable: {exc}")
         previous_dry_run = os.environ.get("SOCIAL_DRY_RUN", "true")
         previous_platforms = os.environ.get("POST_PLATFORMS", "")
         previous_duplicate_mode = os.environ.get("MANUAL_DUPLICATE_MODE", "")

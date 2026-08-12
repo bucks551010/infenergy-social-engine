@@ -37,6 +37,7 @@ from social import (  # noqa: E402
     visual_intelligence,
     visual_provider,
     lean_intelligence,
+    living_intelligence,
 )
 
 
@@ -181,6 +182,17 @@ def test_research_router_requires_a_marketing_decision_and_routes_source():
     )
     assert task.preferred_source == "customer_language_research"
     assert task.as_dict()["decision_affected"] == "angle selection"
+
+
+def test_living_loop_creates_bounded_opportunity_and_selects_strategy(tmp_path, monkeypatch):
+    monkeypatch.setattr(research_router, "inspect_first_party", lambda url, previous_hash: {
+        "url": url, "content_hash": "new", "changed": True,
+        "factual_candidates": [], "marketing_language": [], "decision_use": "positioning",
+    })
+    result = living_intelligence.heartbeat(str(tmp_path), website_url="https://example.test")
+    assert result["opportunities"][0]["state"] == "NEW"
+    decision = living_intelligence.council(living_intelligence.load(str(tmp_path)), strategy_inputs={"audience": "household"})
+    assert decision["decision"] == "strategy_selected"
 
 
 # --- content strategy ------------------------------------------------------

@@ -150,6 +150,16 @@ def _bi_get_offering(product_id: str) -> dict[str, Any] | None:
     except ImportError:
         return None
     try:
+        found = bi_api.get_offering(product_id)
+        if found:
+            return found
+        # The persisted profile snapshot can be stale relative to the
+        # current catalog source (e.g. it was assembled before the
+        # products CSV was resolvable in this environment) and simply
+        # not contain this offering yet. Force one rebuild and retry
+        # before giving up -- this is a deterministic, local-only,
+        # non-LLM operation, safe to run on an explicit forced lookup.
+        bi_api.rebuild_profile()
         return bi_api.get_offering(product_id)
     except Exception:
         return None

@@ -1517,6 +1517,7 @@ midday_utc  = os.environ.get("POST_SCHEDULE_MIDDAY",  "17:00")
 evening_utc = os.environ.get("POST_SCHEDULE_EVENING", "23:00")
 intelligence_light_utc = os.environ.get("INTELLIGENCE_SCHEDULE_LIGHT", "11:00")
 intelligence_standard_utc = os.environ.get("INTELLIGENCE_SCHEDULE_STANDARD", "03:00")
+intelligence_deep_utc = os.environ.get("INTELLIGENCE_SCHEDULE_DEEP", "02:00")
 
 
 def run_intelligence_heartbeat(level: str) -> None:
@@ -1532,6 +1533,7 @@ def main() -> None:
     schedule.every().day.at(evening_utc).do(run_slot, "evening")
     schedule.every().day.at(intelligence_light_utc).do(run_intelligence_heartbeat, "LIGHT_HEARTBEAT")
     schedule.every().monday.at(intelligence_standard_utc).do(run_intelligence_heartbeat, "STANDARD_HEARTBEAT")
+    schedule.every().sunday.at(intelligence_deep_utc).do(run_intelligence_heartbeat, "DEEP_HEARTBEAT")
 
     start_health_server()
 

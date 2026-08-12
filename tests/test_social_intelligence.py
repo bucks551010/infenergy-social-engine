@@ -34,6 +34,7 @@ from social import (  # noqa: E402
     publish_decision,
     performance_learning,
     public_research,
+    human_connection_review,
     quality_intelligence,
     research_router,
     strategy_lock,
@@ -249,6 +250,18 @@ def test_public_research_preserves_routed_source_and_provenance(monkeypatch):
     evidence = public_research.collect(task=task, urls=["https://example.test"])
     assert evidence[0]["provenance"] == "https://example.test"
     assert evidence[0]["decision_affected"] == "positioning"
+
+
+def test_autonomous_source_discovery_starts_with_task_not_final_url(monkeypatch):
+    task = research_router.route(question="What does our public business messaging emphasize?", why_needed="find a credible angle", entity="Infenergy brand", decision_affected="positioning")
+    monkeypatch.setattr(research_router, "inspect_first_party", lambda url: {"content_hash": "hash", "marketing_language": ["Preparedness without panic"], "factual_candidates": []})
+    evidence = public_research.research(task=task)
+    assert evidence[0]["provenance"] == "https://infenergypower.com"
+
+
+def test_independent_human_review_rejects_exploitative_copy():
+    verdict = human_connection_review.review(strategy={"customer_moment": "storm outage", "human_need": "confidence", "important_capability": "500W AC", "benefit": "prioritize essentials", "human_outcome": "confidence"}, copy={"body": "Fear will leave your family in panic."}, visual={"message": "confidence"})
+    assert verdict["verdict"] == "DO_NOT_PUBLISH"
 
 
 # --- content strategy ------------------------------------------------------

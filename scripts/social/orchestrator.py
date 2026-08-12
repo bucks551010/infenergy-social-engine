@@ -37,6 +37,7 @@ from . import (
     model_router,
     quality_intelligence,
     strategy_lock,
+    human_connection_review,
     visual_intelligence,
     visual_provider,
 )
@@ -639,6 +640,9 @@ class SocialIntelligenceOrchestrator:
                 strategy=locked,
                 copy=package.copy,
                 visual=package.visual,
+            )
+            package.creative_director["independent_human_connection_review"] = human_connection_review.review(
+                strategy=locked, copy=package.copy, visual=package.visual
             )
 
         # 10. Memory

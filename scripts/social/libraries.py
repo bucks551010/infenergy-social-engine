@@ -28,7 +28,12 @@ def _lib_dir() -> str:
 
 
 def _load(name: str) -> dict[str, Any]:
-    path = os.path.join(_lib_dir(), name)
+    candidate_dir = _lib_dir()
+    path = os.path.join(candidate_dir, name)
+    if not os.path.isfile(path) and candidate_dir != _LIB_DIR_DEFAULT:
+        # DATA_DIR/social exists but doesn't have this file (e.g. it was
+        # created for runtime state only) — fall back to the repo copy.
+        path = os.path.join(_LIB_DIR_DEFAULT, name)
     with open(path, "r", encoding="utf-8") as fh:
         return json.load(fh)
 

@@ -292,6 +292,19 @@ def _conversion_learning_fields(content: dict) -> dict:
     }
 
 
+def _generation_diagnostics(content: dict) -> dict:
+    """Persist the evidence required to explain a rejected or published run."""
+    return {
+        "copy": content.get("copy", {}),
+        "orchestrator_quality": content.get("orchestrator_quality", {}),
+        "claim_ledger": content.get("claim_ledger", {}),
+        "creative_director": content.get("creative_director", {}),
+        "copy_generation_method": content.get("copy_generation_method", ""),
+        "copy_fallback_reason": content.get("copy_fallback_reason"),
+        "platform_posts": content.get("platform_posts", {}),
+    }
+
+
 def _build_phase6_learning(
     *,
     content: dict,
@@ -733,7 +746,7 @@ def main() -> None:
                     "errors": kept_errors,
                     "warnings": list(validation.get("warnings", [])) + ["runtime_claim_not_supported_soft_fail"],
                 }
-        scoring = score_content(content)
+        scoring = score_content(content, requested_platforms=manual_platforms)
         duplicates = check_duplicates(content, generate_posts.load_history(), windows=windows)
         if manual_platforms and manual_duplicate_mode == "allow_all":
             if duplicates.get("reasons"):
@@ -802,7 +815,7 @@ def main() -> None:
                     "errors": kept_errors,
                     "warnings": list(validation.get("warnings", [])) + ["runtime_claim_not_supported_soft_fail"],
                 }
-            scoring = score_content(content)
+            scoring = score_content(content, requested_platforms=manual_platforms)
             duplicates = check_duplicates(content, generate_posts.load_history(), windows=windows)
             if manual_duplicate_mode == "allow_all":
                 duplicates["reasons"] = []
@@ -897,6 +910,7 @@ def main() -> None:
             "copy_generation_source": content.get("copy_generation_source", "unknown"),
             "quality_score": content.get("quality_score"),
             "quality_component_scores": content.get("quality_component_scores", {}),
+            **_generation_diagnostics(content),
             **_conversion_learning_fields(content),
             "validation_status": content.get("validation_status"),
             "validation_errors": content.get("validation_errors", []),
@@ -1218,6 +1232,7 @@ def main() -> None:
         "copy_generation_source": content.get("copy_generation_source", "unknown"),
         "quality_score": content.get("quality_score"),
         "quality_component_scores": content.get("quality_component_scores", {}),
+        **_generation_diagnostics(content),
         "quality_warnings": content.get("quality_warnings", []),
         **_conversion_learning_fields(content),
         "validation_status": content.get("validation_status"),

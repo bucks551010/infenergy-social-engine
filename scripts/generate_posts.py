@@ -78,9 +78,26 @@ def run_social_intelligence(count: int = 1, platform: str = "instagram_feed", **
     return [p.as_dict() for p in batch]
 
 
-def _route_generate_orchestrator(slot: str = "", *, platform: str = "instagram_feed", **kw: Any) -> dict[str, Any]:
+def _social_platform_key(platform: str) -> str:
+    """Normalize runtime publisher names to social-library platform identifiers."""
+    value = str(platform or "").strip().lower()
+    return {
+        "facebook": "facebook_feed",
+        "instagram": "instagram_feed",
+        "linkedin": "linkedin_feed",
+    }.get(value, value or "instagram_feed")
+
+
+def _route_generate_orchestrator(
+    slot: str = "",
+    *,
+    platform: str = "instagram_feed",
+    funnel_stage_override: str = "",
+    **kw: Any,
+) -> dict[str, Any]:
     """Return the first orchestrated post package in the legacy payload shape used by the runtime."""
-    batch = run_social_intelligence(count=1, platform=platform, **kw)
+    social_platform = _social_platform_key(platform)
+    batch = run_social_intelligence(count=1, platform=social_platform, **kw)
     if not batch:
         return {}
 
@@ -102,6 +119,47 @@ def _route_generate_orchestrator(slot: str = "", *, platform: str = "instagram_f
         except Exception:
             catalog_product = None
 
+    brief = first.get("brief") or {}
+    copy_body = str(copy_pkg.get("body_text") or "").strip()
+    takeaway = str(copy_pkg.get("takeaway") or copy_pkg.get("memory_anchor") or "").strip()
+    selected_hook = str(copy_pkg.get("hook") or "").strip()
+    selected_cta = str(copy_pkg.get("cta") or "Learn more").strip()
+    funnel_stage = _normalize_funnel_stage_override(funnel_stage_override) or "EDUCATION"
+    product_for_adaptation = {
+        "id": offering.get("offering_id") or offering.get("sku") or "",
+        "name": offering.get("name", ""),
+        "sku": offering.get("sku", ""),
+        "categories": [offering.get("category", "")] if offering.get("category") else [],
+        "metrics": (catalog_product or {}).get("metrics", []) or list(offering.get("verified_facts", [])),
+        "fact_snippet": (catalog_product or {}).get("fact_snippet", "") or offering.get("description_clean", ""),
+    }
+    topic = str((brief.get("topic_path") or {}).get("topic") or "Product education").strip()
+    components = _build_post_components(
+        topic=topic,
+        selected_hook=selected_hook,
+        selected_cta=selected_cta,
+        product=product_for_adaptation,
+        funnel_stage=funnel_stage,
+    )
+    components.update({
+        "logic_hook": selected_hook,
+        "logic_bridge": copy_body or components["logic_bridge"],
+        "proof": "; ".join(str(fact) for fact in (offering.get("verified_facts") or [])[:4]) or components["proof"],
+        "emotional_outcome": takeaway or components["emotional_outcome"],
+        "on_image_headline": selected_hook or components["on_image_headline"],
+        "on_image_subline": takeaway or components["on_image_subline"],
+    })
+    platform_posts = _build_platform_posts(
+        post_id=str(first.get("post_id") or ""),
+        campaign_id="",
+        audience_segment=str(brief.get("audience_segment") or ""),
+        funnel_stage=funnel_stage,
+        destination_url=(catalog_product or {}).get("product_url") or SITE_URL,
+        components=components,
+        quality_score=float(quality_pkg.get("overall") or 0),
+    )
+    wp_content = _join_paragraphs(selected_hook, copy_body, takeaway, selected_cta)
+
     legacy = {
         "post_id": first.get("post_id"),
         "copy_generation_source": "social_intelligence_orchestrator",
@@ -119,8 +177,8 @@ def _route_generate_orchestrator(slot: str = "", *, platform: str = "instagram_f
         "product_metrics": (catalog_product or {}).get("metrics", []) or list(offering.get("verified_facts", [])),
         "product_facts": (catalog_product or {}).get("fact_snippet", "") or offering.get("description_clean", ""),
         "product_in_stock": (catalog_product or {}).get("in_stock", "") or offering.get("stock_status", ""),
-        "selected_hook": copy_pkg.get("hook") or "",
-        "selected_cta": copy_pkg.get("cta") or "",
+        "selected_hook": selected_hook,
+        "selected_cta": selected_cta,
         "copy": copy_pkg,
         "visual": visual_pkg,
         "quality_score": quality_pkg.get("overall", 0),
@@ -128,7 +186,28 @@ def _route_generate_orchestrator(slot: str = "", *, platform: str = "instagram_f
         "quality_warnings": quality_pkg.get("warnings", []),
         "quality": quality_pkg,
         "slot": slot,
-        "platform": platform,
+        "platform": social_platform,
+        "funnel_stage": funnel_stage,
+        "audience_segment": brief.get("audience_segment", ""),
+        "pillar": brief.get("pillar_id", ""),
+        "topic": topic,
+        "microtopic": (brief.get("topic_path") or {}).get("microtopic", ""),
+        "genre_id": brief.get("genre_id", ""),
+        "reader_job": brief.get("reader_job", ""),
+        "emotional_driver": brief.get("emotional_driver", ""),
+        "strategic_brief": brief,
+        "claim_ledger": first.get("claim_ledger") or {},
+        "creative_director": first.get("creative_director") or {},
+        "orchestrator_quality": quality_pkg,
+        "copy_generation_method": copy_pkg.get("generation_method", ""),
+        "copy_fallback_reason": copy_pkg.get("fallback_reason"),
+        "wp_title": selected_hook or topic,
+        "wp_content": wp_content,
+        "wp_excerpt": takeaway or selected_hook,
+        "fb_caption": platform_posts["facebook"]["caption"],
+        "ig_caption": platform_posts["instagram"]["caption"],
+        "li_text": platform_posts["linkedin"]["caption"],
+        "platform_posts": platform_posts,
     }
     for key in ("hook", "body_text", "takeaway", "memory_anchor"):
         legacy.setdefault(key, copy_pkg.get(key))
@@ -4627,9 +4706,19 @@ def generate(
     if mode == "best_of":
         return _generate_best_of(slot, funnel_stage_override=funnel_stage_override, product_id_override=product_id_override)
     if mode == "orchestrator":
-        return _route_generate_orchestrator(slot, platform=platform, product_id_override=product_id_override)
+        return _route_generate_orchestrator(
+            slot,
+            platform=platform,
+            product_id_override=product_id_override,
+            funnel_stage_override=funnel_stage_override,
+        )
     if mode != "legacy" and _social_intelligence_enabled():
-        return _route_generate_orchestrator(slot, platform=platform, product_id_override=product_id_override)
+        return _route_generate_orchestrator(
+            slot,
+            platform=platform,
+            product_id_override=product_id_override,
+            funnel_stage_override=funnel_stage_override,
+        )
 
     ensure_runtime_data()
     preferred_model = os.environ.get("GEMINI_MODEL", "").strip()

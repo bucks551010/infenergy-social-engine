@@ -45,13 +45,16 @@ def _hashtags(text: str) -> int:
     return len(re.findall(r"#[A-Za-z0-9_]+", text or ""))
 
 
-def score_content(content: dict[str, Any]) -> dict[str, Any]:
+def score_content(content: dict[str, Any], requested_platforms: list[str] | None = None) -> dict[str, Any]:
     """Compute a 100-point content score using requested weighted components."""
 
     wp = str(content.get("wp_content", ""))
     fb = str(content.get("fb_caption", ""))
     ig = str(content.get("ig_caption", ""))
     li = str(content.get("li_text", ""))
+    platforms = {str(platform).strip().lower() for platform in (requested_platforms or []) if str(platform).strip()}
+    if not platforms:
+        platforms = {"wordpress", "facebook", "instagram", "linkedin"}
     funnel_stage = str(content.get("funnel_stage", "EDUCATION")).upper()
     hook = str(content.get("selected_hook", ""))
     cta = str(content.get("selected_cta", ""))
@@ -65,30 +68,40 @@ def score_content(content: dict[str, Any]) -> dict[str, Any]:
     if not _has_numbers(hook) and funnel_stage in ("DESIRE", "TRUST"):
         hook_strength -= 2
 
+    active_text = " ".join(
+        text for platform, text in {
+            "wordpress": wp,
+            "facebook": fb,
+            "instagram": ig,
+            "linkedin": li,
+        }.items() if platform in platforms
+    )
+
     audience_relevance = 15.0
-    if "home" not in (fb + " " + ig + " " + wp).lower() and "business" not in (li + " " + wp).lower():
+    if "home" not in active_text.lower() and "business" not in active_text.lower() and "travel" not in active_text.lower():
         audience_relevance -= 4
 
     usefulness = 15.0
-    if len(wp) < 1000:
+    # Long-form WordPress depth is relevant only when WordPress is part of this run.
+    if "wordpress" in platforms and len(wp) < 1000:
         usefulness -= 5
-    if not _has_numbers(wp + fb + ig + li):
+    if not _has_numbers(active_text):
         usefulness -= 6
 
     platform_fit = 15.0
-    if _hashtags(li) > 3:
+    if "linkedin" in platforms and _hashtags(li) > 3:
         platform_fit -= 3
-    if _hashtags(fb) > 8:
+    if "facebook" in platforms and _hashtags(fb) > 8:
         platform_fit -= 3
-    if _hashtags(ig) < 3:
+    if "instagram" in platforms and _hashtags(ig) < 3:
         platform_fit -= 4
 
     product_message_fit = 10.0
-    if product_name and product_name.lower() not in (wp + fb + ig + li).lower():
+    if product_name and product_name.lower() not in active_text.lower():
         product_message_fit -= 4
 
     specificity = 10.0
-    if not _has_numbers(wp + fb + ig + li):
+    if not _has_numbers(active_text):
         specificity -= 5
 
     conversion_potential = 10.0

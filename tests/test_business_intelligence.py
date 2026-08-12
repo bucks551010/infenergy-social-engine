@@ -752,7 +752,9 @@ def test_orchestrator_end_to_end_with_bi_active(bi_env, monkeypatch):
     assert pkg.business_context is not None
     assert pkg.anchored_offering is not None
     assert pkg.anchored_offering.get("sku") in ("PS-500", "CH-65")
-    assert pkg.brief.get("audience_segment") == "preparedness_focused_household"
+    # Selected-offering fit now constrains the creative audience instead of
+    # always inheriting the profile's first generic segment.
+    assert pkg.brief.get("audience_segment") == "mobile_professional"
     # Quality gate still produces a score
     assert pkg.quality["overall"] > 0.0
 

@@ -14,12 +14,15 @@ from typing import Any
 
 
 DEFAULT_MODEL_ROUTES: dict[str, str] = {
-    "classification": "gemini-2.5-flash",
-    "topic_generation": "gemini-2.5-flash",
+    # The fast route remains entirely deployment-configurable. The earlier
+    # gemini-2.5-flash default returned 404 for this deployment, so use the
+    # lighter current route by default and keep fallbacks explicit below.
+    "classification": "gemini-2.5-flash-lite",
+    "topic_generation": "gemini-2.5-flash-lite",
     "strategy": "gemini-2.5-pro",
     "visual_direction": "gemini-2.5-pro",
-    "copy_editing": "gemini-2.5-flash",
-    "image_analysis": "gemini-2.5-flash",
+    "copy_editing": "gemini-2.5-flash-lite",
+    "image_analysis": "gemini-2.5-flash-lite",
     "fact_reasoning": "gemini-2.5-pro",
     "final_review": "gemini-2.5-pro",
 }
@@ -30,7 +33,28 @@ def route_for(task: str) -> str:
     env = os.environ.get(f"GEMINI_ROUTE_{task.upper()}")
     if env:
         return env.strip()
-    return DEFAULT_MODEL_ROUTES.get(task, "gemini-2.5-flash")
+    return DEFAULT_MODEL_ROUTES.get(task, "gemini-2.5-flash-lite")
+
+
+def route_candidates(task: str) -> list[str]:
+    """Return ordered, de-duplicated models for one task.
+
+    ``GEMINI_ROUTE_<TASK>`` is authoritative. Optional
+    ``GEMINI_ROUTE_<TASK>_FALLBACKS`` or ``GEMINI_MODEL_FALLBACKS`` may list
+    comma-separated alternatives so a retired provider model degrades to a
+    configured substitute before template fallback.
+    """
+    task_key = task.upper()
+    configured = os.environ.get(f"GEMINI_ROUTE_{task_key}_FALLBACKS", "")
+    global_fallbacks = os.environ.get("GEMINI_MODEL_FALLBACKS", "")
+    candidates = [route_for(task)]
+    for raw in (configured, global_fallbacks):
+        candidates.extend(part.strip() for part in raw.split(",") if part.strip())
+    out: list[str] = []
+    for candidate in candidates:
+        if candidate and candidate not in out:
+            out.append(candidate)
+    return out
 
 
 _LAST_ERROR: str | None = None
@@ -72,33 +96,33 @@ def generate_json(task: str, prompt: str, *, system_instruction: str = "") -> di
         _LAST_ERROR = "google-genai SDK not importable"
         return None
 
-    model = route_for(task)
-    try:
-        client = genai.Client(api_key=api_key)
-        config_kwargs: dict[str, Any] = {"response_mime_type": "application/json"}
-        if system_instruction:
-            config_kwargs["system_instruction"] = system_instruction
-        response = client.models.generate_content(
-            model=model,
-            contents=prompt,
-            config=types.GenerateContentConfig(**config_kwargs),
-        )
-        text = str(getattr(response, "text", "") or "").strip()
-        if not text:
-            _LAST_ERROR = f"task={task} model={model}: empty response text"
-            print(f"[model_router] {_LAST_ERROR}")
-            return None
-        parsed = json.loads(text)
-        if not isinstance(parsed, dict):
-            _LAST_ERROR = f"task={task} model={model}: response was not a JSON object"
-            print(f"[model_router] {_LAST_ERROR}")
-            return None
-        _LAST_ERROR = None
-        return parsed
-    except Exception as exc:
-        _LAST_ERROR = f"task={task} model={model}: {type(exc).__name__}: {exc}"
-        print(f"[model_router] {_LAST_ERROR}")
-        return None
+    client = genai.Client(api_key=api_key)
+    errors: list[str] = []
+    for model in route_candidates(task):
+        try:
+            config_kwargs: dict[str, Any] = {"response_mime_type": "application/json"}
+            if system_instruction:
+                config_kwargs["system_instruction"] = system_instruction
+            response = client.models.generate_content(
+                model=model,
+                contents=prompt,
+                config=types.GenerateContentConfig(**config_kwargs),
+            )
+            text = str(getattr(response, "text", "") or "").strip()
+            if not text:
+                errors.append(f"model={model}: empty response text")
+                continue
+            parsed = json.loads(text)
+            if not isinstance(parsed, dict):
+                errors.append(f"model={model}: response was not a JSON object")
+                continue
+            _LAST_ERROR = None
+            return parsed
+        except Exception as exc:
+            errors.append(f"model={model}: {type(exc).__name__}: {exc}")
+    _LAST_ERROR = f"task={task}: " + " | ".join(errors)
+    print(f"[model_router] {_LAST_ERROR}")
+    return None
 
 
 # --- Prompt versioning (§96) -----------------------------------------------

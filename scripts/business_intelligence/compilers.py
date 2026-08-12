@@ -73,17 +73,17 @@ def compile_conversion_context(*, segment_id: str = "", offering_id: str = "") -
 # --- Creative context (§45) -------------------------------------------
 
 
-def compile_creative_context(*, territory_id: str = "", segment_id: str = "") -> dict[str, Any]:
+def compile_creative_context(*, territory_id: str = "", segment_id: str = "", offering_id: str = "") -> dict[str, Any]:
     p = _load_profile()
     territories = p.get("content_territories", [])
     territory = next((t for t in territories if t.get("territory_id") == territory_id), None) if territory_id else None
     seg = _pick_segment(p, segment_id)
-    all_offerings = p.get("offerings", [])
-    verified_facts: list[str] = []
-    forbidden_claims: list[str] = []
-    for o in all_offerings:
-        verified_facts.extend(o.get("verified_facts", []) or [])
-        forbidden_claims.extend(o.get("forbidden_claims", []) or [])
+    offering = _pick_offering(p, offering_id)
+    # Normal creative calls should receive only the selected offering's claim
+    # boundaries. The full catalog is not useful prompt context and can make
+    # a product-specific post cite the wrong product.
+    verified_facts = list((offering or {}).get("verified_facts", []) or [])
+    forbidden_claims = list((offering or {}).get("forbidden_claims", []) or [])
     payload = {
         "business_identity": p.get("identity", {}),
         "why": p.get("why", {}),
@@ -97,6 +97,7 @@ def compile_creative_context(*, territory_id: str = "", segment_id: str = "") ->
         "content_territories": territories,
         "focus_territory": territory,
         "audience_segment": seg,
+        "offering": offering,
         "customer_moments": p.get("customer_moments", []),
         "transformations": p.get("transformations", []),
         "verified_facts": sorted(set(verified_facts)),

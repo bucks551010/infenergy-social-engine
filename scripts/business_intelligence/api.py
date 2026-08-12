@@ -66,8 +66,12 @@ def compile_conversion_context(*, segment_id: str = "", offering_id: str = "") -
     return compilers.compile_conversion_context(segment_id=segment_id, offering_id=offering_id)
 
 
-def compile_creative_context(*, territory_id: str = "", segment_id: str = "") -> dict[str, Any]:
-    return compilers.compile_creative_context(territory_id=territory_id, segment_id=segment_id)
+def compile_creative_context(*, territory_id: str = "", segment_id: str = "", offering_id: str = "") -> dict[str, Any]:
+    return compilers.compile_creative_context(
+        territory_id=territory_id,
+        segment_id=segment_id,
+        offering_id=offering_id,
+    )
 
 
 def compile_orchestrator_context() -> dict[str, Any]:

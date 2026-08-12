@@ -32,6 +32,7 @@ from . import (
     copy_intelligence,
     engines,
     libraries,
+    lean_intelligence,
     memory_intelligence,
     model_router,
     quality_intelligence,
@@ -63,7 +64,7 @@ def _bi_enabled() -> bool:
     return os.environ.get("ENABLE_BUSINESS_INTELLIGENCE", "").lower() in {"1", "true", "yes", "on"}
 
 
-def _load_bi_creative_context() -> dict[str, Any] | None:
+def _load_bi_creative_context(offering_id: str = "") -> dict[str, Any] | None:
     if not _bi_enabled():
         return None
     try:
@@ -74,7 +75,7 @@ def _load_bi_creative_context() -> dict[str, Any] | None:
     try:
         if not bi_profile.load_current():
             bi_api.rebuild_profile()
-        return bi_api.compile_creative_context()
+        return bi_api.compile_creative_context(offering_id=offering_id)
     except Exception:
         return None
 
@@ -120,6 +121,10 @@ _CATEGORY_PILLAR_MAP = {
     "electric bikes": "electric_mobility",
     "e-bikes": "electric_mobility",
     "ebikes": "electric_mobility",
+    "portable power": "portable_power",
+    "emergency power": "portable_power",
+    "travel power": "portable_power",
+    "phone power banks": "portable_power",
 }
 
 
@@ -388,19 +393,23 @@ class SocialIntelligenceOrchestrator:
 
         # 0b. Optional BI Foundation hydration — only when the caller
         # didn't already specify a value and the flag is on.
-        bi_ctx = _load_bi_creative_context()
-        bi_offering = _bi_pick_offering(rotation_index) if bi_ctx else None
+        bi_offering = _bi_get_offering(product_id_override) if product_id_override else _bi_pick_offering(rotation_index)
+        bi_ctx = _load_bi_creative_context(
+            str((bi_offering or {}).get("offering_id") or (bi_offering or {}).get("sku") or "")
+        )
         if product_id_override:
             forced_offering = _bi_get_offering(product_id_override)
             if forced_offering:
                 bi_offering = forced_offering
                 if not preferred_pillar:
                     preferred_pillar = _category_to_pillar(forced_offering.get("category", ""))
+        lean_context = lean_intelligence.compile_product_social_intelligence(bi_offering)
+        relationship_context = lean_context.get("relationships") or {}
         if bi_ctx:
             if not preferred_pillar:
-                preferred_pillar = _bi_preferred_pillar(bi_ctx)
+                preferred_pillar = relationship_context.get("pillar_id") or _bi_preferred_pillar(bi_ctx)
             if not audience_hint:
-                audience_hint = _bi_audience_hint(bi_ctx)
+                audience_hint = relationship_context.get("audience_id") or _bi_audience_hint(bi_ctx)
             if not verified_facts:
                 # Prefer facts from the specifically-anchored product when we have one
                 if bi_offering and bi_offering.get("verified_facts"):

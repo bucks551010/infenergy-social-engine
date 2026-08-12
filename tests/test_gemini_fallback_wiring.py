@@ -14,6 +14,7 @@ _REPO = os.path.dirname(_HERE)
 sys.path.insert(0, os.path.join(_REPO, "scripts"))
 
 import generate_posts  # noqa: E402
+from score_content import score_content  # noqa: E402
 
 
 class _FakeResponse:
@@ -81,6 +82,22 @@ def test_generate_json_with_gemini_returns_none_when_no_api_key(monkeypatch):
     monkeypatch.delenv("GEMINI_API_KEY", raising=False)
     result = generate_posts._generate_json_with_gemini("prompt", ["model-a"])
     assert result is None
+
+
+def test_instagram_only_score_does_not_require_wordpress_content():
+    content = {
+        "selected_hook": "What does 41,600mAh tell you about real backup power?",
+        "selected_cta": "Compare options",
+        "product_name": "PowerPulse Pro 200",
+        "ig_caption": "PowerPulse Pro 200 stores 154Wh. Compare watt-hours and device load before you buy. #PortablePower #TravelPower #StayCharged",
+    }
+
+    instagram_only = score_content(content, requested_platforms=["instagram"])
+    all_platforms = score_content(content)
+
+    assert instagram_only["component_scores"]["usefulness"] > all_platforms["component_scores"]["usefulness"]
+    assert instagram_only["component_scores"]["platform_fit"] == 15
+    assert instagram_only["total"] > all_platforms["total"]
 
 
 def _persuasion_brief(**overrides) -> dict:

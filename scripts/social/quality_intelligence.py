@@ -42,8 +42,10 @@ QUALITY_FACTORS = (
 
 
 DEFAULT_THRESHOLDS = {
-    "publish": 78.0,
-    "revise": 70.0,
+    # The runtime publish gate is 82. Keep the strategic diagnostic bands
+    # aligned so one post cannot be called publishable and then rejected.
+    "publish": 82.0,
+    "revise": 75.0,
     "regenerate": 60.0,
     "high_risk_claims_blocking": True,
 }
@@ -64,8 +66,8 @@ def _band(overall: float) -> str:
     if overall >= 95: return "extraordinary"
     if overall >= 90: return "excellent"
     if overall >= 84: return "strong"
-    if overall >= 78: return "publishable"
-    if overall >= 70: return "revise"
+    if overall >= DEFAULT_THRESHOLDS["publish"]: return "publishable"
+    if overall >= DEFAULT_THRESHOLDS["revise"]: return "revise"
     return "regenerate"
 
 

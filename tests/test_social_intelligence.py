@@ -34,6 +34,7 @@ from social import (  # noqa: E402
     quality_intelligence,
     visual_intelligence,
     visual_provider,
+    lean_intelligence,
 )
 
 
@@ -59,6 +60,56 @@ def test_generate_uses_social_intelligence_when_enabled(monkeypatch):
     assert result["post_id"] == "social-123"
     assert result["business_context"]["identity"]["name"] == "Infenergy Power"
     assert result["anchored_offering"]["name"] == "Portable power station"
+
+
+def test_orchestrator_bridge_builds_publishable_platform_contract(monkeypatch):
+    expected = {
+        "post_id": "social-456",
+        "brief": {
+            "pillar_id": "portable_power",
+            "genre_id": "how_it_works",
+            "reader_job": "EXPLAIN_THIS",
+            "audience_segment": "mobile_professional",
+            "emotional_driver": "confidence",
+            "topic_path": {"topic": "Battery capacity", "microtopic": "mAh"},
+        },
+        "anchored_offering": {
+            "offering_id": "PPP-200", "sku": "PPP-200", "name": "PowerPulse Pro 200",
+            "category": "Portable Power", "verified_facts": ["154Wh", "41,600mAh", "200W"],
+            "images": [],
+        },
+        "copy": {
+            "hook": "What does 41,600mAh tell you about real backup power?",
+            "body_text": "Because watt-hours describe stored energy, 154Wh helps compare the work a battery can support.",
+            "takeaway": "Compare watt-hours and the device load before you buy.",
+            "memory_anchor": "Compare watt-hours and the device load before you buy.",
+            "cta": "Compare options",
+            "generation_method": "llm",
+        },
+        "visual": {"visual_format": "fact_card"},
+        "quality": {"overall": 88},
+        "claim_ledger": {},
+        "creative_director": {"passed": True},
+    }
+    monkeypatch.setattr(generate_posts, "run_social_intelligence", lambda count=1, platform="instagram_feed", **kw: [expected])
+    monkeypatch.setattr(generate_posts, "load_products", lambda: [])
+    monkeypatch.setattr(generate_posts, "generate_visuals", lambda content, visual_plan: {})
+
+    result = generate_posts._route_generate_orchestrator(
+        "midday", platform="instagram", funnel_stage_override="EDUCATION"
+    )
+
+    assert result["platform"] == "instagram_feed"
+    assert result["funnel_stage"] == "EDUCATION"
+    assert result["audience_segment"] == "mobile_professional"
+    assert result["topic"] == "Battery capacity"
+    assert result["ig_caption"]
+    assert result["fb_caption"]
+    assert result["li_text"]
+    assert result["wp_content"]
+    assert "PowerPulse Pro 200" in result["ig_caption"]
+    assert "41,600mAh" in result["ig_caption"]
+    assert result["copy_generation_method"] == "llm"
 
 
 # --- libraries --------------------------------------------------------------
@@ -97,6 +148,26 @@ def test_audience_select_deterministic():
     assert a.segment_id == b.segment_id == "mobile_professional"
     assert a.reader_job
     assert a.reader_job_config
+
+
+def test_lean_product_context_links_portable_power_to_matching_audience():
+    context = lean_intelligence.compile_product_social_intelligence({
+        "offering_id": "PPP-200",
+        "sku": "PPP-200",
+        "name": "PowerPulse Pro 200",
+        "category": "Portable Power",
+        "customer_fit": ["travelers", "mobile-device users"],
+        "use_cases": ["travel", "daily carry"],
+        "functional_benefits": ["keeps compatible devices charged"],
+        "problems_addressed": ["outlet access is unreliable"],
+        "verified_facts": ["154Wh"],
+        "images": ["https://example.com/product.jpg"],
+    })
+
+    assert context["relationships"]["pillar_id"] == "portable_power"
+    assert context["relationships"]["audience_id"] == "mobile_professional"
+    assert context["marketing"]["customer_questions"]
+    assert "approved_product_facts" not in context["truth"]["important_unknowns"]
 
 
 # --- content strategy ------------------------------------------------------
@@ -291,6 +362,26 @@ def test_quality_score_gives_reasonable_overall():
     )
     assert 0 <= q.overall <= 100
     assert q.band in {"regenerate", "revise", "publishable", "strong", "excellent", "extraordinary"}
+
+
+def test_quality_publishable_band_matches_live_threshold():
+    ledger = claim_intelligence.ClaimLedger()
+    q = quality_intelligence.score(
+        hook="Why 154Wh matters when you compare portable backup power.",
+        body="Because capacity only helps when it matches the device load, 154Wh gives a concrete starting point for comparison.",
+        takeaway="Compare watt-hours with the device load.",
+        memory_anchor="Compare watt-hours with the device load.",
+        visual_concept_description="capacity comparison card",
+        platform="instagram_feed",
+        genre=libraries.genres()["myth_vs_reality"],
+        reader_job_config=libraries.reader_jobs()["EXPLAIN_THIS"],
+        ledger=ledger,
+        visual_prompt_humanness=0.9,
+        caption_visual_relationship="VISUAL_SUMMARIZES_CAPTION",
+        engine="B",
+    )
+    if q.band == "publishable":
+        assert q.overall >= 82
 
 
 def test_creative_director_test_all_yes_passes():

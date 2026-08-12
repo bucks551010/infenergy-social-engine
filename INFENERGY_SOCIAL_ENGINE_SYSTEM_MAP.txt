@@ -1,0 +1,583 @@
+INFENERGY SOCIAL ENGINE
+COMPLETE SYSTEM MAP AND FORENSIC ARCHITECTURAL EXPLANATION
+Audit date: 2026-08-12
+Repository audited: C:\Users\v-jmoten\infenergy-social-engine
+
+EVIDENCE LABELS
+[CONFIRMED] Directly established from executable code or current data.
+[INFERRED] Strongly implied by connected code, but not proven in a live external-service run.
+[UNCLEAR] The repository does not establish one answer.
+[DOCUMENTED_ONLY] Described in documentation/comments but not verified in an active path.
+[POSSIBLY_UNUSED] Implemented or stored, but no active caller/reader was confirmed.
+
+AUDIT METHOD AND BOUNDARY
+[CONFIRMED] This map was reconstructed from imports, definitions, call sites, environment access, HTTP dispatch, subprocesses, SQLite statements, file I/O, model calls, publisher requests, tests, and current data artifacts. README claims are secondary. No application code or configuration was changed. The repository contains 119 Python files, 769 JSON files, 810 generated PNG files, 800 generated HTML files, 23 Markdown files, 5 PowerShell files, 2 product CSVs, one JSONL ledger, and one SQLite database after excluding .git, caches, and dependency folders. Bulk timestamped campaign/agent artifacts are grouped rather than listed individually.
+
+TABLE OF CONTENTS
+1 Executive System Definition; 2 Repository Scope; 3 Repository Directory Map; 4 Architectural Layers; 5 Master Architecture Diagram; 6 Application Entrypoints; 7 Deployment Architecture; 8 Scheduler and Trigger System; 9 Master Runtime Flow; 10 Orchestration Layer; 11 Module Responsibility Map; 12 Function/Class Call Graph; 13 Business Data Flow; 14 Product/Offering Data Flow; 15 Marketing/Strategy Data Flow; 16 Topic System; 17 Content Generation System; 18 AI/Model Architecture; 19 Complete Agent Inventory; 20 Agent Relationship Map; 21 Prompt Inventory; 22 Information Each Agent Attempts to Determine; 23 Copy Generation; 24 Creative/Visual System; 25 Image/Asset System; 26 HTML/Rendering System; 27 Content Validation; 28 Brand Validation; 29 Claim/Fact Validation; 30 Content Memory; 31 Creative Memory; 32 Performance Tracking; 33 Learning/Feedback; 34 Facebook Publishing; 35 Instagram Publishing; 36 LinkedIn Publishing; 37 Other Publishing Integrations; 38 External Service Map; 39 API/HTTP Endpoint Map; 40 Manual Control System; 41 Configuration; 42 Environment Variables; 43 Storage Architecture; 44 State Management; 45 Error Handling; 46 Retry/Recovery; 47 Logging/Observability; 48 Security/Credential Flow; 49 Current Autonomy; 50 Current Intelligence; 51 Current Agent Organization; 52 End-to-End Example Post Trace; 53 Alternate Execution Paths; 54 Dependency Graph; 55 Reverse Dependency/Critical Components; 56 Responsibility Matrix; 57 Data Ownership Matrix; 58 AI Responsibility Matrix; 59 External Service Matrix; 60 Configuration Matrix; 61 Unused/Legacy/Unclear Components; 62 Documented vs Implemented; 63 Implemented but Undocumented; 64 Data Loaded but Apparently Unused; 65 Architectural Risks/Weaknesses; 66 Critical Path; 67 Critical Failure Points; 68 Current System Strengths; 69 Current System Limitations; 70 Questions the Repository Cannot Answer; 71 Plain-English Explanation; 72 Architect's Summary; 73 Completeness Result.
+
+1. EXECUTIVE SYSTEM DEFINITION
+[CONFIRMED] This is a Python social-content generation and publishing service for Infenergy Power. social_engine/start.py imports worker and calls worker.main(). worker.py owns a ThreadingHTTPServer, three daily UTC schedule jobs, manual control endpoints, Meta token refresh, and a process-wide RUN_LOCK. A slot run launches scripts/run_engine.py in a subprocess. run_engine.py loads channel/funnel state, asks scripts/generate_posts.py for content, enforces validation/quality/duplicate/readiness gates, resolves media, calls independent WordPress/Facebook/Instagram/LinkedIn adapters, and writes operational history.
+[CONFIRMED] Generation is dual-stack. The default legacy stack is the large generate_posts.py pipeline. The newer scripts/social/orchestrator.py stack can be selected explicitly, by environment, or in best_of mode. The orchestrator is enriched by scripts/business_intelligence when enabled. Both stacks use deterministic decision engines; selected tasks call Gemini and fall back when calls fail.
+[CONFIRMED] This is not a queue-based distributed multi-agent system. It is a rule engine plus optional LLM calls, declarative agent contracts, individually dispatchable utility agents, file/SQLite persistence, and synchronous external publishers.
+
+2. REPOSITORY SCOPE
+Root control/deployment: worker.py, social_engine/start.py, social_engine/config.py, railway.json, requirements.txt, manual_run.ps1, run_post.ps1.
+Core runtime: scripts/run_engine.py, generate_posts.py, campaign_runtime.py, anti_repeat.py, score_content.py, validate_product_claims.py, build_utm_url.py, url_safety.py.
+Publishing: publish_wordpress.py, publish_facebook.py, publish_instagram.py, publish_linkedin.py.
+Intelligence: scripts/conversion/*, scripts/social/*, scripts/business_intelligence/*, scripts/agents/*, scripts/agent_control_plane.py.
+Marketing generation: social_engine/marketing_team/*, run_marketing_team.py, run_marketing_weekly.py, build_campaign_plan.py.
+Persistence/config: data/*.json, data/marketing/*, data/social/*, data/products/*.csv, data/product_briefs/*, data/business_intelligence/*, data/inventory.db, generated_visuals and public_media.
+Tests: 19 test modules covering conversion, BI, campaigns, phases, agents, publishers, visuals, fallback wiring, social intelligence, and leak prevention.
+
+3. REPOSITORY DIRECTORY MAP
+/
+|-- worker.py                         HTTP/scheduler/process control
+|-- social_engine/
+|   |-- start.py                      Railway entrypoint
+|   |-- config.py                     settings dataclass
+|   `-- marketing_team/               deterministic/AI marketing workflow
+|-- scripts/
+|   |-- run_engine.py                 live run, gates, publishers, history
+|   |-- generate_posts.py             legacy generator + pipeline router
+|   |-- campaign_runtime.py           stages, schedules, CTA, UTM, quality
+|   |-- inventory_db.py               SQLite ownership
+|   |-- publish_*.py                  external platform adapters
+|   |-- social_visuals.py             Gemini/Pillow image production
+|   |-- conversion/                   deterministic persuasion engine
+|   |-- social/                       new social intelligence stack
+|   |-- business_intelligence/        profile/evidence/research/learning
+|   `-- agents/                       16 HTTP-dispatchable utilities
+|-- data/
+|   |-- products/                     WooCommerce CSV source exports
+|   |-- product_briefs/               SKU/product-specific fact boundaries
+|   |-- marketing/                    manifesto, schedule, funnel, CTA, plans
+|   |-- social/                       pillars, graph, genres, visual libraries
+|   |-- business_intelligence/        profile, evidence, research, compiled BI
+|   |-- agents/                       timestamped agent outputs
+|   |-- generated_visuals/            generated platform PNGs
+|   |-- post_history.json             shared operational/creative history path
+|   `-- inventory.db                  products/brand/ideology/visual settings
+`-- tests/                             executable acceptance evidence
+
+4. ARCHITECTURAL LAYERS
+Deployment: railway.json -> social_engine/start.py.
+Control: worker.py.
+Scheduling: schedule library in worker.main; campaign_runtime schedule eligibility.
+Orchestration: run_engine.main and generate_posts.generate.
+Business data: business_intelligence modules and founder manifesto.
+Product data: CSV, product briefs, offerings JSON, inventory.db.
+Marketing intelligence: marketing_team, campaign plans, conversion libraries.
+Content intelligence: conversion/* and social/*.
+AI: model_router, direct generate_posts Gemini wrapper, visual/agent Gemini calls.
+Creative: social_visuals, visual_intelligence, carousel_director.
+Validation: agent_control_plane, claims, quality, anti-repeat, live visual gate.
+Adaptation: generate_posts._adapt_facebook/_adapt_instagram/_adapt_linkedin.
+Publishing: publish_* adapters.
+Memory/learning: post_history, social memories, BI learning/evidence.
+Observability: worker endpoints and stdout.
+
+5. MASTER ARCHITECTURE DIAGRAM
+Git -> Railway NIXPACKS -> python social_engine/start.py -> worker.main
+                                                        |
+                 +----------------------+---------------+----------------+
+                 |                      |                                |
+          daily schedule          HTTP controls                  startup bootstrap
+                 |                      |                                |
+                 +----------> worker.run_slot <---- /run-now            |
+                                  | RUN_LOCK                             |
+                                  v                                      v
+                       subprocess scripts/run_engine.py        inventory/meta state
+                                  |
+                 +----------------+------------------+
+                 |                                   |
+        campaign_runtime                    generate_posts.generate
+                                                     |
+                         +---------------------------+-------------------+
+                         |                           |                   |
+                      legacy                    orchestrator          best_of
+                         |                           |                   |
+              phase prompts/fallback       BI -> Engine A/B/C          score both
+                         +---------------------------+-------------------+
+                                                     |
+                         validation -> quality -> duplicate -> media gate
+                                                     |
+                   WordPress -> Facebook -> Instagram -> LinkedIn
+                         |          |            |           |
+                         +----------+------------+-----------+
+                                                     |
+                                  post_history + stdout + LAST_RUN
+
+6. APPLICATION ENTRYPOINTS
+[CONFIRMED] Production service: social_engine/start.py::__main__ -> worker.main; started by railway.json startCommand; no input beyond environment; production-critical.
+[CONFIRMED] Direct worker: worker.py::__main__ -> main; development/alternate production start; production-capable.
+[CONFIRMED] Slot subprocess: scripts/run_engine.py::__main__ -> main; started by worker.run_slot or direct CLI; consumes POST_* and credential env; production-critical.
+[CONFIRMED] BI CLI: scripts/business_intelligence/__main__.py; direct module command; rebuild/review/conference support; supporting.
+[CONFIRMED] Marketing CLIs: run_marketing_team.py, run_marketing_weekly.py, build_campaign_plan.py; called by HTTP subprocess endpoints or directly; supporting.
+[CONFIRMED] PowerShell controls: manual_run.ps1, run_post.ps1, refresh/setup Meta scripts, push_brand_post_from_railway.ps1; human-started wrappers; optional.
+[CONFIRMED] HTTP entrypoints: all GET routes in section 39.
+[CONFIRMED] Tests are executable entrypoints through pytest, but never production triggers.
+[CONFIRMED] No webhook receiver, Celery/RQ queue, FastAPI/Flask app, or durable cron database was found.
+
+7. DEPLOYMENT ARCHITECTURE
+[CONFIRMED] railway.json uses NIXPACKS, startCommand "python social_engine/start.py", restartPolicy ON_FAILURE, max retries 5. requirements.txt drives Python dependency installation. The process exposes PORT (default 8080).
+[INFERRED] Persistence across Railway deploys requires DATA_DIR to point to a mounted volume. Code supports DATA_DIR but railway.json does not declare a volume; volume attachment is external platform configuration and cannot be proven from repository files.
+Flow: repository -> Railway build -> pip dependencies -> start.py -> worker process -> HTTP thread + scheduler loop -> per-run Python subprocess.
+
+8. SCHEDULER AND TRIGGER SYSTEM
+[CONFIRMED] worker.main clears schedule and registers schedule.every().day.at() for morning, midday, evening. Defaults: 13:00, 17:00, 23:00 UTC. POST_SCHEDULE_* overrides them. Comments map defaults to 8am/noon/6pm Central but DST conversion is not dynamic.
+[CONFIRMED] Main loop calls schedule.run_pending every 30 seconds. Jobs are memory-only; process restart loses missed jobs; no catch-up/misfire persistence exists.
+[CONFIRMED] Scheduled jobs call run_slot synchronously in the scheduler thread. Manual jobs use daemon threads via _start_slot_thread. RUN_LOCK permits one active run; _start_slot_thread returns false when locked.
+[CONFIRMED] RUN_ON_STARTUP starts a morning daemon run. Manual overrides become temporary environment values and are restored in finally. Subprocess timeout defaults to 420 seconds.
+Trigger map: UTC time or /run-now -> run_slot -> Meta/visual bootstrap -> run_engine subprocess -> generation/publishing.
+
+9. MASTER RUNTIME FLOW
+1 worker sets LAST_RUN running and temporary overrides.
+2 visual repository bootstraps; Meta token refresh is attempted if due.
+3 run_engine checks channel configuration/secrets and computes stage/channel eligibility.
+4 generate_posts selects legacy/orchestrator/best_of.
+5 generator loads history, schedule, brand, ideology, product, topic, campaign and audience context.
+6 deterministic strategy selects content bucket, stage, product/topic, logic/emotion/CTA.
+7 optional Gemini prompt families enrich creative, safety, visual, CTA, conference, or final copy.
+8 fallback builders fill any failed/missing AI result.
+9 product/claim/brand/conversion/brief/visual controls attach reports.
+10 run_engine validates, scores, checks duplicates and can regenerate up to its bounded loop.
+11 live readiness/visual failures produce skipped records rather than publication.
+12 media URL is resolved; platforms publish independently and sequentially.
+13 run result/platform records are written; any platform errors make subprocess failure after history is recorded; worker updates LAST_RUN.
+
+10. ORCHESTRATION LAYER
+[CONFIRMED] generate_posts._pipeline_mode precedence: explicit argument, POST_PIPELINE_OVERRIDE, CONTENT_PIPELINE, ENABLE_SOCIAL_INTELLIGENCE, then legacy.
+[CONFIRMED] _generate_best_of generates legacy and orchestrator candidates and chooses by scoring logic.
+[CONFIRMED] run_social_intelligence instantiates SocialIntelligenceOrchestrator; create_batch loops create_post. Orchestrator loads recent state, optional BI context/offering, rotates Engine A/B/C, builds EngineBrief, requests LLM beats/concepts, falls back deterministically, builds visual/carousel/claim/quality/director packages, invokes a visual provider, records social memory, and returns PostPackage.
+[CONFIRMED] _route_generate_orchestrator converts the new package to the legacy payload contract and merges catalog URL/price/stock/image information. This compatibility bridge is mandatory because run_engine and publishers consume the legacy-shaped dict.
+
+11. MODULE RESPONSIBILITY MAP
+CONTROL GROUP
+worker.py: owns HTTP dispatch, auth, scheduler, process lock/status, Meta refresh, subprocess control, media serving. Reads env/history/campaigns; writes token state and in-memory status; calls Graph and internal modules; failures become HTTP errors or LAST_RUN failed. Critical.
+social_engine/start.py: import-path bootstrap and worker.main call. Critical in Railway.
+social_engine/config.py: settings representation. Supporting; runtime also reads env directly elsewhere.
+
+CORE GROUP
+run_engine.py: live run boundary, secret/readiness checks, generation retry/gates, image URL resolution, publishers, platform records and phase learning metadata. Critical.
+generate_posts.py: pipeline router and legacy mega-module; runtime data seeding, catalog ingestion, editorial/product/topic selection, ten prompt families, fallback copy, platform adapters, BI/agent handoffs, visual generation. Critical; highly coupled.
+campaign_runtime.py: default config, migration, weekly/stage/channel/CTA selection, claim cleanup, scoring, UTM and recent-success checks. Critical.
+anti_repeat.py: signature/window duplicate checks. Important.
+score_content.py: content scoring wrapper/rules. Important.
+validate_product_claims.py: prohibited/unsupported claim checks. Critical for live safety.
+build_utm_url.py and url_safety.py: tracked URL creation and SSRF/domain safety. Important.
+
+PUBLISHER GROUP
+publish_wordpress.py: REST post/media upload using WP Basic auth; no AI. Optional publisher and image host.
+publish_facebook.py: Graph photo/feed publishing and deletion; token resolution; HTTP retry for feed path. Critical when enabled.
+publish_instagram.py: public image candidate resolution, optional WP media hosting, Graph media container polling/publish/delete. Critical when enabled.
+publish_linkedin.py: author resolution, image normalization/upload, UGC/post creation and delete. Critical when enabled.
+
+CONVERSION GROUP
+conversion/engine.py assembles StrategicBrief. awareness, personas, emotions, logic_laws, copy_structures, objections, transformations, ctas, hook_engine select deterministic parts. claims and cqs classify/score output. performance_memory supplies history hints. briefs defines contracts; libraries loads JSON. Important rule engine, not AI agents.
+
+SOCIAL GROUP
+orchestrator.py owns new post workflow. engines.py owns A/B/C briefs. audience_intelligence.py and content_strategy.py choose audience/topic. opportunity_engine scores opportunities. copy_intelligence evaluates/allocates copy. visual_intelligence creates art direction/prompts. carousel_director creates slides. claim_intelligence and quality_intelligence inspect output. memory_intelligence reads/writes social memory. visual_provider abstracts Gemini/template recipes. model_router routes Gemini and records last error/prompt registry/cost structures. libraries loads data/social JSON. Critical when orchestrator selected.
+
+BI GROUP
+api.py is public facade. bootstrap.py discovers, builds offerings/evidence/research/profile and persists. profile.py assembles, applies overrides, versions. brand.py/audience.py/social_mandate.py derive business models. offerings.py parses CSV, merges briefs and builds graph. sources.py registers discoverable sources. evidence.py appends ledger. research.py stores policy/gaps/hypotheses. learning.py persists overrides and performance JSONL. compilers.py makes conversion/creative/orchestrator contexts. critic.py validates. conference.py checks declared agent capability/data readiness; it does not execute agents. schemas.py/information_types.py define contracts; paths.py centralizes locations. Important; optional in content path.
+
+AGENT GROUP
+agents/dispatcher.py exposes 16 run functions. _base.py supplies common artifact utilities. Individual modules are described in section 19. agent_control_plane.py validates gate records/contracts. Supporting/optional unless a phase invokes one.
+
+MARKETING GROUP
+social_engine/marketing_team/agents.py, brand_intel.py, planner.py, workflow.py produce strategy/weekly artifacts. scripts/run_marketing_team.py, run_marketing_weekly.py and build_campaign_plan.py are executable wrappers. Supporting; outputs can later influence generation.
+
+12. FUNCTION/CLASS CALL GRAPH
+worker.main -> start_health_server; _load_meta_runtime_from_state; _auto_bootstrap_visual_repo; schedule.run_pending.
+worker._start_slot_thread -> worker.run_slot.
+worker.run_slot(slot, overrides) -> bootstrap_visual_repo_from_env; _auto_refresh_meta_if_due; subprocess.run(run_engine.py). Side effects: env mutation/restoration, LAST_RUN. Failure: timeout/nonzero -> failed.
+run_engine.main -> get_channel_config; check_secrets; campaign_runtime eligibility/stage; generate_posts.generate; validate_generated_content/score/duplicates; _resolve_primary_publish_image_url; publish_*; _build_platform_history_records; save_history. Failure: skip gates write history and return; platform errors are isolated then aggregate error is raised.
+generate_posts.generate(slot, overrides) -> ensure_runtime_data; pipeline route; legacy generation or _route_generate_orchestrator or _generate_best_of; generated visuals/platform posts. Returns one content dict.
+SocialIntelligenceOrchestrator.create_post -> memory load; BI compile/get offering; engine.build; _llm_copy_beats; fallback _assemble_copy; _llm_concept_stems; visual/claim/quality/director; provider.generate; memory writes. Returns PostPackage.
+model_router.generate_json(task,prompt,system_instruction) -> genai.Client.models.generate_content -> JSON parse. Returns dict/None; records last error; no internal retry.
+inventory_db._connect/init/upsert/fetch -> SQLite. Each operation opens/commits/closes; failures propagate unless caller catches.
+BI bootstrap.run -> sources.discover_all -> offerings.build/save/emit_evidence -> research seeds -> profile.assemble -> critic.review -> profile.save_current.
+
+13. BUSINESS DATA FLOW
+Founder manifesto + latest marketing strategy + source registry + owner assertions + catalog facts -> brand/audience/offering builders -> BusinessProfile -> current_profile.json/current_profile.md/version snapshot -> compilers -> orchestrator context/prompts. Overrides are applied only during profile save. API reads persisted current profile first and only assembles if absent, so persisted profile can be stale. Evidence and learning do not automatically rebuild the profile.
+Authority: owner assertions/locked fields are intended highest; manifesto is authored; catalog facts are factual inputs; current_profile is derived snapshot; marketing strategy timestamped outputs are advisory/derived; latest selection is generally file mtime.
+
+14. PRODUCT/OFFERING DATA FLOW
+WooCommerce CSV fields actually read: ID, Name, SKU, Published, Short description, Description, Categories, Regular price, Sale price, In stock?, Stock, External URL, Images. HTML is stripped; numeric metrics are regex-extracted; image URLs are scored/deduped; local images/category fallbacks can supplement. Published rows become product dicts and SQLite products rows.
+BI offerings independently parse CSV and merge data/product_briefs by SKU/product id/parent fallback. Used offering fields include id/SKU/name/category/description, price/sale, stock, images, verified_facts, functional benefits, problems addressed, forbidden claims.
+Selection uses product id override, category/topic fit, stage preference, recent product history and content bucket. AI copy receives offering identity, benefits/problems, verified facts and forbidden claims in orchestrator; legacy prompts receive product/talking-point summaries. Visuals receive product name, metrics, image candidates/source and visual plan. CTA/destination uses product_url where available, otherwise site URL. Publishers consume captions, URL, generated visual/product image.
+Ignored/weak fields: many raw CSV columns are never read; raw long descriptions are reduced to snippets/metrics. If BI offering cannot match catalog, URL/stock/price can be empty. SQLite upsert does not establish deletion of products absent from later CSVs.
+
+15. MARKETING/STRATEGY DATA FLOW
+Static configuration: funnel_config, channel_schedule, CTA library, conversion libraries, social libraries, manifesto. Dynamic outputs: marketing_strategy_*, brand_profile_*, weekly_plan_*, campaign_plan_*, campaigns/campaign_*, execution packs. Worker endpoints select newest artifacts by mtime. generate_posts loads latest strategy/campaign and can apply profile/ideology into SQLite. campaign_runtime can load latest weekly plan for sequence selection. Multiple snapshots exist; mtime, not semantic version, selects latest.
+
+16. TOPIC SYSTEM
+Sources: data/topic_queue.json for legacy; data/social/pillars.json and topic_graph.json for orchestrator; RSS inputs through topic_intelligence agent. ensure_runtime_data may seed/migrate topic queue. Legacy select_editorial_plan chooses content bucket then pillar/topic while considering recent history, stage, product fit and off-brand penalties. Orchestrator content_strategy/opportunity_engine uses pillar graph, microtopics, audience relevance and scored opportunity dimensions. Topic use is remembered in history/social content memory. Performance influence exists only where performance hints are explicitly supplied; it is not a closed automatic loop.
+
+17. CONTENT GENERATION SYSTEM
+Request -> stage/channel context -> editorial bucket (no_product/product_education/conversion proportions) -> product/topic -> strategic brief -> optional phase 2 ideation/psychographic/narrative/voice/hook prompts -> optional phase 3 precision/compliance/novelty prompts -> phase 4 visual/CTA prompts -> fallback/model caption -> platform adaptation -> visual plan/image -> control metadata -> final dict. Every AI enrichment has a deterministic default. Hard live gates are later in run_engine; several internal phase gates are warning/report generators.
+Supported factual modes are combinations of five funnel stages, product attachment modes, pillars, genres, reader jobs and platform variants. Labels such as educational/product/conversion are selected by configuration and bucket logic; there is no single ContentType enum.
+
+18. AI/MODEL ARCHITECTURE
+[CONFIRMED] Provider is Google GenAI; no active OpenAI invocation was found.
+model_router defaults: classification/topic_generation/copy_editing/image_analysis -> gemini-2.5-flash; strategy/visual_direction/fact_reasoning/final_review -> gemini-2.5-pro. GEMINI_ROUTE_<TASK> can override routes. Current provider availability may differ; fallback reason is surfaced by orchestrator.
+Direct legacy wrapper generate_posts._generate_json_with_gemini tries preferred model, gemini-2.5-flash, gemini-2.0-flash, gemini-1.5-flash, up to two attempts/model, expects JSON.
+Image generation social_visuals._generate_gemini_full_creative uses GEMINI_IMAGE_MODEL then gemini-2.5-flash-image, response TEXT+IMAGE, platform aspect ratio, reference image parts, two attempts/model and QA.
+Visual semantic QA uses GEMINI_VISUAL_QA_MODEL default gemini-2.5-flash and JSON review. Agent Gemini calls: carousel_slide_writer, visual_qa_reviewer, alt_text_accessibility. All check GEMINI_API_KEY and have fallback/error output.
+PROMPT_REGISTRY and ApiCallRecord/ApiCostTracker exist, but dynamic prompts are not comprehensively registered and cost records are not proven to cover direct calls.
+
+19. COMPLETE AGENT INVENTORY
+HTTP-dispatchable implemented modules (agents/dispatcher.py):
+engagement_ingestion: rule/API agent; reads platform ids, calls Meta metrics where configured, returns engagement metrics.
+performance_reflection: rule agent; summarizes winners/losers from history/metrics.
+learning_ingestion: rule agent; converts metrics into BI learning signals.
+topic_intelligence: RSS/rule agent; derives timely topic opportunities.
+carousel_slide_writer: Gemini prompt agent with deterministic five-slide fallback.
+visual_qa_reviewer: Gemini visual-review prompt agent with fallback/error result.
+product_matcher: rule agent matching context to catalog/briefs.
+brand_voice_drift: rule agent evaluating history against voice.
+hashtag_intelligence: rule agent producing hashtag sets.
+alt_text_accessibility: Gemini text agent with deterministic fallback.
+posting_time_optimizer: rule agent using history/engagement.
+product_intelligence: rule/data agent creating verified product briefs and artifacts.
+ab_variant_orchestrator: rule agent creating controlled variants.
+crisis_relevance: rule/feed agent checking event relevance.
+cross_post_recycler: rule agent adapting prior candidates.
+retention: filesystem/history retention agent.
+conversion_strategist is implemented and invoked from generation but is not in dispatcher registry.
+SocialIntelligenceOrchestrator is an implemented orchestrator, not a persona agent.
+ConversionLogicEngine and social intelligence modules are non-AI decision engines.
+BI conference declares 17 operational specs and 11 marketing specs (28 total); this is a capability/readiness model, not execution. Marketing research/audience/voice/offer/copy/creative/channel/SEO/email/experimentation/QA names are DECLARED ROLES; they are not dispatcher implementations. social_engine/marketing_team supplies a separate workflow, so exact equivalence to these declared names is [UNCLEAR].
+
+20. AGENT RELATIONSHIP MAP
+                         BI conference (declarative contracts only)
+                                      |
+Business/profile/product data -> conversion_strategist -> generate_posts
+                                      |
+History -> audience/topic/strategy rules -> SocialIntelligenceOrchestrator
+                                      |             |
+                                      |        Gemini copy/concepts
+                                      v             v
+                              claim/quality/visual provider
+                                      |
+                              legacy payload bridge
+                                      |
+                                  run_engine
+
+HTTP /agents/run invokes one dispatcher agent at a time. Dispatcher agents do not automatically message one another. Collaboration edges in conference output describe required/provided capabilities, not a live message bus.
+
+21. PROMPT INVENTORY
+Legacy dynamic prompt families in generate_posts.py: IDEATION_DIVERGENCE_BRIEF, AUDIENCE_PSYCHOGRAPHICS_BRIEF, NARRATIVE_ARCHITECT_BRIEF, PLATFORM_VOICE_CALIBRATOR_BRIEF, HOOK_STRESS_TEST_BRIEF, PRECISION_CLAIMS_VERIFIER_BRIEF, COMPLIANCE_POLICY_SENTINEL_BRIEF, SEMANTIC_NOVELTY_BRIEF, VISUAL_STRATEGY_BRIEF, CTA_OPTIMIZATION_BRIEF, VISUAL_DIRECTOR_BRIEF, AGENT_CONFERENCE_BRIEF, PREGEN_CONFERENCE_BRIEF, and final expert content strategist/copywriter prompt. Inputs include topic, stage, audience, product/talking point, brand/ideology, recent hooks/topics, platform constraints and expected JSON schemas. Parsers use _generate_json_with_gemini; downstream merges feed copy/visual/gate packages.
+Orchestrator prompts: _llm_copy_beats inserts reader job, topic, angle, audience, tone, genre, offering identity/benefits/problems, voice, verified facts, forbidden claims and requested beat keys; JSON beats feed copy. _llm_concept_stems inserts angle, anchor, genre; JSON concepts feed visual intelligence.
+Image prompt: social_visuals._build_gemini_image_prompt inserts exact on-image copy, product/metrics, style references, platform dimensions/zones, visual plan, brand colors, required/forbidden visual details. Output image bytes feed QA and PNG writer.
+Visual QA prompt inserts expected headline/CTA/product and image; JSON booleans/reasons determine retry.
+Agent prompts: carousel_slide_writer requests exactly five structured slides; visual_qa_reviewer requests visual compliance JSON; alt_text_accessibility requests concise accessible text. No performance data is inserted unless each agent caller supplies it.
+
+22. INFORMATION EACH AGENT ATTEMPTS TO DETERMINE
+Strategist: what persuasion strategy/persona/awareness/emotion/law/CTA fits. Has product/stage/history; lacks independently verified customer research.
+Editorial/topic engines: what should be discussed now. Have queue/graph/history/product; external timeliness only via RSS agent.
+Copy calls: how to express approved strategy. Have brand/product/audience/claim boundaries; derive words and beats; do not discover facts.
+Visual calls: what scene/layout communicates copy and then pixels. Have product images/style/copy; may hallucinate visual text/product form, hence QA.
+Claim/quality modules: whether output is supported, useful, non-repetitive and aligned. Have configured facts/history/rules; lack legal adjudication.
+Engagement/performance/learning agents: what performed and what reusable signal follows. Have metrics only if platform ids/credentials/history metrics exist; current history has none.
+Conference: whether declared roles have their required inputs. It derives readiness, not marketing content.
+
+23. COPY GENERATION
+Legacy copy is generated by the final Gemini JSON prompt when available, with candidate-model retry; otherwise _build_fallback_content/_no_product and deterministic platform component/adaptation functions produce captions. Orchestrator creates dynamic structure beats through model_router or _assemble_copy fallback. _route_generate_orchestrator maps hook/body/takeaway/CTA into fb_caption, ig_caption, li_caption and WP fields. Platform adaptation functions enforce channel shape. Sanitizers normalize brand, legacy CTA, positioning and product-led requirements.
+
+24. CREATIVE/VISUAL SYSTEM
+visual_intelligence decides semantic role, necessity, format, concepts, art direction, prompt, text allocation and signature. generate_posts can add logical/emotional visual strategy and carousel/storyboard. social_visuals converts content/plan into platform image prompts and generated files. Inventory visual style rows and active settings guide references. Visual output affects live visual gates and publisher media selection.
+
+25. IMAGE/ASSET SYSTEM
+Sources: generated Gemini image; product remote/local image; category fallback; style reference URLs; visual override; WordPress-hosted generated image; public_media local hosting. social_visuals reads images with SSRF-safe URLs, removes near-white background, resizes/composes or sends reference bytes to Gemini, checks aspect/dynamic range/semantic correctness, resizes and saves PNG under DATA_DIR/generated_visuals. Facebook can upload local file. Instagram requires a public URL and may upload local generated media to WordPress. LinkedIn uploads local or downloaded image and normalizes to configured dimensions. No cleanup scheduler was found; 810 PNGs confirm accumulation.
+
+26. HTML/RENDERING SYSTEM
+[CONFIRMED] Approximately 800 generated HTML files exist, principally generated marketing artifacts/assets. The live social image path inspected uses Gemini/Pillow, not browser screenshot rendering. No Playwright/Selenium screenshot pipeline was confirmed. WordPress content is HTML text assembled by generation/publisher code. [POSSIBLY_UNUSED] HTML artifacts are output/reference unless a specific marketing workflow consumes them.
+
+27. CONTENT VALIDATION
+run_engine combines generated-content validation, campaign score, score_content, duplicate checks, conversion gates, channel readiness and live visual errors. It retries generation within a bounded loop and skips publication when hard conditions remain. Social quality score and creative-director review are additional reports; their publishability band is not identical to run_engine's hard threshold.
+
+28. BRAND VALIDATION
+Brand profile/manifesto supplies voice, approved/prohibited phrases and spelling. normalize_brand_content corrects Infenergy naming. brand_voice_drift and phase voice/compliance prompts detect drift. Critic validates BI profile. Enforcement is distributed, not one authoritative validator.
+
+29. CLAIM/FACT VALIDATION
+Product briefs/offerings define verified facts and forbidden claims. validate_product_claims and conversion.claims scan captions; STRICT_RUNTIME_CLAIMS can strengthen behavior. campaign_runtime.apply_claim_guardrails rewrites known risky language. Orchestrator claim ledger records classifications. Gemini is instructed not to invent, but deterministic validation is the enforcement boundary. Source contradictions remain possible.
+
+30. CONTENT MEMORY
+Operational path: DATA_DIR/post_history.json. Current file has 3 compact records with keys post_id, engine, pillar_id, genre_id, topic, microtopic, hook, memory_anchor, tone, cta_type, quality_overall, created_at; zero platform_records and zero engagement_metrics. run_engine contains a richer writer schema with status, ids and platform_records. Orchestrator/social memory can overwrite or append compact records through the same ecosystem. [CONFIRMED] Incompatible record shapes coexist conceptually and readers use defensive defaults. Retention differs: run_engine truncates operational history; social memory helpers use their own limits.
+
+31. CREATIVE MEMORY
+Data/social/content_memory.json and visual_memory.json store orchestrator records/signatures; memory_intelligence reads/writes them. History informs recent hooks/topics/tones/visual signatures. Engine rotation index is per batch and not proven persistent. Creative memories survive only if DATA_DIR is persistent.
+
+32. PERFORMANCE TRACKING
+engagement_ingestion can retrieve metrics when platform ids and Meta credentials exist. performance_reflection analyzes available data. conference checks history.engagement_metrics. Current post_history has neither ids nor metrics, so learning_cycle_ready should be false. LinkedIn/WordPress analytics collectors were not confirmed.
+
+33. LEARNING/FEEDBACK
+BI learning.record_signal appends performance_learning.jsonl; summarize_learning requires at least three records and enters profile.learning_state on rebuild. learning_ingestion can create signals. Locked fields cannot be mutated. Owner overrides persist in owner_overrides/overrides.json and apply on profile save. [CONFIRMED] Components exist. [CONFIRMED] There is no continuously scheduled metrics->reflection->learning->profile rebuild loop; agents must be manually invoked/wired, and current history lacks metrics. Therefore the repository has a learning substrate, not a closed autonomous learning loop.
+
+34. FACEBOOK PUBLISHING
+Package -> fb_caption + WordPress/tracked link -> generated local image, primary URL, or product image -> Graph v26 /{page}/photos; if no image and FB_REQUIRE_IMAGE permits, /feed with retry. META_PAGE_ID and page access token authenticate; user token can be resolved through /me/accounts. Returns id; delete uses Graph DELETE. Local photo request has direct error handling; feed helper retries 429/5xx. run_engine isolates failure and records platform result when rich history is written.
+
+35. INSTAGRAM PUBLISHING
+Package -> ig_caption -> candidate URLs: WP-uploaded generated image, primary image, product/category/default/page OG image -> optional reachability preflight -> POST /{ig_user}/media -> poll creation id every 2s up to 45s -> POST /media_publish -> id. Requires META_IG_USER_ID and page token. No image returns a skipped result. Failures raise after bounded HTTP retries/status checks; run_engine isolates them.
+
+36. LINKEDIN PUBLISHING
+Package -> li_caption/link/media -> resolve organization URN, explicit author URN, OpenID userinfo or /me -> choose local generated or downloaded safe image -> Pillow normalization -> register asset upload -> PUT bytes -> publish UGC/post payload. Uses LINKEDIN_ACCESS_TOKEN and version headers; run_engine can refresh token if refresh credentials exist. Returns id; errors raise and are isolated.
+
+37. OTHER PUBLISHING INTEGRATIONS
+WordPress is active only when enabled: upload_media and publish use WP REST with WP_URL, username and app password. It can create the canonical article/link and host generated images for Instagram. Dry-run returns synthetic records. No TikTok, X, Pinterest, email-send, or webhook publisher was confirmed. Campaign/marketing artifacts are generators, not publishers.
+
+38. EXTERNAL SERVICE MAP
+Google Gemini: prompts/reference images sent; JSON/image/review returned; failure -> fallback or no generated image.
+Meta Graph: tokens, captions, media URLs/files and ids sent; page/account/media ids/status/metrics returned; failure -> FB/IG/metrics unavailable.
+LinkedIn API: bearer auth, author/media/post payloads sent; URNs/post ids returned; failure -> LinkedIn only.
+WordPress REST: Basic auth, media/post HTML sent; URL/id returned; failure -> WP and possibly IG hosting unavailable.
+RSS URLs: topic feeds fetched; entries returned; failure -> no timely topics.
+Product website/CDN: images/pages fetched after URL safety checks; failure -> candidate fallback.
+Railway: build/runtime/env/optional volume; unavailable -> service down.
+
+39. API/HTTP ENDPOINT MAP
+All are GET handled by worker.HealthHandler.do_GET; unknown paths return 404. Public: /, /health, /healthz (health); /status (LAST_RUN/quality/bootstrap); /history?limit (recent records); /campaign (latest plan); /agents/list; /media/<basename> (DATA_DIR/public_media with traversal stripped). Protected by MANUAL_RUN_TOKEN using hmac.compare_digest unless noted:
+/gemini-visual-repo-bootstrap: bootstrap DB refs/settings.
+/agents/conference: run and persist BI readiness report.
+/agents/run?name: dispatch one agent; 400 on returned error.
+/campaign-current: latest structured campaign.
+/content-preview: calls generate_posts.generate directly; no publication, but generation may write generated assets/memory.
+/schedule-preview: seven-day stage/channel forecast.
+/quality-report: aggregate history scores/rejections.
+/inventory-db: conditional sync plus snapshot/profile.
+/inventory-sync?force: CSV/local-image sync.
+/brand-profile-apply: upsert conference profile.
+/selling-ideology: read current ideology.
+/selling-ideology-apply: upsert ideology.
+/gemini-visual-repo: list refs/settings/snapshot.
+/gemini-visual-repo-seed: seed built-in ideas.
+/gemini-visual-repo-apply: parse query JSON/settings and upsert.
+/run-marketing: subprocess run_marketing_team.py; 600s.
+/run-weekly: subprocess weekly + campaign builder.
+/run-now: validate slot/stage/platform/pipeline/duplicate/readiness/product; daemon thread; 202 or 409.
+/delete-post: platform adapter delete; live destructive side effect.
+/refresh-meta: uses META_REFRESH_TOKEN or manual token; refreshes/persists tokens.
+Auth failures: 403 if server secret absent, 401 mismatch. Query-string tokens may appear in proxy/browser logs; no POST/body alternative exists.
+
+40. MANUAL CONTROL SYSTEM
+HTTP endpoints above; direct Python modules; PowerShell wrappers; environment toggles; editable JSON/CSV/briefs; Railway variables; BI owner assertion API (Python); agent dispatcher. Manual controls can generate, publish, delete, refresh credentials, rebuild/sync data, apply brand/ideology, seed visuals and inspect state.
+
+41. CONFIGURATION
+Sources, precedence: explicit HTTP/function overrides -> temporary POST_* env -> environment defaults -> DATA_DIR JSON -> repository fallback JSON -> Python constants. Duplicate root data/*.json and data/marketing/*.json are handled by fallback/migration functions; the effective file depends on loader. SQLite stores synchronized brand/ideology/visual settings, not all config.
+
+42. ENVIRONMENT VARIABLES
+Observed names (values never documented): ANTI_REPEAT_CTA_WINDOW, ANTI_REPEAT_HOOK_WINDOW, BI_DATA_DIR, BRAND_SITE_URL, CHANNEL_READINESS_BLOCK_ON_RED, CONTENT_PIPELINE, CRISIS_FEED_URLS, DATA_DIR, ENABLE_AGENT_CONFERENCE, ENABLE_BUSINESS_INTELLIGENCE, ENABLE_PHASE2_CREATIVE_STACK, ENABLE_PHASE3_SAFETY_STACK, ENABLE_PHASE4_OPTIMIZATION_STACK, ENABLE_PREGEN_CONFERENCE, ENABLE_SOCIAL_INTELLIGENCE, FB_DUPLICATE_CAPTION_DAYS, GEMINI_API_KEY, GEMINI_CONFERENCE_MODEL, GEMINI_IMAGE_MODEL, GEMINI_MODEL, GEMINI_STYLE_ACTIVE_KEYS, GEMINI_STYLE_REFERENCES, GEMINI_VISUAL_DIRECTOR_MODEL, GEMINI_VISUAL_QA_ENABLED, GEMINI_VISUAL_QA_MODEL, IG_CATEGORY_FALLBACKS_JSON, IG_DEFAULT_IMAGE_URL, IG_VALIDATE_IMAGE_URLS, IG_WAIT_AFTER_FB_SECONDS, INVENTORY_DB_FILE, LINKEDIN_ACCESS_TOKEN, LINKEDIN_AUTHOR_URN, LINKEDIN_CLIENT_ID, LINKEDIN_CLIENT_SECRET, LINKEDIN_IMAGE_HEIGHT, LINKEDIN_IMAGE_WIDTH, LINKEDIN_ORGANIZATION_URN, LINKEDIN_REFRESH_TOKEN, LINKEDIN_VERSION, LIVE_REQUIRE_GEMINI_VISUAL, LIVE_REQUIRE_PRODUCT_VISUAL, MANUAL_DUPLICATE_MODE, MANUAL_RUN_TOKEN, MARKETING_OUTPUT_DIR, MARKETING_PRODUCTS_DIR, META_APP_ID, META_APP_SECRET, META_AUTO_REFRESH_ENABLED, META_GRAPH_VERSION, META_IG_USER_ID, META_LONG_LIVED_USER_TOKEN, META_PAGE_ACCESS_TOKEN, META_PAGE_ID, META_REFRESH_EVERY_RUN, META_REFRESH_THRESHOLD_HOURS, META_REFRESH_TOKEN, META_TOKEN_EXPIRES_AT_UTC, NOVELTY_MIN_SCORE, ORCHESTRATION_HARD_BLOCK, PHASE8_BUDGET_GENERATION_SEC, PHASE8_BUDGET_PUBLISH_SEC, PHASE8_BUDGET_TOTAL_SEC, PORT, POST_FUNNEL_STAGE_OVERRIDE, POST_PIPELINE_OVERRIDE, POST_PLATFORMS, POST_PRODUCT_ID_OVERRIDE, POST_SCHEDULE_EVENING, POST_SCHEDULE_MIDDAY, POST_SCHEDULE_MORNING, POST_SLOT, PUBLIC_BASE_URL, RAILWAY_PUBLIC_DOMAIN, RAILWAY_STATIC_URL, RUN_ON_STARTUP, RUN_SLOT_TIMEOUT_SEC, SKIP_RECENT_SUCCESS_HOURS, SOCIAL_DRY_RUN, SOCIAL_ENGINE_BASE_URL, SOCIAL_LIB_DIR, STRICT_RUNTIME_CLAIMS, TOPIC_RSS_FEEDS, UTM_CAMPAIGN_NAME, VISUAL_IMAGE_STRATEGY, VISUAL_PRODUCT_IMAGE_OVERRIDE, VISUAL_REPO_AUTO_SEED, VISUAL_TEMPLATE, WP_APP_PASSWORD, WP_URL, WP_USERNAME. Credential variables are required only for their enabled live integration; dry-run and deterministic generation need fewer.
+
+43. STORAGE ARCHITECTURE
+DATA TYPE -> STORAGE -> WRITER -> READER -> CLASS
+Product export -> CSV -> WooCommerce/manual export -> offerings/generate_posts -> AUTHORITATIVE EXTERNAL SNAPSHOT.
+Product runtime -> inventory.db products -> inventory_db.upsert_products -> generator/worker -> DERIVED CACHE.
+Brand manifesto -> JSON -> human -> BI/legacy -> AUTHORITATIVE AUTHORED.
+BI profile -> current_profile + versions -> profile.save_current -> API/orchestrator -> DERIVED VERSIONED SNAPSHOT.
+Evidence -> evidence_ledger.jsonl -> offerings/API -> critic/research -> APPEND-ONLY HISTORY.
+Overrides -> overrides.json -> learning.register_override -> profile save -> AUTHORITATIVE OWNER INPUT.
+Performance learning -> performance_learning.jsonl -> learning agents/API -> profile assembly -> HISTORY/DERIVED.
+Operational/creative history -> post_history.json and social memory JSON -> run_engine/orchestrator -> selection/duplicates/agents -> HISTORY, WITH SCHEMA CONFLICT.
+Campaign/agent artifacts -> timestamped JSON/MD/HTML -> workflows -> latest loaders/humans -> GENERATED HISTORY.
+Images -> generated_visuals/public_media -> social_visuals/hoster -> publishers -> GENERATED; no cleanup.
+Credentials -> environment; Meta also meta_token_state.json -> worker -> publishers -> SECRET STATE.
+
+44. STATE MANAGEMENT
+Active run: RUN_LOCK and LAST_RUN in worker process. Last success/failure: LAST_RUN resets on restart; /status exposes it. Durable run/post state: post_history, but current shape may be compact. Per-platform success: rich platform_records/fb_id/ig_id/li_id when run_engine writer owns record. Pending/retry: no durable queue; retries are in-process only. Campaign/BI latest: newest file by mtime/current_profile. Token expiry: env plus Meta state JSON. Scheduler jobs: memory-only.
+
+45. ERROR HANDLING
+Boundaries: worker catches timeout/BaseException; subprocess nonzero is failure. run_engine catches each publisher so others continue, writes results, then may raise aggregate error. JSON loaders commonly default on missing/invalid files. Model router catches all model/parse errors and returns None. Legacy model wrapper retries and logs final reason. Agent dispatcher converts argument/runtime exceptions to error dicts. BI parsers skip malformed records. Some broad catches hide stack detail and produce generic fallback.
+
+46. RETRY/RECOVERY
+Generation: bounded run_engine regeneration loop; best_of offers alternate candidate. Legacy Gemini: model chain x attempts. Orchestrator model_router: no retry, deterministic fallback. Image: two attempts/model after QA failure. Facebook/Instagram helpers retry selected 429/5xx requests; IG additionally polls container. LinkedIn/WordPress behavior depends on request path; do not assume all calls retry. Worker process: Railway ON_FAILURE restart. Missed scheduled run and failed platform publish have no durable automatic retry queue.
+
+47. LOGGING/OBSERVABILITY
+stdout print logs, Railway process logs, /health, /status, /history, /quality-report, /schedule-preview, /campaign*, inventory/visual endpoints, LAST_RUN, platform records and BI conference report. No structured logger, metrics exporter, tracing, alerting or durable execution log was confirmed. model_router.last_error improves LLM fallback visibility. Invisible/weak: prompt/version/cost coverage, current pipeline-wide correlation id, scheduler missed jobs, direct preview side effects, secret refresh audit actor, and history-schema ownership.
+
+48. SECURITY/CREDENTIAL FLOW
+Secrets originate outside repository and enter env. Modules read only required service values. Manual auth uses constant-time compare. Meta refresh exchanges long-lived user token, resolves page/IG ids, writes usable tokens to meta_token_state.json and reloads on startup. That file is plaintext secret state and must be volume/access protected. WordPress Basic auth assumes HTTPS; code does not enforce TLS universally. URL safety guards remote fetches against unsafe hosts. GET query auth is operationally convenient but can leak tokens through URL logs. No secret values belong in this document.
+
+49. CURRENT AUTONOMY
+AUTOMATICALLY DECIDED: underrepresented funnel stage, eligible channels, content bucket, topic/product candidate, hook/CTA variants, strategy structure, copy/visual candidate, quality/duplicate accept/reject, media candidate fallback.
+RULE-BASED/CONFIGURED: schedule times, enabled platforms, stage distribution, claims, thresholds, duplicate windows, route models, style refs, retention, dry/live behavior.
+HUMAN PROVIDED: business truth, catalog exports, briefs, credentials, channel enablement, campaign/manifesto, overrides, explicit product/stage/pipeline, legal approval. Live approval is implicit when dry-run is false; no separate human approval queue exists.
+
+50. CURRENT INTELLIGENCE
+Rule-based: strategy, selection, validation, scoring, scheduling, matching, adaptation.
+AI-generated: copy JSON, ideation/safety/visual/CTA enrichments, concept stems, images, QA, slides, alt text.
+Static: manifesto, conversion/social libraries, schedule/funnel/CTA.
+Derived: profile, offering graph, campaign artifacts, inventory DB.
+Human: catalog/brief truth, owner overrides, secrets.
+Performance-learned: persisted signals and summaries only when manually/externally populated; not continuously closed-loop.
+
+51. CURRENT AGENT ORGANIZATION
+Combination: rule engine + LLM; pipelined intelligence modules; one orchestrator with several model calls; individually callable utility agents; declarative multi-agent conference. It is not an independently communicating autonomous-agent swarm. Agents share files/contracts, not a message bus.
+
+52. END-TO-END EXAMPLE POST TRACE
+1 schedule at configured UTC calls worker.run_slot("morning").
+2 RUN_LOCK serializes and LAST_RUN is marked running.
+3 worker refreshes visual repository and due Meta tokens.
+4 worker launches scripts/run_engine.py with copied env.
+5 run_engine loads schedule/funnel/history and computes eligible channels/stage.
+6 generate_posts.generate selects pipeline.
+7 orchestrator example: BI compiler loads current_profile; offering selected/forced; EngineBrief selects audience/topic/genre/strategy; _llm_copy_beats sends verified/forbidden facts to routed Gemini; JSON is parsed or fallback used; visual concepts/quality/claims are built; provider returns recipe/image metadata.
+8 bridge maps package to product URL/price/images and platform captions; social_visuals creates Facebook/Instagram/LinkedIn PNGs.
+9 run_engine validates claims, score and duplication; failed hard gate records skipped output.
+10 WordPress may publish article/host image; UTM links are built.
+11 Facebook uploads photo/caption; Instagram creates/polls/publishes container; LinkedIn uploads image/publishes.
+12 each error is isolated; result records are assembled.
+13 history is saved; aggregate platform errors can make subprocess nonzero.
+14 worker marks LAST_RUN success or failed and restores env.
+
+53. ALTERNATE EXECUTION PATHS
+Manual /run-now adds live/platform/duplicate/readiness/product/stage/pipeline overrides. /content-preview bypasses run_engine hard gates/publishers but invokes generation. legacy omits social orchestrator; orchestrator uses bridge; best_of runs both. Missing Gemini -> fallback copy/recipe; live visual requirements can later block. Missing product -> no-product content or fallback product depending bucket/stage. Disabled/ineligible/recent-success platform -> skipped. WordPress disabled -> social links use destination fallback; IG local image hosting may be unavailable. Readiness red -> skip if configured. Duplicate mode exact_only/allow_all relaxes checks. AI/image failure and individual platform failure do not inherently stop other publishers.
+
+54. DEPENDENCY GRAPH
+start -> worker -> subprocess run_engine
+run_engine -> generate_posts + campaign_runtime + anti_repeat + validation + score + publishers
+ generate_posts -> inventory_db + conversion/* + agents + social/orchestrator + social_visuals + JSON data
+  orchestrator -> social/* + conversion/engine + BI api + model_router + visual_provider
+   BI api -> profile/compilers/bootstrap/conference/evidence/learning
+ publishers -> requests + Pillow/URL safety + external APIs
+Data dependencies converge on DATA_DIR; environment dependencies converge on os.environ.
+
+55. REVERSE DEPENDENCY/CRITICAL COMPONENTS
+Remove start.py: Railway command fails. Remove worker.py: service/schedule/manual control/token refresh fail, but direct run_engine remains. Remove run_engine.py: no gated live publication. Remove generate_posts.py: no content payload for run/preview. Remove campaign_runtime: stage/channel/CTA logic fails. Remove inventory/data products: generation can fall back but product-specific truth degrades. Remove social orchestrator: explicit orchestrator/best_of fails; legacy remains. Remove BI: orchestrator can run without enrichment when disabled. Remove social_visuals/Gemini: image-required live runs fail or degrade. Remove one publisher: only that destination fails if import remains guarded/disabled; current direct imports can make startup sensitivity [UNCLEAR]. Remove post_history: system recreates/defaults but loses duplicate/performance/run memory.
+
+56. SYSTEM RESPONSIBILITY MATRIX
+Product selection | generate_posts/select_editorial_plan | catalog+history+stage | product dict | prompts/visual/publish.
+Topic selection | legacy selectors or social content_strategy | queue/graph/history/product | topic path | brief/copy.
+Audience/strategy | ConversionLogicEngine/social engines | product+stage+BI | StrategicBrief/EngineBrief | copy/visual.
+Copy generation | generate_posts Gemini/fallback or orchestrator | strategy+brand+facts | captions/beats | validation/adapters.
+Visual generation | social_visuals | copy+plan+images+styles | PNG map | publishers.
+Platform formatting | generate_posts adapters | components+stage | fb/ig/li/WP fields | run_engine.
+Validation | claims/quality/anti-repeat/run_engine | content+facts+history | pass/score/reasons | publish gate.
+Publishing | publish_* | content+media+credentials | external ids/errors | history.
+History | run_engine/social memory | package/results | JSON records | duplicates/agents/status.
+Learning | engagement/reflection/learning + BI learning | metrics/history | signals/summary | rebuilt profile.
+
+57. DATA OWNERSHIP MATRIX
+Product catalog | WooCommerce CSV | external/manual | offerings/generator | sync process | CSV; inventory/offerings derived.
+Product claims | product briefs + verified BI offerings | BI bootstrap/human research | prompts/validators | rebuild/manual | JSON/profile.
+Brand strategy | founder manifesto/owner overrides | human | BI/legacy | human/API | JSON.
+Current profile | profile.save_current | BI bootstrap | compiler/orchestrator | rebuild | JSON versions.
+Topic definitions | topic_queue/social libraries | human/migration | selectors | manual/migration/RSS agent | JSON.
+Post history | competing run_engine/social writers | generation/runtime | duplicate/performance/status | each run | JSON.
+Publishing result | publisher return/run_engine | platform API | history/status | each live run | JSON when rich writer used.
+Credentials | deployment operator/provider refresh | external/worker | integration modules | operator/refresh | env + Meta state.
+
+58. AI RESPONSIBILITY MATRIX
+Copy editor | How should approved facts/angle become beats? | brief+BI+offering | routed Gemini | JSON beats | orchestrator.
+Legacy creative roles | Which ideas/voice/hook/safety/CTA improve candidate? | run context | model chain | JSON phase packets | generate_posts.
+Visual director | What composition conveys post? | content/product/style | Gemini | plan JSON | image prompt.
+Image generator | What pixels implement plan? | prompt+reference bytes | Gemini image | image bytes | QA/files.
+Visual QA | Is image legible/accurate/on-brand? | image+expectations | Gemini flash | JSON verdict | retry gate.
+Carousel writer | What five slides express strategy? | principle+archetype+product | Gemini/fallback | slides JSON | agent caller.
+Alt-text writer | How is image described accessibly? | visual context | Gemini/fallback | text | agent caller.
+
+59. EXTERNAL SERVICE MATRIX
+Gemini | generation/QA | model_router/generator/visual/agents | prompts/images | JSON/images | fallback/degraded visual.
+Meta | FB/IG/tokens/metrics | worker/publishers/engagement | secrets/content/media | ids/status/metrics | those channels/learning fail.
+LinkedIn | post/media/auth | publisher/run_engine refresh | content/media/secrets | URNs/ids | LinkedIn fails.
+WordPress | article/media hosting | publisher/IG | HTML/media/auth | id/link/media URL | WP and hosting path fail.
+RSS | timely topics | topic_intelligence | feed request | entries | no timely opportunities.
+Railway | hosting/env/restart | deployment | repository/config | running service/logs | system offline.
+
+60. CONFIGURATION MATRIX
+DATA_DIR | env | all persistence | root path | optional default repository data.
+SOCIAL_DRY_RUN | env | run_engine/publishers | prevent live writes | default true.
+POST_* overrides | HTTP/env | worker/generator | slot/platform/product/stage/pipeline | optional.
+ENABLE_* | env | phases/channels/BI | activate components | optional; credentials required when live.
+POST_SCHEDULE_* | env | worker | UTC daily times | defaults above.
+MANUAL_RUN_TOKEN/META_REFRESH_TOKEN | env | worker | endpoint auth | required for protected routes.
+GEMINI_* | env | model/image/QA | provider/routes/styles | key optional for fallback, required for AI.
+META_*, LINKEDIN_*, WP_* | env | publishers/refresh | service auth | required per enabled live service.
+JSON schedules/funnel/CTA/repeat | DATA_DIR | campaign_runtime | business rules | seeded defaults.
+Product/brief/social/BI files | DATA_DIR | intelligence | business truth/context | required for specific quality.
+
+61. UNUSED/LEGACY/UNCLEAR COMPONENTS
+[POSSIBLY_UNUSED] PROMPT_REGISTRY has infrastructure but no comprehensive registrations.
+[POSSIBLY_UNUSED] ApiCostTracker structures are not proven to wrap every direct model call.
+[POSSIBLY_UNUSED] Many timestamped campaign/agent/HTML artifacts are output-only; latest loaders consume only selected families.
+[LEGACY] generate_hooks and legacy generator coexist with conversion/social engines and remain reachable in legacy mode.
+[LEGACY] root and marketing copies of schedule/funnel files are supported by fallback/migration.
+[UNCLEAR] Exact consumer of every generated HTML file.
+[CONFIRMED ACTIVE] content_memory/visual_memory are not dead merely because current operational history differs; memory_intelligence owns them.
+
+62. DOCUMENTED VS IMPLEMENTED
+Implemented: Railway worker, three schedules, manual endpoints, dual pipelines, BI, dispatcher, Gemini, four publishers, visual QA, evidence/learning stores.
+Documented/planned beyond runtime: conference marketing agents are declared capabilities, not live autonomous collaborators. Master-build section comments describe intended architecture, but only code paths above are runtime truth. No durable distributed queue, automated approval workflow, or complete analytics loop is implemented.
+
+63. IMPLEMENTED BUT UNDERDOCUMENTED
+History schema competition; query-token security; preview's potential asset/memory writes; mtime latest-artifact policy; plain-text Meta token persistence; model retirement fallback diagnostics; image accumulation; best_of cost; BI persisted-profile staleness; direct AI calls outside model_router.
+
+64. DATA LOADED BUT APPARENTLY UNUSED
+[POSSIBLY_UNUSED] Some BI source_refs/field confidence/type fields are assembled empty and therefore cannot affect decisions.
+[POSSIBLY_UNUSED] Numerous campaign/execution/marketing bundle snapshots are not selected by active runtime loaders.
+[POSSIBLY_UNUSED] Some raw CSV columns and descriptions are discarded after normalization.
+[CONFIRMED] Conference optional gaps and collaboration edges are reports; they do not schedule agent calls.
+[UNCLEAR] Exact downstream use of every product-intelligence timestamped artifact; runtime also rebuilds equivalent handoff data.
+
+65. ARCHITECTURAL RISKS/WEAKNESSES
+One 4,600+ line generator and a large run engine mix ownership. Multiple product/brand/history truths can drift. Current history shape is incompatible with rich run-engine expectations. Persisted BI profile is preferred over fresh assembly and can stale. Environment is global mutable process state, though RUN_LOCK mitigates slot overlap. AI calls are split across wrappers, weakening uniform retry/cost/prompt audit. Broad exception fallbacks can hide quality degradation. Query-string admin secrets can leak. Meta tokens are plaintext on disk. Scheduler/missed jobs and retries are not durable. Generated assets/artifacts grow without cleanup. Platform list is hard-coded across modules. External model names age. Configuration duplication/migration obscures effective source. Preview is not strictly side-effect-free. Tests mock external services, so passing tests do not establish live credentials/provider availability.
+
+66. CRITICAL PATH
+Railway/start.py -> worker/main or direct run_engine -> valid DATA_DIR/config -> generate_posts -> usable content -> hard validation/quality/duplicate/readiness -> media satisfying enabled channel -> valid credentials -> publisher API -> history result. Minimum for text dry-run is much smaller: Python dependencies + generator data/fallbacks. Minimum for a live Facebook image post includes Meta page credentials and reachable/generated image.
+
+67. CRITICAL FAILURE POINTS
+Startup import/dependency error; wrong/unmounted DATA_DIR; subprocess timeout; stale/missing product URL/facts; retired/quota-limited Gemini plus insufficient fallback; hard score/claim/duplicate/readiness/visual gate; expired credentials; inaccessible IG public image; external API rejection/rate limit; malformed shared history/config; disk growth; plaintext state exposure. A clean skip may still make worker report subprocess success depending run_engine exit semantics, so status and history must both be inspected.
+
+68. CURRENT SYSTEM STRENGTHS
+Real control plane and serialization; dry-run default; deterministic AI fallbacks; layered claim/quality/repeat checks; platform failure isolation; product-specific briefs/facts; BI evidence/override/version foundation; public image safety checks; per-platform media handling; extensive tests (previous verified run: 253 passed, 13 subtests, one dependency warning); explicit uncertainty/fallback diagnostics.
+
+69. CURRENT SYSTEM LIMITATIONS
+Single-process scheduler; no durable job queue; no automatic end-to-end performance learning; no unified source of truth; no centralized prompt/model telemetry; no durable approval state; external live behavior untested by unit suite; schema drift in history; operational complexity concentrated in mega-modules; generated artifact retention absent.
+
+70. QUESTIONS THE REPOSITORY CANNOT ANSWER
+Whether Railway DATA_DIR is actually volume-mounted; which environment values are deployed; which publishers are currently enabled; whether all credentials/scopes are valid; which model routes are presently available to the account; whether public posts exactly match local history; which brand/product source a human considers legally final when sources conflict; whether generated HTML is retained intentionally; desired retention periods; who is authorized to call GET admin endpoints; whether social performance should autonomously change strategy; legal approval status of researched e-bike claims.
+
+71. IF I KNEW NOTHING ABOUT THIS SOFTWARE, EXPLAIN EXACTLY HOW THE WHOLE THING WORKS
+Railway starts a small Python bootstrap, which starts worker.py. The worker opens an HTTP server and keeps three daily timers. A timer or protected manual URL starts one slot, but a lock prevents two slots at once. The worker refreshes visual settings and, when needed, Meta credentials, then launches the actual run engine in a separate Python process.
+
+The run engine reads schedules, funnel goals, recent history and enabled channels. It asks the generator for one content package. The generator knows the brand from manifesto/profile files, products from WooCommerce CSV/SQLite/BI offerings and product briefs, audiences/topics from configuration and BI, and prior creative from history files. Deterministic logic chooses a stage, audience, topic, product, persuasion structure, emotion, hook and CTA.
+
+Depending on configuration, the old generator creates the post, the new Social Intelligence Orchestrator creates it, or both compete. AI is not in charge of the whole system. Gemini is asked bounded questions such as how to write structured beats, propose visual concepts, refine creative roles, generate an image, or review that image. Facts and forbidden claims are inserted into prompts. If Gemini is absent or fails, templates/rules take over. The conference called "agents" mostly describes data contracts; individually dispatched agents are utility functions, and they do not converse autonomously.
+
+The result becomes WordPress, Facebook, Instagram and LinkedIn-specific text plus platform images. The run engine checks claims, brand rules, quality, repetition, channel readiness and media. A rejected candidate can be regenerated or recorded as skipped. An accepted candidate is published sequentially through each platform's API adapter. One platform error does not prevent later platforms from being attempted. Results should be saved to history and the worker updates status.
+
+The system remembers posts, topics, hooks and visual signatures in JSON, keeps products/brand/visual settings in SQLite, and versions BI profiles/evidence/overrides on disk. It has agents and files capable of collecting engagement and writing learning signals. However, no always-on feedback loop automatically fetches every platform's performance, learns, rebuilds the profile and changes the next post. Humans still supply business truth, catalog exports, legal claim decisions, credentials, configuration, overrides and the choice to run live. The system is highly automated and selectively AI-assisted; it is not fully autonomous.
+
+72. FINAL ARCHITECT'S SUMMARY
+WHAT IT IS TODAY: a production-oriented single-service social publishing engine with two generation stacks.
+CORE ARCHITECTURE: HTTP/scheduler worker -> subprocess run engine -> generator/orchestrator -> gates -> publishers -> file/SQLite state.
+MOST IMPORTANT COMPONENTS: start.py, worker.py, run_engine.py, generate_posts.py, campaign_runtime.py, social/orchestrator.py, social_visuals.py, inventory_db.py, publisher modules and BI facade/profile.
+TRUE BUSINESS SOURCES: founder manifesto and owner assertions for intent; CSV/product briefs/verified offering facts for products; current_profile is derived; configuration files control execution.
+HOW CONTENT IS CREATED: deterministic selection/strategy plus optional structured Gemini enrichment and image generation, then deterministic validation/adaptation.
+AUTONOMY: automatic selection/generation/gating within human-provided boundaries; no durable autonomous operations/learning loop.
+AGENTICITY: orchestrated modules and callable agents, not an independent multi-agent organization.
+LEARNING LOOP: substrate exists; closed loop does not.
+BI FOUNDATION: real and persisted, but snapshot freshness is manual/event-driven.
+CONTENT ORCHESTRATOR: real and selectable; bridged into legacy payload contracts.
+MULTIPLE SOURCES OF TRUTH: yes, especially product, brand, schedules and history.
+STRONG: fallback resilience, platform isolation, validation, business context depth, tests.
+FRAGILE: mega-modules, schema drift, stale snapshots, external model/API dependencies, secret/control ergonomics.
+INCOMPLETE: unified telemetry/prompt registry, durable jobs/retries/approval, analytics ingestion across channels, automatic learning, retention.
+MUST BE UNDERSTOOD BEFORE EXPANSION: choose authoritative data owners and history schema; define agent execution versus declarative roles; centralize model/prompt telemetry; decide approval/learning policy; verify deployment persistence/security.
+
+73. COMPLETENESS RESULT
+[CONFIRMED] This map identifies all major source groups, entrypoints, 27 route branches, schedule mechanics, dual generation paths, meaningful model invocation families, 16 dispatchable agents plus non-dispatcher/declarative roles, four publishers, persistence classes, current history schema, configuration names, failure paths, dependency/reverse-dependency, responsibility/data/AI/external/config matrices, representative and alternate flows, and uncertainty boundaries. Significant claims include path:function references. Bulk generated artifacts and trivial constants are intentionally grouped. External account state and Railway volume configuration remain explicitly unknowable from repository code.
+
+74. CODE REFERENCE INDEX
+Production entry and control: social_engine/start.py:__main__; worker.py:main; worker.py:start_health_server; worker.py:run_slot; worker.py:_start_slot_thread; worker.py:HealthHandler.do_GET; worker.py:_authorized; worker.py:_refresh_meta_tokens; worker.py:_auto_refresh_meta_if_due; worker.py:_run_script; worker.py:_content_preview.
+Live execution and gates: scripts/run_engine.py:main; scripts/run_engine.py:get_channel_config; scripts/run_engine.py:check_secrets; scripts/run_engine.py:_build_phase5_channel_readiness; scripts/run_engine.py:_resolve_primary_publish_image_url; scripts/run_engine.py:_live_visual_gate_errors; scripts/run_engine.py:_build_platform_history_records; scripts/run_engine.py:_build_phase6_learning.
+Generation and routing: scripts/generate_posts.py:generate; scripts/generate_posts.py:_pipeline_mode; scripts/generate_posts.py:_generate_best_of; scripts/generate_posts.py:run_social_intelligence; scripts/generate_posts.py:_route_generate_orchestrator; scripts/generate_posts.py:ensure_runtime_data; scripts/generate_posts.py:sync_inventory_database; scripts/generate_posts.py:select_editorial_plan; scripts/generate_posts.py:_run_phase2_creative_stack; scripts/generate_posts.py:_run_phase3_safety_stack; scripts/generate_posts.py:_run_phase4_optimization_stack; scripts/generate_posts.py:_generate_json_with_gemini; scripts/generate_posts.py:_build_platform_posts; scripts/generate_posts.py:_adapt_facebook; scripts/generate_posts.py:_adapt_instagram; scripts/generate_posts.py:_adapt_linkedin.
+Scheduling and policy: scripts/campaign_runtime.py:ensure_campaign_runtime_files; scripts/campaign_runtime.py:eligible_channels_for_slot; scripts/campaign_runtime.py:stage_for_slot; scripts/campaign_runtime.py:select_funnel_stage; scripts/campaign_runtime.py:choose_cta_for_stage; scripts/campaign_runtime.py:score_generated_content; scripts/campaign_runtime.py:was_recent_channel_success; scripts/anti_repeat.py:check_duplicates; scripts/validate_product_claims.py:validate_generated_content.
+Social intelligence: scripts/social/orchestrator.py:SocialIntelligenceOrchestrator.create_post; scripts/social/orchestrator.py:SocialIntelligenceOrchestrator.create_batch; scripts/social/orchestrator.py:_llm_copy_beats; scripts/social/orchestrator.py:_llm_concept_stems; scripts/social/orchestrator.py:_assemble_copy; scripts/social/model_router.py:route_for; scripts/social/model_router.py:generate_json; scripts/social/model_router.py:last_error; scripts/social/content_strategy.py:pick_topic_path; scripts/social/opportunity_engine.py:generate; scripts/social/memory_intelligence.py:load_recent_state; scripts/social/visual_intelligence.py:compile_image_prompt.
+Business intelligence: scripts/business_intelligence/api.py:get_business_profile; scripts/business_intelligence/api.py:compile_creative_context; scripts/business_intelligence/api.py:compile_orchestrator_context; scripts/business_intelligence/api.py:run_agent_conference; scripts/business_intelligence/api.py:register_owner_assertion; scripts/business_intelligence/api.py:register_performance_learning; scripts/business_intelligence/bootstrap.py:run; scripts/business_intelligence/profile.py:assemble; scripts/business_intelligence/profile.py:save_current; scripts/business_intelligence/offerings.py:build_from_csv; scripts/business_intelligence/conference.py:run_conference; scripts/business_intelligence/learning.py:record_signal; scripts/business_intelligence/learning.py:summarize_learning; scripts/business_intelligence/learning.py:register_override.
+Persistence and visuals: scripts/inventory_db.py:init_inventory_db; scripts/inventory_db.py:upsert_products; scripts/inventory_db.py:fetch_products; scripts/inventory_db.py:upsert_brand_profile; scripts/inventory_db.py:upsert_selling_ideology; scripts/inventory_db.py:bootstrap_visual_repo_from_env; scripts/social_visuals.py:generate_visuals; scripts/social_visuals.py:_generate_gemini_full_creative; scripts/social_visuals.py:_gemini_semantic_plate_quality.
+Publishing: scripts/publish_wordpress.py:publish; scripts/publish_wordpress.py:upload_media; scripts/publish_facebook.py:publish; scripts/publish_facebook.py:delete; scripts/publish_instagram.py:publish; scripts/publish_instagram.py:_wait_for_media_container; scripts/publish_instagram.py:delete; scripts/publish_linkedin.py:publish; scripts/publish_linkedin.py:_resolve_author_urn; scripts/publish_linkedin.py:_upload_image_asset.
+Agents: scripts/agents/dispatcher.py:available_agents; scripts/agents/dispatcher.py:run_agent; scripts/agents/conversion_strategist.py:run; scripts/agents/engagement_ingestion.py:run; scripts/agents/performance_reflection.py:run; scripts/agents/learning_ingestion.py:run; scripts/agents/topic_intelligence.py:run; scripts/agents/carousel_slide_writer.py:run; scripts/agents/visual_qa_reviewer.py:run; scripts/agents/product_matcher.py:run; scripts/agents/product_intelligence.py:run; scripts/agents/retention.py:run.
+
+END OF AUTHORITATIVE CODE-GROUNDED SYSTEM MAP

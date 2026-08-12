@@ -140,6 +140,21 @@ def _bi_pick_offering(rotation_index: int) -> dict[str, Any] | None:
         return None
 
 
+def _bi_get_offering(product_id: str) -> dict[str, Any] | None:
+    """Look up one specific catalog offering by id/sku (an explicit caller
+    request), independent of the ENABLE_BUSINESS_INTELLIGENCE creative-context flag."""
+    if not product_id:
+        return None
+    try:
+        from business_intelligence import api as bi_api
+    except ImportError:
+        return None
+    try:
+        return bi_api.get_offering(product_id)
+    except Exception:
+        return None
+
+
 # --- Engine rotation --------------------------------------------------------
 
 
@@ -330,6 +345,7 @@ class SocialIntelligenceOrchestrator:
         preferred_pillar: str | None = None,
         verified_facts: list[str] | None = None,
         record_memory: bool = True,
+        product_id_override: str = "",
     ) -> PostPackage:
         # 0. Recent state → recency-aware decisions
         recent = memory_intelligence.recent(self.data_dir, limit=20)
@@ -338,6 +354,10 @@ class SocialIntelligenceOrchestrator:
         # didn't already specify a value and the flag is on.
         bi_ctx = _load_bi_creative_context()
         bi_offering = _bi_pick_offering(rotation_index) if bi_ctx else None
+        if product_id_override:
+            forced_offering = _bi_get_offering(product_id_override)
+            if forced_offering:
+                bi_offering = forced_offering
         if bi_ctx:
             if not preferred_pillar:
                 preferred_pillar = _bi_preferred_pillar(bi_ctx)

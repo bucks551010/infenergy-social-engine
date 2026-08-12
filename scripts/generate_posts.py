@@ -88,12 +88,17 @@ def _route_generate_orchestrator(slot: str = "", *, platform: str = "instagram_f
     copy_pkg = first.get("copy") or {}
     visual_pkg = first.get("visual") or {}
     quality_pkg = first.get("quality") or {}
+    offering = first.get("anchored_offering") or {}
 
     legacy = {
         "post_id": first.get("post_id"),
         "copy_generation_source": "social_intelligence_orchestrator",
         "business_context": first.get("business_context") or {},
-        "anchored_offering": first.get("anchored_offering") or {},
+        "anchored_offering": offering,
+        "product_id": offering.get("offering_id") or offering.get("sku") or None,
+        "product_name": offering.get("name", ""),
+        "product_sku": offering.get("sku", ""),
+        "product_image_url": (offering.get("images") or [""])[0],
         "selected_hook": copy_pkg.get("hook") or "",
         "selected_cta": copy_pkg.get("cta") or "",
         "copy": copy_pkg,
@@ -4595,9 +4600,9 @@ def generate(
     if mode == "best_of":
         return _generate_best_of(slot, funnel_stage_override=funnel_stage_override, product_id_override=product_id_override)
     if mode == "orchestrator":
-        return _route_generate_orchestrator(slot, platform=platform)
+        return _route_generate_orchestrator(slot, platform=platform, product_id_override=product_id_override)
     if mode != "legacy" and _social_intelligence_enabled():
-        return _route_generate_orchestrator(slot, platform=platform)
+        return _route_generate_orchestrator(slot, platform=platform, product_id_override=product_id_override)
 
     ensure_runtime_data()
     preferred_model = os.environ.get("GEMINI_MODEL", "").strip()

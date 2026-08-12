@@ -111,6 +111,7 @@ def _route_generate_orchestrator(slot: str = "", *, platform: str = "instagram_f
         "product_name": offering.get("name", ""),
         "product_sku": offering.get("sku", ""),
         "product_image_url": (offering.get("images") or [""])[0],
+        "product_image_candidates": (offering.get("images") or [])[1:],
         "product_url": (catalog_product or {}).get("product_url", ""),
         "destination_url": SITE_URL,
         "product_price": (catalog_product or {}).get("price", ""),
@@ -131,6 +132,13 @@ def _route_generate_orchestrator(slot: str = "", *, platform: str = "instagram_f
     }
     for key in ("hook", "body_text", "takeaway", "memory_anchor"):
         legacy.setdefault(key, copy_pkg.get(key))
+
+    # The orchestrator's own "visual" package is art-direction/prompt
+    # metadata only -- it never actually calls Gemini. Reuse the same
+    # generate_visuals() step the legacy pipeline uses so orchestrator
+    # posts get real, product-anchored creative instead of staying empty.
+    legacy["visual_plan"] = visual_pkg
+    legacy["generated_visuals"] = generate_visuals(legacy, visual_plan=visual_pkg)
     return legacy
 
 

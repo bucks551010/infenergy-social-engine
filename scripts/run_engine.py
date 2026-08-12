@@ -16,6 +16,7 @@ import publish_facebook
 import publish_instagram
 import publish_linkedin
 from score_content import score_content
+from social.publish_decision import decide as decide_publication
 from validate_product_claims import validate_generated_content
 from anti_repeat import check_duplicates, load_anti_repeat_windows
 from build_utm_url import build_utm_url
@@ -302,6 +303,7 @@ def _generation_diagnostics(content: dict) -> dict:
         "copy_generation_method": content.get("copy_generation_method", ""),
         "copy_fallback_reason": content.get("copy_fallback_reason"),
         "platform_posts": content.get("platform_posts", {}),
+        "publish_decision": content.get("publish_decision", {}),
     }
 
 
@@ -773,12 +775,20 @@ def main() -> None:
         # Conversion Logic Engine rule (spec section 23): below 80 CQS, automatically
         # attempt improvement before publishing rather than accepting a "warning"-only gate.
         cqs_total = float((content.get("conversion_quality_score") or {}).get("total", 100) or 100)
+        publish_decision = decide_publication(
+            legacy_score=scoring,
+            validation=validation,
+            duplicates=duplicates,
+            conversion_quality_score=cqs_total,
+            orchestrator_quality=content.get("orchestrator_quality"),
+        )
+        content["publish_decision"] = publish_decision
 
         attempts.append(
             {
                 "attempt": idx + 1,
                 "score": scoring.get("total"),
-                "decision": scoring.get("decision"),
+                "decision": publish_decision["decision"],
                 "validation_passed": validation.get("passed"),
                 "validation_errors": validation.get("errors", []),
                 "duplicates_ok": duplicates.get("ok"),
@@ -787,7 +797,7 @@ def main() -> None:
             }
         )
 
-        if validation.get("passed") and scoring.get("total", 0) >= 82 and duplicates.get("ok") and cqs_total >= 80:
+        if publish_decision["publishable"]:
             break
 
         # Manual live override path: if operator explicitly requests allow_all, swap to a known-safe
@@ -827,6 +837,14 @@ def main() -> None:
             content["quality_component_scores"] = scoring.get("component_scores", {})
             content["duplicate_check"] = duplicates
             content.update(duplicates.get("signatures", {}))
+            publish_decision = decide_publication(
+                legacy_score=scoring,
+                validation=validation,
+                duplicates=duplicates,
+                conversion_quality_score=cqs_total,
+                orchestrator_quality=content.get("orchestrator_quality"),
+            )
+            content["publish_decision"] = publish_decision
             attempts.append(
                 {
                     "attempt": idx + 1,
@@ -838,11 +856,11 @@ def main() -> None:
                     "duplicate_reasons": duplicates.get("reasons", []),
                 }
             )
-            if validation.get("passed") and scoring.get("total", 0) >= 82 and duplicates.get("ok"):
+            if publish_decision["publishable"]:
                 break
 
         # If score is in regenerate range and this is first attempt, try one more time.
-        if idx == 0 and scoring.get("decision") == "regenerate_once":
+        if idx == 0 and publish_decision["decision"] in {"revise", "regenerate"}:
             continue
 
         # Otherwise stop on final attempt or hard rejection.
@@ -865,7 +883,16 @@ def main() -> None:
         content.setdefault("quality_warnings", []).append(f"cqs_below_target_after_retries:{final_cqs_total}")
         print(f"[QUALITY] Published with Conversion Quality Score {final_cqs_total} after exhausting retries (target 80).")
 
-    if (not final_validation_ok) or final_score < 82 or (not duplicate_ok):
+    final_decision = decide_publication(
+        legacy_score={"total": final_score},
+        validation={"passed": final_validation_ok, "errors": content.get("validation_errors", [])},
+        duplicates=content.get("duplicate_check", {}),
+        conversion_quality_score=final_cqs_total,
+        orchestrator_quality=content.get("orchestrator_quality"),
+        visual_errors=visual_gate_errors,
+    )
+    content["publish_decision"] = final_decision
+    if not final_decision["publishable"]:
         print("[SKIP] Content did not pass validation/quality thresholds; recording skipped run")
         history = generate_posts.load_history()
         run_started = datetime.now(timezone.utc).isoformat()

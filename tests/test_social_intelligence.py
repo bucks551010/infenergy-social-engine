@@ -31,7 +31,9 @@ from social import (  # noqa: E402
     model_router,
     opportunity_engine,
     orchestrator,
+    publish_decision,
     quality_intelligence,
+    research_router,
     visual_intelligence,
     visual_provider,
     lean_intelligence,
@@ -168,6 +170,17 @@ def test_lean_product_context_links_portable_power_to_matching_audience():
     assert context["relationships"]["audience_id"] == "mobile_professional"
     assert context["marketing"]["customer_questions"]
     assert "approved_product_facts" not in context["truth"]["important_unknowns"]
+
+
+def test_research_router_requires_a_marketing_decision_and_routes_source():
+    task = research_router.route(
+        question="Which customer questions about capacity are unanswered?",
+        why_needed="choose an educational angle",
+        entity="portable power category",
+        decision_affected="angle selection",
+    )
+    assert task.preferred_source == "customer_language_research"
+    assert task.as_dict()["decision_affected"] == "angle selection"
 
 
 # --- content strategy ------------------------------------------------------
@@ -342,6 +355,31 @@ def test_claim_verification_marks_verified_when_fact_matches():
 
 
 # --- quality intelligence -----------------------------------------------
+
+
+def test_publish_decision_is_the_single_gate_for_critics_and_runtime():
+    result = publish_decision.decide(
+        legacy_score={"total": 88},
+        validation={"passed": True},
+        duplicates={"ok": True},
+        conversion_quality_score=84,
+        orchestrator_quality={"overall": 78},
+    )
+
+    assert result["decision"] == "revise"
+    assert not result["publishable"]
+
+
+def test_publish_decision_blocks_failed_validation_even_with_high_scores():
+    result = publish_decision.decide(
+        legacy_score={"total": 99},
+        validation={"passed": False, "errors": ["unsupported_claim"]},
+        duplicates={"ok": True},
+        conversion_quality_score=99,
+    )
+
+    assert result["decision"] == "do_not_publish"
+    assert "unsupported_claim" in result["reasons"]
 
 
 def test_quality_score_gives_reasonable_overall():

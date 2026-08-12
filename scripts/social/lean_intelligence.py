@@ -64,20 +64,38 @@ def pillar_for_offering(offering: dict[str, Any] | None) -> str:
     return ""
 
 
-def audience_for_offering(offering: dict[str, Any] | None, pillar_id: str = "") -> str:
-    """Resolve a social audience only from explicit offering fit, then pillar."""
+def audience_for_offering(
+    offering: dict[str, Any] | None,
+    pillar_id: str = "",
+    *,
+    customer_moment: str = "",
+    business_objective: str = "",
+    content_opportunity: str = "",
+) -> str:
+    """Rank audiences from fit evidence, never from category alone."""
     segments = libraries.audience_segments()
     fits = (offering or {}).get("customer_fit") or (offering or {}).get("best_fit_audiences") or []
     for raw in fits:
         normalized = _AUDIENCE_ALIASES.get(str(raw).strip().lower())
         if normalized in segments:
             return normalized
-    pillar_defaults = {
-        "portable_power": "mobile_professional",
-        "electric_mobility": "mobile_professional",
-        "preparedness": "preparedness_focused_household",
-    }
-    return pillar_defaults.get(pillar_id, "")
+    evidence = " ".join([
+        _text((offering or {}).get("use_cases")),
+        _text((offering or {}).get("problems_addressed")),
+        customer_moment,
+        business_objective,
+        content_opportunity,
+    ]).lower()
+    ranked: list[tuple[int, str]] = []
+    for segment_id, segment in segments.items():
+        terms = " ".join(
+            _text(segment.get(key))
+            for key in ("purchase_context", "lifestyle_context", "goals", "questions", "emotional_drivers")
+        ).lower().split()
+        score = sum(1 for term in set(terms) if len(term) > 3 and term in evidence)
+        if score:
+            ranked.append((score, segment_id))
+    return max(ranked)[1] if ranked else ""
 
 
 def compile_product_social_intelligence(offering: dict[str, Any] | None) -> dict[str, Any]:

@@ -43,6 +43,8 @@ class Claim:
     verification_required: bool
     source: str | None = None
     verification_status: str = "unverified"
+    provenance: str = "UNVERIFIED_INFERENCE"
+    rejection_reason: str | None = None
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -53,6 +55,8 @@ class Claim:
             "verification_required": self.verification_required,
             "source": self.source,
             "verification_status": self.verification_status,
+            "provenance": self.provenance,
+            "rejection_reason": self.rejection_reason,
         }
 
 
@@ -60,6 +64,8 @@ class Claim:
 
 
 _STAT_RE = re.compile(r"(\d+(?:[.,]\d+)?)\s?(%|hours?|watts?|watt-hours?|wh|w|amps?|amp-hours?|ah|mah|cycles?|degrees?|°[cf]|feet|inches|days?|years?)", re.IGNORECASE)
+_DERIVATION_RE = re.compile(r"\b\d+(?:\.\d+)?\s*(?:x|\*|/|per)\s*\d+(?:\.\d+)?\b|\b0\.\d+\b", re.IGNORECASE)
+_DERIVATION_CONTEXT = ("efficiency", "factor", "convert", "runtime", "estimate", "load", "coverage", "savings", "cost", "compare", "performance", "rate")
 
 
 def remove_unsupported_numeric_claims(text: str, verified_facts: Iterable[str]) -> tuple[str, list[str]]:
@@ -81,7 +87,10 @@ def remove_unsupported_numeric_claims(text: str, verified_facts: Iterable[str]) 
             f"{match.group(1).replace(',', '').lower()} {match.group(2).lower()}"
             for match in _STAT_RE.finditer(sentence)
         ]
-        if tokens and any(token not in verified_tokens for token in tokens):
+        unsupported_derivation = bool(_DERIVATION_RE.search(sentence)) and any(
+            marker in sentence.lower() for marker in _DERIVATION_CONTEXT
+        )
+        if (tokens and any(token not in verified_tokens for token in tokens)) or unsupported_derivation:
             removed.append(sentence)
         elif sentence:
             kept.append(sentence)
@@ -172,6 +181,25 @@ def _fact_matches(claim: Claim, verified_facts: Iterable[str]) -> bool:
     return False
 
 
+def _numeric_tokens(text: str) -> set[str]:
+    return {f"{match.group(1).replace(',', '').lower()} {match.group(2).lower()}" for match in _STAT_RE.finditer(text)}
+
+
+def _claim_provenance(claim: Claim, verified_facts: Iterable[str]) -> tuple[str, str | None]:
+    claim_numbers = _numeric_tokens(claim.claim_text)
+    if _DERIVATION_RE.search(claim.claim_text) and any(marker in claim.claim_text.lower() for marker in _DERIVATION_CONTEXT):
+        return "PROHIBITED_OR_UNSUPPORTED", "derived_claim_has_no_verified_formula"
+    for fact in verified_facts:
+        fact_numbers = _numeric_tokens(str(fact or ""))
+        if claim_numbers and claim_numbers <= fact_numbers:
+            return "VERIFIED_PRODUCT_FACT", None
+    if claim_numbers:
+        return "PROHIBITED_OR_UNSUPPORTED", "numeric_claim_not_present_in_verified_facts"
+    if _fact_matches(claim, verified_facts):
+        return "VERIFIED_PRODUCT_FACT", None
+    return "UNVERIFIED_INFERENCE", "claim_not_supported_by_verified_facts"
+
+
 @dataclass
 class ClaimLedger:
     claims: list[Claim] = field(default_factory=list)
@@ -203,7 +231,10 @@ def build_ledger(
 ) -> ClaimLedger:
     ledger = ClaimLedger()
     for c in extract_claims(text):
-        if _fact_matches(c, verified_facts):
+        provenance, rejection_reason = _claim_provenance(c, verified_facts)
+        c.provenance = provenance
+        c.rejection_reason = rejection_reason
+        if provenance == "VERIFIED_PRODUCT_FACT":
             c.verification_status = "verified"
             c.source = "product_verified_facts"
             ledger.verified.append(c)
@@ -226,6 +257,8 @@ def build_ledger(
                 verification_required=True,
                 source="brand_forbidden_claims",
                 verification_status="forbidden",
+                provenance="PROHIBITED_OR_UNSUPPORTED",
+                rejection_reason="brand_forbidden_claim",
             )
             ledger.claims.append(forbidden)
             ledger.unverified_high_risk.append(forbidden)

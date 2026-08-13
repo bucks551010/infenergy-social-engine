@@ -280,6 +280,113 @@ def test_strategy_lock_branches_identical_strategy_into_copy_and_visual():
         assert copy[key] == visual[key] == locked[key]
 
 
+def test_strategy_red_team_rejects_ppp200_runtime_angle_without_runtime_evidence():
+    verdict = strategy_lock.red_team(
+        {
+            "angle": "how to estimate real fridge runtime on backup power",
+            "hook_promise": "How long will a fridge run?",
+            "topic": "portable power",
+            "benefit": "keeps compatible daily devices charged away from outlets",
+        },
+        verified_facts=["154Wh", "41,600mAh", "200W", "110V"],
+        forbidden_claims=["Do not make runtime or compatibility claims without evidence."],
+    )
+
+    assert verdict["verdict"] == "CHANGE_ANGLE"
+    assert "verified_runtime_evidence_missing" in verdict["challenge_evidence"]
+
+
+def test_semantic_benefit_critic_accepts_supported_paraphrase_and_rejects_vague_copy():
+    benefit = "keeps compatible daily devices charged away from outlets"
+    paraphrase = quality_intelligence.benefit_coverage(benefit, "Laptops and professional devices stay charged far from an outlet.")
+    vague = quality_intelligence.benefit_coverage(benefit, "Power for your day.")
+
+    assert paraphrase["result"] is True
+    assert paraphrase["semantic_check_type"] == "supported_paraphrase"
+    assert vague["result"] is False
+    assert vague["expected_concept"] == benefit
+
+
+def test_claim_provenance_rejects_unsupported_efficiency_derivation_without_replacement():
+    safe, removed = claim_intelligence.remove_unsupported_numeric_claims(
+        "At a 0.85 efficiency factor, estimate runtime from the 154Wh battery.", ["154Wh"]
+    )
+    ledger = claim_intelligence.build_ledger(
+        "At a 0.85 efficiency factor, estimate runtime from the 154Wh battery.", verified_facts=["154Wh"]
+    )
+
+    assert safe == ""
+    assert removed
+    assert any(item.provenance == "PROHIBITED_OR_UNSUPPORTED" for item in ledger.claims)
+    assert any(item.rejection_reason == "derived_claim_has_no_verified_formula" for item in ledger.claims)
+
+
+def test_strategy_red_team_generalizes_to_savings_and_comparative_promises_without_evidence():
+    verdict = strategy_lock.red_team(
+        {"angle": "why this option saves money and outperforms competitors", "hook_promise": "Which option costs less?"},
+        verified_facts=["200W output"],
+        forbidden_claims=["Do not make savings or comparative claims without evidence."],
+    )
+
+    assert verdict["verdict"] == "CHANGE_ANGLE"
+    assert "verified_savings_evidence_missing" in verdict["challenge_evidence"]
+    assert "verified_comparative_superiority_evidence_missing" in verdict["challenge_evidence"]
+
+
+def test_strategy_red_team_detects_explicit_compatibility_promise_without_evidence():
+    verdict = strategy_lock.red_team(
+        {"angle": "will this work with a field workstation", "hook_promise": "Is it compatible with your equipment?"},
+        verified_facts=["200W output"],
+        forbidden_claims=[],
+    )
+
+    assert verdict["verdict"] == "CHANGE_ANGLE"
+    assert "verified_compatibility_evidence_missing" in verdict["challenge_evidence"]
+
+
+def test_semantic_benefit_critic_generalizes_to_another_locked_benefit():
+    result = quality_intelligence.benefit_coverage(
+        "reduces charging time for field teams",
+        "Help crews recharge faster away from base.",
+    )
+
+    assert result["result"] is True
+    assert result["semantic_check_type"] == "supported_paraphrase"
+
+
+def test_post_sanitization_coherence_escalates_unanswerable_runtime_hook_to_strategy():
+    result = strategy_lock.post_sanitization_coherence(
+        {"angle": "estimate real fridge runtime"},
+        hook="How long will this fridge run on backup power?",
+        body="Use verified product facts to compare daily devices.",
+        removed_claims=["A 40W fridge can run for roughly 3 hours."],
+    )
+
+    assert result["verdict"] == "STRATEGY_RECONSIDERATION_REQUIRED"
+    assert result["repair_owner"] == "Strategy Intelligence"
+
+
+def test_governed_angle_reconsideration_preserves_strategy_identity_and_versions_lock():
+    original = strategy_lock.lock(
+        {"audience": "mobile professional", "customer_moment": "before a trip", "human_need": "clarity", "offering": "PPP-200", "positioning": "verified product-fit guidance", "non_price_edge": {"kind": "PRODUCT_EDGE"}, "angle": "estimate fridge runtime", "reader_memory": "choose using facts"},
+        context={"human_value": "confidence", "topic": "portable power", "reader_job": "HELP_ME_CHOOSE", "important_capability": "154Wh", "benefit": "keeps compatible daily devices charged away from outlets", "human_outcome": "confidence", "competitive_context": "", "proof": ["154Wh"], "claim_limits": "verified facts only", "visual_objective": "show product facts", "CTA_strategy": "Learn more"},
+    )
+    repaired = strategy_lock.reconsider_angle(original, reason="evidence gap", evidence=["runtime missing"], new_angle="compare verified device-fit facts", new_hook_promise="Which facts support daily devices?")
+
+    assert repaired["strategy_version"] == 2
+    assert repaired["audience"] == original["audience"]
+    assert repaired["benefit"] == original["benefit"]
+    assert repaired["strategy_audit"][-1]["fields_reopened"] == ["angle", "hook_promise", "topic_path"]
+
+
+def test_scoped_strategy_lessons_are_evidence_bound_not_global(tmp_path):
+    lesson = {"product_id": "PPP-200", "condition": "runtime_angle_without_verified_inputs", "action": "challenge_angle", "evidence": ["no runtime inputs"]}
+    memory_intelligence.append_strategy_lesson(lesson, data_dir=str(tmp_path))
+
+    assert memory_intelligence.strategy_lessons(product_id="PPP-200", condition="runtime_angle_without_verified_inputs", data_dir=str(tmp_path)) == [lesson]
+    assert memory_intelligence.strategy_lessons(product_id="OTHER", condition="runtime_angle_without_verified_inputs", data_dir=str(tmp_path)) == []
+
+
 def test_orchestrator_preserves_approved_strategy_in_copy_and_visual(monkeypatch):
     locked = strategy_lock.lock({"audience": "preparedness household", "customer_moment": "storm outage", "human_need": "confidence", "offering": "power station", "positioning": "calm preparedness", "non_price_edge": {"edge_type": "PRODUCT_EDGE"}, "angle": "Explain what to power first", "reader_memory": "Prioritize essentials"}, context={"human_value": "preparedness", "topic": "power priorities", "reader_job": "PREPARE_ME", "important_capability": "500W AC", "benefit": "prioritize essentials", "human_outcome": "confidence", "competitive_context": "spec-led competitors", "proof": ["500W AC"], "claim_limits": "Use only supported capability language", "visual_objective": "show a home priority ladder", "CTA_strategy": "Learn more"})
     monkeypatch.setattr(orchestrator, "_llm_copy_beats", lambda *args: None)

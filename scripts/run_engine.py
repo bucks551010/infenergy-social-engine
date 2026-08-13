@@ -18,6 +18,7 @@ import publish_linkedin
 from score_content import score_content
 from social.publish_decision import decide as decide_publication
 from social.claim_intelligence import remove_unsupported_numeric_claims
+from social import strategy_lock as strategy_lock_intelligence
 from validate_product_claims import validate_generated_content
 from anti_repeat import check_duplicates, load_anti_repeat_windows
 from build_utm_url import build_utm_url
@@ -431,6 +432,64 @@ def _revision_scope(content: dict) -> str:
     creative = content.get("creative_director") if isinstance(content.get("creative_director"), dict) else {}
     visual_review = creative.get("visual_critic_review") if isinstance(creative.get("visual_critic_review"), dict) else {}
     return "copy_and_visual" if str(visual_review.get("verdict", "")).upper() == "REVISE" else "copy"
+
+
+def _cognitive_diagnosis(content: dict, *, strategy: dict, removed_claims: list[str], findings: list[str]) -> dict:
+    """Route repair to the smallest owner that can resolve the fresh evidence."""
+    copy = content.get("copy") if isinstance(content.get("copy"), dict) else {}
+    coherence = strategy_lock_intelligence.post_sanitization_coherence(
+        strategy,
+        hook=str(copy.get("hook") or content.get("selected_hook") or ""),
+        body=str(copy.get("body_text") or content.get("fb_caption") or ""),
+        removed_claims=removed_claims,
+    )
+    failure_level = "COPY_EXECUTION"
+    repair_owner = "Copy Intelligence"
+    repair_scope = "copy"
+    action = "CONTINUE_LOCAL_REPAIR"
+    reason_codes = list(findings)
+    if coherence["verdict"] == "STRATEGY_RECONSIDERATION_REQUIRED":
+        failure_level = "STRATEGY_EVIDENCE_MISMATCH"
+        repair_owner = "Strategy Intelligence"
+        repair_scope = "angle_and_hook_promise"
+        action = "RECONSIDER_ANGLE"
+        reason_codes.append(coherence["reason"])
+    elif any("visual" in finding.lower() for finding in findings):
+        failure_level = "VISUAL_EXECUTION"
+        repair_owner = "Visual Intelligence"
+        repair_scope = "visual"
+    elif any("not_verified" in finding or "unsupported" in finding for finding in findings):
+        failure_level = "CLAIM_UNSUPPORTED"
+        repair_owner = "Claim Intelligence"
+        repair_scope = "claim_and_copy"
+    terminal = any(finding in _TERMINAL_FINDINGS for finding in findings)
+    if terminal:
+        failure_level = "TERMINAL_SAFETY_FAILURE"
+        repair_owner = "Governance"
+        repair_scope = "none"
+        action = "ABSTAIN"
+    return {
+        "failure_level": failure_level,
+        "evidence": coherence["evidence"],
+        "reason_codes": list(dict.fromkeys(reason_codes)),
+        "confidence": 0.95 if failure_level in {"STRATEGY_EVIDENCE_MISMATCH", "TERMINAL_SAFETY_FAILURE"} else 0.8,
+        "repair_owner": repair_owner,
+        "repair_scope": repair_scope,
+        "preserve_fields": ["product", "audience", "customer_moment", "benefit", "claim_limits"],
+        "reconsider_fields": ["angle", "hook_promise"] if action == "RECONSIDER_ANGLE" else [],
+        "terminal_or_repairable": "terminal" if terminal else "repairable",
+        "coherence": coherence,
+        "metacognition": {"action": action, "attempt_budget_remaining": None},
+    }
+
+
+def _safe_reconsidered_angle(strategy: dict) -> tuple[str, str]:
+    benefit = str(strategy.get("benefit") or "verified product-fit guidance")
+    moment = str(strategy.get("customer_moment") or "when an outlet is unavailable")
+    return (
+        f"Use verified product facts to assess whether it supports {benefit}",
+        f"What verified product facts help with {benefit} {moment}?",
+    )
 
 
 def _issue_key(issue: str) -> str:
@@ -975,6 +1034,13 @@ def main() -> None:
         historical_feedback = list(pending_feedback)
         issue_closure = _issue_closure(historical_feedback, critic_feedback)
         retryability = _retryability_classification(publish_decision, critic_feedback)
+        diagnosis = _cognitive_diagnosis(
+            content,
+            strategy=current_strategy or locked_strategy,
+            removed_claims=claim_corrections,
+            findings=critic_feedback,
+        )
+        diagnosis["metacognition"]["attempt_budget_remaining"] = 2 - idx
 
         attempts.append(
             {
@@ -995,6 +1061,7 @@ def main() -> None:
                 "claim_corrections": claim_corrections,
                 "issue_closure": issue_closure,
                 "revision_scope": revision_scope,
+                "cognitive_diagnosis": diagnosis,
                 "strategy_lock": locked_strategy,
                 "candidate": _candidate_audit(content),
             }
@@ -1069,8 +1136,22 @@ def main() -> None:
             or (publish_decision["decision"] == "do_not_publish" and retryability == "RETRYABLE_CONTENT")
         ):
             pending_feedback = critic_feedback or ["Improve the candidate so it meets the existing critic threshold."]
-            pending_scope = revision_scope
-            prior_generated_visuals = dict(content.get("generated_visuals") or {})
+            pending_scope = diagnosis["repair_scope"] if diagnosis["repair_scope"] != "angle_and_hook_promise" else "strategy"
+            if diagnosis["metacognition"]["action"] == "RECONSIDER_ANGLE" and locked_strategy:
+                new_angle, new_hook = _safe_reconsidered_angle(locked_strategy)
+                locked_strategy = strategy_lock_intelligence.reconsider_angle(
+                    locked_strategy,
+                    reason=str(diagnosis["coherence"]["reason"]),
+                    evidence=list(diagnosis["evidence"]),
+                    new_angle=new_angle,
+                    new_hook_promise=new_hook,
+                )
+                pending_feedback = list(dict.fromkeys(pending_feedback + [
+                    "Use the reopened verified-facts angle. Do not restore removed runtime, efficiency, or appliance compatibility claims.",
+                ]))
+                prior_generated_visuals = {}
+            else:
+                prior_generated_visuals = dict(content.get("generated_visuals") or {})
             previous_decision = str(publish_decision["decision"])
             previous_current_findings = list(critic_feedback)
             continue

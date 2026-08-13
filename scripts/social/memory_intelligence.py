@@ -42,6 +42,11 @@ def post_history_path(data_dir: str | None = None) -> str:
     return os.path.join(d, "post_history.json")
 
 
+def strategy_lessons_path(data_dir: str | None = None) -> str:
+    d = data_dir or _default_data_dir()
+    return os.path.join(d, "social", "strategy_lessons.json")
+
+
 def _load(path: str) -> dict[str, Any]:
     if not os.path.isfile(path):
         return {"records": []}
@@ -87,6 +92,30 @@ def append_visual_record(
     if len(data["records"]) > keep_last:
         data["records"] = data["records"][-keep_last:]
     _save(path, data)
+
+
+def append_strategy_lesson(lesson: dict[str, Any], *, data_dir: str | None = None, keep_last: int = 250) -> None:
+    """Persist only a bounded, evidence-linked lesson for a matching future context."""
+    path = strategy_lessons_path(data_dir)
+    data = _load(path)
+    required = {"product_id", "condition", "action", "evidence"}
+    if not required <= set(lesson) or not lesson.get("evidence"):
+        raise ValueError("strategy lesson requires product_id, condition, action, and evidence")
+    data["records"].append(lesson)
+    if len(data["records"]) > keep_last:
+        data["records"] = data["records"][-keep_last:]
+    _save(path, data)
+
+
+def strategy_lessons(*, product_id: str, condition: str, data_dir: str | None = None) -> list[dict[str, Any]]:
+    """Return lessons only for the same product and evidence condition."""
+    records = _load(strategy_lessons_path(data_dir)).get("records", [])
+    return [
+        record for record in records
+        if isinstance(record, dict)
+        and str(record.get("product_id")) == product_id
+        and str(record.get("condition")) == condition
+    ]
 
 
 def append_post_history_record(

@@ -12,6 +12,7 @@ All deterministic. Meant to be run BEFORE any publish action.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import re
 from typing import Any
 
 from . import claim_intelligence, copy_intelligence
@@ -49,6 +50,20 @@ DEFAULT_THRESHOLDS = {
     "regenerate": 60.0,
     "high_risk_claims_blocking": True,
 }
+
+_CONCEPT_ALIASES = {
+    "charge": {"charge", "charged", "charging", "recharge", "recharged", "recharging", "power", "powered"},
+    "device": {"device", "devices", "laptop", "laptops", "phone", "phones", "tablet", "tablets", "equipment", "gear"},
+    "away": {"away", "outlet", "outlets", "remote", "inaccessible", "travel", "far", "offgrid"},
+    "reduce": {"reduce", "reduces", "reduced", "shorten", "shortens", "faster", "quick", "quickly"},
+    "team": {"team", "teams", "crew", "crews", "staff", "workers"},
+    "coverage": {"coverage", "cover", "covers", "range", "reach"},
+    "save": {"save", "saves", "saving", "savings", "cheaper", "lower", "less"},
+}
+
+
+def _concept(token: str) -> str:
+    return next((concept for concept, aliases in _CONCEPT_ALIASES.items() if token in aliases), token)
 
 
 @dataclass
@@ -271,13 +286,35 @@ def copy_critic(*, copy: dict[str, Any], strategy: dict[str, Any], platform: str
         issues.append("generic_or_ai_like_language")
     if not hook or not body:
         issues.append("missing_opening_or_payoff")
-    if strategy.get("benefit") and str(strategy["benefit"]).lower() not in (hook + " " + body).lower():
+    benefit_check = benefit_coverage(str(strategy.get("benefit") or ""), hook + " " + body)
+    if strategy.get("benefit") and not benefit_check["result"]:
         issues.append("primary_benefit_not_explicit")
     if not cta:
         issues.append("missing_cta")
     if platform.startswith("linkedin") and not any(term in (hook + " " + body).lower() for term in ("decision", "planning", "operational", "business", "continuity")):
         issues.append("linkedin_professional_value_weak")
-    return {"verdict": "PASS" if not issues else "REVISE", "issues": issues, "hook": hook, "platform": platform}
+    return {"verdict": "PASS" if not issues else "REVISE", "issues": issues, "hook": hook, "platform": platform, "benefit_semantic_check": benefit_check}
+
+
+def benefit_coverage(expected_benefit: str, observed_copy: str) -> dict[str, Any]:
+    """Small deterministic semantic check for the supported benefit concept."""
+    expected = expected_benefit.lower()
+    observed = observed_copy.lower()
+    tokens = {_concept(token) for token in re.findall(r"[a-z]+", expected) if len(token) > 3}
+    direct = bool(expected and expected in observed)
+    observed_tokens = {_concept(token) for token in re.findall(r"[a-z]+", observed)}
+    overlap = len(tokens & observed_tokens) / max(1, len(tokens))
+    result = direct or overlap >= 0.5
+    check_type = "exact" if direct else "supported_paraphrase" if result else "insufficient_benefit_expression"
+    evidence = sorted(tokens & observed_tokens)
+    return {
+        "semantic_check_type": check_type,
+        "expected_concept": expected_benefit,
+        "observed_expression": observed_copy,
+        "evidence": evidence,
+        "result": result,
+        "confidence": 0.95 if direct else 0.85 if result else 0.9,
+    }
 
 
 def visual_critic(*, visual: dict[str, Any], provider_result: dict[str, Any], platform: str) -> dict[str, Any]:

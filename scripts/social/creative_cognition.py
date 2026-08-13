@@ -12,6 +12,42 @@ import os
 from datetime import datetime, timezone
 from dataclasses import dataclass
 from typing import Any
+
+
+AGENT_CONTRACTS = {
+    "Strategy Red Team": {
+        "mission": "challenge evidence-incompatible strategy proposals before lock",
+        "inputs": ["strategy proposal", "verified facts", "claim limits"],
+        "outputs": ["PASS", "CHANGE_ANGLE", "challenge evidence"],
+        "authority": "may challenge an angle; may not select product, audience, benefit, or publish",
+        "budget": "one deterministic pre-lock review",
+        "termination": "pass or evidence-backed challenge",
+        "escalation": "Strategy Intelligence",
+    },
+    "Claim Intelligence": {
+        "mission": "classify provenance and remove unsupported assertions without replacements",
+        "inputs": ["candidate copy", "verified facts", "forbidden claims"],
+        "outputs": ["claim ledger", "provenance", "removed claims"],
+        "authority": "may block unsupported claims; may not invent evidence or publish",
+        "budget": "one deterministic candidate-boundary pass",
+        "termination": "ledger complete",
+        "escalation": "Strategy Intelligence when removal breaks the angle",
+    },
+    "Metacognition": {
+        "mission": "route fresh failure evidence to the smallest repair owner within the existing attempt budget",
+        "inputs": ["fresh findings", "coherence", "attempt history", "strategy lock"],
+        "outputs": ["repair owner", "scope", "continue/escalate/abstain"],
+        "authority": "may route bounded repair; may not lower thresholds, extend retries, or publish",
+        "budget": "one decision per candidate",
+        "termination": "local repair, governed reconsideration, or abstention",
+        "escalation": "authoritative publish governance remains separate",
+    },
+}
+
+
+def agent_contracts() -> dict[str, dict[str, Any]]:
+    """Owner-readable authority boundaries for the logical roles already in use."""
+    return {name: dict(contract) for name, contract in AGENT_CONTRACTS.items()}
 from urllib.parse import quote_plus
 from urllib.request import Request, urlopen
 from html.parser import HTMLParser

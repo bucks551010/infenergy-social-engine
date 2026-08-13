@@ -215,7 +215,24 @@ def _runtime_strategy_lock(brief: engines.EngineBrief, lean_context: dict[str, A
         "visual_objective": "make the product-fit decision easier to understand",
         "CTA_strategy": marketing.get("cta") or _DEFAULT_CTA_BY_JOB.get(brief.reader_job, "Learn more"),
     }
-    return strategy_lock.lock(candidate, context=candidate)
+    red_team = strategy_lock.red_team(
+        candidate,
+        verified_facts=list((offering or {}).get("verified_facts") or facts),
+        forbidden_claims=list((offering or {}).get("forbidden_claims") or []),
+    )
+    if not red_team["can_lock"]:
+        candidate["angle"] = f"Use verified product facts to assess {benefit}"
+        candidate["hook_promise"] = f"Which verified facts help with {benefit}?"
+        brief.angle = candidate["angle"]
+    locked = strategy_lock.lock(candidate, context=candidate)
+    locked["strategy_red_team"] = red_team
+    locked["strategy_audit"].append({
+        "event": "PRE_LOCK_STRATEGY_RED_TEAM",
+        "verdict": red_team["verdict"],
+        "challenge_evidence": red_team["challenge_evidence"],
+        "action": "angle_redirected_before_lock" if not red_team["can_lock"] else "locked_without_change",
+    })
+    return locked
 
 
 # --- Engine rotation --------------------------------------------------------

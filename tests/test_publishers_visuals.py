@@ -198,6 +198,12 @@ class PublisherVisualTests(unittest.TestCase):
         self.assertNotIn("facebook_html", visuals)
         self.assertEqual(visuals["render_engines"]["facebook"], "failed")
         self.assertEqual(visuals["gemini_available"], "false")
+        render = visuals["visual_generation"]["facebook"]
+        self.assertTrue(render["visual_generation_attempted"])
+        self.assertEqual(render["generation_status"], "failed")
+        self.assertEqual(render["provider_error_class"], "AUTH_ERROR")
+        self.assertEqual(render["artifact_path"], "")
+        self.assertFalse(render["artifact_exists"])
 
     def test_live_visual_gate_rejects_local_render_and_missing_product(self) -> None:
         content = {

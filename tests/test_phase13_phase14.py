@@ -116,6 +116,49 @@ class PhaseThirteenFourteenTests(unittest.TestCase):
         inspect.assert_called_once_with("C:/tmp/carried-forward.png", "facebook")
         self.assertEqual(result["facebook"], review)
 
+    def test_final_artifact_qa_reads_a_real_file_before_pass(self) -> None:
+        from PIL import Image
+
+        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as image_file:
+            image_path = image_file.name
+        try:
+            Image.new("RGB", (1200, 1200), "#123456").save(image_path, format="PNG")
+            expected_size = os.path.getsize(image_path)
+            content = {"generated_visuals": {"facebook": image_path}}
+            result = run_engine._ensure_final_artifact_qa(
+                content, {"facebook": True, "instagram": False, "linkedin": False, "wordpress": False}
+            )
+        finally:
+            os.unlink(image_path)
+
+        self.assertEqual(result["facebook"]["verdict"], "PASS")
+        self.assertEqual(result["facebook"]["dimensions"], [1200, 1200])
+        self.assertEqual(result["facebook"]["file_size"], expected_size)
+
+    def test_visual_carry_forward_requires_passing_matching_strategy(self) -> None:
+        content = _base_content()
+        content["visual_plan"] = {"composition": "proof-led", "image_strategy": "gemini_generated"}
+        visuals = {
+            "facebook": "C:/tmp/passing.png",
+            "artifact_reviews": {"facebook": {"verdict": "PASS", "artifact_path": "C:/tmp/passing.png"}},
+        }
+        visuals["strategy_fingerprint"] = run_engine._visual_strategy_fingerprint(content)
+        channels = {"facebook": True, "instagram": False, "linkedin": False, "wordpress": False}
+
+        self.assertTrue(run_engine._can_carry_forward_visuals(visuals, content, channels))
+        content["visual_plan"] = {"composition": "comparison-led", "image_strategy": "gemini_generated"}
+        self.assertFalse(run_engine._can_carry_forward_visuals(visuals, content, channels))
+
+    def test_failed_visual_cannot_carry_forward(self) -> None:
+        content = _base_content()
+        visuals = {
+            "facebook": "",
+            "artifact_reviews": {"facebook": {"verdict": "REGENERATE_VISUAL", "artifact_path": ""}},
+            "strategy_fingerprint": run_engine._visual_strategy_fingerprint(content),
+        }
+        channels = {"facebook": True, "instagram": False, "linkedin": False, "wordpress": False}
+        self.assertFalse(run_engine._can_carry_forward_visuals(visuals, content, channels))
+
     def test_subthreshold_critic_persists_actionable_findings_not_only_wrapper(self) -> None:
         decision = decide_publication(
             legacy_score={"total": 96, "platform_results": {}},

@@ -3,6 +3,7 @@ from __future__ import annotations
 import io
 import os
 from datetime import datetime, timezone
+import hashlib
 import re
 import json
 import base64
@@ -691,12 +692,75 @@ def _build_gemini_image_prompt(content: dict[str, Any], platform: str, visual_pl
     )
 
 
-def _generate_gemini_full_creative(content: dict[str, Any], platform: str, visual_plan: dict[str, Any], output_path: str) -> tuple[bool, str]:
+def _generate_gemini_full_creative(content: dict[str, Any], platform: str, visual_plan: dict[str, Any], output_path: str) -> tuple[bool, str, dict[str, Any]]:
+    started_at = datetime.now(timezone.utc).isoformat()
     api_key = os.environ.get("GEMINI_API_KEY", "").strip()
+    metadata: dict[str, Any] = {
+        "visual_generation_attempted": True,
+        "visual_generation_mode": "gemini_generated",
+        "visual_provider": "gemini",
+        "visual_model": "",
+        "render_target_platform": platform,
+        "candidate_id": str(content.get("post_id") or ""),
+        "final_post_id": str(content.get("post_id") or ""),
+        "generation_started_at": started_at,
+        "retry_count": 0,
+        "fallback_used": False,
+    }
+
+    def completed(success: bool, reason: str, *, model: str = "", retry_count: int = 0) -> tuple[bool, str, dict[str, Any]]:
+        artifact_exists = os.path.isfile(output_path)
+        dimensions: list[int] | None = None
+        if artifact_exists:
+            image_module, _, _ = _load_pillow()
+            if image_module is not None:
+                try:
+                    with image_module.open(output_path) as image:
+                        dimensions = list(image.size)
+                except Exception:
+                    pass
+        sanitized_reason = re.sub(r"\s+", " ", str(reason or "unknown_render_failure")).strip()[:240]
+        sanitized_reason = sanitized_reason.replace(api_key, "[redacted]") if api_key else sanitized_reason
+        lower_reason = sanitized_reason.lower()
+        if success:
+            error_class = ""
+        elif "no_image_bytes" in lower_reason:
+            error_class = "EMPTY_RESPONSE"
+        elif "timeout" in lower_reason:
+            error_class = "TIMEOUT"
+        elif "429" in lower_reason or "rate" in lower_reason:
+            error_class = "RATE_LIMIT"
+        elif "401" in lower_reason or "403" in lower_reason or "api_key" in lower_reason or "auth" in lower_reason:
+            error_class = "AUTH_ERROR"
+        elif "pillow" in lower_reason or "unreadable" in lower_reason or "format" in lower_reason:
+            error_class = "UNSUPPORTED_FORMAT"
+        elif "save" in lower_reason or "write" in lower_reason or "permission" in lower_reason:
+            error_class = "FILE_WRITE_ERROR"
+        elif "plate_quality" in lower_reason or "semantic_quality" in lower_reason:
+            error_class = "RENDER_ERROR"
+        else:
+            error_class = "PROVIDER_ERROR"
+        metadata.update({
+            "visual_model": model,
+            "generation_finished_at": datetime.now(timezone.utc).isoformat(),
+            "generation_status": "success" if success and artifact_exists else "failed",
+            "artifact_path": output_path if artifact_exists else "",
+            "artifact_exists": artifact_exists,
+            "artifact_size": os.path.getsize(output_path) if artifact_exists else 0,
+            "artifact_dimensions": dimensions,
+            "fallback_reason": "" if success else sanitized_reason,
+            "provider_error_class": error_class,
+            "provider_error_message_sanitized": "" if success else sanitized_reason,
+            "render_error": "" if success else sanitized_reason,
+            "retry_count": retry_count,
+        })
+        return success and artifact_exists, sanitized_reason, metadata
+
     if not api_key:
-        return False, "no_api_key"
+        return completed(False, "no_api_key")
 
     prompt = _build_gemini_image_prompt(content, platform, visual_plan)
+    metadata["visual_prompt_hash"] = hashlib.sha256(prompt.encode("utf-8")).hexdigest()
     expected_headline, _ = _headline_lockup(content)
     expected_cta = normalize_brand_text(str(content.get("selected_cta") or "Learn more"))
     repo_context = _load_visual_repo_context()
@@ -726,6 +790,7 @@ def _generate_gemini_full_creative(content: dict[str, Any], platform: str, visua
                 continue
 
         product_source = _resolve_product_source(content, repo_context=repo_context)
+        metadata["source_product_asset"] = product_source
         if product_source:
             product_bytes, product_mime = _read_image_bytes_any(product_source)
             product_bytes, product_mime = _normalize_reference_image(product_bytes)
@@ -777,14 +842,14 @@ def _generate_gemini_full_creative(content: dict[str, Any], platform: str, visua
                         continue
                     os.makedirs(os.path.dirname(output_path), exist_ok=True)
                     generated.save(output_path, format="PNG", optimize=True)
-                    return True, "ok"
+                    return completed(True, "ok", model=model_name, retry_count=attempt)
                 except Exception as e:
                     reasons_by_model[model_name] = f"api_exception:{type(e).__name__}:{str(e)[:160]}"
                     continue
         summary = "; ".join(f"{model}={reason}" for model, reason in reasons_by_model.items()) or "no_attempts_made"
-        return False, summary
+        return completed(False, summary, model=next(reversed(reasons_by_model), ""), retry_count=1)
     except Exception as e:
-        return False, f"setup_exception:{type(e).__name__}:{str(e)[:160]}"
+        return completed(False, f"setup_exception:{type(e).__name__}:{str(e)[:160]}")
 
 
 def _metric_chips(content: dict[str, Any], limit: int = 2) -> list[str]:
@@ -881,6 +946,7 @@ def review_rendered_visual(path: str, platform: str) -> dict[str, Any]:
     """Inspect the saved PNG so publication is gated on a real artifact, not only its plan."""
     issues: list[str] = []
     dimensions: list[int] | None = None
+    file_size = 0
     image_module, _, _ = _load_pillow()
     expected_size = _platform_visual_spec(platform)["target"]
     if not path or not os.path.isfile(path):
@@ -889,6 +955,9 @@ def review_rendered_visual(path: str, platform: str) -> dict[str, Any]:
         issues.append("pillow_unavailable")
     else:
         try:
+            file_size = os.path.getsize(path)
+            if file_size <= 0:
+                issues.append("rendered_asset_empty")
             with image_module.open(path) as image:
                 image.load()
                 dimensions = list(image.size)
@@ -905,6 +974,7 @@ def review_rendered_visual(path: str, platform: str) -> dict[str, Any]:
         "artifact_path": path,
         "inspected_path": path,
         "dimensions": dimensions,
+        "file_size": file_size,
         "expected_dimensions": list(expected_size),
         "inspected_at": datetime.now(timezone.utc).isoformat(),
     }
@@ -921,6 +991,7 @@ def generate_visuals(content: dict[str, Any], visual_plan: dict[str, Any] | None
     product_overlay_applied: dict[str, bool] = {}
     fallback_reasons: dict[str, str] = {}
     artifact_reviews: dict[str, dict[str, Any]] = {}
+    visual_generation: dict[str, dict[str, Any]] = {}
     repo_context = _load_visual_repo_context()
     repo_refs = repo_context.get("references", []) if isinstance(repo_context, dict) else []
     settings = repo_context.get("settings", {}) if isinstance(repo_context, dict) else {}
@@ -937,7 +1008,8 @@ def generate_visuals(content: dict[str, Any], visual_plan: dict[str, Any] | None
 
         # Gemini generates the entire finished creative directly. There is no HTML
         # preview and no local PIL fallback: if Gemini fails, the platform gets no visual.
-        rendered, reason = _generate_gemini_full_creative(content, platform, plan, file_path)
+        rendered, reason, metadata = _generate_gemini_full_creative(content, platform, plan, file_path)
+        visual_generation[platform] = metadata
         if rendered:
             render_engines[platform] = "gemini"
             product_overlay_applied[platform] = product_specific_source_present
@@ -956,6 +1028,7 @@ def generate_visuals(content: dict[str, Any], visual_plan: dict[str, Any] | None
     visuals["render_engines"] = render_engines
     visuals["product_overlay_applied"] = product_overlay_applied
     visuals["fallback_reasons"] = fallback_reasons
+    visuals["visual_generation"] = visual_generation
     visuals["artifact_reviews"] = artifact_reviews
     visuals["gemini_available"] = str(gemini_available).lower()
     visuals["style_reference_count"] = str(len(repo_refs) if isinstance(repo_refs, list) else 0)

@@ -306,10 +306,37 @@ def _generation_diagnostics(content: dict) -> dict:
         "creative_director": content.get("creative_director", {}),
         "copy_generation_method": content.get("copy_generation_method", ""),
         "copy_fallback_reason": content.get("copy_fallback_reason"),
+        "visual_generation": (content.get("generated_visuals") or {}).get("visual_generation", {}),
         "platform_posts": content.get("platform_posts", {}),
         "creative_decision_packet": content.get("creative_decision_packet", {}),
         "publish_decision": content.get("publish_decision", {}),
     }
+
+
+def _visual_strategy_fingerprint(content: dict) -> str:
+    strategy = _strategy_lock_for_revision(content)
+    visual_plan = content.get("visual_plan") if isinstance(content.get("visual_plan"), dict) else {}
+    payload = {
+        "product_id": content.get("product_id"),
+        "angle": strategy.get("angle"),
+        "visual_objective": strategy.get("visual_objective"),
+        "visual_plan": visual_plan,
+    }
+    return hashlib.sha256(json.dumps(payload, sort_keys=True, default=str).encode("utf-8")).hexdigest()
+
+
+def _can_carry_forward_visuals(visuals: dict, content: dict, effective_channels: dict[str, bool]) -> bool:
+    if not visuals or visuals.get("strategy_fingerprint") != _visual_strategy_fingerprint(content):
+        return False
+    reviews = visuals.get("artifact_reviews") if isinstance(visuals.get("artifact_reviews"), dict) else {}
+    for platform in ("facebook", "instagram", "linkedin"):
+        if not effective_channels.get(platform):
+            continue
+        review = reviews.get(platform) if isinstance(reviews.get(platform), dict) else {}
+        artifact_path = str(review.get("artifact_path") or visuals.get(platform) or "")
+        if str(review.get("verdict", "")).upper() != "PASS" or not artifact_path:
+            return False
+    return True
 
 
 def _attach_platform_quality(content: dict, scoring: dict) -> None:
@@ -993,7 +1020,7 @@ def main() -> None:
                 approved_strategy=locked_strategy or None,
                 revision_feedback=pending_feedback,
             )
-            if pending_scope == "copy" and prior_generated_visuals:
+            if pending_scope == "copy" and _can_carry_forward_visuals(prior_generated_visuals, content, effective_channels):
                 content["generated_visuals"] = prior_generated_visuals
                 content["revision_reused_components"] = ["generated_visuals"]
 
@@ -1048,6 +1075,10 @@ def main() -> None:
         content["quality_component_scores"] = scoring.get("component_scores", {})
         content["duplicate_check"] = duplicates
         content.update(duplicates.get("signatures", {}))
+        generated_visuals = content.get("generated_visuals") if isinstance(content.get("generated_visuals"), dict) else {}
+        generated_visuals["source_visual_candidate_id"] = str(generated_visuals.get("source_visual_candidate_id") or content.get("post_id") or "")
+        generated_visuals["strategy_fingerprint"] = _visual_strategy_fingerprint(content)
+        content["generated_visuals"] = generated_visuals
 
         # Conversion Logic Engine rule (spec section 23): below 80 CQS, automatically
         # attempt improvement before publishing rather than accepting a "warning"-only gate.
@@ -1101,6 +1132,7 @@ def main() -> None:
                 "cognitive_diagnosis": diagnosis,
                 "material_strategy_lessons": material_lessons,
                 "strategy_lock": locked_strategy,
+                "visual_generation": generated_visuals.get("visual_generation", {}),
                 "candidate": _candidate_audit(content),
             }
         )

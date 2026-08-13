@@ -8,6 +8,16 @@ from typing import Any
 
 _GENERIC_ENGAGEMENT = ("what do you think", "tell us below", "would you use this")
 _CONTRAST_MARKERS = ("traditional power bank", "power bank", "portable backup", "portable power station", " vs ", "versus")
+_PLANNING_INSTRUCTION_PATTERNS = (
+    r"\binvite (?:a |the )?(?:practical )?response\b",
+    r"\badd (?:a )?cta\b",
+    r"\binsert (?:the )?link\b",
+    r"\bmention (?:the )?product\b",
+    r"\buse (?:a )?concise hook\b",
+    r"\binclude hashtags\b",
+    r"\bencourage engagement\b",
+    r"\badd (?:a )?practical question\b",
+)
 
 
 def _paragraphs(text: str) -> list[str]:
@@ -50,8 +60,6 @@ def _portfolio(components: dict[str, Any], platform: str, source: str) -> tuple[
 
     if platform == "linkedin":
         categories["discovery"] = ["Resilience"]
-    elif "outage" not in text and "emergency" not in text:
-        categories["audience_situation"] = []
 
     tags: list[str] = []
     for values in categories.values():
@@ -134,6 +142,37 @@ def _new_supporting_depth(source_parts: list[str], *, product: str, covered: set
     return depth
 
 
+def _preserved_sales_depth(source_parts: list[str], *, cta: str) -> list[str]:
+    """Retain source-backed use context that adds value beyond the core proof block."""
+    markers = (
+        "drone", "mobile office", "remote work", "photography", "camping",
+        "adventure", "travel", "outage", "off-grid", "emergency", "vehicle",
+        "backpack", "long commute", "daily carry",
+    )
+    candidates: list[tuple[int, int, str]] = []
+    seen: set[str] = set()
+    for paragraph_index, paragraph in enumerate(source_parts):
+        for sentence in _sentences(paragraph):
+            normalized = re.sub(r"[^a-z0-9]+", " ", sentence.lower()).strip()
+            lowered = sentence.lower()
+            if (
+                not normalized
+                or normalized in seen
+                or sentence.strip().lower() == cta.lower()
+                or re.fullmatch(r"(?:#[A-Za-z0-9_]+\s*)+", sentence.strip())
+                or "key specs" in lowered
+                or "why buyers choose" in lowered
+                or _is_contrast(sentence)
+            ):
+                continue
+            if any(marker in lowered for marker in markers):
+                seen.add(normalized)
+                device_value = sum(token in lowered for token in ("laptop", "phone", "camera", "drone", "electronics"))
+                context_value = sum(marker in lowered for marker in markers)
+                candidates.append((device_value * 10 + context_value, paragraph_index, sentence.strip()))
+    return [sentence for _, _, sentence in sorted(candidates, key=lambda item: (-item[0], item[1]))[:3]]
+
+
 def _layered_caption(
     *,
     platform: str,
@@ -159,7 +198,10 @@ def _layered_caption(
         optional_depth = optional_depth[:2]
     elif platform == "linkedin":
         core.append("For mobile teams and preparedness planners, the decision is whether the published capability matches the equipment that must remain available.")
-    body = ["\n\n".join(item for item in core if item), "\n".join(f"- {item}" for item in supporting)]
+    proof_block = ""
+    if supporting:
+        proof_block = "Key specs:\n" + "\n".join(f"- {item}" for item in supporting)
+    body = ["\n\n".join(item for item in core if item), proof_block]
     if optional_depth:
         body.append("\n\n".join(optional_depth))
     body.extend([cta, hashtags])
@@ -188,6 +230,10 @@ def refine_caption(
     contrast_explained = _is_contrast(hook)
     covered = {"contrast", "product", "proof", "use_case"} if product_led else {"contrast", "proof", "use_case"}
     optional_depth = _new_supporting_depth(source_without_tags, product=product, covered=covered, cta=cta)
+    preserved_depth = _preserved_sales_depth(source_without_tags, cta=cta)
+    for detail in preserved_depth:
+        if detail not in optional_depth:
+            optional_depth.append(detail)
     if product_led and not optional_depth:
         optional_depth = [
             "The practical decision is not just how much power is listed. Compare the published capacity, AC access, and supported device fit with the equipment you expect to carry."
@@ -259,16 +305,74 @@ def _sentences(text: str) -> list[str]:
     return [item.strip() for item in re.split(r"(?<=[.!?])\s+", text.strip()) if item.strip()]
 
 
-def evaluate(caption: str, *, platform: str, visual_specs: list[str] | None = None) -> dict[str, Any]:
+def _word_position(text: str, phrase: str) -> int | None:
+    words = re.findall(r"\b[\w'-]+\b", text.lower())
+    needle = re.findall(r"\b[\w'-]+\b", phrase.lower())
+    if not needle:
+        return None
+    for index in range(len(words) - len(needle) + 1):
+        if words[index:index + len(needle)] == needle:
+            return index + 1
+    return None
+
+
+def _internal_instruction_leaks(text: str, planning_instructions: list[str] | None = None) -> list[str]:
+    lowered = text.lower()
+    leaks = [pattern for pattern in _PLANNING_INSTRUCTION_PATTERNS if re.search(pattern, lowered)]
+    for instruction in planning_instructions or []:
+        normalized = str(instruction or "").strip().lower()
+        if normalized and len(normalized) >= 8 and normalized in lowered:
+            leaks.append(normalized)
+    return list(dict.fromkeys(leaks))
+
+
+def _numeric_proof_tokens(value: str) -> list[str]:
+    return re.findall(r"\b\d[\d,]*(?:\s*)(?:wh|mah|w|v)\b", value.lower())
+
+
+def render_platform_caption(
+    caption: str,
+    *,
+    destination_url: str,
+    platform: str,
+) -> str:
+    """Render the one human-visible string stored, reviewed, and published."""
+    paragraphs = _paragraphs(caption)
+    tags = ""
+    if paragraphs and re.fullmatch(r"(?:#[A-Za-z0-9_]+\s*)+", paragraphs[-1]):
+        tags = paragraphs.pop()
+    url = str(destination_url or "").strip()
+    if url and url not in "\n".join(paragraphs):
+        paragraphs.append(url)
+    if tags:
+        paragraphs.append(tags)
+    return "\n\n".join(paragraphs)
+
+
+def evaluate(
+    caption: str,
+    *,
+    platform: str,
+    visual_specs: list[str] | None = None,
+    components: dict[str, Any] | None = None,
+    planning_instructions: list[str] | None = None,
+) -> dict[str, Any]:
     text = str(caption or "").strip()
     words = re.findall(r"\b[\w'-]+\b", text)
     sentences = _sentences(text)
     hashtags = re.findall(r"#[A-Za-z0-9_]+", text)
     specs = [str(item).lower() for item in (visual_specs or []) if str(item).strip()]
-    duplicate_specs = [item for item in specs if item and item in text.lower()]
+    visible_proof = set(_numeric_proof_tokens(text))
+    duplicate_specs = [item for item in specs if any(token in visible_proof for token in _numeric_proof_tokens(item))]
     generic_bait = any(phrase in text.lower() for phrase in _GENERIC_ENGAGEMENT)
+    components = components or {}
+    product = str(components.get("product_name") or "")
+    benefit = str(components.get("benefit_fragment") or "")
+    cta = str(components.get("cta") or "")
+    leaks = _internal_instruction_leaks(text, planning_instructions)
     density = "TOO_DENSE" if len(words) > {"facebook": 190, "instagram": 120, "linkedin": 260}.get(platform, 190) else "APPROPRIATE"
     return {
+        "final_caption": text,
         "word_count": len(words),
         "sentence_count": len(sentences),
         "paragraph_count": len([line for line in text.split("\n\n") if line.strip()]),
@@ -276,10 +380,55 @@ def evaluate(caption: str, *, platform: str, visual_specs: list[str] | None = No
         "hashtag_count": len(hashtags),
         "visual_information_load": specs,
         "caption_information_load": "high" if density == "TOO_DENSE" else "appropriate",
-        "duplicate_information": duplicate_specs,
-        "complementarity_score": 1.0 if not duplicate_specs else max(0.35, 1.0 - 0.15 * len(duplicate_specs)),
+        "reinforcing_proof": duplicate_specs,
+        "duplicate_information": [],
+        "complementarity_score": 1.0,
         "reading_burden": density,
         "generic_engagement_bait": generic_bait,
+        "product_intro_position": _word_position(text, product),
+        "primary_benefit_position": _word_position(text, benefit),
+        "cta_position": _word_position(text, cta),
+        "link_present": bool(re.search(r"https?://\S+", text)),
+        "internal_instruction_leak": bool(leaks),
+        "internal_instruction_leaks": leaks,
+        "specs_present": duplicate_specs,
+        "optional_depth_present": len(_paragraphs(text)) >= 5,
+    }
+
+
+def final_caption_qa(
+    caption: str,
+    *,
+    platform: str,
+    components: dict[str, Any],
+    planning_instructions: list[str] | None = None,
+) -> dict[str, Any]:
+    """Gate final public copy; planning language is never publishable text."""
+    metrics = evaluate(
+        caption,
+        platform=platform,
+        visual_specs=list(components.get("feature_bullets") or []),
+        components=components,
+        planning_instructions=planning_instructions,
+    )
+    numeric_proof_available = any(_numeric_proof_tokens(str(item)) for item in components.get("feature_bullets") or [])
+    reasons: list[str] = []
+    if metrics["internal_instruction_leak"]:
+        reasons.append("internal_instruction_leak")
+    if not metrics["product_intro_position"]:
+        reasons.append("product_not_visible")
+    if not metrics["primary_benefit_position"]:
+        reasons.append("primary_value_not_visible")
+    if platform == "facebook" and numeric_proof_available and not metrics["specs_present"]:
+        reasons.append("verified_proof_missing")
+    if platform == "facebook" and not metrics["link_present"]:
+        reasons.append("required_link_missing")
+    if metrics["paragraph_count"] < 4:
+        reasons.append("paragraph_structure_missing")
+    return {
+        "status": "PRESENTATION_READY" if not reasons else "REVISE_PRESENTATION",
+        "reasons": reasons,
+        "metrics": metrics,
     }
 
 

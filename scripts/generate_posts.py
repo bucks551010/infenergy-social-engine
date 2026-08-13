@@ -229,6 +229,7 @@ def _route_generate_orchestrator(
         creative_reviews=first.get("creative_director") if isinstance(first.get("creative_director"), dict) else {},
         platform_interpretations=(first.get("creative_decision_packet") or {}).get("platform_interpretations") or {},
     )
+    platform_posts = _apply_platform_presentation_priority(platform_posts, components)
     creative_packet = first.get("creative_decision_packet") or {}
     platform_selection = _select_social_platforms(copy_pkg.get("strategy_lock") if isinstance(copy_pkg.get("strategy_lock"), dict) else {})
     for platform, package in platform_posts.items():
@@ -306,9 +307,9 @@ def _route_generate_orchestrator(
         "wp_title": selected_hook or topic,
         "wp_content": wp_content,
         "wp_excerpt": takeaway or selected_hook,
-        "fb_caption": platform_posts["facebook"]["caption"],
-        "ig_caption": platform_posts["instagram"]["caption"],
-        "li_text": platform_posts["linkedin"]["caption"],
+        "fb_caption": platform_posts["facebook"]["final_caption"],
+        "ig_caption": platform_posts["instagram"]["final_caption"],
+        "li_text": platform_posts["linkedin"]["final_caption"],
         "platform_posts": platform_posts,
         "platform_selection": platform_selection,
         "decision_trace": {
@@ -3892,8 +3893,7 @@ def _build_platform_posts(
             if hook_posture:
                 package["hook"] = f"{hook_posture}: {package['hook']}"
             if cta_expression:
-                package["cta"] = f"{package['cta']} {cta_expression}".strip()
-                package["caption"] = f"{package['caption']}\n\n{cta_expression}".strip()
+                package["planning_instructions"] = [cta_expression]
             if format_hint:
                 package["content_format"] = format_hint
             if visual_composition:
@@ -3926,12 +3926,45 @@ def _apply_platform_presentation_priority(platform_posts: dict, components: dict
             platform=platform,
             product_led=bool(components.get("product_id")),
         )
-        package["caption"] = refined_caption
-        priority.update(platform_presentation.evaluate(
+        final_caption = platform_presentation.render_platform_caption(
             refined_caption,
+            destination_url=str(package.get("utm_url") or package.get("destination_url") or ""),
             platform=platform,
-            visual_specs=list(components.get("feature_bullets") or []),
-        ))
+        )
+        final_qa = platform_presentation.final_caption_qa(
+            final_caption,
+            platform=platform,
+            components=components,
+            planning_instructions=list(package.get("planning_instructions") or []),
+        )
+        metrics = final_qa["metrics"]
+        package["caption"] = final_caption
+        package["final_caption"] = final_caption
+        package["final_caption_hash"] = hashlib.sha256(final_caption.encode("utf-8")).hexdigest()
+        package["final_caption_qa"] = final_qa
+        priority.update(metrics)
+        priority.update({
+            "above_fold_value": {
+                "product_present": bool(metrics["product_intro_position"]),
+                "primary_benefit_present": bool(metrics["primary_benefit_position"]),
+                "product_intro_position": metrics["product_intro_position"],
+                "primary_benefit_position": metrics["primary_benefit_position"],
+            },
+            "commercial_layers": priority.get("semantic_layer_evidence", {}),
+            "device_use_case_intelligence": priority.get("semantic_layer_evidence", {}).get("device_use_case", ""),
+            "optional_depth": priority.get("semantic_layer_evidence", {}).get("optional_depth", []),
+            "presentation_density": metrics["reading_burden"],
+            "hashtag_portfolio": priority.get("selected_hashtags", []),
+            "copy_visual_complementarity": {
+                "reinforcing_proof": metrics["reinforcing_proof"],
+                "score": metrics["complementarity_score"],
+            },
+            "final_render_consistency": {
+                "caption_equals_final_caption": package["caption"] == package["final_caption"],
+                "qa_evaluated_final_caption": metrics["final_caption"] == package["final_caption"],
+                "metadata_derived_from_final_caption": True,
+            },
+        })
         package["presentation"] = priority
         package["message_hierarchy"] = ["hook", "product", "primary_benefit", "selected_proof", "human_use", "action"]
         if platform == "instagram":
@@ -6025,8 +6058,8 @@ Return ONLY valid JSON with these exact keys (no markdown, no code fences):
             for platform, package in platform_posts.items()
             if isinstance(package, dict)
         }
-        platform_posts = _apply_platform_presentation_priority(platform_posts, components)
         platform_posts = normalize_brand_content(platform_posts)
+        platform_posts = _apply_platform_presentation_priority(platform_posts, components)
         content = normalize_brand_content(content)
         content["post_id"] = post_id
         content["platform_posts"] = platform_posts
@@ -6356,8 +6389,8 @@ Return ONLY valid JSON with these exact keys (no markdown, no code fences):
         for platform, package in platform_posts.items()
         if isinstance(package, dict)
     }
-    platform_posts = _apply_platform_presentation_priority(platform_posts, components)
     platform_posts = normalize_brand_content(platform_posts)
+    platform_posts = _apply_platform_presentation_priority(platform_posts, components)
     content = normalize_brand_content(content)
     content["post_id"] = post_id
     content["platform_posts"] = platform_posts

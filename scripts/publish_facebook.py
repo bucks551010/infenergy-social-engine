@@ -87,7 +87,10 @@ def _post_with_retry(url: str, data: dict, timeout: int = 30) -> requests.Respon
 
 
 def publish(content: dict, wp_link: str, dry_run: bool = False) -> dict:
-    message = f"{content['fb_caption']}\n\n{wp_link}"
+    facebook_package = (content.get("platform_posts") or {}).get("facebook") or {}
+    message = str(facebook_package.get("final_caption") or content["fb_caption"])
+    if not facebook_package.get("final_caption") and wp_link and wp_link not in message:
+        message = f"{message}\n\n{wp_link}"
     image_path = str((content.get("generated_visuals") or {}).get("facebook", "")).strip()
     image_url = str(content.get("primary_publish_image_url", "")).strip()
     if not image_url.startswith("http"):

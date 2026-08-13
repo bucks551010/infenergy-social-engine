@@ -93,7 +93,7 @@ def test_facebook_presentation_compresses_visual_spec_duplication():
     before = platform_presentation.evaluate(original, platform="facebook", visual_specs=components["feature_bullets"])
 
     assert presentation["word_count"] < before["word_count"]
-    assert presentation["hashtag_count"] < before["hashtag_count"]
+    assert presentation["hashtag_count"] <= before["hashtag_count"]
     assert "154Wh" not in improved
     assert presentation["presentation_critic"] == "PASS"
 
@@ -114,3 +114,18 @@ def test_platform_expressions_are_native_and_reject_generic_engagement_bait():
 
     assert len({facebook, instagram, linkedin}) == 3
     assert bait["generic_engagement_bait"]
+
+
+def test_final_presentation_gate_blocks_non_ready_facebook_copy():
+    errors = run_engine._final_presentation_errors(
+        {
+            "platform_posts": {
+                "facebook": {
+                    "final_caption_qa": {"status": "REVISE_PRESENTATION"},
+                }
+            }
+        },
+        {"facebook": True, "instagram": False, "linkedin": False},
+    )
+
+    assert errors == ["facebook_final_presentation_not_ready"]

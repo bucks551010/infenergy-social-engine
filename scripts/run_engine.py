@@ -946,6 +946,20 @@ def _live_visual_gate_errors(content: dict, effective_channels: dict[str, bool],
     return errors
 
 
+def _final_presentation_errors(content: dict, effective_channels: dict[str, bool]) -> list[str]:
+    """Require the stored final public caption to pass presentation QA before publishing."""
+    packages = content.get("platform_posts") if isinstance(content.get("platform_posts"), dict) else {}
+    errors: list[str] = []
+    for platform in ("facebook", "instagram", "linkedin"):
+        if not effective_channels.get(platform):
+            continue
+        package = packages.get(platform) if isinstance(packages.get(platform), dict) else {}
+        qa = package.get("final_caption_qa") if isinstance(package.get("final_caption_qa"), dict) else {}
+        if qa.get("status") != "PRESENTATION_READY":
+            errors.append(f"{platform}_final_presentation_not_ready")
+    return errors
+
+
 def _artifact_visual_errors_by_platform(content: dict, effective_channels: dict[str, bool]) -> dict[str, list[str]]:
     """Return saved-artifact QA failures for active social channels only."""
     visuals = content.get("generated_visuals") if isinstance(content.get("generated_visuals"), dict) else {}
@@ -1422,6 +1436,7 @@ def main() -> None:
         channel_reasons[platform] = f"artifact_visual_qa:{','.join(issues)}"
     visual_gate_errors = _live_visual_gate_errors(content, effective_channels, dry_run or shadow_mode)
     visual_gate_errors.extend(_strategy_integrity_errors(content))
+    visual_gate_errors.extend(_final_presentation_errors(content, effective_channels))
     content["artifact_visual_qa"] = (content.get("generated_visuals") or {}).get("artifact_reviews", {})
     content["artifact_visual_qa_failures"] = artifact_errors
     if visual_gate_errors:

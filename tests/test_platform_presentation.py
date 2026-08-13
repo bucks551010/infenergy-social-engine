@@ -12,17 +12,19 @@ import generate_posts
 from social import platform_presentation
 
 
-POWERPULSE_ORIGINAL = """A traditional power bank is useful when you need a quick phone top-up.
+POWERPULSE_ORIGINAL = """Can your phone act as a mobile power reserve, or should you be carrying a dedicated power station instead? A phone cannot effectively charge the professional gear you need, while PowerPulse Pro 200 helps maintain your workflow away from outlets.
 
-But a traditional power bank is not the same as dedicated portable backup power. It can miss the job when your devices, ports, capacity, or charging needs grow.
+Standard power banks can fall short when capacity and port options do not match the job. The 154Wh capacity and 200W output of PowerPulse Pro 200 are designed for the specific power demands of compatible laptops and other everyday electronics.
 
-That is why the difference between a power bank and a portable backup solution matters when you are thinking about travel, mobile work, or an outage.
+While a phone battery is built for internal use, PowerPulse Pro 200 provides 41,600mAh and a 110V AC outlet to keep compatible equipment available through long travel days. Equip your mobile office with PowerPulse Pro 200 when standard portable banks fall short.
 
-PowerPulse Pro 200 brings 154Wh (41,600mAh), 200W AC output, and 110V into a compact portable-power option.
+PowerPulse Pro 200 is a backup power station that supports must-run devices during outages and off-grid use.
 
-Key Specs: 154Wh and 41,600mAh translate into stored power for compatible daily devices. Its 200W AC and 110V output give you a more practical way to think about the equipment you carry.
+Why buyers choose it: 154Wh, 41,600mAh, 200W, 110V, and 5V.
 
-For laptops, phones, cameras, travel, mobile work, and backup situations, start with the real job before you buy.
+Key specs: 154Wh, 41,600mAh, 200W. PowerPulse Pro 200 is an essential companion for adventure and emergencies, keeping compatible laptops, cameras, drones, and other electronics charged and ready to go.
+
+Your compact portable power station for travel, photography, remote work, and backup planning.
 
 Review the verified product details.
 
@@ -67,6 +69,9 @@ def test_powerpulse_fixture_front_loads_value_without_losing_sales_depth():
     assert presentation["contrast_paragraph_count"] == 0
     assert "154Wh" in improved and "200W" in improved
     assert "laptops, phones, cameras" in improved
+    assert "Key specs:" in improved
+    assert "mobile work" in improved.lower()
+    assert "drones" in improved.lower()
     assert len(presentation["selected_hashtags"]) >= 10
     assert presentation["optional_depth_present"]
     assert improved.count("Review the verified product details.") == 1
@@ -110,3 +115,42 @@ def test_instagram_package_persists_reel_caption_hierarchy_without_rendering():
     ]
     assert instagram["reel_presentation"]["freeze_frame_priority"][0] == "product"
     assert instagram["presentation"]["above_fold_value_complete"]
+
+
+def test_final_facebook_caption_is_the_qad_string_with_proof_link_and_paragraphs():
+    posts = generate_posts._build_platform_posts(
+        "powerpulse-final-caption",
+        "fixture",
+        "mobile_professional",
+        "CONVERSION",
+        "https://example.com/products/powerpulse",
+        _components(),
+        90.0,
+        platform_interpretations={"facebook": {"cta_expression": "invite a practical response"}},
+    )
+    facebook = generate_posts._apply_platform_presentation_priority(posts, _components())["facebook"]
+
+    assert facebook["caption"] == facebook["final_caption"]
+    assert facebook["final_caption_qa"]["metrics"]["final_caption"] == facebook["final_caption"]
+    assert facebook["presentation"]["paragraph_count"] == len(
+        [part for part in facebook["final_caption"].split("\n\n") if part.strip()]
+    )
+    assert "invite a practical response" not in facebook["final_caption"].lower()
+    assert "154Wh" in facebook["final_caption"]
+    assert "200W" in facebook["final_caption"]
+    assert "https://example.com/products/powerpulse" in facebook["final_caption"]
+    assert facebook["final_caption"].index("https://") < facebook["final_caption"].index("#InfenergyPower")
+    assert facebook["final_caption_qa"]["status"] == "PRESENTATION_READY"
+
+
+def test_final_caption_qa_rejects_unresolved_planning_language():
+    caption = "Meet PowerPulse Pro 200.\n\ninvite a practical response"
+    verdict = platform_presentation.final_caption_qa(
+        caption,
+        platform="facebook",
+        components=_components(),
+        planning_instructions=["invite a practical response"],
+    )
+
+    assert verdict["status"] == "REVISE_PRESENTATION"
+    assert "internal_instruction_leak" in verdict["reasons"]

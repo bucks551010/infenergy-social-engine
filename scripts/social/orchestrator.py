@@ -31,6 +31,7 @@ from . import (
     claim_intelligence,
     copy_intelligence,
     creative_cognition,
+    creative_intelligence,
     engines,
     libraries,
     lean_intelligence,
@@ -545,6 +546,18 @@ class SocialIntelligenceOrchestrator:
         creative_packet = creative_cognition.decide(
             strategy=locked, platform=platform, recent=recent, data_dir=self.data_dir
         )
+        concept_candidates = creative_intelligence.concept_competition(
+            locked,
+            creative_packet.get("feed_intelligence") if isinstance(creative_packet.get("feed_intelligence"), dict) else {},
+        )
+        selected_concept = creative_intelligence.select_concept(
+            concept_candidates,
+            feed_intelligence=creative_packet.get("feed_intelligence") if isinstance(creative_packet.get("feed_intelligence"), dict) else {},
+        )
+        creative_packet["concept_competition"] = {
+            "candidates": concept_candidates,
+            "winner": selected_concept,
+        }
 
         # 3. Copy assembly — real Gemini copy when available, deterministic
         # template assembly as the network-free fallback (§15 Copy Architect).
@@ -596,7 +609,10 @@ class SocialIntelligenceOrchestrator:
             memory_anchor=anchor,
             semantic_role=semantic_role,
         )
-        v_msg = f"{v_msg}. Composition principle: {creative_packet['SELECTED_ANSWER']['visual_logic']}"
+        v_msg = (
+            f"{v_msg}. Creative thesis: {selected_concept.get('creative_thesis', '')}. "
+            f"Composition principle: {creative_packet['SELECTED_ANSWER']['visual_logic']}"
+        )
         v_format = visual_intelligence.route_visual_format(
             genre=brief.genre,
             platform=platform,
@@ -692,12 +708,22 @@ class SocialIntelligenceOrchestrator:
             material_claims_accurate=not ledger.unverified_high_risk,
             worth_reader_time=bool(anchor),
         )
+        pre_render_gate = creative_intelligence.pre_render_gate(
+            concept=selected_concept,
+            hook=hook_text,
+            body=body_text,
+            visual_thesis=v_msg,
+            claim_safe=not ledger.unverified_high_risk,
+        )
+        creative_packet["pre_render_gate"] = pre_render_gate
 
         # 9. Provider (real Gemini image generation, or template fallback)
         post_id = uuid.uuid4().hex[:12]
         art_dict = art.as_dict()
         art_dict["post_id"] = post_id
         art_dict["cta"] = selected_cta
+        art_dict["creative_concept"] = selected_concept
+        art_dict["pre_render_gate"] = pre_render_gate
         art_dict["layout_grammar"] = creative_packet["layout_grammar"]
         art_dict["platform_interpretations"] = creative_packet["platform_interpretations"]
         art_dict["information_priority"] = creative_packet["information_priority"]

@@ -20,6 +20,7 @@ from social.publish_decision import decide as decide_publication
 from social.claim_intelligence import remove_unsupported_numeric_claims
 from social import strategy_lock as strategy_lock_intelligence
 from social import memory_intelligence
+from social import creative_intelligence
 from social_visuals import review_rendered_visual
 from validate_product_claims import validate_generated_content
 from anti_repeat import check_duplicates, load_anti_repeat_windows
@@ -1136,6 +1137,11 @@ def main() -> None:
                 "candidate": _candidate_audit(content),
             }
         )
+
+        metacognitive_review = creative_intelligence.metacognitive_review(attempts)
+        diagnosis["metacognition"].update(metacognitive_review)
+        attempts[-1]["cognitive_diagnosis"] = diagnosis
+        content["creative_concept_escalation"] = metacognitive_review
 
         if publish_decision["publishable"]:
             break

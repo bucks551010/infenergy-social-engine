@@ -100,8 +100,12 @@ def build_reel_plan(
     """Build final state first, then motion that terminates before its hold."""
     if decision.get("selected_format") != "REEL":
         return {"pre_render_gate": "USE_STATIC_INSTEAD", "reason": decision.get("reason", "")}
-    headline = _text(components.get("on_image_headline") or components.get("logic_hook"), 72)
-    supporting_copy = _text(components.get("benefit_fragment") or components.get("logic_bridge"), 110)
+    hook = _text(components.get("logic_hook") or components.get("on_image_headline") or components.get("hook"), 72)
+    product = _text(components.get("product_name"), 72)
+    benefit = _text(components.get("benefit_fragment") or components.get("logic_bridge"), 110)
+    use_case = _text(components.get("use_case_line"), 96)
+    headline = product or hook
+    supporting_copy = benefit
     proof = _text((components.get("feature_bullets") or [""])[0], 48)
     cta = _text(components.get("cta") or "Learn more", 48)
     if not headline or not supporting_copy:
@@ -126,19 +130,28 @@ def build_reel_plan(
         {
             "purpose": "ATTENTION",
             "start": 0.0,
-            "end": 1.2,
-            "message": headline,
+            "end": 1.0,
+            "message": hook,
             "visual": "cropped product-context opening",
             "movement": "purposeful focus pull",
             "transition": "reveal",
         },
         {
             "purpose": "SEQUENCING",
-            "start": 1.2,
-            "end": motion_end,
-            "message": supporting_copy,
+            "start": 1.0,
+            "end": min(2.3, motion_end),
+            "message": f"{product}: {benefit}".strip(": "),
             "visual": "product resolves toward final poster position",
             "movement": "single eased scale and opacity settle",
+            "transition": "product_reveal",
+        },
+        {
+            "purpose": "PROOF_AND_HUMAN_USE",
+            "start": min(2.3, motion_end),
+            "end": motion_end,
+            "message": _text(f"{proof}. {use_case}", 140),
+            "visual": "selected proof settles into the product context",
+            "movement": "restrained proof reveal",
             "transition": "settle_into_final_state",
         },
     ]
@@ -158,6 +171,7 @@ def build_reel_plan(
         "motion_grammar": {"opening": "focus_pull", "transition": "eased_settle", "prohibited": ["looping", "bouncing", "spinning", "particles"]},
         "cover_strategy": "final_freeze_frame",
         "caption_strategy": "caption adds decision context without restating final-frame proof",
+        "message_hierarchy": ["hook", "product", "primary_benefit", "selected_proof_human_use", "final_sales_frame"],
         "strategy_version": (strategy_lock or {}).get("strategy_version"),
     }
 

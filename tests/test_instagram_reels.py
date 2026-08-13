@@ -21,6 +21,7 @@ from social import reels
 def _components(**overrides):
     base = {
         "topic": "Portable power planning",
+        "product_name": "PowerPulse Pro 200",
         "logic_hook": "Know what must stay powered.",
         "on_image_headline": "Start with the device that cannot go dark.",
         "logic_bridge": "Match verified product facts to the job before you pack.",
@@ -55,6 +56,10 @@ def test_final_state_precedes_motion_and_all_tracks_end_before_freeze():
     assert plan["final_state"]["headline"]
     assert plan["freeze_start_time"] == plan["motion_end_time"]
     assert all(scene["end"] <= plan["freeze_start_time"] for scene in plan["scenes"])
+    assert [scene["purpose"] for scene in plan["scenes"]] == ["ATTENTION", "SEQUENCING", "PROOF_AND_HUMAN_USE"]
+    assert "PowerPulse" not in plan["scenes"][0]["message"]
+    assert "PowerPulse" in plan["scenes"][1]["message"]
+    assert "154Wh" in plan["scenes"][2]["message"]
     assert reels.validate_reel_plan(plan)["status"] == "REEL_READY"
 
 

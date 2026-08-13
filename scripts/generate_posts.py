@@ -3935,7 +3935,7 @@ def _apply_platform_presentation_priority(platform_posts: dict, components: dict
         package["presentation"] = priority
         package["message_hierarchy"] = ["hook", "product", "primary_benefit", "selected_proof", "human_use", "action"]
         if platform == "instagram":
-            package["reel_caption"] = refined_caption
+            package["reel_caption"] = platform_presentation.format_reel_caption(components, priority)
             package["reel_presentation"] = {
                 "message_hierarchy": package["message_hierarchy"],
                 "on_screen_copy_rule": "concise phrases only; optional depth belongs in the caption",

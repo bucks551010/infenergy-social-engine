@@ -102,7 +102,9 @@ def test_instagram_package_persists_reel_caption_hierarchy_without_rendering():
     posts = generate_posts._apply_platform_presentation_priority(posts, _components())
     instagram = posts["instagram"]
 
-    assert instagram["reel_caption"] == instagram["caption"]
+    assert instagram["reel_caption"] != instagram["caption"]
+    assert "PowerPulse Pro 200" in instagram["reel_caption"]
+    assert "154Wh" not in instagram["reel_caption"]
     assert instagram["reel_presentation"]["message_hierarchy"] == [
         "hook", "product", "primary_benefit", "selected_proof", "human_use", "action"
     ]

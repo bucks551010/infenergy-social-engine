@@ -82,6 +82,88 @@ def _above_fold(caption: str, components: dict[str, Any], platform: str) -> dict
     }
 
 
+def _sales_meaning(specifications: list[str], use_case: str) -> list[str]:
+    """Translate only recognizable published power facts into customer-safe meaning."""
+    source = " ".join(specifications).lower()
+    meanings: list[str] = []
+    if "154wh" in source or "41,600mah" in source or "41600mah" in source:
+        meanings.append(
+            "154Wh (41,600mAh) gives you a compact stored-power reserve for compatible daily devices when an outlet is not nearby."
+        )
+    if "200w" in source or "110v" in source:
+        meanings.append(
+            "200W AC output and 110V access add a practical AC-power option for compatible small electronics you carry."
+        )
+    if not meanings:
+        for item in specifications[:2]:
+            meanings.append(f"Published detail: {item}. Compare it with the actual device and job before you buy.")
+    return meanings
+
+
+def _semantic_key(paragraph: str, product: str) -> str:
+    lowered = paragraph.lower()
+    if _is_contrast(paragraph):
+        return "contrast"
+    if product and product.lower() in lowered:
+        return "product"
+    if any(token in lowered for token in ("154wh", "41,600mah", "41600mah", "200w", "110v", "spec")):
+        return "proof"
+    if any(token in lowered for token in ("laptop", "phone", "camera", "travel", "mobile work", "outage", "device")):
+        return "use_case"
+    return "context"
+
+
+def _new_supporting_depth(source_parts: list[str], *, product: str, covered: set[str], cta: str) -> list[str]:
+    """Keep source information only when it adds a new sales dimension."""
+    depth: list[str] = []
+    seen: set[str] = set(covered)
+    for paragraph in source_parts:
+        if paragraph.strip().lower() == cta.lower() or re.fullmatch(r"(?:#[A-Za-z0-9_]+\s*)+", paragraph):
+            continue
+        key = _semantic_key(paragraph, product)
+        normalized = re.sub(r"[^a-z0-9]+", " ", paragraph.lower()).strip()
+        if key in seen or normalized in seen:
+            continue
+        seen.add(key)
+        seen.add(normalized)
+        depth.append(paragraph)
+    return depth
+
+
+def _layered_caption(
+    *,
+    platform: str,
+    hook: str,
+    product: str,
+    benefit: str,
+    use_case: str,
+    proof_meanings: list[str],
+    optional_depth: list[str],
+    cta: str,
+    hashtags: str,
+    product_led: bool,
+) -> tuple[str, int | None]:
+    core = [hook]
+    if product_led and product:
+        product_value = f"Meet {product}: a portable charging backup that {benefit}."
+        core.append(f"{product_value} {use_case}".strip())
+    elif use_case:
+        core.append(use_case)
+    supporting = proof_meanings
+    if platform == "instagram":
+        supporting = proof_meanings[:1]
+        optional_depth = optional_depth[:1]
+    elif platform == "linkedin":
+        core.append("For mobile teams and preparedness planners, the decision is whether the published capability matches the equipment that must remain available.")
+    body = ["\n\n".join(item for item in core if item), "\n".join(f"- {item}" for item in supporting)]
+    if optional_depth:
+        body.append("\n\n".join(optional_depth))
+    body.extend([cta, hashtags])
+    caption = "\n\n".join(item for item in body if item.strip())
+    optional_start = len(re.findall(r"\b[\w'-]+\b", "\n\n".join(body[:2]))) + 1 if optional_depth else None
+    return caption, optional_start
+
+
 def refine_caption(
     caption: str,
     *,
@@ -90,60 +172,59 @@ def refine_caption(
     product_led: bool = True,
     include_proof: bool = True,
 ) -> tuple[str, dict[str, Any]]:
-    """Put verified commercial value first while retaining useful source depth below it."""
+    """Prioritize commercial meaning while retaining only additive supporting depth."""
     source_parts = _paragraphs(caption)
     source_without_tags = [part for part in source_parts if not re.fullmatch(r"(?:#[A-Za-z0-9_]+\s*)+", part)]
-    kept_depth: list[str] = []
-    contrast_explained = _is_contrast(str(components.get("logic_hook") or components.get("hook") or ""))
-    for part in source_without_tags:
-        if _is_contrast(part):
-            if contrast_explained:
-                continue
-            contrast_explained = True
-        kept_depth.append(part)
-
     product = str(components.get("product_name") or "").strip()
     benefit = str(components.get("benefit_fragment") or "").strip().rstrip(".")
     use_case = str(components.get("use_case_line") or "").strip()
     hook = str(components.get("logic_hook") or components.get("hook") or "").strip()
-    proof = [str(item).strip() for item in (components.get("feature_bullets") or []) if str(item).strip()][:2]
+    proof = [str(item).strip() for item in (components.get("feature_bullets") or []) if str(item).strip()]
     cta = str(components.get("cta") or "Learn more").strip()
-
-    core: list[str] = []
-    if hook:
-        core.append(hook)
-    if product_led and product:
-        product_line = f"{product} is a portable backup option that {benefit}." if benefit else f"Meet {product}, a portable backup option."
-        core.append(f"{product_line} {use_case}".strip())
-    elif use_case:
-        core.append(use_case)
-    selected_proof = proof[:1] if platform == "instagram" else proof
-    if selected_proof and include_proof:
-        core.append("Key specs, translated: " + "; ".join(selected_proof) + ".")
-    if platform == "linkedin":
-        core.append("The professional decision is matching supported equipment to the actual job, not accumulating specifications.")
-
-    core_text = " ".join(core).lower()
-    optional_depth = [
-        part for part in kept_depth
-        if part.lower() not in core_text and part.strip().lower() != cta.lower()
-    ]
-    if platform == "instagram":
-        optional_depth = [part for part in optional_depth if not _is_contrast(part)][:2]
+    contrast_explained = _is_contrast(hook)
+    covered = {"contrast", "product", "proof", "use_case"} if product_led else {"contrast", "proof", "use_case"}
+    optional_depth = _new_supporting_depth(source_without_tags, product=product, covered=covered, cta=cta)
+    if product_led and not optional_depth:
+        optional_depth = [
+            "The practical decision is not just how much power is listed. Compare the published capacity, AC access, and supported device fit with the equipment you expect to carry."
+        ]
+    proof_meanings = _sales_meaning(proof, use_case) if include_proof else []
     tags, categories = _portfolio(components, platform, caption)
     hashtag_line = " ".join(f"#{tag}" for tag in tags)
-    refined = "\n\n".join(filter(None, ["\n\n".join(core), "\n\n".join(optional_depth), cta, hashtag_line]))
+    refined, optional_start = _layered_caption(
+        platform=platform,
+        hook=hook,
+        product=product,
+        benefit=benefit,
+        use_case=use_case,
+        proof_meanings=proof_meanings,
+        optional_depth=optional_depth,
+        cta=cta,
+        hashtags=hashtag_line,
+        product_led=product_led,
+    )
     presentation = _above_fold(refined, components, platform)
     presentation.update({
         "priority_layers": ["scroll_stopper", "product_core_value", "quick_proof", "optional_depth", "action_discovery"],
         "contrast_explained": contrast_explained,
-        "contrast_paragraph_count": sum(1 for part in optional_depth if _is_contrast(part)),
+        "contrast_paragraph_count": 0,
         "selected_hashtags": [f"#{tag}" for tag in tags],
         "hashtag_categories": categories,
         "hashtag_target_density": "10-15 useful tags when sufficient relevant evidence exists" if platform in ("facebook", "instagram") else "3-5 selective professional tags",
         "hashtag_relevance_score": 1.0 if tags else 0.0,
         "hashtag_reason": "brand, product, category, verified use-case, and discovery tags only",
         "optional_depth_present": bool(optional_depth),
+        "optional_depth_start_word": optional_start,
+        "spec_sales_intelligence": "PASS" if proof_meanings else "NOT_APPLICABLE",
+        "semantic_layer_evidence": {
+            "hook": hook,
+            "product": product,
+            "primary_benefit": benefit,
+            "device_use_case": use_case,
+            "selected_proof": proof_meanings,
+            "optional_depth": optional_depth,
+            "cta": cta,
+        },
         "reordered_for_priority": product_led and bool(product),
         "platform_expression": {
             "facebook": "front_loaded_commercial_value_with_optional_depth",
@@ -152,6 +233,22 @@ def refine_caption(
         }.get(platform, "priority_layered"),
     })
     return refined, presentation
+
+
+def format_reel_caption(components: dict[str, Any], instagram_presentation: dict[str, Any]) -> str:
+    """Keep Reel depth in the caption without transcribing its on-screen sequence."""
+    product = str(components.get("product_name") or "").strip()
+    use_case = str(components.get("use_case_line") or "").strip()
+    cta = str(components.get("cta") or "Learn more").strip()
+    tags = " ".join(instagram_presentation.get("selected_hashtags") or [])
+    context = "A quick top-up is not always the whole job. Compare the published capacity, AC access, and supported device fit before you choose what to carry."
+    return "\n\n".join(part for part in [
+        f"{product} is for planning beyond the nearest outlet." if product else "Plan beyond the nearest outlet.",
+        context,
+        use_case,
+        cta,
+        tags,
+    ] if part)
 
 
 def _sentences(text: str) -> list[str]:

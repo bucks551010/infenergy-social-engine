@@ -32,3 +32,14 @@ def human_connection_critique(*, strategy: dict[str, Any], copy: dict[str, Any],
     visual_text = " ".join(str(value) for value in visual.values()).lower()
     natural = not any(word in copy_text for word in ("fear", "panic", "guaranteed"))
     return {"copy_expresses_connection": bool(human and human in copy_text), "visual_reinforces_connection": bool(human and (human in visual_text or strategy.get("human_outcome", "").lower() in visual_text)), "natural": natural, "passed": natural}
+
+
+def integrity(strategy: dict[str, Any], copy: dict[str, Any], visual: dict[str, Any]) -> dict[str, Any]:
+    """Verify outputs retain the lock rather than only trusting the input path."""
+    required = ("audience", "customer_moment", "human_need", "human_value", "topic", "angle", "offering", "benefit", "human_outcome", "positioning", "non_price_edge", "claim_limits")
+    mismatches = [key for key in required if copy.get("strategy_lock", {}).get(key, strategy.get(key)) != strategy.get(key) or visual.get("strategy_lock", {}).get(key, strategy.get(key)) != strategy.get(key)]
+    cta_match = copy.get("cta", strategy.get("CTA_strategy")) == strategy.get("CTA_strategy")
+    if not cta_match:
+        mismatches.append("CTA")
+    verdict = "ALIGNED" if not mismatches else "MATERIAL_DRIFT" if any(key in {"audience", "angle", "claim_limits", "offering"} for key in mismatches) else "MINOR_DRIFT"
+    return {"verdict": verdict, "mismatches": mismatches, "publishable": verdict != "MATERIAL_DRIFT"}

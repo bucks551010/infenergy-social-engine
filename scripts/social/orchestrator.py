@@ -644,6 +644,9 @@ class SocialIntelligenceOrchestrator:
             package.creative_director["independent_human_connection_review"] = human_connection_review.review(
                 strategy=locked, copy=package.copy, visual=package.visual
             )
+            package.creative_director["strategy_integrity_review"] = strategy_lock.integrity(
+                locked, package.copy, package.visual
+            )
 
         # 10. Memory
         if record_memory:

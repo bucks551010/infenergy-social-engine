@@ -9,6 +9,12 @@ from typing import Any
 from . import analytics_ingestion, consumer_intelligence, competitor_intelligence, market_strategy, opportunity_graph, performance_learning, research_router, strategy_lock
 
 HEARTBEAT_LEVELS = {"LIGHT_HEARTBEAT", "STANDARD_HEARTBEAT", "DEEP_HEARTBEAT", "DEEP_REFRESH"}
+DEFAULT_BUDGETS = {
+    "LIGHT_HEARTBEAT": {"max_research_tasks": 1, "max_sources_retrieved": 2, "max_competitor_refreshes": 1},
+    "STANDARD_HEARTBEAT": {"max_research_tasks": 3, "max_sources_retrieved": 6, "max_competitor_refreshes": 3},
+    "DEEP_HEARTBEAT": {"max_research_tasks": 5, "max_sources_retrieved": 10, "max_competitor_refreshes": 5},
+    "DEEP_REFRESH": {"max_research_tasks": 5, "max_sources_retrieved": 10, "max_competitor_refreshes": 5},
+}
 
 
 def _path(data_dir: str) -> str:
@@ -63,20 +69,27 @@ def heartbeat(
     business_personality: str = "",
     capability: str = "",
     offering_truth: list[str] | None = None,
+    budget: dict[str, int] | None = None,
 ) -> dict[str, Any]:
     """Observe only decision-relevant deltas and emit opportunities; no copy or publishing."""
     if level not in HEARTBEAT_LEVELS:
         raise ValueError(f"unsupported heartbeat level: {level}")
     state = load(data_dir)
+    active_budget = DEFAULT_BUDGETS[level] | (budget or {})
     observations: list[dict[str, Any]] = []
-    evidence = list(research_evidence or []) + list(performance_observations or [])
+    evidence = (list(research_evidence or []) + list(performance_observations or []))[:active_budget["max_sources_retrieved"]]
     for record in publication_records or []:
         stage = analytics_ingestion.due(record)
         if not stage:
             continue
         for observation in analytics_ingestion.collect_meta(record):
+            if observation.get("status"):
+                state.setdefault("operational_failures", []).append(observation)
+                continue
             observation["window"] = stage
+            record.setdefault("analytics_observations", []).append(observation)
             evidence.append(performance_learning.learn(publication_record=record, observation=observation))
+    evidence = evidence[:active_budget["max_sources_retrieved"]]
     consumers = consumer_intelligence.normalize(consumer_signals or [])
     competitors, competitor_changes = competitor_intelligence.observe(competitor_observations or [], state.get("competitors", {}))
     state["competitors"] = competitors
@@ -102,6 +115,7 @@ def heartbeat(
             continue
         opportunity_graph.upsert(state["opportunities"], reason=item.get("interpretation") or item.get("decision_affected") or "evidence update", support=[item])
     state["last_heartbeat"] = {"level": level, "observations": len(observations), "at": datetime.now(timezone.utc).isoformat()}
+    state.setdefault("heartbeat_history", {})[level] = state["last_heartbeat"] | {"budget": active_budget}
     if level in {"DEEP_HEARTBEAT", "DEEP_REFRESH"}:
         state["deep_review"] = {
             "assumptions_to_challenge": ["audience fit", "customer moments", "positioning defensibility", "overused needs and angles"],
@@ -109,7 +123,7 @@ def heartbeat(
             "action": "research_more" if not (consumers and competitors) else "review_current_evidence",
         }
     save(data_dir, state)
-    return {"status": "ok", "observations": observations, "research_evidence": evidence, "consumer_relationships": consumer_intelligence.relationships(consumers),
+    return {"status": "ok", "observations": observations, "budget": active_budget, "research_evidence": evidence, "consumer_relationships": consumer_intelligence.relationships(consumers),
             "category_conversation": category_map, "whitespace": gap, "positioning": position, "opportunities": state["opportunities"]}
 
 
@@ -137,5 +151,19 @@ def council(state: dict[str, Any], *, strategy_inputs: dict[str, Any]) -> dict[s
         locked = strategy_lock.lock(selected, context=strategy_inputs)
     except ValueError as exc:
         return {"decision": "research_more", "reason": str(exc), "participants": participants, "evaluations": evaluations}
-    return {"decision": "strategy_selected", "participants": participants, "opportunity_id": opportunity["id"], "candidate_strategies": candidates,
+    result = {"decision": "strategy_selected", "participants": participants, "opportunity_id": opportunity["id"], "candidate_strategies": candidates,
             "evaluations": evaluations, "approved_strategy": locked | {"opportunity_id": opportunity["id"], "claim_limits": edge["claim_limit"]}}
+    state["last_council_decision"] = {"decision": result["decision"], "opportunity_id": opportunity["id"], "at": datetime.now(timezone.utc).isoformat()}
+    return result
+
+
+def decision_record(*, trigger: str, heartbeat_result: dict[str, Any], council_result: dict[str, Any]) -> dict[str, Any]:
+    """Concise owner explainability record; intentionally excludes hidden reasoning."""
+    strategy = council_result.get("approved_strategy", {})
+    return {"trigger": trigger, "intelligence_snapshot_id": heartbeat_result.get("positioning", {}).get("territory", ""), "audience": strategy.get("audience", ""), "customer_moment": strategy.get("customer_moment", ""), "human_need": strategy.get("human_need", ""), "research_tasks": heartbeat_result.get("research_evidence", []), "competitors_considered": heartbeat_result.get("observations", []), "category_conversation_summary": heartbeat_result.get("category_conversation", {}), "whitespace": heartbeat_result.get("whitespace", {}), "positioning": strategy.get("positioning", ""), "non_price_edge": strategy.get("non_price_edge", {}), "candidate_strategies": council_result.get("candidate_strategies", []), "council_objections": council_result.get("disagreements", []), "selected_strategy": strategy, "claim_limits": strategy.get("claim_limits", ""), "publish_decision": "pending_quality_governance"}
+
+
+def operational_status(data_dir: str) -> dict[str, Any]:
+    state = load(data_dir)
+    items = state.get("opportunities", [])
+    return {"last_light_heartbeat": state.get("heartbeat_history", {}).get("LIGHT_HEARTBEAT"), "last_standard_heartbeat": state.get("heartbeat_history", {}).get("STANDARD_HEARTBEAT"), "last_deep_heartbeat": state.get("heartbeat_history", {}).get("DEEP_HEARTBEAT"), "opportunities_ready": sum(item.get("state") == "READY" for item in items), "opportunities_research_needed": sum(item.get("state") == "RESEARCH_NEEDED" for item in items), "last_council_decision": state.get("last_council_decision"), "recent_failures": state.get("operational_failures", [])[-10:], "unresolved_operational_blockers": ["authenticated_railway_content_preview_not_verified"]}

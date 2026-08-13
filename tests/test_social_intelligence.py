@@ -274,6 +274,50 @@ def test_due_publication_analytics_becomes_cautious_future_opportunity(tmp_path,
     assert support["state"] == "NEW_HYPOTHESIS"
 
 
+def test_research_freshness_avoids_unnecessary_refresh():
+    task = research_router.route(question="What is our business worldview?", why_needed="maintain brand fit", entity="brand personality", decision_affected="positioning")
+    fresh = {"observed_at": "2026-08-12T00:00:00+00:00"}
+    assert research_router.freshness_class(task) == "VERY_STABLE"
+    assert research_router.is_fresh(fresh, task)
+
+
+def test_contradictory_learning_preserves_both_observation_sets():
+    base = performance_learning.update_hypothesis(None, {"platform": "instagram", "metrics": {"shares": 5}})
+    conflicted = performance_learning.update_hypothesis(base, {"platform": "instagram", "metrics": {"shares": 0}})
+    assert conflicted["support_count"] == 1
+    assert conflicted["contradiction_count"] == 1
+    assert conflicted["state"] == "CONFLICTED"
+
+
+def test_integrity_blocks_material_strategy_drift():
+    strategy = {"audience": "household", "customer_moment": "outage", "human_need": "confidence", "human_value": "preparedness", "topic": "priorities", "angle": "what matters", "offering": "power station", "benefit": "prioritize", "human_outcome": "confidence", "positioning": "calm", "non_price_edge": {}, "claim_limits": "supported only", "CTA_strategy": "Learn"}
+    copy = {"strategy_lock": strategy | {"audience": "traveler"}, "cta": "Learn"}
+    visual = {"strategy_lock": strategy}
+    assert strategy_lock.integrity(strategy, copy, visual)["verdict"] == "MATERIAL_DRIFT"
+
+
+def test_human_review_escalates_weak_premise_to_change_angle():
+    verdict = human_connection_review.review(strategy={"customer_moment": "", "human_need": "", "benefit": ""}, copy={"body": "Clear advice"}, visual={"message": "Clear advice"})
+    assert verdict["verdict"] == "CHANGE_ANGLE"
+
+
+def test_analytics_windows_are_runtime_configurable(monkeypatch):
+    monkeypatch.setenv("ANALYTICS_WINDOWS_HOURS", "1,12,48")
+    assert analytics_ingestion.configured_windows() == (1, 12, 48)
+
+
+def test_autonomous_pre_publish_contract(tmp_path, monkeypatch):
+    task = research_router.route(question="What changed in our portable-power offering?", why_needed="find a current angle", entity="portable power", decision_affected="positioning")
+    monkeypatch.setattr(research_router, "inspect_first_party", lambda url: {"content_hash": "new", "marketing_language": ["New modular capability"], "factual_candidates": ["500W"], "changed": True})
+    evidence = public_research.research(task=task)
+    heartbeat = living_intelligence.heartbeat(str(tmp_path), level="STANDARD_HEARTBEAT", research_evidence=evidence, business_personality="calm preparedness", capability="500W AC", offering_truth=["500W AC"], consumer_signals=[{"audience": "household", "customer_moment": "storm outage", "human_need": "confidence", "question": "What should I power first?", "offering": "power station", "source": "research", "confidence": 0.8}], competitor_observations=[{"name": "Competitor", "category": "portable power", "messages": ["more watts"], "benefits": ["more watts"], "customer_moments": ["camping"], "human_values": [], "questions": [], "territories": [], "visual_patterns": [], "source": "official", "confidence": 0.8}])
+    decision = living_intelligence.council(living_intelligence.load(str(tmp_path)), strategy_inputs={"customer": heartbeat["consumer_relationships"][0], "capability": "500W AC", "benefit": "prioritize essentials", "positioning": heartbeat["positioning"], "human_value": "preparedness", "topic": "power priorities", "reader_job": "PREPARE_ME", "important_capability": "500W AC", "human_outcome": "confidence", "competitive_context": "spec led", "proof": ["500W AC"], "claim_limits": "supported only", "visual_objective": "priority ladder", "CTA_strategy": "Learn more"})
+    assert decision["decision"] == "strategy_selected"
+    assert decision["approved_strategy"]["angle"]
+    record = living_intelligence.decision_record(trigger="scheduled", heartbeat_result=heartbeat, council_result=decision)
+    assert record["selected_strategy"] == decision["approved_strategy"]
+
+
 # --- content strategy ------------------------------------------------------
 
 

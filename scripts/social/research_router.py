@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from hashlib import sha256
 from html.parser import HTMLParser
 from typing import Any
@@ -41,6 +42,32 @@ def route(*, question: str, why_needed: str, entity: str, decision_affected: str
     elif any(term in text for term in ("site", "product page", "cta", "brand")):
         source = "infenergy_first_party_website"
     return ResearchTask(question, why_needed, entity, decision_affected, source, freshness_requirement)
+
+
+FRESHNESS_HOURS = {"VERY_STABLE": 24 * 365, "STABLE": 24 * 180, "MODERATE": 24 * 30, "FAST_CHANGING": 24 * 3, "EVENT_BASED": 0}
+
+
+def freshness_class(task: ResearchTask) -> str:
+    text = f"{task.question} {task.entity} {task.decision_affected}".lower()
+    if any(word in text for word in ("price", "availability", "campaign", "current")):
+        return "FAST_CHANGING"
+    if any(word in text for word in ("performance", "post metrics", "engagement")):
+        return "EVENT_BASED"
+    if any(word in text for word in ("worldview", "mission", "brand personality")):
+        return "VERY_STABLE"
+    return "MODERATE" if task.preferred_source in {"competitor_source", "official_manufacturer_source"} else "STABLE"
+
+
+def is_fresh(evidence: dict[str, Any], task: ResearchTask, *, now: datetime | None = None) -> bool:
+    if freshness_class(task) == "EVENT_BASED":
+        return False
+    raw = str(evidence.get("last_verified_at") or evidence.get("observed_at") or "").replace("Z", "+00:00")
+    try:
+        observed = datetime.fromisoformat(raw)
+    except ValueError:
+        return False
+    observed = observed if observed.tzinfo else observed.replace(tzinfo=timezone.utc)
+    return (now or datetime.now(timezone.utc)) <= observed + timedelta(hours=FRESHNESS_HOURS[freshness_class(task)])
 
 
 class _Text(HTMLParser):

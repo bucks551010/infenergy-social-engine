@@ -11,8 +11,21 @@ import requests
 DEFAULT_WINDOWS_HOURS = (24, 168, 720)
 
 
-def due(record: dict[str, Any], *, now: datetime | None = None, windows_hours: tuple[int, ...] = DEFAULT_WINDOWS_HOURS) -> str | None:
+def configured_windows() -> tuple[int, ...]:
+    """Read three non-negative observation windows without making deployment config fragile."""
+    raw = os.environ.get("ANALYTICS_WINDOWS_HOURS", "").strip()
+    if not raw:
+        return DEFAULT_WINDOWS_HOURS
+    try:
+        values = tuple(int(value.strip()) for value in raw.split(","))
+    except ValueError:
+        return DEFAULT_WINDOWS_HOURS
+    return values if len(values) == 3 and all(value >= 0 for value in values) and tuple(sorted(values)) == values else DEFAULT_WINDOWS_HOURS
+
+
+def due(record: dict[str, Any], *, now: datetime | None = None, windows_hours: tuple[int, ...] | None = None) -> str | None:
     """Return the next observation stage without treating absent metrics as zero."""
+    windows_hours = windows_hours or configured_windows()
     raw = str(record.get("published_at") or "").replace("Z", "+00:00")
     try:
         published = datetime.fromisoformat(raw)
@@ -31,7 +44,7 @@ def collect_meta(record: dict[str, Any]) -> list[dict[str, Any]]:
     """Fetch only metrics Graph returns for existing Facebook/Instagram IDs."""
     token = os.environ.get("META_PAGE_ACCESS_TOKEN", "").strip()
     if not token:
-        return []
+        return [{"status": "AUTHENTICATION_REQUIRED", "platform": platform} for platform, key in (("facebook", "fb_id"), ("instagram", "ig_id")) if record.get(key)]
     observations: list[dict[str, Any]] = []
     for platform, key in (("facebook", "fb_id"), ("instagram", "ig_id")):
         post_id = str(record.get(key, "") or "").strip()
@@ -39,6 +52,7 @@ def collect_meta(record: dict[str, Any]) -> list[dict[str, Any]]:
             continue
         response = requests.get(f"https://graph.facebook.com/v26.0/{post_id}/insights", params={"access_token": token}, timeout=20)
         if not response.ok:
+            observations.append({"platform_post_id": post_id, "platform": platform, "status": "SOURCE_UNAVAILABLE", "http_status": response.status_code, "collected_at": datetime.now(timezone.utc).isoformat()})
             continue
         metrics: dict[str, float] = {}
         for item in (response.json() or {}).get("data", []):

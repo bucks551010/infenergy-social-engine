@@ -3903,14 +3903,45 @@ def _build_platform_posts(
         package["human_connection_review"] = reviews.get("independent_human_connection_review", {})
         package["strategy_integrity_review"] = reviews.get("strategy_integrity_review", {})
         package["platform_posture"] = native_posture[platform]
-        _, presentation = platform_presentation.format_caption(components, platform=platform)
-        presentation.update(platform_presentation.evaluate(
+        presentation = platform_presentation.evaluate(
             package["caption"],
             platform=platform,
             visual_specs=list(components.get("feature_bullets") or []),
-        ))
+        )
         package["presentation"] = presentation
 
+    return platform_posts
+
+
+def _apply_platform_presentation_priority(platform_posts: dict, components: dict) -> dict:
+    from social import platform_presentation
+
+    for platform in ("facebook", "instagram", "linkedin"):
+        package = platform_posts.get(platform, {}) if isinstance(platform_posts, dict) else {}
+        if not isinstance(package, dict):
+            continue
+        refined_caption, priority = platform_presentation.refine_caption(
+            str(package.get("caption", "")),
+            components=components,
+            platform=platform,
+            product_led=bool(components.get("product_id")),
+        )
+        package["caption"] = refined_caption
+        priority.update(platform_presentation.evaluate(
+            refined_caption,
+            platform=platform,
+            visual_specs=list(components.get("feature_bullets") or []),
+        ))
+        package["presentation"] = priority
+        package["message_hierarchy"] = ["hook", "product", "primary_benefit", "selected_proof", "human_use", "action"]
+        if platform == "instagram":
+            package["reel_caption"] = refined_caption
+            package["reel_presentation"] = {
+                "message_hierarchy": package["message_hierarchy"],
+                "on_screen_copy_rule": "concise phrases only; optional depth belongs in the caption",
+                "freeze_frame_priority": ["product", "headline", "primary_benefit", "selected_proof", "cta"],
+                "caption_complementarity": "adds optional depth without restating the on-screen sequence",
+            }
     return platform_posts
 
 
@@ -5989,6 +6020,7 @@ Return ONLY valid JSON with these exact keys (no markdown, no code fences):
                     talking_point,
                     platform=platform_name,
                 )
+        platform_posts = _apply_platform_presentation_priority(platform_posts, components)
         platform_posts = normalize_brand_content(platform_posts)
         content = normalize_brand_content(content)
         content["post_id"] = post_id
@@ -6314,6 +6346,7 @@ Return ONLY valid JSON with these exact keys (no markdown, no code fences):
                 talking_point,
                 platform=platform_name,
             )
+    platform_posts = _apply_platform_presentation_priority(platform_posts, components)
     platform_posts = normalize_brand_content(platform_posts)
     content = normalize_brand_content(content)
     content["post_id"] = post_id

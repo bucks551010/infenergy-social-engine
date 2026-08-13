@@ -5,6 +5,7 @@ import os
 import re
 import json
 import base64
+from datetime import datetime, timezone
 from typing import Any
 
 import requests
@@ -879,6 +880,8 @@ def _select_visual_template(visual_plan: dict[str, Any], platform: str) -> str:
 def review_rendered_visual(path: str, platform: str) -> dict[str, Any]:
     """Inspect the saved PNG so publication is gated on a real artifact, not only its plan."""
     issues: list[str] = []
+    actual_dimensions: list[int] | None = None
+    file_size_bytes = 0
     image_module, _, _ = _load_pillow()
     expected_size = _platform_visual_spec(platform)["target"]
     if not path or not os.path.isfile(path):
@@ -887,8 +890,10 @@ def review_rendered_visual(path: str, platform: str) -> dict[str, Any]:
         issues.append("pillow_unavailable")
     else:
         try:
+            file_size_bytes = os.path.getsize(path)
             with image_module.open(path) as image:
                 image.load()
+                actual_dimensions = list(image.size)
                 if image.size != expected_size:
                     issues.append("rendered_dimensions_mismatch")
                 if image.convert("RGB").getbbox() is None:
@@ -900,7 +905,11 @@ def review_rendered_visual(path: str, platform: str) -> dict[str, Any]:
         "verdict": verdict,
         "issues": issues,
         "artifact_path": path,
+        "inspected_path": path,
         "expected_dimensions": list(expected_size),
+        "actual_dimensions": actual_dimensions,
+        "file_size_bytes": file_size_bytes,
+        "inspected_at": datetime.now(timezone.utc).isoformat(),
     }
 
 

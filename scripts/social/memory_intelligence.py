@@ -13,6 +13,8 @@ from __future__ import annotations
 
 import json
 import os
+import uuid
+from datetime import datetime, timezone
 from typing import Any, Iterable
 
 
@@ -101,6 +103,12 @@ def append_strategy_lesson(lesson: dict[str, Any], *, data_dir: str | None = Non
     required = {"product_id", "condition", "action", "evidence"}
     if not required <= set(lesson) or not lesson.get("evidence"):
         raise ValueError("strategy lesson requires product_id, condition, action, and evidence")
+    lesson = dict(lesson)
+    lesson.setdefault("lesson_id", uuid.uuid4().hex)
+    lesson.setdefault("created_at", datetime.now(timezone.utc).isoformat())
+    lesson.setdefault("scope", {"product_id": lesson["product_id"], "condition": lesson["condition"]})
+    lesson.setdefault("future_applicability", "Consult only when the same product and evidence condition recur.")
+    lesson.setdefault("revalidation", "Reassess when verified product evidence or claim limits change.")
     data["records"].append(lesson)
     if len(data["records"]) > keep_last:
         data["records"] = data["records"][-keep_last:]

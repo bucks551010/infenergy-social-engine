@@ -29,6 +29,8 @@ def decide(
     critic_total = (orchestrator_quality or {}).get("overall")
     critic_total = float(critic_total) if critic_total is not None else None
     reasons: list[str] = []
+    critic_component_scores = dict((orchestrator_quality or {}).get("factors") or {})
+    critic_findings = [str(item) for item in (orchestrator_quality or {}).get("reasons", []) if str(item)]
 
     if not validation.get("passed", False):
         reasons.extend(str(error) for error in validation.get("errors", []))
@@ -58,6 +60,11 @@ def decide(
         "publishable": decision == "publish",
         "legacy_score": legacy_total,
         "orchestrator_critic_score": critic_total,
+        "critic_total_score": critic_total,
+        "critic_component_scores": critic_component_scores,
+        "critic_findings": critic_findings,
+        "critic_evidence": {name: value for name, value in critic_component_scores.items() if float(value) < 0.82},
+        "critic_decision_reason": "publish_threshold_met" if critic_total is None or critic_total >= PUBLISH_SCORE else "critic_score_below_publish_threshold",
         "conversion_quality_score": float(conversion_quality_score),
         "reasons": reasons,
         "platform_results": legacy_score.get("platform_results", {}),

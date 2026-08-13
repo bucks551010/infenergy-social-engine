@@ -383,7 +383,12 @@ def test_scoped_strategy_lessons_are_evidence_bound_not_global(tmp_path):
     lesson = {"product_id": "PPP-200", "condition": "runtime_angle_without_verified_inputs", "action": "challenge_angle", "evidence": ["no runtime inputs"]}
     memory_intelligence.append_strategy_lesson(lesson, data_dir=str(tmp_path))
 
-    assert memory_intelligence.strategy_lessons(product_id="PPP-200", condition="runtime_angle_without_verified_inputs", data_dir=str(tmp_path)) == [lesson]
+    stored = memory_intelligence.strategy_lessons(product_id="PPP-200", condition="runtime_angle_without_verified_inputs", data_dir=str(tmp_path))
+    assert stored[0]["product_id"] == lesson["product_id"]
+    assert stored[0]["condition"] == lesson["condition"]
+    assert stored[0]["lesson_id"]
+    assert stored[0]["created_at"]
+    assert stored[0]["scope"]["product_id"] == "PPP-200"
     assert memory_intelligence.strategy_lessons(product_id="OTHER", condition="runtime_angle_without_verified_inputs", data_dir=str(tmp_path)) == []
 
 

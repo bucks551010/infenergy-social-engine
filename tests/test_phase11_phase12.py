@@ -55,7 +55,8 @@ class PhaseElevenTwelveTests(unittest.TestCase):
             tracked_links=links,
             error_map={},
         )
-        self.assertEqual(len(rows), 4)
+        self.assertEqual(len(rows), 3)
+        self.assertNotIn("wordpress", {row["platform"] for row in rows})
         expected = {
             "post_id",
             "platform_post_id",

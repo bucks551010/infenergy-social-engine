@@ -452,7 +452,8 @@ class PhaseThirteenFourteenTests(unittest.TestCase):
         saved_post = save_calls[-1]["posts"][-1]
         self.assertEqual(saved_post["status"], "skipped_no_eligible_platforms")
         self.assertIn("platform_records", saved_post)
-        self.assertEqual(len(saved_post["platform_records"]), 4)
+        self.assertEqual(len(saved_post["platform_records"]), 3)
+        self.assertNotIn("wordpress", {record["platform"] for record in saved_post["platform_records"]})
 
     def test_run_engine_blocks_when_orchestration_control_plane_fails(self) -> None:
         save_calls: list[dict] = []

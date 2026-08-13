@@ -18,7 +18,8 @@ def test_shadow_records_never_report_published():
         {"wordpress": True, "facebook": True, "instagram": True, "linkedin": True},
     )
 
-    assert len(records) == 4
+    assert len(records) == 3
+    assert "wordpress" not in {record["platform"] for record in records}
     assert {record["status"] for record in records} == {"shadow_not_published"}
     assert {record["error"] for record in records} == {"shadow_mode_no_external_publication"}
 

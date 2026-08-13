@@ -220,6 +220,12 @@ def _runtime_strategy_lock(brief: engines.EngineBrief, lean_context: dict[str, A
         verified_facts=list((offering or {}).get("verified_facts") or facts),
         forbidden_claims=list((offering or {}).get("forbidden_claims") or []),
     )
+    product_id = str((offering or {}).get("offering_id") or (offering or {}).get("sku") or "")
+    if product_id and not red_team["can_lock"]:
+        red_team["prior_scoped_lessons"] = memory_intelligence.strategy_lessons(
+            product_id=product_id,
+            condition=strategy_lock.lesson_condition(red_team),
+        )
     if not red_team["can_lock"]:
         candidate["angle"] = f"Use verified product facts to assess {benefit}"
         candidate["hook_promise"] = f"Which verified facts help with {benefit}?"
@@ -231,6 +237,7 @@ def _runtime_strategy_lock(brief: engines.EngineBrief, lean_context: dict[str, A
         "verdict": red_team["verdict"],
         "challenge_evidence": red_team["challenge_evidence"],
         "action": "angle_redirected_before_lock" if not red_team["can_lock"] else "locked_without_change",
+        "prior_scoped_lessons_consulted": len(red_team.get("prior_scoped_lessons", [])),
     })
     return locked
 

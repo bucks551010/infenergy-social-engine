@@ -26,6 +26,13 @@ def _evidence_requirements(text: str) -> list[str]:
     ]
 
 
+def lesson_condition(red_team_result: dict[str, Any]) -> str:
+    """Return the stable scope key used for evidence-backed strategy lessons."""
+    requirements = red_team_result.get("evidence_requirements") if isinstance(red_team_result, dict) else []
+    requirement = str(requirements[0]).strip() if isinstance(requirements, list) and requirements else "evidence"
+    return f"{requirement}_angle_without_verified_evidence"
+
+
 def lock(candidate: dict[str, Any], *, context: dict[str, Any]) -> dict[str, Any]:
     strategy = candidate | {key: context.get(key, candidate.get(key, "")) for key in (
         "human_value", "topic", "reader_job", "important_capability", "benefit", "human_outcome",

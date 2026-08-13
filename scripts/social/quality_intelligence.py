@@ -51,6 +51,14 @@ DEFAULT_THRESHOLDS = {
     "high_risk_claims_blocking": True,
 }
 
+
+def actionable_findings(factors: dict[str, float], overall: float) -> list[str]:
+    """Explain sub-threshold quality using the existing quality dimensions."""
+    if overall >= DEFAULT_THRESHOLDS["publish"]:
+        return []
+    findings = [f"{name}_below_publish_target" for name, value in factors.items() if float(value) < 0.82]
+    return findings or ["overall_quality_below_publish_target"]
+
 _CONCEPT_ALIASES = {
     "charge": {"charge", "charged", "charging", "recharge", "recharged", "recharging", "power", "powered"},
     "device": {"device", "devices", "laptop", "laptops", "phone", "phones", "tablet", "tablets", "equipment", "gear"},
@@ -194,7 +202,8 @@ def score(
     if brand_voice and factors["brand_alignment"] < 0.55:
         reasons.append("brand voice violation (prohibited phrases present)")
 
-    return QualityScore(factors=factors, overall=overall, band=_band(overall), reasons=reasons)
+    reasons.extend(actionable_findings(factors, overall))
+    return QualityScore(factors=factors, overall=overall, band=_band(overall), reasons=list(dict.fromkeys(reasons)))
 
 
 # --- Simple diagnostic tests (§85-§89) --------------------------------------

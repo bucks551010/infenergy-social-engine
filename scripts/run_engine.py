@@ -19,6 +19,7 @@ from score_content import score_content
 from social.publish_decision import decide as decide_publication
 from social.claim_intelligence import remove_unsupported_numeric_claims
 from social import strategy_lock as strategy_lock_intelligence
+from social import memory_intelligence
 from validate_product_claims import validate_generated_content
 from anti_repeat import check_duplicates, load_anti_repeat_windows
 from build_utm_url import build_utm_url
@@ -338,6 +339,7 @@ def _strategy_lock_for_revision(content: dict) -> dict:
 def _revision_feedback(content: dict, decision: dict) -> list[str]:
     """Convert existing critic output into auditable, bounded revision instructions."""
     findings = [str(reason) for reason in decision.get("reasons", []) if str(reason)]
+    findings.extend(str(reason) for reason in decision.get("critic_findings", []) if str(reason))
     quality = content.get("orchestrator_quality") if isinstance(content.get("orchestrator_quality"), dict) else {}
     findings.extend(str(reason) for reason in quality.get("reasons", []) if str(reason))
     reviews = content.get("final_platform_copy_reviews") if isinstance(content.get("final_platform_copy_reviews"), dict) else {}
@@ -349,6 +351,28 @@ def _revision_feedback(content: dict, decision: dict) -> list[str]:
         review = creative.get(key) if isinstance(creative.get(key), dict) else {}
         findings.extend(str(issue) for issue in review.get("issues", []) if str(issue))
     return list(dict.fromkeys(findings))
+
+
+def _record_material_strategy_lesson(content: dict, strategy: dict, diagnosis: dict | None = None) -> dict | None:
+    """Persist only a conditional lesson from a material evidence-backed strategy decision."""
+    red_team = strategy.get("strategy_red_team") if isinstance(strategy.get("strategy_red_team"), dict) else {}
+    material_event = red_team.get("verdict") == "CHANGE_ANGLE" or (diagnosis or {}).get("failure_level") == "STRATEGY_EVIDENCE_MISMATCH"
+    product_id = str(content.get("product_id") or "")
+    evidence = list(red_team.get("challenge_evidence") or (diagnosis or {}).get("evidence") or [])
+    if not material_event or not product_id or not evidence:
+        return None
+    lesson = {
+        "product_id": product_id,
+        "condition": strategy_lock_intelligence.lesson_condition(red_team),
+        "action": "require_verified_evidence_or_choose_different_angle",
+        "evidence": evidence,
+        "source_decision": red_team.get("verdict") or (diagnosis or {}).get("failure_level"),
+        "source_strategy_version": strategy.get("strategy_version"),
+        "lesson": "Require verified evidence for the proposed factual promise or choose a different angle.",
+        "confidence": 0.95,
+    }
+    memory_intelligence.append_strategy_lesson(lesson, data_dir=os.environ.get("DATA_DIR"))
+    return lesson
 
 
 _RETRYABLE_CONTENT_PREFIXES = (
@@ -634,7 +658,7 @@ def _platform_status(
     return "published"
 
 
-def _resolve_primary_publish_image_url(content: dict, dry_run: bool) -> str:
+def _resolve_primary_publish_image_url(content: dict, dry_run: bool, *, allow_wordpress_media: bool = False) -> str:
     """Resolve one primary image URL with square-first priority for social placements."""
 
     def _public_base_url() -> str:
@@ -681,7 +705,7 @@ def _resolve_primary_publish_image_url(content: dict, dry_run: bool) -> str:
                 candidate_paths.append(raw_path)
 
     # Prefer uploaded generated visuals so all channels can share the same public image URL.
-    if candidate_paths and hasattr(publish_wordpress, "upload_media"):
+    if allow_wordpress_media and candidate_paths and hasattr(publish_wordpress, "upload_media"):
         for path in candidate_paths:
             try:
                 media_result = publish_wordpress.upload_media(path, dry_run=dry_run)
@@ -796,7 +820,10 @@ def _build_platform_history_records(
     platform_posts = content.get("platform_posts", {}) if isinstance(content.get("platform_posts"), dict) else {}
 
     records: list[dict] = []
-    for platform in ("facebook", "instagram", "linkedin", "wordpress"):
+    platforms = ["facebook", "instagram", "linkedin"]
+    if effective_channels.get("wordpress"):
+        platforms.append("wordpress")
+    for platform in platforms:
         platform_entry = platform_posts.get(platform, {}) if isinstance(platform_posts.get(platform), dict) else {}
         platform_post_id = str(ids.get(platform, "") or "")
         utm_url = tracked_links.get(platform) if platform in tracked_links else None
@@ -885,6 +912,10 @@ def main() -> None:
     )
 
     for name, enabled in channels.items():
+        if name == "wordpress" and "wordpress" not in manual_platforms:
+            effective_channels[name] = False
+            channel_reasons[name] = "out_of_scope_social_runtime"
+            continue
         if not enabled:
             effective_channels[name] = False
             channel_reasons[name] = "disabled_env"
@@ -1195,6 +1226,14 @@ def main() -> None:
         visual_errors=visual_gate_errors,
     )
     content["publish_decision"] = final_decision
+    final_strategy = _strategy_lock_for_revision(content) or locked_strategy
+    living_memory_lesson = _record_material_strategy_lesson(
+        content,
+        final_strategy,
+        attempts[-1].get("cognitive_diagnosis") if attempts else None,
+    )
+    if living_memory_lesson:
+        content["living_memory_lesson"] = living_memory_lesson
     if not final_decision["publishable"] and not shadow_mode:
         print("[SKIP] Content did not pass validation/quality thresholds; recording skipped run")
         history = generate_posts.load_history()
@@ -1237,6 +1276,8 @@ def main() -> None:
             "product_image_url": content.get("product_image_url", ""),
             "generated_visuals": content.get("generated_visuals", {}),
             "visual_plan": content.get("visual_plan", {}),
+            "artifact_visual_qa": content.get("artifact_visual_qa", {}),
+            "living_memory_lesson": content.get("living_memory_lesson"),
             "copy_generation_source": content.get("copy_generation_source", "unknown"),
             "quality_score": content.get("quality_score"),
             "quality_component_scores": content.get("quality_component_scores", {}),
@@ -1292,6 +1333,10 @@ def main() -> None:
             "duplicate_reasons": content.get("duplicate_check", {}).get("reasons", []),
             "generation_attempts": attempts, "dry_run": dry_run, "shadow_mode": True,
             "status": "shadow_completed", "decision_record": _shadow_decision_record(content),
+            "generated_visuals": content.get("generated_visuals", {}),
+            "visual_plan": content.get("visual_plan", {}),
+            "artifact_visual_qa": content.get("artifact_visual_qa", {}),
+            "living_memory_lesson": content.get("living_memory_lesson"),
             "channel_reasons": channel_reasons, "phase5_channel_readiness": phase5_readiness,
             "phase6_learning": _build_phase6_learning(content=content, platform_records=platform_records, errors=[], status="shadow_completed"),
             "phase8_runtime": runtime_metrics, "platform_records": platform_records,
@@ -1328,7 +1373,11 @@ def main() -> None:
     ig_result = {"id": "skipped"}
     li_result = {"id": "skipped"}
 
-    primary_publish_image_url = _resolve_primary_publish_image_url(content, dry_run=dry_run)
+    primary_publish_image_url = _resolve_primary_publish_image_url(
+        content,
+        dry_run=dry_run,
+        allow_wordpress_media=bool(effective_channels.get("wordpress")),
+    )
     if primary_publish_image_url:
         content["primary_publish_image_url"] = primary_publish_image_url
         print(f"[Image] Shared primary image URL resolved: {primary_publish_image_url}")

@@ -631,6 +631,10 @@ class SocialIntelligenceOrchestrator:
         art_dict = art.as_dict()
         art_dict["post_id"] = post_id
         art_dict["cta"] = selected_cta
+        art_dict["layout_grammar"] = creative_packet["layout_grammar"]
+        art_dict["platform_interpretations"] = creative_packet["platform_interpretations"]
+        art_dict["information_priority"] = creative_packet["information_priority"]
+        art_dict["benefit_translation"] = creative_packet["benefit_translation"]
         if bi_offering:
             art_dict["product_name"] = bi_offering.get("name", "")
             offering_images = bi_offering.get("images") or []
@@ -670,6 +674,7 @@ class SocialIntelligenceOrchestrator:
                 "information_priority": creative_packet["information_priority"],
                 "benefit_translation": creative_packet["benefit_translation"],
                 "creative_concepts": creative_packet["creative_concepts"],
+                "platform_interpretations": creative_packet["platform_interpretations"],
                 "necessity_score": necessity,
                 "required": must_render,
                 "art_direction": art.as_dict(),
@@ -716,6 +721,12 @@ class SocialIntelligenceOrchestrator:
             )
             package.creative_director["strategy_integrity_review"] = strategy_lock.integrity(
                 locked, package.copy, package.visual
+            )
+            package.creative_director["copy_critic_review"] = quality_intelligence.copy_critic(
+                copy=package.copy, strategy=locked, platform=platform
+            )
+            package.creative_director["visual_critic_review"] = quality_intelligence.visual_critic(
+                visual=package.visual, provider_result=package.provider_result, platform=platform
             )
 
         # 10. Memory

@@ -7,6 +7,7 @@ happy-path test plus a small representative edge case.
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import sys
@@ -18,6 +19,7 @@ _REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(_REPO, "scripts"))
 
 import generate_posts  # noqa: E402
+import social_visuals  # noqa: E402
 
 from social import (  # noqa: E402
     audience_intelligence,
@@ -44,6 +46,7 @@ from social import (  # noqa: E402
     visual_provider,
     lean_intelligence,
     living_intelligence,
+    visual_provider,
 )
 
 
@@ -397,6 +400,58 @@ def test_second_post_reads_full_visual_memory_and_changes_composition(tmp_path, 
     assert memory["product_placements"] and memory["headline_placements"] and memory["art_direction_families"]
     assert second.creative_decision_packet["feed_intelligence"]["what_feed_needs_next"]
     assert first.visual["layout_grammar"]["alignment"] != second.visual["layout_grammar"]["alignment"]
+
+
+def test_renderer_prompt_consumes_creative_layout_and_platform_interpretation():
+    content = {
+        "selected_hook": "Prioritize what matters first", "selected_cta": "Save this plan", "topic": "Power priorities",
+        "layout_grammar": {"primary_focal_point": "human situation", "secondary_focal_point": "product proof", "reading_flow": "Z-pattern", "product_role": "demonstration", "product_placement": "foreground left", "human_role": "active decision maker", "human_placement": "contextual background", "headline_position": "top-right", "benefit_position": "center", "proof_position": "lower-third", "cta_position": "footer", "text_density": "low", "spacing_intent": "wide negative space", "negative_space_intent": "protect copy", "alignment": "asymmetrical editorial"},
+        "information_priority": {"MUST_SHOW": ["prioritize essentials"], "SHOULD_SHOW": ["confidence"], "SUPPORTING": ["verified product fact"], "OMIT": ["unrelated specs"]},
+        "benefit_translation": {"PRACTICAL_BENEFIT": "prioritize essentials", "CUSTOMER_OUTCOME": "confidence"},
+        "platform_interpretations": {"instagram": {"hook_posture": "visual-first takeaway", "format": "carousel_or_reel", "information_density": "low", "visual_composition": "one memorable focal hierarchy", "product_emphasis": "visual proof", "cta_expression": "save or share"}},
+    }
+    prompt = social_visuals._build_gemini_image_prompt(content, "instagram", {"layout_grammar": content["layout_grammar"], "platform_interpretations": content["platform_interpretations"], "information_priority": content["information_priority"], "benefit_translation": content["benefit_translation"]})
+    recipe = visual_provider.TemplateRenderProvider().generate(art_direction={"visual_format": "fact_card", "visual_message": "Priority plan", "layout_grammar": content["layout_grammar"], "platform_interpretations": content["platform_interpretations"], "information_priority": content["information_priority"], "benefit_translation": content["benefit_translation"]}, positive_prompt="", negative_prompt="", platform="instagram_feed").recipe
+
+    assert "product placement=foreground left" in prompt
+    assert "human role=active decision maker" in prompt
+    assert "Native instagram creative interpretation" in prompt
+    assert "must-show ideas prominently: prioritize essentials" in prompt
+    assert recipe["layout_grammar"]["headline_position"] == "top-right"
+    assert recipe["platform_interpretation"]["format"] == "carousel_or_reel"
+
+
+def test_orchestrator_records_final_copy_and_visual_critics(tmp_path, monkeypatch):
+    monkeypatch.setattr(orchestrator, "_llm_copy_beats", lambda *args: None)
+    post = orchestrator.SocialIntelligenceOrchestrator(data_dir=str(tmp_path)).create_post(record_memory=False)
+
+    assert post.creative_director["copy_critic_review"]["verdict"] in {"PASS", "REVISE"}
+    assert post.creative_director["visual_critic_review"]["pixel_status"] == "PIXEL_REVIEW_PENDING"
+    assert post.provider_result["recipe"]["layout_grammar"] == post.visual["layout_grammar"]
+
+
+def test_campaign_state_changes_next_creative_concept(tmp_path):
+    strategy = {"audience": "families", "customer_moment": "outage planning", "human_need": "clarity", "angle": "prioritize essentials", "benefit": "a clearer decision", "human_outcome": "confidence", "reader_job": "HELP_ME_CHOOSE", "visual_objective": "make the priority visible", "proof": ["verified fact"]}
+    baseline = creative_cognition.decide(strategy=strategy, platform="instagram_feed", recent={}, data_dir=str(tmp_path))
+    state_path = tmp_path / "social" / "living_intelligence.json"
+    state_path.parent.mkdir(exist_ok=True)
+    state_path.write_text(json.dumps({"campaign_state": {"decision": "start", "next_content_priority": "campaign_sequence"}}), encoding="utf-8")
+    campaign = creative_cognition.decide(strategy=strategy, platform="instagram_feed", recent={}, data_dir=str(tmp_path))
+
+    assert baseline["SELECTED_ANSWER"]["creative_concept"] != "decision-support"
+    assert campaign["SELECTED_ANSWER"]["creative_concept"] == "decision-support"
+    assert campaign["campaign_guidance"]["next_content_priority"] == "campaign_sequence"
+
+
+def test_platform_interpretation_changes_outbound_payload_fields():
+    components = {"product_name": "Power Station", "product_id": "p1", "topic": "Power planning", "hook": "Start here", "logic_hook": "Start here", "situation": "An outage can interrupt plans.", "logic_bridge": "Map essentials first.", "benefit_fragment": "supports clear decisions", "detail_summary": "Verified output details", "use_case_line": "For home readiness", "proof": "Verified product fact", "emotional_outcome": "more confidence", "cta": "Learn more", "feature_bullets": ["Portable power"]}
+    interpretations = {"facebook": {"hook_posture": "conversation-starter", "cta_expression": "invite a practical response", "format": "community_story", "visual_composition": "human-context"}, "instagram": {"hook_posture": "visual-first takeaway", "cta_expression": "save this reference", "format": "carousel_or_reel", "visual_composition": "one memorable focal hierarchy"}, "linkedin": {"hook_posture": "professional implication", "cta_expression": "consider the operational context", "format": "professional_brief", "visual_composition": "editorial decision-support hierarchy"}}
+    posts = generate_posts._build_platform_posts("post", "", "families", "EDUCATION", "https://example.com", components, 90, platform_interpretations=interpretations)
+
+    assert posts["facebook"]["hook"].startswith("conversation-starter:")
+    assert posts["instagram"]["visual_direction"] == "one memorable focal hierarchy"
+    assert posts["linkedin"]["content_format"] == "professional_brief"
+    assert posts["facebook"]["creative_interpretation"] != posts["linkedin"]["creative_interpretation"]
 
 
 def test_performance_signal_remains_cautious_and_provenanced():

@@ -66,6 +66,10 @@ class TemplateRenderProvider:
             "template": art_direction.get("visual_format", "fact_card"),
             "primary_text": art_direction.get("visual_message", ""),
             "focal_point": art_direction.get("focal_point", ""),
+            "layout_grammar": art_direction.get("layout_grammar", {}),
+            "platform_interpretation": (art_direction.get("platform_interpretations", {}) or {}).get(platform.split("_", 1)[0], {}),
+            "information_priority": art_direction.get("information_priority", {}),
+            "benefit_translation": art_direction.get("benefit_translation", {}),
             "color_direction": art_direction.get("color_direction", ""),
             "safe_area": art_direction.get("text_safe_area", ""),
             "must_include": art_direction.get("must_include", []),
@@ -129,6 +133,7 @@ class GeminiVisualProvider:
             fb.provider_meta["gemini_import_error"] = str(exc)
             return fb
 
+        layout = art_direction.get("layout_grammar", {}) or {}
         content = {
             "post_id": art_direction.get("post_id") or "preview",
             "topic": art_direction.get("primary_subject", ""),
@@ -137,8 +142,21 @@ class GeminiVisualProvider:
             "product_name": art_direction.get("product_name", ""),
             "product_image_url": art_direction.get("product_image_url", ""),
             "on_image_headline": art_direction.get("visual_message", ""),
+            "layout_grammar": layout,
+            "platform_interpretations": art_direction.get("platform_interpretations", {}),
+            "information_priority": art_direction.get("information_priority", {}),
+            "benefit_translation": art_direction.get("benefit_translation", {}),
+            "art_direction": art_direction,
         }
-        visual_plan = {"image_strategy": "gemini_generated"}
+        visual_plan = {
+            "image_strategy": "gemini_generated",
+            "layout_grammar": layout,
+            "platform_interpretations": art_direction.get("platform_interpretations", {}),
+            "information_priority": art_direction.get("information_priority", {}),
+            "benefit_translation": art_direction.get("benefit_translation", {}),
+            "composition": art_direction.get("composition", ""),
+            "mood": art_direction.get("mood", ""),
+        }
         plat_key = platform.split("_", 1)[0]
 
         try:

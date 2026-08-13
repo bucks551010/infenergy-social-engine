@@ -41,10 +41,13 @@ def learn(*, publication_record: dict[str, Any], observation: dict[str, Any]) ->
             "hook_family_x_platform": [strategy.get("genre_id", ""), observation.get("platform", "")],
             "copy_grammar_x_reader_job": [visual.get("copy_grammar", ""), strategy.get("reader_job", "")],
             "product_role_x_objective": [(visual.get("layout_grammar") or {}).get("product_role", ""), strategy.get("angle", "")],
+            "product_placement_x_platform": [(visual.get("layout_grammar") or {}).get("product_placement", ""), observation.get("platform", "")],
             "human_presence_x_customer_moment": [(visual.get("layout_grammar") or {}).get("human_role", ""), strategy.get("customer_moment", "")],
             "benefit_presentation_x_audience": [(visual.get("benefit_translation") or {}).get("PRACTICAL_BENEFIT", ""), strategy.get("audience", "")],
+            "cta_style_x_awareness": [copy.get("cta", ""), strategy.get("reader_job", "")],
             "text_density_x_platform": [(visual.get("layout_grammar") or {}).get("text_density", ""), observation.get("platform", "")],
             "visual_concept_x_audience": [(packet.get("SELECTED_ANSWER") or {}).get("creative_concept", ""), strategy.get("audience", "")],
+            "art_direction_x_objective": [visual.get("visual_format", ""), strategy.get("angle", "")],
         },
     }
 

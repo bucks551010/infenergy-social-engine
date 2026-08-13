@@ -173,6 +173,7 @@ def _route_generate_orchestrator(
         quality_score=float(quality_pkg.get("overall") or 0),
         strategy_lock=copy_pkg.get("strategy_lock") if isinstance(copy_pkg.get("strategy_lock"), dict) else {},
         creative_reviews=first.get("creative_director") if isinstance(first.get("creative_director"), dict) else {},
+        platform_interpretations=(first.get("creative_decision_packet") or {}).get("platform_interpretations") or {},
     )
     creative_packet = first.get("creative_decision_packet") or {}
     platform_selection = _select_social_platforms(copy_pkg.get("strategy_lock") if isinstance(copy_pkg.get("strategy_lock"), dict) else {})
@@ -3713,6 +3714,7 @@ def _build_platform_posts(
     caption_overrides: dict | None = None,
     strategy_lock: dict | None = None,
     creative_reviews: dict | None = None,
+    platform_interpretations: dict | None = None,
 ) -> dict:
     fb_caption, fb_cta, fb_format = _adapt_facebook(components, funnel_stage)
     ig_caption, ig_cta, ig_visual, ig_alt = _adapt_instagram(components, funnel_stage)
@@ -3819,7 +3821,24 @@ def _build_platform_posts(
         "instagram": "visual-first memorable takeaway",
         "linkedin": "professional decision-support insight",
     }
+    interpretations = dict(platform_interpretations or {})
     for platform, package in platform_posts.items():
+        interpretation = interpretations.get(platform, {})
+        if isinstance(interpretation, dict):
+            hook_posture = str(interpretation.get("hook_posture") or "").strip()
+            cta_expression = str(interpretation.get("cta_expression") or "").strip()
+            visual_composition = str(interpretation.get("visual_composition") or "").strip()
+            format_hint = str(interpretation.get("format") or "").strip()
+            if hook_posture:
+                package["hook"] = f"{hook_posture}: {package['hook']}"
+            if cta_expression:
+                package["cta"] = f"{package['cta']} {cta_expression}".strip()
+                package["caption"] = f"{package['caption']}\n\n{cta_expression}".strip()
+            if format_hint:
+                package["content_format"] = format_hint
+            if visual_composition:
+                package["visual_direction"] = visual_composition
+            package["creative_interpretation"] = interpretation
         package["strategy_lock"] = lock
         package["human_connection_review"] = reviews.get("independent_human_connection_review", {})
         package["strategy_integrity_review"] = reviews.get("strategy_integrity_review", {})

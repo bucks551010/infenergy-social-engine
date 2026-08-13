@@ -254,6 +254,18 @@ def creative_learning_guidance(data_dir: str | None = None) -> list[dict[str, An
         return []
 
 
+def campaign_guidance(data_dir: str | None = None) -> dict[str, Any]:
+    """Read the bounded campaign decision made by the independent heartbeat."""
+    root = data_dir or os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "data")
+    try:
+        with open(os.path.join(root, "social", "living_intelligence.json"), encoding="utf-8") as handle:
+            state = json.load(handle)
+        campaign = state.get("campaign_state") or {}
+        return campaign if campaign.get("decision") in {"start", "evolve"} else {}
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
 def _copy_concepts(*, strategy: dict[str, Any], grammar: dict[str, Any], recent: dict[str, list[Any]], platform: str) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """Create compact, genuinely different approaches before writing one winner."""
     angle = str(strategy.get("angle") or "this practical decision")
@@ -404,9 +416,12 @@ def decide(*, strategy: dict[str, Any], platform: str, recent: dict[str, list[An
     benefit = _benefit_chain(strategy)
     concepts = _concept_competition(strategy=strategy, references=references, benefit=benefit, fatigue=fatigue, recent=recent)
     learning = creative_learning_guidance(data_dir)
+    campaign = campaign_guidance(data_dir)
     for concept in concepts:
         if any(item.get("dimension") == "visual_concept_x_audience" and concept["id"] in item.get("values", []) for item in learning):
             concept["score"] += 0.08
+        if campaign.get("next_content_priority") == "campaign_sequence" and concept["id"] == "decision-support":
+            concept["score"] += 0.05
     concepts.sort(key=lambda item: item["score"], reverse=True)
     selected_concept = concepts[0]
     selected = next((item for item in references if item["reference_id"] == selected_concept["reference_id"]), references[0] if references else {"reference_id": "internal-fallback", "layout_logic": "clear hierarchy", "copy_logic": "question -> answer -> why it matters", "visual_logic": "one focal proof", "information_hierarchy": "headline, proof, explanation", "product_role": "supporting proof", "text_density": "medium"})
@@ -458,6 +473,7 @@ def decide(*, strategy: dict[str, Any], platform: str, recent: dict[str, list[An
         "hook_selection": {"family": selected_copy["approach"], "text": selected_copy["opening"], "scores": {"audience_relevance": selected_copy["fit"], "novelty": 1.0 if selected_copy["opening"].lower() not in " ".join(map(str, recent.get("hooks", []))).lower() else 0.4, "specificity": 0.75, "platform_fit": 0.85, "human_connection": 0.8, "payoff_alignment": 0.8}},
         "feed_intelligence": feed_intelligence(recent),
         "creative_learning_guidance": learning,
+        "campaign_guidance": campaign,
         "platform_interpretations": native,
         "novelty_process": {"triggered": fatigue or rotation, "action": "select a different composition/copy grammar" if fatigue or rotation else "standard diversity retrieval"},
         "originality_review": specialists["Originality Guardian"],

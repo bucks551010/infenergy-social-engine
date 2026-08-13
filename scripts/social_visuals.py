@@ -507,10 +507,15 @@ _CONSUMER_STAGE_LABELS = {
 
 def _build_gemini_image_prompt(content: dict[str, Any], platform: str, visual_plan: dict[str, Any]) -> str:
     spec = _platform_visual_spec(platform)
+    platform_key = platform.split("_", 1)[0]
     platform_cfg = _safe_json_dict((visual_plan.get("platform_overrides") or {}).get(platform))
+    layout = _safe_json_dict(content.get("layout_grammar") or visual_plan.get("layout_grammar"))
+    interpretation = _safe_json_dict((content.get("platform_interpretations") or visual_plan.get("platform_interpretations") or {}).get(platform_key))
+    information = _safe_json_dict(content.get("information_priority") or visual_plan.get("information_priority"))
+    benefit = _safe_json_dict(content.get("benefit_translation") or visual_plan.get("benefit_translation"))
     style_intent = str(visual_plan.get("style_intent") or "premium retail ad board for power products").strip()
     mood = str(visual_plan.get("mood") or "bold, high-contrast, conversion-focused, premium").strip()
-    composition = str(platform_cfg.get("composition") or visual_plan.get("composition") or "structured copy column left, grounded product staging right").strip()
+    composition = str(layout.get("alignment") or platform_cfg.get("composition") or visual_plan.get("composition") or "structured copy column left, grounded product staging right").strip()
     key_hook = normalize_brand_text(str(content.get("selected_hook") or content.get("topic") or "Power planning"))
     topic = normalize_brand_text(str(content.get("topic") or ""))
     product_name = normalize_brand_text(str(content.get("product_name") or ""))
@@ -534,8 +539,8 @@ def _build_gemini_image_prompt(content: dict[str, Any], platform: str, visual_pl
     ]
     for i, row in enumerate(spec_rows, start=1):
         exact_copy_lines.append(f"- Spec badge row {i} (bordered pill with a small matching icon glyph and a chevron mark): \"{row}\"")
-    for i, benefit in enumerate(benefit_rows, start=1):
-        exact_copy_lines.append(f"- Benefit chip {i} (small rounded pill directly beneath the spec badges, with a checkmark icon glyph, visually distinct in shape or fill from the spec badges): \"{benefit}\"")
+    for i, benefit_item in enumerate(benefit_rows, start=1):
+        exact_copy_lines.append(f"- Benefit chip {i} (small rounded pill directly beneath the spec badges, with a checkmark icon glyph, visually distinct in shape or fill from the spec badges): \"{benefit_item}\"")
     for i, badge in enumerate(trust_badges, start=1):
         exact_copy_lines.append(f"- Trust badge {i} (small pill in a horizontal row): \"{badge}\"")
     exact_copy_lines.append(f"- Call-to-action banner (bottom of the copy column): \"{cta}\"")
@@ -601,6 +606,37 @@ def _build_gemini_image_prompt(content: dict[str, Any], platform: str, visual_pl
         "Add one continuous visual connector (a light shaft, reflection line, or material accent) that bridges the copy column "
         "and the product zone so the whole canvas reads as a single unified image rather than two separate halves. "
     )
+    cognition_layout_direction = (
+        "Creative-decision layout rules are authoritative over generic template conventions: "
+        f"primary focal point={layout.get('primary_focal_point', 'headline and benefit')}; "
+        f"secondary focal point={layout.get('secondary_focal_point', 'product')}; "
+        f"reading flow={layout.get('reading_flow', 'top-to-bottom')}; "
+        f"product role={layout.get('product_role', 'supporting proof')}; "
+        f"product placement={layout.get('product_placement', spec['product_zone'])}; "
+        f"human role={layout.get('human_role', 'absent')}; human placement={layout.get('human_placement', 'none')}; "
+        f"headline position={layout.get('headline_position', 'top-left')}; benefit position={layout.get('benefit_position', 'adjacent to focal proof')}; "
+        f"proof position={layout.get('proof_position', 'supporting lower-third')}; CTA position={layout.get('cta_position', 'footer')}; "
+        f"text density={layout.get('text_density', 'medium')}; spacing={layout.get('spacing_intent', 'generous separation')}; "
+        f"negative space={layout.get('negative_space_intent', 'protect headline legibility')}. "
+    )
+    if layout.get("human_role") not in {"", "absent", "none"}:
+        cognition_layout_direction += "Show a believable, task-relevant person only when they clarify the supported customer moment; never use generic smiling stock imagery or artificial emergency emotion. "
+    else:
+        cognition_layout_direction += "Do not add a person merely for decoration; let product, environment, and information carry the idea. "
+    priority_direction = (
+        f"Show only these must-show ideas prominently: {', '.join(map(str, information.get('MUST_SHOW', [])[:3])) or 'the approved headline and benefit'}. "
+        f"Secondary visual support may use: {', '.join(map(str, information.get('SHOULD_SHOW', [])[:2])) or 'one supporting outcome'}. "
+        f"Keep supporting facts subordinate: {', '.join(map(str, information.get('SUPPORTING', [])[:2])) or 'none'}. "
+        "Do not render omitted information or add unapproved specifications. "
+    )
+    platform_direction = (
+        f"Native {platform_key} creative interpretation: hook posture={interpretation.get('hook_posture', 'platform-appropriate')}; "
+        f"format={interpretation.get('format', spec['aspect_ratio'])}; information density={interpretation.get('information_density', layout.get('text_density', 'medium'))}; "
+        f"visual composition={interpretation.get('visual_composition', layout.get('alignment', 'clear hierarchy'))}; "
+        f"product emphasis={interpretation.get('product_emphasis', layout.get('product_role', 'supporting'))}; "
+        f"CTA expression={interpretation.get('cta_expression', 'clear next step')}. "
+    )
+    benefit_direction = f"The graphic should make the primary practical benefit '{benefit.get('PRACTICAL_BENEFIT', '')}' legible and imply the supported customer outcome '{benefit.get('CUSTOMER_OUTCOME', '')}', without printing abstract emotional slogans literally. "
     design_element_direction = (
         "Enrich the copy column with deliberate, restrained design elements beyond plain text blocks: give the spec badges and "
         "benefit chips small, simple line-icon glyphs matched to their meaning (a bolt for power output, a clock for runtime, a "
@@ -640,6 +676,10 @@ def _build_gemini_image_prompt(content: dict[str, Any], platform: str, visual_pl
         f"{material_direction}"
         f"{product_stage_direction}"
         f"{layout_direction} "
+        f"{cognition_layout_direction}"
+        f"{priority_direction}"
+        f"{platform_direction}"
+        f"{benefit_direction}"
         f"{design_element_direction}"
         f"{atmosphere_direction}"
         f"{campaign_direction}"

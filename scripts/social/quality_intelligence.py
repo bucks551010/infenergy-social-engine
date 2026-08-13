@@ -259,3 +259,39 @@ def creative_director_test(
         if not v or (v.lower() == "no"):
             failures.append(k)
     return CreativeDirectorVerdict(passed=(not failures), answered=answered, failures=failures)
+
+
+def copy_critic(*, copy: dict[str, Any], strategy: dict[str, Any], platform: str) -> dict[str, Any]:
+    """Review the final assembled copy without rewriting it blindly."""
+    hook = str(copy.get("hook") or "")
+    body = str(copy.get("body_text") or "")
+    cta = str(copy.get("cta") or "")
+    issues: list[str] = []
+    if copy_intelligence.humanness_score(hook + " " + body) < 0.6:
+        issues.append("generic_or_ai_like_language")
+    if not hook or not body:
+        issues.append("missing_opening_or_payoff")
+    if strategy.get("benefit") and str(strategy["benefit"]).lower() not in (hook + " " + body).lower():
+        issues.append("primary_benefit_not_explicit")
+    if not cta:
+        issues.append("missing_cta")
+    if platform.startswith("linkedin") and not any(term in (hook + " " + body).lower() for term in ("decision", "planning", "operational", "business", "continuity")):
+        issues.append("linkedin_professional_value_weak")
+    return {"verdict": "PASS" if not issues else "REVISE", "issues": issues, "hook": hook, "platform": platform}
+
+
+def visual_critic(*, visual: dict[str, Any], provider_result: dict[str, Any], platform: str) -> dict[str, Any]:
+    """Review the rendered plan and state when pixel inspection is unavailable."""
+    layout = visual.get("layout_grammar") or {}
+    priority = visual.get("information_priority") or {}
+    issues: list[str] = []
+    required = ("primary_focal_point", "product_placement", "headline_position", "text_density", "cta_position")
+    if any(not layout.get(key) for key in required):
+        issues.append("incomplete_layout_execution_plan")
+    if not priority.get("MUST_SHOW"):
+        issues.append("missing_visual_information_priority")
+    kind = str(provider_result.get("kind") or "")
+    pixel_status = "PIXEL_REVIEW_PENDING" if kind == "template_recipe" else "PIXEL_RENDER_AVAILABLE" if provider_result.get("asset_path") else "NO_RENDERED_ASSET"
+    if pixel_status == "NO_RENDERED_ASSET":
+        issues.append("rendered_asset_unavailable")
+    return {"verdict": "PASS" if not issues else "REVISE", "issues": issues, "platform": platform, "pixel_status": pixel_status, "reviewed_layout": {key: layout.get(key) for key in required}}

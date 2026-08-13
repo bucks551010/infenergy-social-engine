@@ -3706,89 +3706,25 @@ def _normalize_benefit_fragment(text: str) -> str:
 
 
 def _adapt_facebook(components: dict, funnel_stage: str) -> tuple[str, str, str]:
-    product_name = str(components.get("product_name", "this product"))
-    profile = components.get("copy_profile") if isinstance(components.get("copy_profile"), dict) else _product_copy_profile({"name": product_name, "categories": [], "metrics": []})
-    feature_lines = "\n".join([f"- {item}" for item in (components.get("feature_bullets", []) or [])[:5]])
-    question = "What is the first device you refuse to lose during an outage?"
-    cta = _sales_cta_line({"name": product_name}, str(components.get("cta", "")), "facebook")
-    if not feature_lines.strip():
-        feature_lines = (
-            "- Portable backup power for real outage scenarios\n"
-            "- Designed for home, vehicle, and travel readiness\n"
-            "- Practical setup for faster response when power drops"
-        )
-    caption = (
-        f"{components['logic_hook']}\n\n"
-        f"{components['situation']}\n\n"
-        f"{components['logic_bridge']}\n\n"
-        f"{product_name} is a {profile['role']} that {components.get('benefit_fragment', 'supports a clearer buying decision')}.\n\n"
-        "Why buyers choose it:\n"
-        f"{feature_lines}\n\n"
-        f"{components['detail_summary']}\n\n"
-        f"{components['use_case_line']}\n\n"
-        f"{components['proof']}\n\n"
-        f"That adds up to {components['emotional_outcome']}.\n\n"
-        f"{cta}\n\n"
-        f"{question}\n"
-        "#PortablePower #BackupPower #EmergencyPreparedness #PowerOutage #StayPowered #PreparedNotPanicked"
-    )
-    return caption, cta, "community_story"
+    from social import platform_presentation
+
+    caption, _ = platform_presentation.format_caption(components, platform="facebook")
+    return caption, str(components.get("cta") or "Learn more"), "community_story"
 
 
 def _adapt_instagram(components: dict, funnel_stage: str) -> tuple[str, str, str, str]:
-    product_name = str(components.get("product_name", "this product"))
-    profile = components.get("copy_profile") if isinstance(components.get("copy_profile"), dict) else _product_copy_profile({"name": product_name, "categories": [], "metrics": []})
-    feature_lines = "\n".join([f"- {item}" for item in (components.get("feature_bullets", []) or [])[:4]])
-    cta = _sales_cta_line({"name": product_name}, str(components.get("cta", "")), "instagram")
-    if not feature_lines.strip():
-        feature_lines = (
-            "- Built for outage and travel backup\n"
-            "- Designed for practical daily carry\n"
-            "- Ready for home, vehicle, and emergency kits"
-        )
+    from social import platform_presentation
 
-    caption = (
-        f"{components['logic_hook'].upper()}\n\n"
-        f"{product_name} is a {profile['role']} that {components.get('benefit_fragment', 'supports a clearer buying decision')}.\n\n"
-        f"{components['logic_bridge']}\n\n"
-        "Built for real use:\n"
-        f"{feature_lines}\n\n"
-        f"{components['detail_summary']}\n\n"
-        f"{components['use_case_line']}\n\n"
-        f"{components['proof']}\n\n"
-        f"The result: {components['emotional_outcome']}.\n\n"
-        f"{cta}\n"
-        "#PortablePower #BackupPower #EmergencyPreparedness #PowerOutage #StayPowered #StormReady #TravelPower #PreparedNotPanicked"
-    )
+    caption, _ = platform_presentation.format_caption(components, platform="instagram")
     visual_direction = "reel" if funnel_stage.upper() in ("ATTENTION", "DESIRE") else "carousel"
-    alt_text = f"{components['topic']} with practical power-planning visuals and product context."
-    return caption, cta, visual_direction, alt_text
+    return caption, str(components.get("cta") or "Learn more"), visual_direction, "Platform-native visual with complementary decision context."
 
 
 def _adapt_linkedin(components: dict, funnel_stage: str) -> tuple[str, str, str]:
-    product_name = str(components.get("product_name", "this product"))
-    profile = components.get("copy_profile") if isinstance(components.get("copy_profile"), dict) else _product_copy_profile({"name": product_name, "categories": [], "metrics": []})
-    feature_lines = "\n".join([f"- {item}" for item in (components.get("feature_bullets", []) or [])[:5]])
-    cta = _sales_cta_line({"name": product_name}, str(components.get("cta", "")), "linkedin")
-    if not feature_lines.strip():
-        feature_lines = (
-            "- Practical backup power for continuity planning\n"
-            "- Supports faster response in outage scenarios\n"
-            "- Portable form factor for home and mobile readiness"
-        )
-    caption = (
-        f"{components['logic_hook']}\n\n"
-        f"The {product_name} is a {profile['role']} that {components.get('benefit_fragment', 'supports a clearer buying decision')}.\n\n"
-        f"{components['logic_bridge']}\n\n"
-        f"Key features include:\n{feature_lines}\n\n"
-        f"Operational proof points: {components['detail_summary']}\n\n"
-        f"{components['use_case_line']}\n\n"
-        f"{components['proof']}\n\n"
-        f"The operational outcome is {components['emotional_outcome']}.\n\n"
-        f"{cta}\n"
-        "#EmergencyPreparedness #PortablePower #BackupPower #BusinessContinuity #Resilience"
-    )
-    return caption, cta, "authority_post"
+    from social import platform_presentation
+
+    caption, _ = platform_presentation.format_caption(components, platform="linkedin")
+    return caption, str(components.get("cta") or "Learn more"), "authority_post"
 
 
 def _build_platform_posts(
@@ -3889,7 +3825,6 @@ def _build_platform_posts(
             "validation_errors": [],
         },
     }
-
     overrides = caption_overrides or {}
     for platform in ("facebook", "instagram", "linkedin"):
         platform_override = overrides.get(platform, {}) if isinstance(overrides, dict) else {}
@@ -3910,6 +3845,7 @@ def _build_platform_posts(
         "linkedin": "professional decision-support insight",
     }
     interpretations = dict(platform_interpretations or {})
+    from social import platform_presentation
     for platform, package in platform_posts.items():
         interpretation = interpretations.get(platform, {})
         if isinstance(interpretation, dict):
@@ -3931,6 +3867,13 @@ def _build_platform_posts(
         package["human_connection_review"] = reviews.get("independent_human_connection_review", {})
         package["strategy_integrity_review"] = reviews.get("strategy_integrity_review", {})
         package["platform_posture"] = native_posture[platform]
+        _, presentation = platform_presentation.format_caption(components, platform=platform)
+        presentation.update(platform_presentation.evaluate(
+            package["caption"],
+            platform=platform,
+            visual_specs=list(components.get("feature_bullets") or []),
+        ))
+        package["presentation"] = presentation
 
     return platform_posts
 

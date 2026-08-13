@@ -1,0 +1,97 @@
+import os
+import sys
+import tempfile
+from pathlib import Path
+from unittest.mock import patch
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
+
+import run_engine
+from social import platform_presentation
+
+
+def _content():
+    return {
+        "post_id": "candidate-1",
+        "topic": "Power Stations",
+        "pillar": "portable_power",
+        "generated_visuals": {"facebook": "/data/generated_visuals/candidate-1_facebook.png"},
+        "copy": {"strategy_lock": {"strategy_version": 1}},
+    }
+
+
+def test_receipt_survives_later_history_failure_and_prevents_duplicate_publish():
+    with tempfile.TemporaryDirectory() as data_dir, patch.dict(os.environ, {"DATA_DIR": data_dir}, clear=False):
+        receipt = run_engine._persist_publish_receipt(
+            _content(), platform="facebook", external_post_id="fb-123", run_id="run-1"
+        )
+        run_engine._mark_publish_postprocess_error(_content(), "facebook", RuntimeError("history write failed"))
+        loaded = run_engine._successful_publish_receipt(_content(), "facebook")
+
+    assert receipt["facebook_post_id"] == "fb-123"
+    assert loaded["facebook_post_id"] == "fb-123"
+    assert loaded["postprocess_status"] == "published_persistence_error"
+
+
+def test_reconcile_receipt_creates_honest_recovery_row():
+    with tempfile.TemporaryDirectory() as data_dir:
+        with patch.dict(os.environ, {"DATA_DIR": data_dir}, clear=False), patch.object(run_engine.generate_posts, "DATA_DIR", data_dir), patch.object(run_engine.generate_posts, "BASE_DATA_DIR", data_dir):
+            receipt = run_engine._persist_publish_receipt(
+                _content(), platform="facebook", external_post_id="fb-123", run_id="2026-08-13T20:19:39Z"
+            )
+            assert run_engine._reconcile_publish_receipt(receipt)
+            history = run_engine.generate_posts.load_history()
+
+    row = history["posts"][-1]
+    assert row["status"] == "published_persistence_recovered"
+    assert row["fb_id"] == "fb-123"
+    assert row["recovery"]["aggregate_history_previously_failed"]
+
+
+def test_normalization_accepts_orchestrator_without_legacy_date():
+    normalized = run_engine._normalize_history_content(
+        {"created_at": "2026-08-13T20:19:39+00:00", "strategic_brief": {"topic_path": {"topic": "Power Stations"}, "pillar_id": "portable_power"}},
+        run_started="2026-08-13T20:20:00+00:00",
+    )
+    assert normalized["date"] == "2026-08-13"
+    assert normalized["topic"] == "Power Stations"
+    assert normalized["pillar"] == "portable_power"
+
+
+def test_facebook_presentation_compresses_visual_spec_duplication():
+    components = {
+        "logic_hook": "Can your phone power the gear you need away from an outlet?",
+        "situation": "Before a trip, identify the device you cannot afford to lose.",
+        "logic_bridge": "Match the job to verified product facts before you pack.",
+        "benefit_fragment": "keeps compatible daily devices charged away from outlets",
+        "product_name": "PowerPulse Pro 200",
+        "cta": "Compare your setup.",
+        "feature_bullets": ["154Wh", "41,600mAh", "200W", "110V"],
+    }
+    original = "PowerPulse Pro 200 154Wh 41,600mAh 200W 110V. " * 8 + "#One #Two #Three #Four #Five #Six"
+    improved, presentation = platform_presentation.format_caption(components, platform="facebook")
+    before = platform_presentation.evaluate(original, platform="facebook", visual_specs=components["feature_bullets"])
+
+    assert presentation["word_count"] < before["word_count"]
+    assert presentation["hashtag_count"] < before["hashtag_count"]
+    assert "154Wh" not in improved
+    assert presentation["presentation_critic"] == "PASS"
+
+
+def test_platform_expressions_are_native_and_reject_generic_engagement_bait():
+    components = {
+        "logic_hook": "What must stay powered before a trip?",
+        "logic_bridge": "Start with the device and compare verified facts.",
+        "benefit_fragment": "supports a practical product-fit decision",
+        "product_name": "PowerPulse Pro 200",
+        "cta": "Learn more.",
+        "feature_bullets": ["154Wh", "200W"],
+    }
+    facebook, _ = platform_presentation.format_caption(components, platform="facebook")
+    instagram, _ = platform_presentation.format_caption(components, platform="instagram")
+    linkedin, _ = platform_presentation.format_caption(components, platform="linkedin")
+    bait = platform_presentation.evaluate("What do you think? Tell us below.", platform="facebook")
+
+    assert len({facebook, instagram, linkedin}) == 3
+    assert bait["generic_engagement_bait"]

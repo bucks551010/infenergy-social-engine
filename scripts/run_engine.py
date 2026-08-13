@@ -314,6 +314,128 @@ def _generation_diagnostics(content: dict) -> dict:
     }
 
 
+def _publish_receipts_path() -> str:
+    root = os.environ.get("DATA_DIR", os.path.join(os.path.dirname(__file__), "..", "data"))
+    return os.path.join(root, "social", "publish_receipts.json")
+
+
+def _load_publish_receipts() -> dict:
+    try:
+        with open(_publish_receipts_path(), encoding="utf-8") as handle:
+            data = json.load(handle)
+        return data if isinstance(data, dict) and isinstance(data.get("receipts"), list) else {"receipts": []}
+    except (OSError, json.JSONDecodeError):
+        return {"receipts": []}
+
+
+def _save_publish_receipts(state: dict) -> None:
+    path = _publish_receipts_path()
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    temporary = path + ".tmp"
+    with open(temporary, "w", encoding="utf-8") as handle:
+        json.dump(state, handle, indent=2)
+    os.replace(temporary, path)
+
+
+def _receipt_key(content: dict, platform: str) -> str:
+    return f"{platform}:{str(content.get('post_id') or '')}"
+
+
+def _successful_publish_receipt(content: dict, platform: str) -> dict:
+    key = _receipt_key(content, platform)
+    state = _load_publish_receipts()
+    return next((item for item in state["receipts"] if item.get("key") == key and item.get("publisher_status") == "published"), {})
+
+
+def _persist_publish_receipt(content: dict, *, platform: str, external_post_id: str, run_id: str) -> dict:
+    state = _load_publish_receipts()
+    key = _receipt_key(content, platform)
+    receipt = {
+        "key": key,
+        "platform": platform,
+        "post_id": str(content.get("post_id") or ""),
+        "facebook_post_id": external_post_id if platform == "facebook" else "",
+        "published_at": datetime.now(timezone.utc).isoformat(),
+        "source_candidate_id": str((content.get("generated_visuals") or {}).get("source_visual_candidate_id") or content.get("post_id") or ""),
+        "artifact_path": str((content.get("generated_visuals") or {}).get(platform) or ""),
+        "strategy_version": (_strategy_lock_for_revision(content) or {}).get("strategy_version"),
+        "run_id": run_id,
+        "publisher_status": "published",
+        "provider_response_status": "success",
+        "postprocess_status": "pending",
+    }
+    state["receipts"] = [item for item in state["receipts"] if item.get("key") != key] + [receipt]
+    _save_publish_receipts(state)
+    return receipt
+
+
+def _mark_publish_postprocess_error(content: dict, platform: str, error: Exception) -> None:
+    state = _load_publish_receipts()
+    key = _receipt_key(content, platform)
+    for receipt in state["receipts"]:
+        if receipt.get("key") == key:
+            receipt["postprocess_status"] = "published_persistence_error"
+            receipt["postprocess_error"] = f"{type(error).__name__}:{error}"
+    _save_publish_receipts(state)
+
+
+def _mark_publish_postprocess_complete(content: dict, platform: str) -> None:
+    state = _load_publish_receipts()
+    key = _receipt_key(content, platform)
+    for receipt in state["receipts"]:
+        if receipt.get("key") == key:
+            receipt["postprocess_status"] = "complete"
+    _save_publish_receipts(state)
+
+
+def _reconcile_publish_receipt(receipt: dict) -> bool:
+    """Append a minimal, honest recovery row for a receipt missing aggregate history."""
+    facebook_id = str(receipt.get("facebook_post_id") or "").strip()
+    post_id = str(receipt.get("post_id") or "").strip()
+    if not (facebook_id and post_id):
+        return False
+    history = generate_posts.load_history()
+    posts = history.get("posts", []) if isinstance(history.get("posts"), list) else []
+    if any(str(row.get("fb_id") or "") == facebook_id for row in posts if isinstance(row, dict)):
+        return False
+    posts.append({
+        "post_id": post_id,
+        "fb_id": facebook_id,
+        "status": "published_persistence_recovered",
+        "published_at": receipt.get("published_at"),
+        "run_started_at_utc": receipt.get("run_id"),
+        "date": str(receipt.get("published_at") or "")[:10],
+        "platform_records": [{
+            "platform": "facebook",
+            "platform_post_id": facebook_id,
+            "status": "published",
+            "published_at": receipt.get("published_at"),
+            "error": None,
+        }],
+        "recovery": {
+            "source": "durable_publish_receipt",
+            "aggregate_history_previously_failed": True,
+            "recovered_fields": ["post_id", "fb_id", "published_at", "artifact_path", "strategy_version"],
+            "artifact_path": receipt.get("artifact_path"),
+            "strategy_version": receipt.get("strategy_version"),
+        },
+    })
+    history["posts"] = posts[-200:]
+    generate_posts.save_history(history)
+    return True
+
+
+def _normalize_history_content(content: dict, *, run_started: str) -> dict:
+    """Normalize legacy and orchestrator payloads at the history boundary only."""
+    normalized = dict(content)
+    timestamp = str(content.get("date") or content.get("created_at") or content.get("run_started_at_utc") or run_started)
+    normalized["date"] = timestamp[:10]
+    normalized["topic"] = str(content.get("topic") or ((content.get("strategic_brief") or {}).get("topic_path") or {}).get("topic") or "")
+    normalized["pillar"] = str(content.get("pillar") or ((content.get("strategic_brief") or {}).get("pillar_id") or ""))
+    normalized["topic_hash"] = str(content.get("topic_hash") or _stable_hash(normalized["topic"]))
+    return normalized
+
+
 def _visual_strategy_fingerprint(content: dict) -> str:
     strategy = _strategy_lock_for_revision(content)
     visual_plan = content.get("visual_plan") if isinstance(content.get("visual_plan"), dict) else {}
@@ -1532,7 +1654,11 @@ def main() -> None:
     print("[3/5] Facebook...")
     t_fb = time.perf_counter()
     if effective_channels["facebook"]:
-        if (not dry_run) and was_recent_channel_success(history, "fb", slot, skip_success_hours):
+        existing_receipt = _successful_publish_receipt(content, "facebook") if not dry_run else {}
+        if existing_receipt:
+            fb_result = {"id": existing_receipt["facebook_post_id"], "reused_receipt": True}
+            print(f"[SKIP] Facebook already published: {fb_result['id']}")
+        elif (not dry_run) and was_recent_channel_success(history, "fb", slot, skip_success_hours):
             print("[SKIP] Facebook recent successful publish within configured window")
         elif (
             (not dry_run)
@@ -1550,6 +1676,14 @@ def main() -> None:
         else:
             try:
                 fb_result = publish_facebook.publish(content, wp_link_fb, dry_run=dry_run)
+                facebook_post_id = str(fb_result.get("id") or "").strip()
+                if facebook_post_id and facebook_post_id not in {"dry-run", "skipped"}:
+                    _persist_publish_receipt(
+                        content,
+                        platform="facebook",
+                        external_post_id=facebook_post_id,
+                        run_id=datetime.now(timezone.utc).isoformat(),
+                    )
             except Exception as e:
                 errors.append(f"Facebook: {e}")
                 error_map["facebook"] = str(e)
@@ -1602,6 +1736,7 @@ def main() -> None:
 
     # Persist history so the next run picks a fresh topic
     run_started = datetime.now(timezone.utc).isoformat()
+    content = _normalize_history_content(content, run_started=run_started)
     tracked_links = {
         "facebook": wp_link_fb,
         "instagram": wp_link_ig,
@@ -1698,7 +1833,15 @@ def main() -> None:
         "li_id": li_result.get("id"),
     })
     history["posts"] = history["posts"][-200:]
-    generate_posts.save_history(history)
+    try:
+        generate_posts.save_history(history)
+        if str(fb_result.get("id") or "").strip() and not dry_run:
+            _mark_publish_postprocess_complete(content, "facebook")
+    except Exception as exc:
+        if str(fb_result.get("id") or "").strip() and not dry_run:
+            _mark_publish_postprocess_error(content, "facebook", exc)
+            raise RuntimeError(f"published_persistence_error:facebook:{exc}") from exc
+        raise
 
     if errors:
         raise RuntimeError(" | ".join(errors))

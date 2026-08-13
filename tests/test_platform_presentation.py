@@ -73,13 +73,16 @@ def test_powerpulse_fixture_front_loads_value_without_losing_sales_depth():
 
 
 def test_hashtag_portfolio_is_richer_for_facebook_and_selective_for_linkedin():
-    _, facebook = platform_presentation.refine_caption(POWERPULSE_ORIGINAL, components=_components(), platform="facebook")
-    _, instagram = platform_presentation.refine_caption(POWERPULSE_ORIGINAL, components=_components(), platform="instagram")
-    _, linkedin = platform_presentation.refine_caption(POWERPULSE_ORIGINAL, components=_components(), platform="linkedin")
+    facebook_caption, facebook = platform_presentation.refine_caption(POWERPULSE_ORIGINAL, components=_components(), platform="facebook")
+    instagram_caption, instagram = platform_presentation.refine_caption(POWERPULSE_ORIGINAL, components=_components(), platform="instagram")
+    linkedin_caption, linkedin = platform_presentation.refine_caption(POWERPULSE_ORIGINAL, components=_components(), platform="linkedin")
 
     assert 10 <= len(facebook["selected_hashtags"]) <= 15
     assert 10 <= len(instagram["selected_hashtags"]) <= 15
     assert len(linkedin["selected_hashtags"]) <= 5
+    assert len({facebook_caption, instagram_caption, linkedin_caption}) == 3
+    assert instagram["platform_expression"] == "visual_first_mobile_scannable_caption"
+    assert linkedin["platform_expression"] == "professional_decision_support_editorial"
     assert set(facebook["hashtag_categories"]) == {
         "brand", "product", "category", "use_case", "audience_situation", "discovery"
     }

@@ -117,14 +117,19 @@ def refine_caption(
         core.append(f"{product_line} {use_case}".strip())
     elif use_case:
         core.append(use_case)
-    if proof and include_proof:
-        core.append("Key specs, translated: " + "; ".join(proof) + ".")
+    selected_proof = proof[:1] if platform == "instagram" else proof
+    if selected_proof and include_proof:
+        core.append("Key specs, translated: " + "; ".join(selected_proof) + ".")
+    if platform == "linkedin":
+        core.append("The professional decision is matching supported equipment to the actual job, not accumulating specifications.")
 
     core_text = " ".join(core).lower()
     optional_depth = [
         part for part in kept_depth
         if part.lower() not in core_text and part.strip().lower() != cta.lower()
     ]
+    if platform == "instagram":
+        optional_depth = [part for part in optional_depth if not _is_contrast(part)][:2]
     tags, categories = _portfolio(components, platform, caption)
     hashtag_line = " ".join(f"#{tag}" for tag in tags)
     refined = "\n\n".join(filter(None, ["\n\n".join(core), "\n\n".join(optional_depth), cta, hashtag_line]))
@@ -140,6 +145,11 @@ def refine_caption(
         "hashtag_reason": "brand, product, category, verified use-case, and discovery tags only",
         "optional_depth_present": bool(optional_depth),
         "reordered_for_priority": product_led and bool(product),
+        "platform_expression": {
+            "facebook": "front_loaded_commercial_value_with_optional_depth",
+            "instagram": "visual_first_mobile_scannable_caption",
+            "linkedin": "professional_decision_support_editorial",
+        }.get(platform, "priority_layered"),
     })
     return refined, presentation
 

@@ -57,15 +57,21 @@ def discover(*, task: research_router.ResearchTask, known_sources: list[str] | N
 
 def research(*, task: research_router.ResearchTask, known_sources: list[str] | None = None) -> list[dict[str, Any]]:
     """Question-to-evidence entry point that does not require a final URL."""
-    discovered = discover(task=task, known_sources=known_sources)
-    if not discovered:
-        return [{"failure": "NO_RELEVANT_SOURCE", "decision_affected": task.decision_affected}]
     try:
+        discovered = discover(task=task, known_sources=known_sources)
+        if not discovered:
+            return [{"failure": "NO_RELEVANT_SOURCE", "decision_affected": task.decision_affected}]
         return collect(task=task, urls=[item["url"] for item in discovered]) or [{"failure": "INSUFFICIENT_EVIDENCE", "decision_affected": task.decision_affected}]
     except PermissionError:
         return [{"failure": "AUTHENTICATION_REQUIRED", "decision_affected": task.decision_affected}]
     except Exception:
         return [{"failure": "SOURCE_UNAVAILABLE", "decision_affected": task.decision_affected}]
+
+
+def test_discovery_failure_is_a_structured_research_outcome(monkeypatch):
+    monkeypatch.setattr(public_research, "discover_web_candidates", lambda task: (_ for _ in ()).throw(OSError("offline")))
+    task = research_router.route(question="Which competitors frame portable power differently?", why_needed="find whitespace", entity="portable power", decision_affected="positioning")
+    assert public_research.research(task=task)[0]["failure"] == "SOURCE_UNAVAILABLE"
 
 
 def collect(*, task: research_router.ResearchTask, urls: list[str]) -> list[dict[str, Any]]:

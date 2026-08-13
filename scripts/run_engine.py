@@ -772,7 +772,9 @@ def _ensure_final_artifact_qa(content: dict, effective_channels: dict[str, bool]
     reviews = visuals.get("artifact_reviews") if isinstance(visuals.get("artifact_reviews"), dict) else {}
     for platform in ("facebook", "instagram", "linkedin"):
         if effective_channels.get(platform):
-            reviews[platform] = review_rendered_visual(str(visuals.get(platform) or ""), platform)
+            existing_review = reviews.get(platform) if isinstance(reviews.get(platform), dict) else {}
+            artifact_path = str(visuals.get(platform) or existing_review.get("artifact_path") or "")
+            reviews[platform] = review_rendered_visual(artifact_path, platform)
     visuals["artifact_reviews"] = reviews
     content["artifact_visual_qa"] = reviews
     return reviews

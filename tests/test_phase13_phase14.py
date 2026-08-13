@@ -103,6 +103,19 @@ class PhaseThirteenFourteenTests(unittest.TestCase):
         self.assertEqual(result["facebook"], review)
         self.assertEqual(content["artifact_visual_qa"]["facebook"]["verdict"], "PASS")
 
+    def test_final_artifact_qa_uses_carried_forward_review_path(self) -> None:
+        content = {
+            "generated_visuals": {
+                "artifact_reviews": {"facebook": {"artifact_path": "C:/tmp/carried-forward.png"}},
+            }
+        }
+        review = {"verdict": "PASS", "issues": [], "inspected_path": "C:/tmp/carried-forward.png", "dimensions": [1200, 1200]}
+        with patch.object(run_engine, "review_rendered_visual", return_value=review) as inspect:
+            result = run_engine._ensure_final_artifact_qa(content, {"facebook": True, "instagram": False, "linkedin": False, "wordpress": False})
+
+        inspect.assert_called_once_with("C:/tmp/carried-forward.png", "facebook")
+        self.assertEqual(result["facebook"], review)
+
     def test_subthreshold_critic_persists_actionable_findings_not_only_wrapper(self) -> None:
         decision = decide_publication(
             legacy_score={"total": 96, "platform_results": {}},

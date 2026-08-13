@@ -944,6 +944,69 @@ def test_model_router_uses_default_and_env_override(monkeypatch):
     assert model_router.route_for("strategy") == "custom-model"
 
 
+def test_revision_claim_filter_removes_unsupported_numbers_without_replacement():
+    text = (
+        "The 154Wh PowerPulse Pro 200 supports compatible devices. "
+        "It runs a 50W fridge for 2.6 hours."
+    )
+
+    sanitized, removed = claim_intelligence.remove_unsupported_numeric_claims(text, ["154Wh", "200W", "41,600mAh"])
+
+    assert sanitized == "The 154Wh PowerPulse Pro 200 supports compatible devices."
+    assert removed == ["It runs a 50W fridge for 2.6 hours."]
+    assert "2.6" not in sanitized
+    assert "50W" not in sanitized
+
+
+def test_revision_objectives_make_soft_and_claim_feedback_actionable():
+    objectives = orchestrator._revision_objectives(
+        [
+            "runtime_not_verified:2.6 hours",
+            "primary_benefit_not_explicit",
+            "humanness below bar",
+            "generic_or_ai_like_language",
+        ],
+        {
+            "benefit": "keeps compatible daily devices charged away from outlets",
+            "customer_moment": "before a trip",
+            "human_need": "avoid carrying the wrong backup power",
+        },
+    )
+
+    assert any("do not replace them with new numbers" in objective.lower() for objective in objectives)
+    assert any("keeps compatible daily devices charged away from outlets" in objective for objective in objectives)
+    assert any("before a trip" in objective for objective in objectives)
+    assert any("stock marketing transitions" in objective for objective in objectives)
+
+
+def test_copy_editing_prompt_receives_structured_revision_objectives(monkeypatch):
+    brief = engines.get_engine("A").build(rotation_index=0)
+    captured: dict[str, str] = {}
+
+    def fake_generate_json(task, prompt, **_kwargs):
+        captured["task"] = task
+        captured["prompt"] = prompt
+        return {"hook": "Match the battery to the devices you carry."}
+
+    monkeypatch.setattr(model_router, "generate_json", fake_generate_json)
+    objectives = orchestrator._revision_objectives(
+        ["primary_benefit_not_explicit", "humanness below bar", "generic_or_ai_like_language"],
+        {
+            "benefit": "keeps compatible daily devices charged away from outlets",
+            "customer_moment": "before a trip",
+            "human_need": "avoid carrying the wrong backup power",
+        },
+    )
+
+    result = orchestrator._llm_copy_beats(brief, ["hook"], None, revision_feedback=objectives)
+
+    assert result == {"hook": "Match the battery to the devices you carry."}
+    assert captured["task"] == "copy_editing"
+    assert "keeps compatible daily devices charged away from outlets" in captured["prompt"]
+    assert "before a trip" in captured["prompt"]
+    assert "stock marketing transitions" in captured["prompt"]
+
+
 def test_cost_tracker_records_and_totals():
     tracker = model_router.ApiCostTracker()
     tracker.record(model_router.ApiCallRecord(model="m", task="t", input_tokens=100, output_tokens=50, estimated_cost_usd=0.001))

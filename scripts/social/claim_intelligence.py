@@ -62,6 +62,32 @@ class Claim:
 _STAT_RE = re.compile(r"(\d+(?:[.,]\d+)?)\s?(%|hours?|watts?|watt-hours?|wh|w|amps?|amp-hours?|ah|mah|cycles?|degrees?|°[cf]|feet|inches|days?|years?)", re.IGNORECASE)
 
 
+def remove_unsupported_numeric_claims(text: str, verified_facts: Iterable[str]) -> tuple[str, list[str]]:
+    """Remove whole sentences with numeric claims absent from product evidence.
+
+    Revision must never turn an unsupported measurement into a newly invented
+    estimate. Returning the removed sentences lets the caller retain audit
+    evidence while ensuring the revised candidate is evaluated on safe text.
+    """
+    verified_tokens = {
+        f"{match.group(1).replace(',', '').lower()} {match.group(2).lower()}"
+        for fact in verified_facts
+        for match in _STAT_RE.finditer(str(fact or ""))
+    }
+    kept: list[str] = []
+    removed: list[str] = []
+    for sentence in re.split(r"(?<=[.!?])\s+", str(text or "").strip()):
+        tokens = [
+            f"{match.group(1).replace(',', '').lower()} {match.group(2).lower()}"
+            for match in _STAT_RE.finditer(sentence)
+        ]
+        if tokens and any(token not in verified_tokens for token in tokens):
+            removed.append(sentence)
+        elif sentence:
+            kept.append(sentence)
+    return " ".join(kept), removed
+
+
 def _classify_claim_type(text: str) -> str:
     low = text.lower()
     if any(d in low for d in ("safe", "safety", "hazard", "risk of", "danger")):

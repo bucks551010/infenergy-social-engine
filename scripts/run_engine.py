@@ -355,6 +355,38 @@ def _revision_scope(content: dict) -> str:
     return "copy_and_visual" if str(visual_review.get("verdict", "")).upper() == "REVISE" else "copy"
 
 
+def _issue_key(issue: str) -> str:
+    value = str(issue or "")
+    return value.split(":", 1)[0]
+
+
+def _issue_closure(historical_feedback: list[str], current_findings: list[str]) -> list[dict]:
+    current_keys = {_issue_key(issue) for issue in current_findings}
+    return [
+        {
+            "issue": issue,
+            "status": "unresolved" if _issue_key(issue) in current_keys else "resolved",
+        }
+        for issue in historical_feedback
+    ]
+
+
+def _candidate_audit(content: dict) -> dict:
+    copy = content.get("copy") if isinstance(content.get("copy"), dict) else {}
+    posts = content.get("platform_posts") if isinstance(content.get("platform_posts"), dict) else {}
+    facebook = posts.get("facebook") if isinstance(posts.get("facebook"), dict) else {}
+    return {
+        "post_id": content.get("post_id"),
+        "hook": copy.get("hook") or content.get("selected_hook"),
+        "body": copy.get("body_text"),
+        "cta": copy.get("cta") or content.get("selected_cta"),
+        "facebook_copy": facebook.get("caption") or content.get("fb_caption"),
+        "claim_ledger": content.get("claim_ledger", {}),
+        "revision_objectives": copy.get("revision_objectives", []),
+        "removed_unsupported_numeric_claims": copy.get("removed_unsupported_numeric_claims", []),
+    }
+
+
 def _shadow_decision_record(content: dict) -> dict:
     """Owner-readable explanation from existing decision artifacts, never hidden reasoning."""
     strategy = (content.get("copy") or {}).get("strategy_lock") or content.get("strategic_brief") or {}
@@ -859,6 +891,8 @@ def main() -> None:
             locked_product_id = str(content.get("product_id") or "")
         critic_feedback = _revision_feedback(content, publish_decision)
         revision_scope = _revision_scope(content)
+        historical_feedback = list(pending_feedback)
+        issue_closure = _issue_closure(historical_feedback, critic_feedback)
 
         attempts.append(
             {
@@ -871,9 +905,12 @@ def main() -> None:
                 "duplicate_reasons": duplicates.get("reasons", []),
                 "conversion_quality_score": cqs_total,
                 "orchestrator_critic_score": publish_decision.get("orchestrator_critic_score"),
-                "critic_feedback": critic_feedback,
+                "historical_feedback": historical_feedback,
+                "current_candidate_findings": critic_feedback,
+                "issue_closure": issue_closure,
                 "revision_scope": revision_scope,
                 "strategy_lock": locked_strategy,
+                "candidate": _candidate_audit(content),
             }
         )
 

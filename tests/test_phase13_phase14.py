@@ -284,8 +284,10 @@ class PhaseThirteenFourteenTests(unittest.TestCase):
         first["product_id"] = "PPP-200"
         first["copy"] = {"strategy_lock": strategy_lock}
         first["final_platform_copy_reviews"] = {"facebook": {"issues": ["primary_benefit_not_explicit"]}}
+        first["generated_visuals"] = {"facebook": "/tmp/passing-visual.png"}
         second = deepcopy(first)
         second["topic_hash"] = "topic456"
+        second["final_platform_copy_reviews"] = {"facebook": {"issues": []}}
         decisions = [
             {"decision": "revise", "publishable": False, "reasons": ["orchestrator_critic_requires_revision"], "orchestrator_critic_score": 76},
             {"decision": "publish", "publishable": True, "reasons": [], "orchestrator_critic_score": 84},
@@ -315,10 +317,16 @@ class PhaseThirteenFourteenTests(unittest.TestCase):
         self.assertEqual(retry_kwargs["product_id_override"], "PPP-200")
         self.assertIn("orchestrator_critic_requires_revision", retry_kwargs["revision_feedback"])
         self.assertIn("primary_benefit_not_explicit", retry_kwargs["revision_feedback"])
+        self.assertEqual(second["generated_visuals"], first["generated_visuals"])
+        self.assertEqual(second["revision_reused_components"], ["generated_visuals"])
         attempts = save_calls[-1]["posts"][-1]["generation_attempts"]
         self.assertEqual(len(attempts), 2)
         self.assertEqual(attempts[0]["revision_scope"], "copy")
         self.assertEqual(attempts[0]["strategy_lock"], strategy_lock)
+        self.assertEqual(attempts[1]["historical_feedback"], attempts[0]["current_candidate_findings"])
+        self.assertEqual(attempts[1]["current_candidate_findings"], [])
+        self.assertTrue(all(item["status"] == "resolved" for item in attempts[1]["issue_closure"]))
+        self.assertEqual(attempts[0]["candidate"]["hook"], first["selected_hook"])
 
     def test_run_engine_records_skipped_no_eligible_platforms(self) -> None:
         save_calls: list[dict] = []

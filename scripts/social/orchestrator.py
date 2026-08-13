@@ -309,6 +309,26 @@ def _llm_copy_beats(
     return {b: str(result[b]).strip() for b in structure_beats}
 
 
+def _revision_objectives(feedback: list[str] | None, strategy: dict[str, Any]) -> list[str]:
+    """Translate current critic findings into concrete, strategy-bound edits."""
+    findings = {str(item) for item in feedback or []}
+    objectives: list[str] = []
+    if any(item.startswith(("runtime_", "unsupported_numeric_claim", "unverified_specification")) for item in findings):
+        objectives.append("Remove unsupported numeric, runtime, and product-performance claims; do not replace them with new numbers.")
+    if "primary_benefit_not_explicit" in findings:
+        benefit = str(strategy.get("benefit") or "").strip()
+        if benefit:
+            objectives.append(f"State this verified primary benefit clearly and naturally: {benefit}.")
+    if "humanness below bar" in findings:
+        objectives.append(
+            f"Write from the customer's real moment ({strategy.get('customer_moment', '')}) and concern "
+            f"({strategy.get('human_need', '')}), not abstract product language."
+        )
+    if "generic_or_ai_like_language" in findings:
+        objectives.append("Use concrete plain language; remove stock marketing transitions, vague hype, and repetitive CTA phrasing.")
+    return objectives
+
+
 def _llm_concept_stems(brief: engines.EngineBrief, anchor: str) -> list[str] | None:
     """Ask Gemini for creative-concept stems (Master Build §30 / §15 Art Director)."""
     prompt = (
@@ -499,12 +519,20 @@ class SocialIntelligenceOrchestrator:
         # 3. Copy assembly — real Gemini copy when available, deterministic
         # template assembly as the network-free fallback (§15 Copy Architect).
         beats = copy_intelligence.structure_for(brief.genre)
+        revision_objectives = _revision_objectives(revision_feedback, locked)
         llm_beats = _llm_copy_beats(
             brief, beats, bi_ctx, bi_offering,
             creative_packet["SELECTED_ANSWER"]["copy_logic"],
-            revision_feedback,
+            revision_objectives,
         )
         beat_content = llm_beats or _assemble_copy(brief=brief, structure_beats=beats)
+        removed_numeric_claims: list[str] = []
+        if revision_feedback:
+            verified_facts = list((bi_offering or {}).get("verified_facts") or []) or _bi_verified_facts(bi_ctx)
+            for beat, value in list(beat_content.items()):
+                sanitized, removed = claim_intelligence.remove_unsupported_numeric_claims(value, verified_facts)
+                beat_content[beat] = sanitized
+                removed_numeric_claims.extend(removed)
         copy_generation_method = "llm" if llm_beats else "template_fallback"
         copy_fallback_reason = None if llm_beats else model_router.last_error()
         hook_text = beat_content.get("hook") or beat_content.get("question") or beat_content.get("problem") or ""
@@ -672,6 +700,8 @@ class SocialIntelligenceOrchestrator:
                 "generation_method": copy_generation_method,
                 "fallback_reason": copy_fallback_reason,
                 "revision_feedback": list(revision_feedback or []),
+                "revision_objectives": revision_objectives,
+                "removed_unsupported_numeric_claims": removed_numeric_claims,
                 "strategy_lock": locked,
             },
             visual={

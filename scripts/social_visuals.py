@@ -514,9 +514,9 @@ def _build_gemini_image_prompt(content: dict[str, Any], platform: str, visual_pl
     interpretation = _safe_json_dict((content.get("platform_interpretations") or visual_plan.get("platform_interpretations") or {}).get(platform_key))
     information = _safe_json_dict(content.get("information_priority") or visual_plan.get("information_priority"))
     benefit = _safe_json_dict(content.get("benefit_translation") or visual_plan.get("benefit_translation"))
-    style_intent = str(visual_plan.get("style_intent") or "premium retail ad board for power products").strip()
-    mood = str(visual_plan.get("mood") or "bold, high-contrast, conversion-focused, premium").strip()
-    composition = str(layout.get("alignment") or platform_cfg.get("composition") or visual_plan.get("composition") or "structured copy column left, grounded product staging right").strip()
+    style_intent = str(visual_plan.get("style_intent") or "high-impact, layered performance-ad poster for power products").strip()
+    mood = str(visual_plan.get("mood") or "charged, high-contrast, confident, premium").strip()
+    composition = "full-bleed dense product poster: oversized product cutout crosses the central axis, stacked headline layers behind and partly in front of it, diagonal information bands cut across the frame, compact proof modules form a lower rail, and every edge carries intentional visual weight"
     key_hook = normalize_brand_text(str(content.get("selected_hook") or content.get("topic") or "Power planning"))
     topic = normalize_brand_text(str(content.get("topic") or ""))
     product_name = normalize_brand_text(str(content.get("product_name") or ""))
@@ -594,18 +594,18 @@ def _build_gemini_image_prompt(content: dict[str, Any], platform: str, visual_pl
         "with clean unbranded surfaces. "
     )
     layout_direction = (
-        f"Compose a finished, ready-to-publish premium social ad card that uses 100% of the canvas — every corner and edge must "
-        "carry deliberate visual weight, with zero flat, empty, or unfinished-looking space anywhere in the frame, for the "
-        f"{spec['copy_zone']}. This is a complete creative, not a background plate. "
-        "Structure the copy column top-to-bottom exactly as listed above: brand wordmark, status tag pill, headline, subheading, "
-        "proof banner pill, a vertical stack of bordered spec badge rows each with a small icon glyph and chevron mark, a row of "
-        "benefit chips each with a checkmark icon glyph directly beneath the spec badges (only if any are listed above), a "
-        "horizontal row of small trust badge pills (only if any are listed above), and a wide call-to-action banner. The headline "
-        "must dominate the copy column as the single largest, heaviest-weight typographic element on the entire canvas — "
-        "noticeably larger than every other text element, filling nearly the full available width. Give every text element "
-        "strong contrast, generous padding, and crisp, legible, correctly kerned typography — no overlapping or clipped letters. "
-        "Add one continuous visual connector (a light shaft, reflection line, or material accent) that bridges the copy column "
-        "and the product zone so the whole canvas reads as a single unified image rather than two separate halves. "
+        "Compose a full-bleed, layered product-ad poster, not a two-column card, ecommerce tile, or floating panel. Use the full "
+        "canvas as one composition: a true-scale product cutout occupies roughly 45 percent of the frame and deliberately overlaps "
+        "the central axis; the giant stacked headline occupies roughly 40 percent and visibly interacts with the product silhouette. "
+        "Build depth in at least three planes: textured environmental backplate, oversized product hero with hard shadow, and foreground "
+        "type or diagonal ribbons. Put the small brand lockup in a top corner, a narrow status tag directly beneath it, the headline in "
+        "two to four short stacked lines, a compact subheading, then an angled proof banner. Build all approved specs as a tight lower "
+        "scoreboard rail of compact rectangular modules, not rounded pills. Use diagonal banners, corner brackets, tape-like labels, light "
+        "streaks, and a subtle utility grid to eliminate dead areas. Do not leave broad empty margins or a blank background behind text. "
+        "The headline is the largest element and may layer behind the product on one line and in front on another, but every letter must "
+        "remain fully legible. The CTA is a strong full-width bottom strip. Use hard or minimally rounded corners, strong contrast, crisp "
+        f"condensed display typography, and a cohesive amber, charcoal, and deep-navy treatment. Preserve the platform's safe text zones "
+        f"({spec['copy_zone']}; product reference zone {spec['product_zone']}) while using the full canvas for the composition. "
     )
     cognition_layout_direction = (
         "Creative-decision layout rules are authoritative over generic template conventions: "
@@ -617,8 +617,7 @@ def _build_gemini_image_prompt(content: dict[str, Any], platform: str, visual_pl
         f"human role={layout.get('human_role', 'absent')}; human placement={layout.get('human_placement', 'none')}; "
         f"headline position={layout.get('headline_position', 'top-left')}; benefit position={layout.get('benefit_position', 'adjacent to focal proof')}; "
         f"proof position={layout.get('proof_position', 'supporting lower-third')}; CTA position={layout.get('cta_position', 'footer')}; "
-        f"text density={layout.get('text_density', 'medium')}; spacing={layout.get('spacing_intent', 'generous separation')}; "
-        f"negative space={layout.get('negative_space_intent', 'protect headline legibility')}. "
+        "text density=high but disciplined; spacing=tight editorial rhythm; negative space=only narrow gutters that strengthen hierarchy, never blank canvas. "
     )
     if layout.get("human_role") not in {"", "absent", "none"}:
         cognition_layout_direction += "Show a believable, task-relevant person only when they clarify the supported customer moment; never use generic smiling stock imagery or artificial emergency emotion. "

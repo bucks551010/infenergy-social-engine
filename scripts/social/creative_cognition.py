@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from typing import Any
 from urllib.parse import quote_plus
 from urllib.request import Request, urlopen
+from html.parser import HTMLParser
 
 from . import research_router
 
@@ -98,6 +99,18 @@ def _source_type_for(need: str) -> str:
     return "public_creative_reference"
 
 
+class _PublicLinks(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__()
+        self.links: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag == "a":
+            href = dict(attrs).get("href") or ""
+            if href.startswith("https://"):
+                self.links.append(href)
+
+
 def repository_scout(*, need: str, limit: int = 3) -> dict[str, Any]:
     """Discover a very small public repository set without requiring a URL.
 
@@ -125,6 +138,36 @@ def repository_scout(*, need: str, limit: int = 3) -> dict[str, Any]:
     return {"status": "OK", "source_type": _source_type_for(need), "need": need, "candidates": candidates}
 
 
+def source_scout(*, need: str, limit: int = 3) -> dict[str, Any]:
+    """Use the repository scout plus one bounded public-reference search.
+
+    Search output is only provenance metadata; extraction remains an abstract
+    principle and never imports a page's copy, creative execution, or assets.
+    """
+    repository = repository_scout(need=need, limit=limit)
+    candidates = list(repository.get("candidates", []))
+    search_url = f"https://html.duckduckgo.com/html/?q={quote_plus(need + ' design principles')}"
+    try:
+        request = Request(search_url, headers={"User-Agent": "InfenergyCreativeScout/1.0"})
+        with urlopen(request, timeout=12) as response:  # nosec B310: fixed discovery endpoint
+            parser = _PublicLinks()
+            parser.feed(response.read().decode("utf-8", errors="replace"))
+        ignored = {"duckduckgo.com", "google.com", "bing.com", "github.com"}
+        seen = {item.get("source") for item in candidates}
+        for link in parser.links:
+            host = link.split("/", 3)[2].lower().removeprefix("www.")
+            if host in ignored or link in seen:
+                continue
+            candidates.append({"source": link, "name": host, "description": f"Public { _source_type_for(need).replace('_', ' ') } reference for {need}", "stars": 0, "license": "REFERENCE_ONLY", "source_type": "public_reference", "use_boundary": "abstract principle only; no external copy, artwork, assets, or execution are reused"})
+            seen.add(link)
+            if len(candidates) >= limit:
+                break
+    except Exception as exc:
+        if not candidates:
+            return {"status": "LIVE_DISCOVERY_BLOCKED", "source_type": _source_type_for(need), "need": need, "error": type(exc).__name__, "candidates": []}
+    return {"status": "OK" if candidates else "LIVE_DISCOVERY_BLOCKED", "source_type": _source_type_for(need), "need": need, "error": repository.get("error", "no public candidates returned"), "candidates": candidates[:limit]}
+
+
 def _extract_pattern(candidate: dict[str, Any], need: str) -> dict[str, Any] | None:
     if not candidate.get("source") or not candidate.get("description"):
         return None
@@ -136,7 +179,7 @@ def _extract_pattern(candidate: dict[str, Any], need: str) -> dict[str, Any] | N
     else:
         layout, visual, content_job = "clear focal hierarchy with constrained supporting information", "composition serves the communication goal before decoration", ["EXPLAIN_THIS", "TEACH_ME", "HELP_ME_CHOOSE"]
     return {
-        "reference_id": f"repo-{abs(hash(candidate['source'])):x}", "source": candidate["source"], "source_type": candidate["source_type"],
+        "reference_id": f"source-{abs(hash(candidate['source'])):x}", "source": candidate["source"], "source_type": candidate["source_type"],
         "pattern_type": "repository_principle", "platform": ["facebook", "instagram", "linkedin"], "content_job": content_job,
         "layout_logic": layout, "copy_logic": "original copy selected from internal grammar", "visual_logic": visual,
         "information_hierarchy": "message, supporting proof, action", "product_role": "chosen by strategy", "human_role": "chosen by customer moment",
@@ -147,7 +190,7 @@ def _extract_pattern(candidate: dict[str, Any], need: str) -> dict[str, Any] | N
     }
 
 
-def reference_heartbeat(data_dir: str | None = None, *, level: str = "LIGHT", knowledge_need: str = "", scout: Any = repository_scout) -> dict[str, Any]:
+def reference_heartbeat(data_dir: str | None = None, *, level: str = "LIGHT", knowledge_need: str = "", scout: Any = None) -> dict[str, Any]:
     """Refresh known principles and, within a level budget, acquire one bounded new source set."""
     if level not in {"LIGHT", "STANDARD", "DEEP"}:
         raise ValueError("unsupported creative reference heartbeat level")
@@ -161,6 +204,7 @@ def reference_heartbeat(data_dir: str | None = None, *, level: str = "LIGHT", kn
     acquisition = {"status": "NOT_REQUESTED", "candidates": []}
     extracted = 0
     if knowledge_need and budget:
+        scout = scout or source_scout
         acquisition = scout(need=knowledge_need, limit=budget)
         existing_sources = {item.get("source") for item in state["references"]}
         for candidate in acquisition.get("candidates", []):
@@ -174,6 +218,70 @@ def reference_heartbeat(data_dir: str | None = None, *, level: str = "LIGHT", kn
     state["last_heartbeat"] = {"level": level, "at": datetime.now(timezone.utc).isoformat(), "references": len(state["references"])}
     save_reference_graph(state, data_dir)
     return {"status": "ok", "added": len(added), "extracted": extracted, "references": len(state["references"]), "budget": {"external_discovery": budget}, "acquisition": acquisition}
+
+
+def feed_intelligence(recent: dict[str, list[Any]]) -> dict[str, Any]:
+    """Read existing creative memory and name the next useful feed counterweight."""
+    def repeated(values: list[Any]) -> Any:
+        clean = [str(value) for value in values if value]
+        return clean[0] if len(clean) >= 3 and len(set(clean[:4])) == 1 else ""
+    layout = repeated(recent.get("layout_grammars", []))
+    product_role = repeated(recent.get("product_roles", []))
+    human_presence = repeated(recent.get("human_presence", []))
+    density = repeated(recent.get("text_densities", []))
+    formats = [str(value) for value in recent.get("visual_formats", []) if value]
+    format_repeat = formats[0] if formats and len(set(formats)) == 1 else ""
+    needs = []
+    if layout or format_repeat:
+        needs.append("a different layout and visual rhythm")
+    if product_role:
+        needs.append("a different product role or placement")
+    if human_presence:
+        needs.append("a different human/product balance")
+    if density:
+        needs.append("a different information density")
+    return {"layout_repetition": layout, "format_repetition": format_repeat, "product_role_repetition": product_role, "human_presence_repetition": human_presence, "text_density_repetition": density, "customer_moment_diversity": len(set(map(str, recent.get("customer_moments", [])))), "human_value_diversity": len(set(map(str, recent.get("emotional_framings", [])))), "content_job_diversity": len(set(map(str, recent.get("reader_jobs", [])))), "what_feed_needs_next": needs or ["continue with a balanced, evidence-led expression"], "novelty_required": bool(needs)}
+
+
+def creative_learning_guidance(data_dir: str | None = None) -> list[dict[str, Any]]:
+    """Read only repeated, non-conflicted recommendations; never treat one post as truth."""
+    root = data_dir or os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "data")
+    try:
+        with open(os.path.join(root, "social", "living_intelligence.json"), encoding="utf-8") as handle:
+            state = json.load(handle)
+        return list((state.get("creative_learning") or {}).get("recommendations") or [])
+    except (OSError, json.JSONDecodeError):
+        return []
+
+
+def _copy_concepts(*, strategy: dict[str, Any], grammar: dict[str, Any], recent: dict[str, list[Any]], platform: str) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Create compact, genuinely different approaches before writing one winner."""
+    angle = str(strategy.get("angle") or "this practical decision")
+    benefit = str(strategy.get("benefit") or "a clearer choice")
+    options = [
+        {"approach": "human_recognition", "opening": f"When {strategy.get('customer_moment') or 'power is uncertain'}, what matters first?", "structure": "situation -> friction -> possibility", "fit": 0.78},
+        {"approach": "educational_insight", "opening": f"The useful question behind {angle.lower()}.", "structure": "observation -> insight -> business connection", "fit": 0.8},
+        {"approach": "decision_support", "opening": f"Before choosing, compare the role a power solution needs to play.", "structure": "decision -> options -> tradeoff -> recommendation", "fit": 0.82},
+        {"approach": "misconception", "opening": f"More specifications do not automatically make {benefit} clearer.", "structure": "misconception -> truth -> explanation", "fit": 0.75},
+    ]
+    used = " ".join(map(str, recent.get("hooks", []))).lower()
+    for item in options:
+        if item["opening"].lower() in used:
+            item["fit"] -= 0.35
+        if platform.startswith("linkedin") and item["approach"] == "decision_support":
+            item["fit"] += 0.1
+    options.sort(key=lambda item: item["fit"], reverse=True)
+    return options, options[0]
+
+
+def platform_interpretations(*, strategy: dict[str, Any], concept: dict[str, Any], layout: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    """Adapt one truth into distinct native creative directions."""
+    memory = concept.get("desired_memory") or strategy.get("human_outcome")
+    return {
+        "facebook": {"hook_posture": "conversation-starter", "copy_length": "medium", "format": "community_story", "information_density": "medium", "visual_composition": "human-context with a discussion cue", "cta_expression": "invite a practical response", "product_emphasis": "supporting", "desired_memory": memory},
+        "instagram": {"hook_posture": "visual-first takeaway", "copy_length": "short", "format": "carousel_or_reel", "information_density": "low_to_medium", "visual_composition": "one memorable focal hierarchy", "cta_expression": "save or share the practical reference", "product_emphasis": "visual proof", "desired_memory": memory},
+        "linkedin": {"hook_posture": "professional implication", "copy_length": "medium", "format": "professional_brief", "information_density": "medium", "visual_composition": "editorial decision-support hierarchy", "cta_expression": "learn more about the operational consideration", "product_emphasis": "evidence", "desired_memory": memory},
+    }
 
 
 def retrieve_references(*, reader_job: str, platform: str, recent_visual_formats: list[Any], data_dir: str | None = None, limit: int = 3) -> list[dict[str, Any]]:
@@ -206,8 +314,9 @@ def detect_questions(*, strategy: dict[str, Any], platform: str, recent: dict[st
         questions.append(AutonomousQuestion("Which verified fact supports the specific capability claim?", "claim", "A factual product claim needs traceable support.", "claim wording", 0.9, "", 0.0, True, True))
     if platform.startswith("linkedin") and not any(term in " ".join(str(strategy.get(key, "")) for key in ("customer_moment", "angle", "positioning")).lower() for term in ("business", "professional", "work", "operational")):
         questions.append(AutonomousQuestion("What legitimate professional context supports this LinkedIn expression?", "platform", "LinkedIn needs supported business or professional relevance.", "LinkedIn suitability", 0.8, "", 0.0, False, True))
-    if recent.get("visual_formats") and len(set(map(str, recent["visual_formats"][:4]))) == 1:
-        questions.append(AutonomousQuestion("What different visual grammar would improve feed variety?", "fatigue", "Recent visual format repetition risks creative fatigue.", "layout selection", 0.65, "existing format is repetitive", 0.85, False, True))
+    feed = feed_intelligence(recent)
+    if feed["novelty_required"]:
+        questions.append(AutonomousQuestion("What different visual grammar would improve feed variety?", "fatigue", "Feed rhythm shows repeated composition, role, or density.", "layout selection", 0.65, "; ".join(feed["what_feed_needs_next"]), 0.85, False, True))
     for signal in signals or []:
         if not isinstance(signal, dict) or not signal.get("question"):
             continue
@@ -265,12 +374,14 @@ def _layout_grammar(*, selected: dict[str, Any], strategy: dict[str, Any], platf
     return {"components": ["headline", "benefit", "proof", "product", "cta", "brand_mark"], "primary_focal_point": "human situation" if human_context and "human" in selected.get("format", "") else "headline and benefit", "secondary_focal_point": role, "reading_flow": "Z-pattern" if platform.startswith("facebook") else "top-to-bottom editorial", "product_role": role, "product_placement": "supporting lower-right" if role != "hero" else "foreground center", "human_role": "active decision maker" if human_context else "absent", "human_placement": "contextual background" if human_context else "none", "headline_position": "top-left", "benefit_position": "adjacent to focal proof", "proof_position": "supporting lower-third", "cta_position": "footer", "text_density": selected.get("text_density", "medium"), "alignment": "asymmetrical editorial" if fatigue else "clear grid", "spacing_intent": "generous separation between claim and proof", "visual_hierarchy": selected.get("information_hierarchy", "headline, proof, explanation")}
 
 
-def _concept_competition(*, strategy: dict[str, Any], references: list[dict[str, Any]], benefit: dict[str, str], fatigue: bool) -> list[dict[str, Any]]:
+def _concept_competition(*, strategy: dict[str, Any], references: list[dict[str, Any]], benefit: dict[str, str], fatigue: bool, recent: dict[str, list[Any]]) -> list[dict[str, Any]]:
     categories = [("human-context", "show the practical situation", "supporting character"), ("decision-support", "make the comparison or priority visible", "proof"), ("editorial", "frame one useful observation", "supporting proof")]
     concepts = []
     for index, (kind, visual_job, product_role) in enumerate(categories):
         reference = references[index % len(references)] if references else {"layout_logic": "clear hierarchy", "copy_logic": "question -> answer", "reference_id": "internal-fallback"}
         score = 0.8 - (0.1 if fatigue and index == 0 else 0)
+        if kind in {str(item) for item in recent.get("visual_concepts", [])[:1]}:
+            score -= 0.2
         concepts.append({"id": kind, "copy_job": reference["copy_logic"], "visual_job": visual_job, "layout_logic": reference["layout_logic"], "product_role": product_role, "human_role": "active decision maker" if kind == "human-context" else "viewer", "desired_memory": benefit["CUSTOMER_OUTCOME"], "reference_id": reference["reference_id"], "score": score})
     return sorted(concepts, key=lambda item: item["score"], reverse=True)
 
@@ -291,11 +402,20 @@ def decide(*, strategy: dict[str, Any], platform: str, recent: dict[str, list[An
     references = retrieve_references(reader_job=strategy.get("reader_job", ""), platform=platform, recent_visual_formats=recent.get("visual_formats", []), data_dir=data_dir)
     fatigue = any(question.question_type == "fatigue" for question in questions)
     benefit = _benefit_chain(strategy)
-    concepts = _concept_competition(strategy=strategy, references=references, benefit=benefit, fatigue=fatigue)
+    concepts = _concept_competition(strategy=strategy, references=references, benefit=benefit, fatigue=fatigue, recent=recent)
+    learning = creative_learning_guidance(data_dir)
+    for concept in concepts:
+        if any(item.get("dimension") == "visual_concept_x_audience" and concept["id"] in item.get("values", []) for item in learning):
+            concept["score"] += 0.08
+    concepts.sort(key=lambda item: item["score"], reverse=True)
     selected_concept = concepts[0]
     selected = next((item for item in references if item["reference_id"] == selected_concept["reference_id"]), references[0] if references else {"reference_id": "internal-fallback", "layout_logic": "clear hierarchy", "copy_logic": "question -> answer -> why it matters", "visual_logic": "one focal proof", "information_hierarchy": "headline, proof, explanation", "product_role": "supporting proof", "text_density": "medium"})
     grammar = _copy_grammar(reader_job=strategy.get("reader_job", ""), recent=recent, concepts=concepts, data_dir=data_dir)
+    copy_concepts, selected_copy = _copy_concepts(strategy=strategy, grammar=grammar, recent=recent, platform=platform)
     selected = selected | {"copy_logic": " -> ".join(grammar["selected"]["steps"]), "creative_concept": selected_concept["id"]}
+    rotation = bool(recent.get("visual_concepts"))
+    layouts = _layout_grammar(selected=selected, strategy=strategy, platform=platform, fatigue=fatigue or rotation)
+    native = platform_interpretations(strategy=strategy, concept=selected_concept, layout=layouts)
     platform_outcomes = {"facebook": {"status": "ELIGIBLE"}, "instagram": {"status": "ELIGIBLE"}, "linkedin": {"status": "ELIGIBLE"}}
     for question in questions:
         if question.question_type == "platform" and platform.startswith("linkedin"):
@@ -321,7 +441,7 @@ def decide(*, strategy: dict[str, Any], platform: str, recent: dict[str, list[An
         "ASSUMPTIONS": ["References are abstract principles, not source executions."],
         "CLAIM_LIMITS": strategy.get("claim_limits", "Use only verified facts."),
         "ACTION": action,
-        "MEMORY_UPDATE": {"layout_logic": selected["layout_logic"], "copy_logic": selected["copy_logic"], "concept": selected_concept["id"], "product_role": selected_concept["product_role"], "text_density": selected.get("text_density", "medium")},
+        "MEMORY_UPDATE": {"layout_logic": selected["layout_logic"], "copy_logic": selected["copy_logic"], "concept": selected_concept["id"], "product_role": selected_concept["product_role"], "text_density": selected.get("text_density", "medium"), "copy_approach": selected_copy["approach"], "hook": selected_copy["opening"]},
         "FOLLOW_UP_TRIGGER": "research_tasks" if research_tasks else "performance_review",
         "research_tasks": research_tasks,
         "questions": [question.as_dict() for question in questions],
@@ -331,8 +451,14 @@ def decide(*, strategy: dict[str, Any], platform: str, recent: dict[str, list[An
         "benefit_translation": benefit,
         "information_priority": _information_priority(strategy, benefit),
         "copy_grammar": grammar,
-        "layout_grammar": _layout_grammar(selected=selected, strategy=strategy, platform=platform, fatigue=fatigue),
+        "layout_grammar": layouts,
         "creative_concepts": concepts,
-        "novelty_process": {"triggered": fatigue, "action": "select a different composition/copy grammar" if fatigue else "standard diversity retrieval"},
+        "copy_concepts": copy_concepts,
+        "selected_copy_concept": selected_copy,
+        "hook_selection": {"family": selected_copy["approach"], "text": selected_copy["opening"], "scores": {"audience_relevance": selected_copy["fit"], "novelty": 1.0 if selected_copy["opening"].lower() not in " ".join(map(str, recent.get("hooks", []))).lower() else 0.4, "specificity": 0.75, "platform_fit": 0.85, "human_connection": 0.8, "payoff_alignment": 0.8}},
+        "feed_intelligence": feed_intelligence(recent),
+        "creative_learning_guidance": learning,
+        "platform_interpretations": native,
+        "novelty_process": {"triggered": fatigue or rotation, "action": "select a different composition/copy grammar" if fatigue or rotation else "standard diversity retrieval"},
         "originality_review": specialists["Originality Guardian"],
     }

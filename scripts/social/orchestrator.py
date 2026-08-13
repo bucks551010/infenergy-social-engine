@@ -498,6 +498,10 @@ class SocialIntelligenceOrchestrator:
         copy_generation_method = "llm" if llm_beats else "template_fallback"
         copy_fallback_reason = None if llm_beats else model_router.last_error()
         hook_text = beat_content.get("hook") or beat_content.get("question") or beat_content.get("problem") or ""
+        selected_hook = creative_packet.get("selected_copy_concept", {}).get("opening", "")
+        if selected_hook and not llm_beats:
+            hook_text = selected_hook
+            beat_content["hook"] = selected_hook
         body_text = " ".join(v for k, v in beat_content.items() if k != "hook" and v)
         takeaway = beat_content.get("takeaway") or beat_content.get("lesson") or beat_content.get("implication") or brief.angle
         anchor = copy_intelligence.extract_memory_anchor(body_text, takeaway=takeaway)
@@ -737,6 +741,9 @@ class SocialIntelligenceOrchestrator:
                     "copy_grammar": creative_packet["SELECTED_ANSWER"]["copy_logic"],
                     "benefit_order": creative_packet["information_priority"]["MUST_SHOW"],
                     "emotional_framing": creative_packet["benefit_translation"]["HUMAN_MEANING"],
+                    "customer_moment": locked.get("customer_moment", ""),
+                    "reader_job": locked.get("reader_job", ""),
+                    "hook_family": creative_packet.get("hook_selection", {}).get("family", ""),
                     "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
                 },
                 data_dir=self.data_dir,
@@ -751,6 +758,10 @@ class SocialIntelligenceOrchestrator:
                     "product_role": creative_packet["layout_grammar"]["product_role"],
                     "human_presence": creative_packet["layout_grammar"]["human_role"],
                     "text_density": creative_packet["layout_grammar"]["text_density"],
+                    "product_placement": creative_packet["layout_grammar"]["product_placement"],
+                    "headline_placement": creative_packet["layout_grammar"]["headline_position"],
+                    "art_direction_family": creative_packet["SELECTED_ANSWER"]["reference_id"],
+                    "visual_concept": creative_packet["SELECTED_ANSWER"]["creative_concept"],
                     "art_direction": art.as_dict(),
                     "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
                 },

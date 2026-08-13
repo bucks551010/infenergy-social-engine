@@ -44,6 +44,25 @@ def test_shadow_decision_record_uses_existing_reviews_only():
     assert record["strategy_integrity_verdict"]["verdict"] == "ALIGNED"
 
 
+def test_shadow_decision_record_persists_creative_cognition():
+    content = {
+        "creative_decision_packet": {
+            "SELECTED_ANSWER": {"creative_concept": "decision-support"},
+            "selected_copy_concept": {"approach": "educational_insight"},
+            "hook_selection": {"family": "educational_insight"},
+            "feed_intelligence": {"what_feed_needs_next": ["a different layout"]},
+            "platform_interpretations": {"instagram": {"format": "carousel_or_reel"}},
+            "originality_review": {"passed": True},
+        },
+    }
+
+    record = run_engine._shadow_decision_record(content)
+
+    assert record["creative_concept"] == "decision-support"
+    assert record["copy_approach"] == "educational_insight"
+    assert record["originality_verdict"]["passed"] is True
+
+
 def test_single_platform_scores_ignore_missing_other_social_channels():
     content = {
         "selected_hook": "How do you match backup power to the device that matters?",

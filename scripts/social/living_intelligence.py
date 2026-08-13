@@ -6,7 +6,7 @@ import os
 from datetime import datetime, timezone
 from typing import Any
 
-from . import analytics_ingestion, consumer_intelligence, competitor_intelligence, market_strategy, opportunity_graph, performance_learning, research_router, strategy_lock
+from . import analytics_ingestion, consumer_intelligence, competitor_intelligence, creative_cognition, market_strategy, opportunity_graph, performance_learning, research_router, strategy_lock
 
 HEARTBEAT_LEVELS = {"LIGHT_HEARTBEAT", "STANDARD_HEARTBEAT", "DEEP_HEARTBEAT", "DEEP_REFRESH"}
 DEFAULT_BUDGETS = {
@@ -90,6 +90,9 @@ def heartbeat(
             record.setdefault("analytics_observations", []).append(observation)
             evidence.append(performance_learning.learn(publication_record=record, observation=observation))
     evidence = evidence[:active_budget["max_sources_retrieved"]]
+    creative_observations = [item for item in evidence if item.get("creative_relationships")]
+    creative_learning = performance_learning.aggregate_creative_learning(creative_observations)
+    state["creative_learning"] = creative_learning
     consumers = consumer_intelligence.normalize(consumer_signals or [])
     competitors, competitor_changes = competitor_intelligence.observe(competitor_observations or [], state.get("competitors", {}))
     state["competitors"] = competitors
@@ -114,6 +117,19 @@ def heartbeat(
         if float(item.get("confidence", 0) or 0) <= 0:
             continue
         opportunity_graph.upsert(state["opportunities"], reason=item.get("interpretation") or item.get("decision_affected") or "evidence update", support=[item])
+    reference_level = {"LIGHT_HEARTBEAT": "LIGHT", "STANDARD_HEARTBEAT": "STANDARD", "DEEP_HEARTBEAT": "DEEP", "DEEP_REFRESH": "DEEP"}[level]
+    graph = creative_cognition.load_reference_graph(data_dir)
+    has_external = any(item.get("source_type") != "internal_repository" for item in graph.get("references", []))
+    knowledge_need = ""
+    if reference_level == "STANDARD" and not has_external:
+        knowledge_need = "information design and social layout principles"
+    elif reference_level == "DEEP" and (graph.get("stagnation_review") or {}).get("needs_diversification", True):
+        knowledge_need = "visual storytelling and product presentation principles"
+    creative_heartbeat = creative_cognition.reference_heartbeat(data_dir, level=reference_level, knowledge_need=knowledge_need)
+    campaign = _campaign_decision(state, level=level, creative_learning=creative_learning)
+    if campaign["decision"] in {"start", "evolve"}:
+        opportunity_graph.upsert(state["opportunities"], reason=campaign["reason"], support=[{"type": "CAMPAIGN_DECISION", "provenance": "living_intelligence", "confidence": campaign["confidence"]}])
+    state["campaign_state"] = campaign
     state["last_heartbeat"] = {"level": level, "observations": len(observations), "at": datetime.now(timezone.utc).isoformat()}
     state.setdefault("heartbeat_history", {})[level] = state["last_heartbeat"] | {"budget": active_budget}
     if level in {"DEEP_HEARTBEAT", "DEEP_REFRESH"}:
@@ -124,7 +140,20 @@ def heartbeat(
         }
     save(data_dir, state)
     return {"status": "ok", "observations": observations, "budget": active_budget, "research_evidence": evidence, "consumer_relationships": consumer_intelligence.relationships(consumers),
-            "category_conversation": category_map, "whitespace": gap, "positioning": position, "opportunities": state["opportunities"]}
+            "category_conversation": category_map, "whitespace": gap, "positioning": position, "opportunities": state["opportunities"], "creative_reference_heartbeat": creative_heartbeat, "creative_learning": creative_learning, "campaign_meeting": campaign}
+
+
+def _campaign_decision(state: dict[str, Any], *, level: str, creative_learning: dict[str, Any]) -> dict[str, Any]:
+    """A material, bounded campaign meeting triggered only by STANDARD/DEEP state."""
+    if level == "LIGHT_HEARTBEAT":
+        return {"decision": "no_change", "reason": "light heartbeat does not convene campaign meetings", "confidence": 0.0}
+    ready = [item for item in state.get("opportunities", []) if item.get("state") in {"NEW", "READY"}]
+    prior = state.get("campaign_state", {})
+    if prior.get("decision") in {"start", "evolve"} and not ready:
+        return {"decision": "pause", "reason": "no current evidence-backed opportunity sustains the campaign", "confidence": 0.6, "participants": ["Campaign Architect", "Creative Director", "Performance Analyst"]}
+    if len(ready) >= 2 or creative_learning.get("supported_patterns"):
+        return {"decision": "evolve" if prior.get("decision") in {"start", "evolve"} else "start", "reason": "multiple evidence-backed opportunities or repeated creative learning justify a coordinated sequence", "confidence": 0.65, "participants": ["Campaign Architect", "Creative Director", "Human Connection Strategist", "Platform Creative Strategist", "Performance Analyst"], "next_content_priority": "campaign_sequence"}
+    return {"decision": "no_change", "reason": "insufficient material campaign evidence", "confidence": 0.45, "participants": ["Campaign Architect"]}
 
 
 def council(state: dict[str, Any], *, strategy_inputs: dict[str, Any]) -> dict[str, Any]:

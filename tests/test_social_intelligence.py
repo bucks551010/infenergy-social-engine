@@ -298,7 +298,7 @@ def test_creative_reference_heartbeat_discovers_extracts_persists_and_retrieves(
     assert all("no code, assets, layouts, or copy are reused" in item["license_or_use_boundary"] or item["source_type"] == "internal_repository" for item in graph["references"])
     assert retrieved
     packet = creative_cognition.decide(strategy={"audience": "household", "customer_moment": "outage planning", "human_need": "clarity", "human_value": "preparedness", "topic": "power priorities", "angle": "Prioritize essentials", "offering": "power station", "positioning": "calm preparedness", "benefit": "prioritize essentials", "human_outcome": "confidence", "reader_job": "EXPLAIN_THIS", "proof": [], "claim_limits": "supported facts only", "visual_objective": "show priorities"}, platform="instagram_feed", recent={}, data_dir=str(tmp_path))
-    assert packet["SELECTED_ANSWER"]["reference_id"].startswith("repo-")
+    assert packet["SELECTED_ANSWER"]["reference_id"].startswith("source-")
 
 
 def test_autonomous_meeting_scopes_claim_platform_and_fatigue_outcomes(tmp_path):
@@ -363,6 +363,40 @@ def test_creative_cognition_reaches_platform_expressions_and_publish_decision(tm
     assert legacy["platform_posts"]["facebook"]["strategy_lock"] == legacy["platform_posts"]["instagram"]["strategy_lock"]
     assert legacy["platform_posts"]["linkedin"]["platform_selection"]["selected"] is False
     assert decision["decision"] == "publish"
+
+
+def test_remaining_creative_partials_are_operational(tmp_path, monkeypatch):
+    strategy = {"audience": "household", "customer_moment": "storm outage", "human_need": "clarity", "human_value": "preparedness", "topic": "power priorities", "angle": "Prioritize essential devices", "offering": "power station", "positioning": "calm preparedness", "benefit": "prioritize essentials", "human_outcome": "confidence", "reader_job": "EXPLAIN_THIS", "proof": [], "claim_limits": "supported facts only", "visual_objective": "show priorities"}
+    recent = {"visual_formats": ["fact_card"] * 4, "layout_grammars": [{"alignment": "clear grid"}] * 4, "product_roles": ["proof"] * 4, "human_presence": ["absent"] * 4, "text_densities": ["medium"] * 4, "hooks": ["old opening"]}
+    packet = creative_cognition.decide(strategy=strategy, platform="instagram_feed", recent=recent, data_dir=str(tmp_path))
+    assert len(packet["copy_concepts"]) >= 3
+    assert packet["hook_selection"]["family"]
+    assert packet["feed_intelligence"]["novelty_required"] is True
+    assert packet["platform_interpretations"]["facebook"]["visual_composition"] != packet["platform_interpretations"]["instagram"]["visual_composition"]
+    assert packet["platform_interpretations"]["linkedin"]["hook_posture"] == "professional implication"
+
+    learning_rows = []
+    for _ in range(3):
+        learning_rows.append({"platform": "instagram", "metrics": {"saves": 4}, "creative_relationships": {"visual_concept_x_audience": ["editorial", "household"]}})
+    learned = performance_learning.aggregate_creative_learning(learning_rows)
+    assert learned["recommendations"]
+
+    monkeypatch.setattr(creative_cognition, "source_scout", lambda **kwargs: {"status": "SOURCE_UNAVAILABLE", "candidates": []})
+    heartbeat = living_intelligence.heartbeat(str(tmp_path), level="STANDARD_HEARTBEAT", performance_observations=[row | {"confidence": 0.5} for row in learning_rows], consumer_signals=[{"audience": "household", "customer_moment": "storm outage", "situation": "home loses power", "question": "What should I power first?", "human_need": "confidence", "offering": "power station", "source": "support", "confidence": 0.9}, {"audience": "household", "customer_moment": "winter outage", "situation": "home loses power", "question": "Which devices matter first?", "human_need": "confidence", "offering": "power station", "source": "support", "confidence": 0.9}])
+    assert heartbeat["creative_reference_heartbeat"]["budget"]["external_discovery"] == 2
+    assert heartbeat["campaign_meeting"]["decision"] in {"start", "evolve"}
+
+
+def test_second_post_reads_full_visual_memory_and_changes_composition(tmp_path, monkeypatch):
+    monkeypatch.setattr(orchestrator, "_llm_copy_beats", lambda *args: None)
+    engine = orchestrator.SocialIntelligenceOrchestrator(data_dir=str(tmp_path))
+    first = engine.create_post(record_memory=True)
+    second = engine.create_post(record_memory=True)
+    memory = memory_intelligence.recent(str(tmp_path))
+
+    assert memory["product_placements"] and memory["headline_placements"] and memory["art_direction_families"]
+    assert second.creative_decision_packet["feed_intelligence"]["what_feed_needs_next"]
+    assert first.visual["layout_grammar"]["alignment"] != second.visual["layout_grammar"]["alignment"]
 
 
 def test_performance_signal_remains_cautious_and_provenanced():

@@ -303,6 +303,7 @@ def _generation_diagnostics(content: dict) -> dict:
         "copy_generation_method": content.get("copy_generation_method", ""),
         "copy_fallback_reason": content.get("copy_fallback_reason"),
         "platform_posts": content.get("platform_posts", {}),
+        "creative_decision_packet": content.get("creative_decision_packet", {}),
         "publish_decision": content.get("publish_decision", {}),
     }
 
@@ -329,6 +330,7 @@ def _shadow_decision_record(content: dict) -> dict:
     """Owner-readable explanation from existing decision artifacts, never hidden reasoning."""
     strategy = (content.get("copy") or {}).get("strategy_lock") or content.get("strategic_brief") or {}
     creative = content.get("creative_director") or {}
+    packet = content.get("creative_decision_packet") or {}
     return {
         "why_this_post_exists": content.get("topic", ""),
         "who_it_is_for": strategy.get("audience") or content.get("audience_segment", ""),
@@ -339,6 +341,12 @@ def _shadow_decision_record(content: dict) -> dict:
         "selected_angle": strategy.get("angle", ""),
         "copy_intent": (content.get("copy") or {}).get("takeaway", ""),
         "visual_intent": (content.get("visual") or {}).get("visual_objective", ""),
+        "creative_concept": (packet.get("SELECTED_ANSWER") or {}).get("creative_concept", ""),
+        "copy_approach": (packet.get("selected_copy_concept") or {}).get("approach", ""),
+        "hook_selection": packet.get("hook_selection", {}),
+        "feed_intelligence": packet.get("feed_intelligence", {}),
+        "platform_interpretations": packet.get("platform_interpretations", {}),
+        "originality_verdict": packet.get("originality_review", {}),
         "claim_limits": strategy.get("claim_limits", ""),
         "human_connection_verdict": creative.get("independent_human_connection_review", {}),
         "strategy_integrity_verdict": creative.get("strategy_integrity_review", {}),

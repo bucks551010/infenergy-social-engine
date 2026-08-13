@@ -164,11 +164,18 @@ def recent(data_dir: str | None = None, *, limit: int = 20) -> dict[str, list[An
         "copy_grammars": _recent_field(cdata["records"], "copy_grammar", limit),
         "benefit_orders": _recent_field(cdata["records"], "benefit_order", limit),
         "emotional_framings": _recent_field(cdata["records"], "emotional_framing", limit),
+        "customer_moments": _recent_field(cdata["records"], "customer_moment", limit),
+        "reader_jobs": _recent_field(cdata["records"], "reader_job", limit),
         "visual_signatures": _recent_field(vdata["records"], "visual_signature", limit),
         "visual_formats": _recent_field(vdata["records"], "visual_format", limit),
         "layout_grammars": _recent_field(vdata["records"], "layout_grammar", limit),
         "product_roles": _recent_field(vdata["records"], "product_role", limit),
         "human_presence": _recent_field(vdata["records"], "human_presence", limit),
+        "text_densities": _recent_field(vdata["records"], "text_density", limit),
+        "product_placements": _recent_field(vdata["records"], "product_placement", limit),
+        "headline_placements": _recent_field(vdata["records"], "headline_placement", limit),
+        "art_direction_families": _recent_field(vdata["records"], "art_direction_family", limit),
+        "visual_concepts": _recent_field(vdata["records"], "visual_concept", limit),
     }
 
 

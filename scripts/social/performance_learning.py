@@ -47,3 +47,16 @@ def learn(*, publication_record: dict[str, Any], observation: dict[str, Any]) ->
             "visual_concept_x_audience": [(packet.get("SELECTED_ANSWER") or {}).get("creative_concept", ""), strategy.get("audience", "")],
         },
     }
+
+
+def aggregate_creative_learning(observations: list[dict[str, Any]]) -> dict[str, Any]:
+    """Promote only repeated, non-conflicted creative relationships to suggestions."""
+    hypotheses: dict[str, dict[str, Any]] = {}
+    for observation in observations:
+        for dimension, values in (observation.get("creative_relationships") or {}).items():
+            key = f"{dimension}:{'|'.join(map(str, values))}"
+            hypotheses[key] = update_hypothesis(hypotheses.get(key), observation)
+            hypotheses[key]["dimension"] = dimension
+            hypotheses[key]["values"] = values
+    supported = [item for item in hypotheses.values() if item["state"] == "SUPPORTED_PATTERN" and item["contradiction_count"] == 0]
+    return {"hypotheses": hypotheses, "supported_patterns": supported, "recommendations": [{"dimension": item["dimension"], "values": item["values"], "action": "prefer as one controlled future test, not a permanent rule", "confidence": item["confidence"]} for item in supported]}

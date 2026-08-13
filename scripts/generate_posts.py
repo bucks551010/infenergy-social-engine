@@ -174,9 +174,11 @@ def _route_generate_orchestrator(
         strategy_lock=copy_pkg.get("strategy_lock") if isinstance(copy_pkg.get("strategy_lock"), dict) else {},
         creative_reviews=first.get("creative_director") if isinstance(first.get("creative_director"), dict) else {},
     )
+    creative_packet = first.get("creative_decision_packet") or {}
     platform_selection = _select_social_platforms(copy_pkg.get("strategy_lock") if isinstance(copy_pkg.get("strategy_lock"), dict) else {})
     for platform, package in platform_posts.items():
         package["platform_selection"] = platform_selection[platform]
+        package["creative_interpretation"] = (creative_packet.get("platform_interpretations") or {}).get(platform, {})
     wp_content = _join_paragraphs(selected_hook, copy_body, takeaway, selected_cta)
 
     legacy = {

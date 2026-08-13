@@ -6020,6 +6020,11 @@ Return ONLY valid JSON with these exact keys (no markdown, no code fences):
                     talking_point,
                     platform=platform_name,
                 )
+        conversion_gate_posts = {
+            platform: {"caption": str(package.get("caption", ""))}
+            for platform, package in platform_posts.items()
+            if isinstance(package, dict)
+        }
         platform_posts = _apply_platform_presentation_priority(platform_posts, components)
         platform_posts = normalize_brand_content(platform_posts)
         content = normalize_brand_content(content)
@@ -6099,7 +6104,7 @@ Return ONLY valid JSON with these exact keys (no markdown, no code fences):
             )
         )
         content["phase7_conference_packets"] = phase7_packets_validated if not phase7_errors else phase7_packets
-        conv_passed, conv_reasons = _conversion_caption_gate(platform_posts, talking_point, want_product=want_product)
+        conv_passed, conv_reasons = _conversion_caption_gate(conversion_gate_posts, talking_point, want_product=want_product)
         gate_records.append(
             build_gate_record(
                 gate_id="conversion_caption_enforcement",
@@ -6346,6 +6351,11 @@ Return ONLY valid JSON with these exact keys (no markdown, no code fences):
                 talking_point,
                 platform=platform_name,
             )
+    conversion_gate_posts = {
+        platform: {"caption": str(package.get("caption", ""))}
+        for platform, package in platform_posts.items()
+        if isinstance(package, dict)
+    }
     platform_posts = _apply_platform_presentation_priority(platform_posts, components)
     platform_posts = normalize_brand_content(platform_posts)
     content = normalize_brand_content(content)
@@ -6373,7 +6383,7 @@ Return ONLY valid JSON with these exact keys (no markdown, no code fences):
     content["phase4_optimization_stack"] = phase4_stack
     content["phase7_conference_packets"] = phase7_packets_validated if not phase7_errors else phase7_packets
     content["agent_conference"] = conference_summary
-    conv_passed, conv_reasons = _conversion_caption_gate(platform_posts, talking_point, want_product=want_product)
+    conv_passed, conv_reasons = _conversion_caption_gate(conversion_gate_posts, talking_point, want_product=want_product)
     gate_records.append(
         build_gate_record(
             gate_id="conversion_caption_enforcement",

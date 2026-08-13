@@ -102,6 +102,10 @@ def _sales_meaning(specifications: list[str], use_case: str) -> list[str]:
 
 def _semantic_key(paragraph: str, product: str) -> str:
     lowered = paragraph.lower()
+    if any(token in lowered for token in ("no practical plan", "without validating", "misses the job", "gets picked before", "weak setup")):
+        return "pain"
+    if lowered.startswith(("compare ", "map ", "review ", "build ", "see what")):
+        return "decision_step"
     if _is_contrast(paragraph):
         return "contrast"
     if product and product.lower() in lowered:
@@ -152,7 +156,7 @@ def _layered_caption(
     supporting = proof_meanings
     if platform == "instagram":
         supporting = proof_meanings[:1]
-        optional_depth = optional_depth[:1]
+        optional_depth = optional_depth[:2]
     elif platform == "linkedin":
         core.append("For mobile teams and preparedness planners, the decision is whether the published capability matches the equipment that must remain available.")
     body = ["\n\n".join(item for item in core if item), "\n".join(f"- {item}" for item in supporting)]

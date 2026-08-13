@@ -51,14 +51,6 @@ DEFAULT_THRESHOLDS = {
     "high_risk_claims_blocking": True,
 }
 
-
-def actionable_findings(factors: dict[str, float], overall: float) -> list[str]:
-    """Explain sub-threshold quality using the existing quality dimensions."""
-    if overall >= DEFAULT_THRESHOLDS["publish"]:
-        return []
-    findings = [f"{name}_below_publish_target" for name, value in factors.items() if float(value) < 0.82]
-    return findings or ["overall_quality_below_publish_target"]
-
 _CONCEPT_ALIASES = {
     "charge": {"charge", "charged", "charging", "recharge", "recharged", "recharging", "power", "powered"},
     "device": {"device", "devices", "laptop", "laptops", "phone", "phones", "tablet", "tablets", "equipment", "gear"},
@@ -82,7 +74,20 @@ class QualityScore:
     reasons: list[str] = field(default_factory=list)
 
     def as_dict(self) -> dict[str, Any]:
-        return {"factors": self.factors, "overall": self.overall, "band": self.band, "reasons": self.reasons}
+        evidence = [
+            {"component": name, "score": value}
+            for name, value in self.factors.items()
+            if value < 0.6
+        ]
+        return {
+            "factors": self.factors,
+            "component_scores": self.factors,
+            "overall": self.overall,
+            "band": self.band,
+            "reasons": self.reasons,
+            "critic_findings": self.reasons,
+            "critic_evidence": evidence,
+        }
 
 
 def _band(overall: float) -> str:
@@ -199,11 +204,16 @@ def score(
         reasons.append("unverified high-risk claims")
     if factors["information_value"] < 0.5:
         reasons.append("information density weak")
+    if factors["novelty"] < 0.6:
+        reasons.append("novelty_angle_weak")
+    if factors["specificity"] < 0.6:
+        reasons.append("specificity_weak")
+    if factors["conversation_potential"] < 0.6:
+        reasons.append("conversation_potential_weak")
     if brand_voice and factors["brand_alignment"] < 0.55:
         reasons.append("brand voice violation (prohibited phrases present)")
 
-    reasons.extend(actionable_findings(factors, overall))
-    return QualityScore(factors=factors, overall=overall, band=_band(overall), reasons=list(dict.fromkeys(reasons)))
+    return QualityScore(factors=factors, overall=overall, band=_band(overall), reasons=reasons)
 
 
 # --- Simple diagnostic tests (§85-§89) --------------------------------------

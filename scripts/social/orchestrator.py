@@ -184,7 +184,7 @@ def _bi_get_offering(product_id: str) -> dict[str, Any] | None:
         return None
 
 
-def _runtime_strategy_lock(brief: engines.EngineBrief, lean_context: dict[str, Any], offering: dict[str, Any] | None) -> dict[str, Any]:
+def _runtime_strategy_lock(brief: engines.EngineBrief, lean_context: dict[str, Any], offering: dict[str, Any] | None, data_dir: str | None = None) -> dict[str, Any]:
     """Use selected product/audience evidence when Council has not provided a lock."""
     human = lean_context.get("human_value") or {}
     relationships = lean_context.get("relationships") or {}
@@ -221,23 +221,25 @@ def _runtime_strategy_lock(brief: engines.EngineBrief, lean_context: dict[str, A
         forbidden_claims=list((offering or {}).get("forbidden_claims") or []),
     )
     product_id = str((offering or {}).get("offering_id") or (offering or {}).get("sku") or "")
-    if product_id and not red_team["can_lock"]:
-        red_team["prior_scoped_lessons"] = memory_intelligence.strategy_lessons(
+    prior_lessons: list[dict[str, Any]] = []
+    for requirement in red_team.get("evidence_requirements", []):
+        prior_lessons.extend(memory_intelligence.strategy_lessons(
             product_id=product_id,
-            condition=strategy_lock.lesson_condition(red_team),
-        )
+            condition=f"{requirement}_angle_without_verified_evidence",
+            data_dir=data_dir,
+        ))
     if not red_team["can_lock"]:
         candidate["angle"] = f"Use verified product facts to assess {benefit}"
         candidate["hook_promise"] = f"Which verified facts help with {benefit}?"
         brief.angle = candidate["angle"]
     locked = strategy_lock.lock(candidate, context=candidate)
     locked["strategy_red_team"] = red_team
+    locked["prior_scoped_lessons"] = prior_lessons
     locked["strategy_audit"].append({
         "event": "PRE_LOCK_STRATEGY_RED_TEAM",
         "verdict": red_team["verdict"],
         "challenge_evidence": red_team["challenge_evidence"],
         "action": "angle_redirected_before_lock" if not red_team["can_lock"] else "locked_without_change",
-        "prior_scoped_lessons_consulted": len(red_team.get("prior_scoped_lessons", [])),
     })
     return locked
 
@@ -538,7 +540,7 @@ class SocialIntelligenceOrchestrator:
             brief.topic_path["topic"] = locked["topic"]
             brief.reader_job = locked["reader_job"]
         else:
-            locked = _runtime_strategy_lock(brief, lean_context, bi_offering)
+            locked = _runtime_strategy_lock(brief, lean_context, bi_offering, self.data_dir)
 
         creative_packet = creative_cognition.decide(
             strategy=locked, platform=platform, recent=recent, data_dir=self.data_dir

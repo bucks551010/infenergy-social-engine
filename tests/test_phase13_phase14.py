@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import sys
 import unittest
+import tempfile
 from copy import deepcopy
 from unittest.mock import patch
 
@@ -17,6 +18,8 @@ from agent_control_plane import evaluate_global_gates, validate_agent_output  # 
 from anti_repeat import check_duplicates  # noqa: E402
 from build_utm_url import build_utm_url  # noqa: E402
 from validate_product_claims import validate_generated_content  # noqa: E402
+from social import memory_intelligence  # noqa: E402
+from social.publish_decision import decide as decide_publication  # noqa: E402
 
 
 def _base_content() -> dict:
@@ -66,6 +69,73 @@ def _base_content() -> dict:
 
 
 class PhaseThirteenFourteenTests(unittest.TestCase):
+    def test_material_change_angle_persists_conditional_lesson_for_matching_future_strategy(self) -> None:
+        with tempfile.TemporaryDirectory() as data_dir, patch.dict(os.environ, {"DATA_DIR": data_dir}, clear=False):
+            strategy = {
+                "strategy_version": 1,
+                "strategy_red_team": {
+                    "verdict": "CHANGE_ANGLE",
+                    "evidence_requirements": ["runtime"],
+                    "challenge_evidence": ["verified_runtime_evidence_missing"],
+                },
+            }
+            lessons = run_engine._record_material_strategy_lessons({"product_id": "PPP-200"}, strategy)
+            matching = memory_intelligence.strategy_lessons(
+                product_id="PPP-200", condition="runtime_angle_without_verified_evidence", data_dir=data_dir
+            )
+            unrelated = memory_intelligence.strategy_lessons(
+                product_id="OTHER", condition="runtime_angle_without_verified_evidence", data_dir=data_dir
+            )
+
+        self.assertEqual(len(lessons), 1)
+        self.assertEqual(len(matching), 1)
+        self.assertEqual(unrelated, [])
+        self.assertEqual(matching[0]["source_decision"], "CHANGE_ANGLE")
+        self.assertIn("reconsider", matching[0]["revalidation"])
+
+    def test_final_artifact_qa_is_persistable_for_active_facebook_only(self) -> None:
+        content = {"generated_visuals": {"facebook": "C:/tmp/final.png"}}
+        review = {"verdict": "PASS", "issues": [], "inspected_path": "C:/tmp/final.png", "dimensions": [1080, 1080]}
+        with patch.object(run_engine, "review_rendered_visual", return_value=review) as inspect:
+            result = run_engine._ensure_final_artifact_qa(content, {"facebook": True, "instagram": False, "linkedin": False, "wordpress": False})
+
+        inspect.assert_called_once_with("C:/tmp/final.png", "facebook")
+        self.assertEqual(result["facebook"], review)
+        self.assertEqual(content["artifact_visual_qa"]["facebook"]["verdict"], "PASS")
+
+    def test_subthreshold_critic_persists_actionable_findings_not_only_wrapper(self) -> None:
+        decision = decide_publication(
+            legacy_score={"total": 96, "platform_results": {}},
+            validation={"passed": True, "errors": []},
+            duplicates={"ok": True, "reasons": []},
+            orchestrator_quality={
+                "overall": 79.2,
+                "component_scores": {"specificity": 0.5, "novelty": 0.55},
+                "critic_findings": ["specificity_weak", "novelty_angle_weak"],
+                "critic_evidence": [{"component": "specificity", "score": 0.5}],
+            },
+        )
+
+        self.assertEqual(decision["decision"], "revise")
+        self.assertIn("specificity_weak", decision["reasons"])
+        self.assertNotEqual(decision["reasons"], ["orchestrator_critic_requires_revision"])
+        self.assertEqual(decision["critic_component_scores"]["specificity"], 0.5)
+
+    def test_facebook_readiness_does_not_depend_on_wordpress(self) -> None:
+        class Response:
+            ok = True
+
+        with patch.object(run_engine.requests, "get", return_value=Response()), patch.dict(
+            os.environ, {"META_PAGE_ACCESS_TOKEN": "token", "META_PAGE_ID": "page"}, clear=False
+        ):
+            readiness = run_engine._build_phase5_channel_readiness(
+                {"facebook": True, "instagram": False, "linkedin": False, "wordpress": False}, dry_run=True
+            )
+
+        self.assertEqual(readiness["checks"]["wordpress"]["status"], "yellow")
+        self.assertEqual(readiness["checks"]["facebook"]["status"], "green")
+        self.assertEqual(readiness["overall"], "pass")
+
     def test_generate_without_gemini_keeps_orchestration_unblocked_with_fallbacks(self) -> None:
         with patch.dict(os.environ, {"GEMINI_API_KEY": ""}, clear=False):
             content = generate_posts.generate("morning", pipeline_override="legacy")
@@ -452,8 +522,7 @@ class PhaseThirteenFourteenTests(unittest.TestCase):
         saved_post = save_calls[-1]["posts"][-1]
         self.assertEqual(saved_post["status"], "skipped_no_eligible_platforms")
         self.assertIn("platform_records", saved_post)
-        self.assertEqual(len(saved_post["platform_records"]), 3)
-        self.assertNotIn("wordpress", {record["platform"] for record in saved_post["platform_records"]})
+        self.assertEqual(len(saved_post["platform_records"]), 4)
 
     def test_run_engine_blocks_when_orchestration_control_plane_fails(self) -> None:
         save_calls: list[dict] = []

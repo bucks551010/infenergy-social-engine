@@ -328,6 +328,101 @@ class PhaseThirteenFourteenTests(unittest.TestCase):
         self.assertTrue(all(item["status"] == "resolved" for item in attempts[1]["issue_closure"]))
         self.assertEqual(attempts[0]["candidate"]["hook"], first["selected_hook"])
 
+    def test_retryable_do_not_publish_revises_with_claim_safe_feedback(self) -> None:
+        save_calls: list[dict] = []
+        strategy_lock = {
+            "audience": "mobile professional",
+            "angle": "match power to devices",
+            "topic": "Power Stations",
+            "benefit": "keeps compatible daily devices charged away from outlets",
+        }
+        first = deepcopy(_base_content())
+        first.update({
+            "product_id": "PPP-200",
+            "product_metrics": ["154Wh", "200W"],
+            "product_facts": "154Wh capacity and 200W output.",
+            "fb_caption": "A 40W fridge runs for 3.2 hours.",
+            "copy": {"strategy_lock": strategy_lock, "body_text": "A 40W fridge runs for 3.2 hours."},
+            "generated_visuals": {"facebook": "/tmp/passing-visual.png"},
+        })
+        second = deepcopy(first)
+        second["topic_hash"] = "topic456"
+        second["fb_caption"] = "Match compatible devices to verified output before leaving an outlet."
+        second["copy"]["body_text"] = second["fb_caption"]
+        decisions = [
+            {"decision": "do_not_publish", "publishable": False, "reasons": ["wattage_not_verified:40w", "runtime_not_verified:3.2 hours", "runtime_claim_not_supported", "humanness below bar", "primary_benefit_not_explicit", "generic_or_ai_like_language"], "orchestrator_critic_score": 76},
+            {"decision": "publish", "publishable": True, "reasons": [], "orchestrator_critic_score": 84},
+            {"decision": "do_not_publish", "publishable": False, "reasons": ["test_final_stop"], "orchestrator_critic_score": 84},
+        ]
+
+        with patch.object(run_engine.generate_posts, "ensure_runtime_data", return_value=None), \
+            patch.object(run_engine.generate_posts, "generate", side_effect=[first, second]) as mock_generate, \
+            patch.object(run_engine.generate_posts, "load_history", return_value={"posts": []}), \
+            patch.object(run_engine.generate_posts, "save_history", side_effect=lambda history: save_calls.append(history)), \
+            patch.object(run_engine, "load_channel_schedule", return_value={}), \
+            patch.object(run_engine, "eligible_channels_for_slot", return_value={
+                "wordpress": (False, "disabled_env"), "facebook": (False, "not_scheduled"),
+                "instagram": (False, "not_scheduled"), "linkedin": (False, "not_scheduled"),
+            }), \
+            patch.object(run_engine, "validate_generated_content", return_value={"passed": True, "errors": [], "warnings": []}), \
+            patch.object(run_engine, "score_content", return_value={"total": 90, "decision": "approve", "component_scores": {}}), \
+            patch.object(run_engine, "decide_publication", side_effect=decisions), \
+            patch.object(run_engine, "load_anti_repeat_windows", return_value={}), \
+            patch.object(run_engine, "check_duplicates", return_value={"ok": True, "reasons": [], "signatures": {}}), \
+            patch.dict(os.environ, {"SOCIAL_DRY_RUN": "true", "POST_SLOT": "morning"}, clear=False):
+            run_engine.main()
+
+        self.assertEqual(mock_generate.call_count, 2)
+        retry_kwargs = mock_generate.call_args_list[1].kwargs
+        self.assertEqual(retry_kwargs["approved_strategy"], strategy_lock)
+        self.assertEqual(retry_kwargs["product_id_override"], "PPP-200")
+        self.assertIn("runtime_claim_not_supported", retry_kwargs["revision_feedback"])
+        self.assertIn("humanness below bar", retry_kwargs["revision_feedback"])
+        self.assertIn("primary_benefit_not_explicit", retry_kwargs["revision_feedback"])
+        self.assertIn("generic_or_ai_like_language", retry_kwargs["revision_feedback"])
+        self.assertEqual(second["generated_visuals"], first["generated_visuals"])
+        self.assertNotIn("40W", first["fb_caption"])
+        self.assertNotIn("3.2", first["fb_caption"])
+        attempts = save_calls[-1]["posts"][-1]["generation_attempts"]
+        self.assertEqual(attempts[0]["retryability_classification"], "RETRYABLE_CONTENT")
+        self.assertEqual(attempts[1]["previous_decision"], "do_not_publish")
+        self.assertEqual(attempts[1]["previous_current_findings"], attempts[0]["current_candidate_findings"])
+        self.assertEqual(attempts[1]["historical_feedback"], attempts[0]["current_candidate_findings"])
+        self.assertEqual(attempts[1]["current_candidate_findings"], [])
+        self.assertTrue(attempts[0]["claim_corrections"])
+
+    def test_terminal_do_not_publish_does_not_retry(self) -> None:
+        save_calls: list[dict] = []
+        content = deepcopy(_base_content())
+        decision = {
+            "decision": "do_not_publish",
+            "publishable": False,
+            "reasons": ["product_unavailable_or_out_of_stock"],
+            "orchestrator_critic_score": 90,
+        }
+
+        with patch.object(run_engine.generate_posts, "ensure_runtime_data", return_value=None), \
+            patch.object(run_engine.generate_posts, "generate", return_value=content) as mock_generate, \
+            patch.object(run_engine.generate_posts, "load_history", return_value={"posts": []}), \
+            patch.object(run_engine.generate_posts, "save_history", side_effect=lambda history: save_calls.append(history)), \
+            patch.object(run_engine, "load_channel_schedule", return_value={}), \
+            patch.object(run_engine, "eligible_channels_for_slot", return_value={
+                "wordpress": (False, "disabled_env"), "facebook": (False, "not_scheduled"),
+                "instagram": (False, "not_scheduled"), "linkedin": (False, "not_scheduled"),
+            }), \
+            patch.object(run_engine, "validate_generated_content", return_value={"passed": False, "errors": ["product_unavailable_or_out_of_stock"], "warnings": []}), \
+            patch.object(run_engine, "score_content", return_value={"total": 90, "decision": "approve", "component_scores": {}}), \
+            patch.object(run_engine, "decide_publication", return_value=decision), \
+            patch.object(run_engine, "load_anti_repeat_windows", return_value={}), \
+            patch.object(run_engine, "check_duplicates", return_value={"ok": True, "reasons": [], "signatures": {}}), \
+            patch.dict(os.environ, {"SOCIAL_DRY_RUN": "true", "POST_SLOT": "morning"}, clear=False):
+            run_engine.main()
+
+        self.assertEqual(mock_generate.call_count, 1)
+        attempt = save_calls[-1]["posts"][-1]["generation_attempts"][0]
+        self.assertEqual(attempt["retryability_classification"], "TERMINAL")
+        self.assertEqual(attempt["historical_feedback"], [])
+
     def test_run_engine_records_skipped_no_eligible_platforms(self) -> None:
         save_calls: list[dict] = []
         content = deepcopy(_base_content())

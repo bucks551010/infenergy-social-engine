@@ -965,6 +965,7 @@ def test_revision_objectives_make_soft_and_claim_feedback_actionable():
             "primary_benefit_not_explicit",
             "humanness below bar",
             "generic_or_ai_like_language",
+            "hook-payoff mismatch",
         ],
         {
             "benefit": "keeps compatible daily devices charged away from outlets",
@@ -977,6 +978,7 @@ def test_revision_objectives_make_soft_and_claim_feedback_actionable():
     assert any("keeps compatible daily devices charged away from outlets" in objective for objective in objectives)
     assert any("before a trip" in objective for objective in objectives)
     assert any("stock marketing transitions" in objective for objective in objectives)
+    assert any("directly answer or fulfill the hook" in objective for objective in objectives)
 
 
 def test_copy_editing_prompt_receives_structured_revision_objectives(monkeypatch):
@@ -990,7 +992,7 @@ def test_copy_editing_prompt_receives_structured_revision_objectives(monkeypatch
 
     monkeypatch.setattr(model_router, "generate_json", fake_generate_json)
     objectives = orchestrator._revision_objectives(
-        ["primary_benefit_not_explicit", "humanness below bar", "generic_or_ai_like_language"],
+        ["primary_benefit_not_explicit", "humanness below bar", "generic_or_ai_like_language", "hook-payoff mismatch"],
         {
             "benefit": "keeps compatible daily devices charged away from outlets",
             "customer_moment": "before a trip",
@@ -1005,6 +1007,7 @@ def test_copy_editing_prompt_receives_structured_revision_objectives(monkeypatch
     assert "keeps compatible daily devices charged away from outlets" in captured["prompt"]
     assert "before a trip" in captured["prompt"]
     assert "stock marketing transitions" in captured["prompt"]
+    assert "directly answer or fulfill the hook" in captured["prompt"]
 
 
 def test_cost_tracker_records_and_totals():

@@ -313,7 +313,7 @@ def _revision_objectives(feedback: list[str] | None, strategy: dict[str, Any]) -
     """Translate current critic findings into concrete, strategy-bound edits."""
     findings = {str(item) for item in feedback or []}
     objectives: list[str] = []
-    if any(item.startswith(("runtime_", "unsupported_numeric_claim", "unverified_specification")) for item in findings):
+    if any(item.startswith(("runtime_", "unsupported_numeric_claim", "unverified_specification", "capacity_not_verified", "wattage_not_verified")) for item in findings):
         objectives.append("Remove unsupported numeric, runtime, and product-performance claims; do not replace them with new numbers.")
     if "primary_benefit_not_explicit" in findings:
         benefit = str(strategy.get("benefit") or "").strip()
@@ -326,6 +326,10 @@ def _revision_objectives(feedback: list[str] | None, strategy: dict[str, Any]) -
         )
     if "generic_or_ai_like_language" in findings:
         objectives.append("Use concrete plain language; remove stock marketing transitions, vague hype, and repetitive CTA phrasing.")
+    if "hook-payoff mismatch" in findings:
+        objectives.append(
+            "Make the body directly answer or fulfill the hook's promise using the locked customer moment, primary benefit, and verified facts."
+        )
     return objectives
 
 
@@ -527,12 +531,11 @@ class SocialIntelligenceOrchestrator:
         )
         beat_content = llm_beats or _assemble_copy(brief=brief, structure_beats=beats)
         removed_numeric_claims: list[str] = []
-        if revision_feedback:
-            verified_facts = list((bi_offering or {}).get("verified_facts") or []) or _bi_verified_facts(bi_ctx)
-            for beat, value in list(beat_content.items()):
-                sanitized, removed = claim_intelligence.remove_unsupported_numeric_claims(value, verified_facts)
-                beat_content[beat] = sanitized
-                removed_numeric_claims.extend(removed)
+        claim_verified_facts = list((bi_offering or {}).get("verified_facts") or []) or _bi_verified_facts(bi_ctx)
+        for beat, value in list(beat_content.items()):
+            sanitized, removed = claim_intelligence.remove_unsupported_numeric_claims(value, claim_verified_facts)
+            beat_content[beat] = sanitized
+            removed_numeric_claims.extend(removed)
         copy_generation_method = "llm" if llm_beats else "template_fallback"
         copy_fallback_reason = None if llm_beats else model_router.last_error()
         hook_text = beat_content.get("hook") or beat_content.get("question") or beat_content.get("problem") or ""

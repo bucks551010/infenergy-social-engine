@@ -17,6 +17,7 @@ import publish_instagram
 import publish_linkedin
 from score_content import score_content
 from social.publish_decision import decide as decide_publication
+from social.claim_intelligence import remove_unsupported_numeric_claims
 from validate_product_claims import validate_generated_content
 from anti_repeat import check_duplicates, load_anti_repeat_windows
 from build_utm_url import build_utm_url
@@ -347,6 +348,83 @@ def _revision_feedback(content: dict, decision: dict) -> list[str]:
         review = creative.get(key) if isinstance(creative.get(key), dict) else {}
         findings.extend(str(issue) for issue in review.get("issues", []) if str(issue))
     return list(dict.fromkeys(findings))
+
+
+_RETRYABLE_CONTENT_PREFIXES = (
+    "runtime_",
+    "capacity_not_verified:",
+    "wattage_not_verified:",
+    "numeric_claim_not_verified:",
+    "price_claim_",
+    "price_mismatch:",
+    "compatibility_not_verified",
+    "testimonial_or_customer_claim_unverified",
+)
+_RETRYABLE_CONTENT_FINDINGS = {
+    "runtime_quality_below_regeneration_floor",
+    "orchestrator_critic_requires_revision",
+    "orchestrator_critic_below_regeneration_floor",
+    "candidate_needs_regeneration",
+    "humanness below bar",
+    "primary_benefit_not_explicit",
+    "generic_or_ai_like_language",
+    "hook-payoff mismatch",
+}
+_TERMINAL_FINDINGS = {
+    "product_url_missing",
+    "product_unavailable_or_out_of_stock",
+    "image_candidate_mismatch",
+    "orchestration_control_plane_blocked",
+    "strategy_integrity_material_drift",
+    "human_connection_review_do_not_publish",
+}
+
+
+def _retryability_classification(decision: dict, findings: list[str]) -> str:
+    """Fail closed: only known content corrections may consume another attempt."""
+    reasons = {str(item) for item in decision.get("reasons", []) if str(item)} | {str(item) for item in findings if str(item)}
+    if any(reason in _TERMINAL_FINDINGS for reason in reasons):
+        return "TERMINAL"
+    if any(reason in _RETRYABLE_CONTENT_FINDINGS or reason.startswith(_RETRYABLE_CONTENT_PREFIXES) for reason in reasons):
+        return "RETRYABLE_CONTENT"
+    return "TERMINAL"
+
+
+def _enforce_candidate_claim_boundary(content: dict) -> list[str]:
+    """Remove only unsupported unit-bearing numeric sentences before validation."""
+    verified_facts = list(content.get("product_metrics") or [])
+    product_facts = str(content.get("product_facts") or "").strip()
+    if product_facts:
+        verified_facts.append(product_facts)
+    removed: list[str] = []
+
+    def sanitize(mapping: dict, key: str) -> None:
+        value = mapping.get(key)
+        if not isinstance(value, str) or not value.strip():
+            return
+        sanitized, corrections = remove_unsupported_numeric_claims(value, verified_facts)
+        mapping[key] = sanitized
+        removed.extend(corrections)
+
+    for field in ("wp_content", "fb_caption", "ig_caption", "li_text", "selected_hook"):
+        sanitize(content, field)
+    copy = content.get("copy")
+    if isinstance(copy, dict):
+        for field in ("hook", "body_text", "takeaway"):
+            sanitize(copy, field)
+        beats = copy.get("body_beats")
+        if isinstance(beats, dict):
+            for field in list(beats):
+                sanitize(beats, field)
+        copy["removed_unsupported_numeric_claims"] = list(dict.fromkeys(
+            list(copy.get("removed_unsupported_numeric_claims") or []) + removed
+        ))
+    posts = content.get("platform_posts")
+    if isinstance(posts, dict):
+        for post in posts.values():
+            if isinstance(post, dict):
+                sanitize(post, "caption")
+    return list(dict.fromkeys(removed))
 
 
 def _revision_scope(content: dict) -> str:
@@ -807,6 +885,8 @@ def main() -> None:
     pending_feedback: list[str] = []
     pending_scope = "copy"
     prior_generated_visuals: dict = {}
+    previous_decision: str | None = None
+    previous_current_findings: list[str] = []
     t_generation = time.perf_counter()
     for idx in range(3):
         if idx > 0:
@@ -822,6 +902,7 @@ def main() -> None:
                 content["generated_visuals"] = prior_generated_visuals
                 content["revision_reused_components"] = ["generated_visuals"]
 
+        claim_corrections = _enforce_candidate_claim_boundary(content)
         validation = validate_generated_content(content)
         hard_block = str(os.environ.get("ORCHESTRATION_HARD_BLOCK", "false")).strip().lower() in {"1", "true", "yes", "on"}
         if content.get("orchestration_blocked"):
@@ -893,6 +974,7 @@ def main() -> None:
         revision_scope = _revision_scope(content)
         historical_feedback = list(pending_feedback)
         issue_closure = _issue_closure(historical_feedback, critic_feedback)
+        retryability = _retryability_classification(publish_decision, critic_feedback)
 
         attempts.append(
             {
@@ -905,8 +987,12 @@ def main() -> None:
                 "duplicate_reasons": duplicates.get("reasons", []),
                 "conversion_quality_score": cqs_total,
                 "orchestrator_critic_score": publish_decision.get("orchestrator_critic_score"),
+                "previous_decision": previous_decision,
+                "previous_current_findings": previous_current_findings,
+                "retryability_classification": retryability,
                 "historical_feedback": historical_feedback,
                 "current_candidate_findings": critic_feedback,
+                "claim_corrections": claim_corrections,
                 "issue_closure": issue_closure,
                 "revision_scope": revision_scope,
                 "strategy_lock": locked_strategy,
@@ -978,11 +1064,19 @@ def main() -> None:
                 break
 
         # A critic-directed revision is bounded to three candidates total.
-        if idx < 2 and publish_decision["decision"] in {"revise", "regenerate"}:
+        if idx < 2 and scoring.get("decision") != "reject" and (
+            publish_decision["decision"] in {"revise", "regenerate"}
+            or (publish_decision["decision"] == "do_not_publish" and retryability == "RETRYABLE_CONTENT")
+        ):
             pending_feedback = critic_feedback or ["Improve the candidate so it meets the existing critic threshold."]
             pending_scope = revision_scope
             prior_generated_visuals = dict(content.get("generated_visuals") or {})
+            previous_decision = str(publish_decision["decision"])
+            previous_current_findings = list(critic_feedback)
             continue
+
+        if publish_decision["decision"] == "do_not_publish":
+            break
 
         # Otherwise stop on final attempt or hard rejection.
         if idx == 2 or scoring.get("decision") == "reject":

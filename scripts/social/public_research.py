@@ -3,9 +3,42 @@ from __future__ import annotations
 
 from hashlib import sha256
 from datetime import datetime, timezone
+from html.parser import HTMLParser
 from typing import Any
+from urllib.parse import parse_qs, quote_plus, unquote, urlparse
+from urllib.request import urlopen
 
 from . import research_router
+
+
+class _SearchResults(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__()
+        self.urls: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag != "a":
+            return
+        href = dict(attrs).get("href", "") or ""
+        destination = unquote(parse_qs(urlparse(href).query).get("uddg", [href])[0])
+        if destination.startswith(("https://", "http://")):
+            self.urls.append(destination)
+
+
+def _query(task: research_router.ResearchTask) -> str:
+    suffix = {"official_manufacturer_source": "official specifications", "competitor_source": "competitors alternatives", "customer_language_research": "questions objections problems"}.get(task.preferred_source, "")
+    return f"{task.entity} {suffix}".strip()
+
+
+def discover_web_candidates(task: research_router.ResearchTask) -> list[str]:
+    """Discover at most three public candidates for a decision-scoped question."""
+    search_url = f"https://html.duckduckgo.com/html/?q={quote_plus(_query(task))}"
+    with urlopen(search_url, timeout=10) as response:  # nosec B310: fixed public discovery endpoint
+        parser = _SearchResults()
+        parser.feed(response.read().decode("utf-8", errors="replace"))
+    excluded = {"duckduckgo.com", "google.com", "bing.com"}
+    seen: set[str] = set()
+    return [url for url in parser.urls if urlparse(url).netloc.lower().removeprefix("www.") not in excluded and not (url in seen or seen.add(url))][:3]
 
 
 def discover(*, task: research_router.ResearchTask, known_sources: list[str] | None = None) -> list[dict[str, Any]]:
@@ -13,11 +46,9 @@ def discover(*, task: research_router.ResearchTask, known_sources: list[str] | N
     known_sources = known_sources or []
     source_domains = {
         "infenergy_first_party_website": ["https://infenergypower.com"],
-        "official_manufacturer_source": ["https://www.google.com/search?q=" + task.entity.replace(" ", "+")],
-        "competitor_source": ["https://www.google.com/search?q=" + task.entity.replace(" ", "+") + "+competitors"],
-        "customer_language_research": ["https://www.google.com/search?q=" + task.entity.replace(" ", "+") + "+questions+objections"],
     }
-    urls = source_domains.get(task.preferred_source, []) + known_sources
+    discovered = [] if task.preferred_source in source_domains else discover_web_candidates(task)
+    urls = source_domains.get(task.preferred_source, []) + known_sources + discovered
     seen: set[str] = set()
     return [{"url": url, "authority": 0.9 if "infenergypower.com" in url else 0.6,
              "relevance": 0.9 if task.entity.lower().split()[0] in url.lower() else 0.6,

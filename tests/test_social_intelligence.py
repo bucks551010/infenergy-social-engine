@@ -306,6 +306,14 @@ def test_analytics_windows_are_runtime_configurable(monkeypatch):
     assert analytics_ingestion.configured_windows() == (1, 12, 48)
 
 
+def test_competitor_and_customer_discovery_start_from_question_only(monkeypatch):
+    monkeypatch.setattr(public_research, "discover_web_candidates", lambda task: ["https://example.com/evidence"])
+    competitor = research_router.route(question="Which competitors frame portable power differently?", why_needed="find whitespace", entity="portable power", decision_affected="positioning")
+    customer = research_router.route(question="What questions do portable power buyers ask?", why_needed="test angle", entity="portable power", decision_affected="audience language")
+    assert public_research.discover(task=competitor)[0]["url"] == "https://example.com/evidence"
+    assert public_research.discover(task=customer)[0]["url"] == "https://example.com/evidence"
+
+
 def test_autonomous_pre_publish_contract(tmp_path, monkeypatch):
     task = research_router.route(question="What changed in our portable-power offering?", why_needed="find a current angle", entity="portable power", decision_affected="positioning")
     monkeypatch.setattr(research_router, "inspect_first_party", lambda url: {"content_hash": "new", "marketing_language": ["New modular capability"], "factual_candidates": ["500W"], "changed": True})

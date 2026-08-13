@@ -94,6 +94,7 @@ def heartbeat(
     creative_learning = performance_learning.aggregate_creative_learning(creative_observations)
     state["creative_learning"] = creative_learning
     consumers = consumer_intelligence.normalize(consumer_signals or [])
+    state["consumer_relationships"] = consumer_intelligence.relationships(consumers)
     competitors, competitor_changes = competitor_intelligence.observe(competitor_observations or [], state.get("competitors", {}))
     state["competitors"] = competitors
     if website_url:
@@ -107,6 +108,7 @@ def heartbeat(
     category_map = market_strategy.conversation(competitors, consumers)
     gap = market_strategy.whitespace(conversation_map=category_map, business_personality=business_personality, capability=capability)
     position = market_strategy.positioning(whitespace_result=gap, business_personality=business_personality, offering_truth=offering_truth or [], audience_importance=0.8 if consumers else 0.0)
+    state["positioning"] = position
     for observation in observations:
         support = [{"type": "FIRST_PARTY_EVIDENCE" if observation["type"] == "first_party_change" else "COMPETITIVE_EVIDENCE", "provenance": observation["source"], "confidence": 0.7}]
         opportunity_graph.upsert(state["opportunities"], reason=observation["signal"], support=support)

@@ -147,7 +147,7 @@ class EditorialDirectorTests(unittest.TestCase):
         try:
             generate_posts.load_history = lambda: history
             generate_posts.load_products = lambda: PRODUCTS
-            content = generate_posts.generate("morning", product_id_override="PF-1")
+            content = generate_posts.generate("morning", product_id_override="PF-1", pipeline_override="legacy")
         finally:
             generate_posts.load_history = original_load_history
             generate_posts.load_products = original_load_products

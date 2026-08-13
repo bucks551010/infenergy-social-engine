@@ -74,6 +74,38 @@ def test_generate_uses_social_intelligence_when_enabled(monkeypatch):
     assert result["anchored_offering"]["name"] == "Portable power station"
 
 
+def test_normal_generation_defaults_to_the_orchestrator(monkeypatch):
+    monkeypatch.delenv("CONTENT_PIPELINE", raising=False)
+    monkeypatch.delenv("POST_PIPELINE_OVERRIDE", raising=False)
+
+    assert generate_posts._pipeline_mode() == "orchestrator"
+
+
+def test_orchestrator_bridge_passes_council_strategy_to_generation(monkeypatch):
+    approved = {
+        "audience": "preparedness household", "customer_moment": "storm outage", "human_need": "confidence",
+        "human_value": "preparedness", "topic": "power priorities", "angle": "prioritize essentials",
+        "offering": "power station", "positioning": "calm preparedness", "non_price_edge": {"kind": "PRODUCT_EDGE"},
+        "important_capability": "500W AC output", "benefit": "prioritize essentials", "human_outcome": "confidence",
+        "reader_job": "PREPARE_ME", "proof": ["500W AC output"], "claim_limits": "verified facts only",
+        "visual_objective": "show a priority ladder", "CTA_strategy": "Learn more",
+    }
+    captured = {}
+    monkeypatch.setattr(generate_posts, "_living_strategy_for_generation", lambda: (approved, {"decision": "strategy_selected"}))
+    monkeypatch.setattr(generate_posts, "run_social_intelligence", lambda **kwargs: captured.setdefault("kwargs", kwargs) and [])
+
+    generate_posts._route_generate_orchestrator("morning")
+
+    assert captured["kwargs"]["approved_strategy"] == approved
+
+
+def test_missing_saved_artifact_requires_visual_regeneration():
+    review = social_visuals.review_rendered_visual("", "instagram")
+
+    assert review["verdict"] == "REGENERATE_VISUAL"
+    assert review["issues"] == ["rendered_asset_unavailable"]
+
+
 def test_orchestrator_bridge_builds_publishable_platform_contract(monkeypatch):
     expected = {
         "post_id": "social-456",

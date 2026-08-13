@@ -876,6 +876,34 @@ def _select_visual_template(visual_plan: dict[str, Any], platform: str) -> str:
     return "premium_product_focus" if platform in ("facebook", "instagram") else "power_shot"
 
 
+def review_rendered_visual(path: str, platform: str) -> dict[str, Any]:
+    """Inspect the saved PNG so publication is gated on a real artifact, not only its plan."""
+    issues: list[str] = []
+    image_module, _, _ = _load_pillow()
+    expected_size = _platform_visual_spec(platform)["target"]
+    if not path or not os.path.isfile(path):
+        issues.append("rendered_asset_unavailable")
+    elif image_module is None:
+        issues.append("pillow_unavailable")
+    else:
+        try:
+            with image_module.open(path) as image:
+                image.load()
+                if image.size != expected_size:
+                    issues.append("rendered_dimensions_mismatch")
+                if image.convert("RGB").getbbox() is None:
+                    issues.append("rendered_asset_blank")
+        except Exception as exc:
+            issues.append(f"rendered_asset_unreadable:{type(exc).__name__}")
+    verdict = "PASS" if not issues else "REGENERATE_VISUAL"
+    return {
+        "verdict": verdict,
+        "issues": issues,
+        "artifact_path": path,
+        "expected_dimensions": list(expected_size),
+    }
+
+
 def generate_visuals(content: dict[str, Any], visual_plan: dict[str, Any] | None = None) -> dict[str, Any]:
     post_id = str(content.get("post_id") or "preview")
     visuals: dict[str, Any] = {}
@@ -886,6 +914,7 @@ def generate_visuals(content: dict[str, Any], visual_plan: dict[str, Any] | None
     render_engines: dict[str, str] = {}
     product_overlay_applied: dict[str, bool] = {}
     fallback_reasons: dict[str, str] = {}
+    artifact_reviews: dict[str, dict[str, Any]] = {}
     repo_context = _load_visual_repo_context()
     repo_refs = repo_context.get("references", []) if isinstance(repo_context, dict) else []
     settings = repo_context.get("settings", {}) if isinstance(repo_context, dict) else {}
@@ -907,10 +936,12 @@ def generate_visuals(content: dict[str, Any], visual_plan: dict[str, Any] | None
             render_engines[platform] = "gemini"
             product_overlay_applied[platform] = product_specific_source_present
             visuals[platform] = file_path
+            artifact_reviews[platform] = review_rendered_visual(file_path, platform)
         else:
             render_engines[platform] = "failed"
             product_overlay_applied[platform] = False
             fallback_reasons[platform] = reason
+            artifact_reviews[platform] = review_rendered_visual("", platform)
 
     visuals["template"] = template_name
     visuals["image_strategy"] = image_strategy
@@ -919,6 +950,7 @@ def generate_visuals(content: dict[str, Any], visual_plan: dict[str, Any] | None
     visuals["render_engines"] = render_engines
     visuals["product_overlay_applied"] = product_overlay_applied
     visuals["fallback_reasons"] = fallback_reasons
+    visuals["artifact_reviews"] = artifact_reviews
     visuals["gemini_available"] = str(gemini_available).lower()
     visuals["style_reference_count"] = str(len(repo_refs) if isinstance(repo_refs, list) else 0)
     visuals["db_visual_override_present"] = str(bool(str(settings.get("visual_product_image_override_url", "")).strip()) if isinstance(settings, dict) else False).lower()

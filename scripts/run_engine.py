@@ -557,6 +557,21 @@ def _live_visual_gate_errors(content: dict, effective_channels: dict[str, bool],
     return errors
 
 
+def _artifact_visual_errors_by_platform(content: dict, effective_channels: dict[str, bool]) -> dict[str, list[str]]:
+    """Return saved-artifact QA failures for active social channels only."""
+    visuals = content.get("generated_visuals") if isinstance(content.get("generated_visuals"), dict) else {}
+    reviews = visuals.get("artifact_reviews") if isinstance(visuals.get("artifact_reviews"), dict) else {}
+    errors: dict[str, list[str]] = {}
+    for platform in ("facebook", "instagram", "linkedin"):
+        if not effective_channels.get(platform):
+            continue
+        review = reviews.get(platform) if isinstance(reviews.get(platform), dict) else {}
+        if str(review.get("verdict", "")).upper() != "PASS":
+            issues = review.get("issues") if isinstance(review.get("issues"), list) else ["artifact_review_missing"]
+            errors[platform] = [str(issue) for issue in issues] or ["artifact_review_missing"]
+    return errors
+
+
 def _build_platform_history_records(
     content: dict,
     run_started: str,
@@ -688,9 +703,12 @@ def main() -> None:
             effective_channels[platform] = False
             channel_reasons[platform] = "strategy_platform_not_appropriate"
 
-    check_secrets(dry_run=dry_run or shadow_mode, channels=effective_channels)
     phase5_readiness = _build_phase5_channel_readiness(effective_channels, dry_run)
-    readiness_block_on_red = os.environ.get("CHANNEL_READINESS_BLOCK_ON_RED", "true").strip().lower() in {"1", "true", "yes", "on"}
+    for platform in phase5_readiness.get("blocking_channels", []):
+        effective_channels[platform] = False
+        readiness_reason = (phase5_readiness.get("checks", {}).get(platform, {}) or {}).get("reason", "readiness_failed")
+        channel_reasons[platform] = f"channel_readiness:{readiness_reason}"
+    check_secrets(dry_run=dry_run or shadow_mode, channels=effective_channels)
     strategy_name, strategy_freshness = _latest_marketing_strategy_info()
 
     print(f"\n=== INF Energy Social Engine ===")
@@ -717,67 +735,6 @@ def main() -> None:
         print(f"Manual funnel-stage override: {funnel_stage_override}\n")
     print(f"Marketing strategy: {strategy_name} ({strategy_freshness})\n")
     print(f"Phase5 readiness: {json.dumps(phase5_readiness, ensure_ascii=True)}\n")
-
-    if (not dry_run) and not shadow_mode and readiness_block_on_red and phase5_readiness.get("overall") != "pass":
-        print("[SKIP] Channel readiness check failed; blocking live publish")
-        history = generate_posts.load_history()
-        run_started = datetime.now(timezone.utc).isoformat()
-        tracked_links = {"facebook": None, "instagram": None, "linkedin": None, "wordpress": None}
-        platform_ids = {"wordpress": "skipped", "facebook": "skipped", "instagram": "skipped", "linkedin": "skipped"}
-        platform_records = _build_platform_history_records(
-            content=preview_content,
-            run_started=run_started,
-            effective_channels=effective_channels,
-            dry_run=dry_run,
-            ids=platform_ids,
-            tracked_links=tracked_links,
-            error_map={},
-        )
-        phase6_learning = _build_phase6_learning(
-            content=preview_content,
-            platform_records=platform_records,
-            errors=["channel_readiness_failed"],
-            status="skipped_channel_readiness",
-        )
-        _apply_phase8_budget(runtime_metrics, "total", time.perf_counter() - t_total, total_budget)
-        history["posts"].append({
-            "post_id": preview_content.get("post_id", ""),
-            "platform_post_id": None,
-            "campaign_id": preview_content.get("campaign_id", ""),
-            "platform": "multi",
-            "published_at": run_started,
-            "audience_segment": preview_content.get("audience_segment", ""),
-            "product_id": preview_content.get("product_id") or None,
-            "hook": preview_content.get("selected_hook", ""),
-            "cta": preview_content.get("selected_cta", ""),
-            "content_format": "multi",
-            "destination_url": preview_content.get("destination_url") or None,
-            "utm_url": None,
-            "error": "channel_readiness_failed",
-            "date": preview_content.get("date"),
-            "slot": slot,
-            "run_started_at_utc": run_started,
-            "topic": preview_content.get("topic"),
-            "pillar": preview_content.get("pillar"),
-            "topic_hash": preview_content.get("topic_hash"),
-            "funnel_stage": preview_content.get("funnel_stage", "EDUCATION"),
-            "quality_score": preview_content.get("quality_score"),
-            **_conversion_learning_fields(preview_content),
-            "status": "skipped_channel_readiness",
-            "channel_reasons": channel_reasons,
-            "phase5_channel_readiness": phase5_readiness,
-            "phase6_learning": phase6_learning,
-            "phase8_runtime": runtime_metrics,
-            "platform_records": platform_records,
-            "wp_id": "skipped",
-            "fb_id": "skipped",
-            "ig_id": "skipped",
-            "li_id": "skipped",
-        })
-        history["posts"] = history["posts"][-200:]
-        generate_posts.save_history(history)
-        print("\n=== Done (skipped) ===\n")
-        return
 
     print("[1/5] Generating content with Gemini...")
     # Phase 8: up to three generation attempts with score/validation gating.
@@ -945,8 +902,14 @@ def main() -> None:
     final_validation_ok = content.get("validation_status") == "passed"
     final_score = float(content.get("quality_score") or 0)
     duplicate_ok = bool(content.get("duplicate_check", {}).get("ok", True))
+    artifact_errors = _artifact_visual_errors_by_platform(content, effective_channels)
+    for platform, issues in artifact_errors.items():
+        effective_channels[platform] = False
+        channel_reasons[platform] = f"artifact_visual_qa:{','.join(issues)}"
     visual_gate_errors = _live_visual_gate_errors(content, effective_channels, dry_run or shadow_mode)
     visual_gate_errors.extend(_strategy_integrity_errors(content))
+    content["artifact_visual_qa"] = (content.get("generated_visuals") or {}).get("artifact_reviews", {})
+    content["artifact_visual_qa_failures"] = artifact_errors
     if visual_gate_errors:
         content["validation_status"] = "failed"
         content["validation_errors"] = list(content.get("validation_errors", [])) + visual_gate_errors

@@ -97,7 +97,7 @@ def test_generate_end_to_end_exposes_hints_and_experiment(tmp_path, monkeypatch)
     import generate_posts as gp
     importlib.reload(gp)
     try:
-        content = gp.generate("morning", funnel_stage_override="CONVERSION")
+        content = gp.generate("morning", funnel_stage_override="CONVERSION", pipeline_override="legacy")
         strategist = content.get("conversion_strategist", {})
         assert strategist.get("winning_hints_applied", {}).get("logic_principle") == ["contrapositive"]
         assert strategist.get("losing_hints_applied", {}).get("logic_principle") == ["double_implication"]

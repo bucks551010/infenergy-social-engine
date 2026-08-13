@@ -39,7 +39,7 @@ class PhaseFiveSixTests(unittest.TestCase):
         self.assertTrue(ok, msg=reason)
 
     def test_generator_includes_hook_type_and_valid_cta(self) -> None:
-        content = generate_posts.generate("midday")
+        content = generate_posts.generate("midday", pipeline_override="legacy")
         self.assertIn("selected_hook_type", content)
         self.assertIn("selected_cta", content)
         ok, reason = cta_is_valid_for_stage(

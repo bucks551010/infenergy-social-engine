@@ -30,11 +30,11 @@ from google.genai import types
 
 
 def _social_intelligence_enabled() -> bool:
-    return os.environ.get("ENABLE_SOCIAL_INTELLIGENCE", "").lower() in {"1", "true", "yes", "on"}
+    return os.environ.get("ENABLE_SOCIAL_INTELLIGENCE", "true").lower() in {"1", "true", "yes", "on"}
 
 
 def _business_intelligence_enabled() -> bool:
-    return os.environ.get("ENABLE_BUSINESS_INTELLIGENCE", "").lower() in {"1", "true", "yes", "on"}
+    return os.environ.get("ENABLE_BUSINESS_INTELLIGENCE", "true").lower() in {"1", "true", "yes", "on"}
 
 
 _PIPELINE_ALIASES = {
@@ -49,10 +49,11 @@ def _pipeline_mode(explicit: str = "") -> str:
 
     Precedence: explicit ``pipeline_override`` kwarg > ``CONTENT_PIPELINE``/
     ``POST_PIPELINE_OVERRIDE`` env vars > legacy ``ENABLE_SOCIAL_INTELLIGENCE``
-    flag (handled by the caller when this returns "").
+    flag. Normal production defaults to the orchestrator; ``legacy`` remains
+    an explicit operational fallback instead of an implicit second brain.
     """
     raw = (explicit or os.environ.get("CONTENT_PIPELINE", "") or os.environ.get("POST_PIPELINE_OVERRIDE", "")).strip().lower()
-    return _PIPELINE_ALIASES.get(raw, "")
+    return _PIPELINE_ALIASES.get(raw, "orchestrator")
 
 
 def run_social_intelligence(count: int = 1, platform: str = "instagram_feed", **kw: Any) -> list[dict[str, Any]]:
@@ -102,6 +103,52 @@ def _select_social_platforms(strategy_lock: dict[str, Any]) -> dict[str, dict[st
     }
 
 
+def _living_strategy_for_generation() -> tuple[dict[str, Any] | None, dict[str, Any]]:
+    """Use the persisted Council selection when living evidence supports one."""
+    try:
+        from social import living_intelligence
+
+        data_dir = os.environ.get("DATA_DIR", os.path.join(os.path.dirname(__file__), "..", "data"))
+        state = living_intelligence.load(data_dir)
+        existing = state.get("approved_strategy")
+        if isinstance(existing, dict) and existing:
+            return existing, {"decision": "strategy_selected", "source": "persisted_council"}
+
+        customers = state.get("consumer_relationships") if isinstance(state.get("consumer_relationships"), list) else []
+        customer = next((item for item in customers if isinstance(item, dict)), {})
+        if not customer:
+            return None, {"decision": "fallback_runtime_lock", "reason": "no persisted customer relationship"}
+        inputs = {
+            "customer": customer,
+            "capability": str(customer.get("offering_capability") or "verified product facts"),
+            "benefit": str(customer.get("benefit") or "practical product-fit guidance"),
+            "positioning": state.get("positioning") if isinstance(state.get("positioning"), dict) else {},
+            "competitor_context": str(customer.get("competitor_context") or ""),
+            "human_value": str(customer.get("human_meaning") or customer.get("human_need") or "practical clarity"),
+            "topic": str(customer.get("question") or customer.get("human_need") or "product guidance"),
+            "reader_job": "HELP_ME_CHOOSE",
+            "important_capability": str(customer.get("offering_capability") or "verified product facts"),
+            "human_outcome": str(customer.get("outcome") or customer.get("human_need") or "confidence"),
+            "proof": [],
+            "claim_limits": "Use only verified product facts.",
+            "visual_objective": "make the supported customer decision easier to understand",
+            "CTA_strategy": "Learn more",
+        }
+        decision = living_intelligence.council(state, strategy_inputs=inputs)
+        approved = decision.get("approved_strategy") if isinstance(decision.get("approved_strategy"), dict) else None
+        if approved:
+            state["approved_strategy"] = approved
+            state["last_council_decision"] = decision
+            for opportunity in state.get("opportunities", []):
+                if opportunity.get("id") == decision.get("opportunity_id"):
+                    opportunity["state"] = "SELECTED"
+            living_intelligence.save(data_dir, state)
+            return approved, decision
+        return None, decision
+    except Exception as exc:
+        return None, {"decision": "fallback_runtime_lock", "reason": f"living_state_unavailable:{type(exc).__name__}"}
+
+
 def _route_generate_orchestrator(
     slot: str = "",
     *,
@@ -111,6 +158,13 @@ def _route_generate_orchestrator(
 ) -> dict[str, Any]:
     """Return the first orchestrated post package in the legacy payload shape used by the runtime."""
     social_platform = _social_platform_key(platform)
+    council_decision: dict[str, Any] = {}
+    if not isinstance(kw.get("approved_strategy"), dict):
+        approved_strategy, council_decision = _living_strategy_for_generation()
+        if approved_strategy:
+            kw["approved_strategy"] = approved_strategy
+    else:
+        council_decision = {"decision": "strategy_selected", "source": "caller_override"}
     batch = run_social_intelligence(count=1, platform=social_platform, **kw)
     if not batch:
         return {}
@@ -180,6 +234,18 @@ def _route_generate_orchestrator(
     for platform, package in platform_posts.items():
         package["platform_selection"] = platform_selection[platform]
         package["creative_interpretation"] = (creative_packet.get("platform_interpretations") or {}).get(platform, {})
+    try:
+        from social import quality_intelligence
+        final_copy_reviews = {
+            platform: quality_intelligence.copy_critic(
+                copy={"hook": package.get("hook", ""), "body_text": package.get("caption", ""), "cta": package.get("cta", "")},
+                strategy=copy_pkg.get("strategy_lock") if isinstance(copy_pkg.get("strategy_lock"), dict) else {},
+                platform=platform,
+            )
+            for platform, package in platform_posts.items()
+        }
+    except Exception:
+        final_copy_reviews = {}
     wp_content = _join_paragraphs(selected_hook, copy_body, takeaway, selected_cta)
 
     legacy = {
@@ -203,6 +269,17 @@ def _route_generate_orchestrator(
         "selected_cta": selected_cta,
         "copy": copy_pkg,
         "visual": visual_pkg,
+        "layout_grammar": visual_pkg.get("layout_grammar", {}),
+        "information_priority": visual_pkg.get("information_priority", {}),
+        "benefit_translation": visual_pkg.get("benefit_translation", {}),
+        "platform_interpretations": creative_packet.get("platform_interpretations", {}),
+        "human_connection": {
+            "person": (copy_pkg.get("strategy_lock") or {}).get("audience", ""),
+            "situation": (copy_pkg.get("strategy_lock") or {}).get("customer_moment", ""),
+            "need": (copy_pkg.get("strategy_lock") or {}).get("human_need", ""),
+            "human_value": (copy_pkg.get("strategy_lock") or {}).get("human_value", ""),
+            "outcome": (copy_pkg.get("strategy_lock") or {}).get("human_outcome", ""),
+        },
         "creative_decision_packet": first.get("creative_decision_packet") or {},
         "quality_score": quality_pkg.get("overall", 0),
         "quality_checks": quality_pkg.get("checks", []),
@@ -221,6 +298,7 @@ def _route_generate_orchestrator(
         "strategic_brief": brief,
         "claim_ledger": first.get("claim_ledger") or {},
         "creative_director": first.get("creative_director") or {},
+        "final_platform_copy_reviews": final_copy_reviews,
         "orchestrator_quality": quality_pkg,
         "copy_generation_method": copy_pkg.get("generation_method", ""),
         "copy_fallback_reason": copy_pkg.get("fallback_reason"),
@@ -232,6 +310,16 @@ def _route_generate_orchestrator(
         "li_text": platform_posts["linkedin"]["caption"],
         "platform_posts": platform_posts,
         "platform_selection": platform_selection,
+        "decision_trace": {
+            "council": council_decision,
+            "strategy_lock": copy_pkg.get("strategy_lock") or {},
+            "feed_need": creative_packet.get("feed_intelligence", {}),
+            "campaign_state": creative_packet.get("campaign_guidance", {}),
+            "creative_concept": creative_packet.get("SELECTED_ANSWER", {}).get("creative_concept", ""),
+            "copy_concept": creative_packet.get("selected_copy_concept", {}),
+            "benefit_priority": creative_packet.get("information_priority", {}),
+            "platform_selection": platform_selection,
+        },
     }
     for key in ("hook", "body_text", "takeaway", "memory_anchor"):
         legacy.setdefault(key, copy_pkg.get(key))

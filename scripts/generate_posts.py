@@ -200,6 +200,7 @@ def _route_generate_orchestrator(
         "selected_cta": selected_cta,
         "copy": copy_pkg,
         "visual": visual_pkg,
+        "creative_decision_packet": first.get("creative_decision_packet") or {},
         "quality_score": quality_pkg.get("overall", 0),
         "quality_checks": quality_pkg.get("checks", []),
         "quality_warnings": quality_pkg.get("warnings", []),

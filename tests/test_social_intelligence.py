@@ -36,6 +36,7 @@ from social import (  # noqa: E402
     public_research,
     human_connection_review,
     analytics_ingestion,
+    creative_cognition,
     quality_intelligence,
     research_router,
     strategy_lock,
@@ -260,6 +261,107 @@ def test_orchestrator_derives_runtime_lock_and_final_reviews_without_council(mon
     assert post.copy["strategy_lock"] == post.visual["strategy_lock"]
     assert post.creative_director["independent_human_connection_review"]["verdict"]
     assert post.creative_director["strategy_integrity_review"]["verdict"] == "ALIGNED"
+
+
+def test_orchestrator_creative_decision_uses_abstract_diverse_references(tmp_path, monkeypatch):
+    monkeypatch.setattr(orchestrator, "_llm_copy_beats", lambda *args: None)
+    post = orchestrator.SocialIntelligenceOrchestrator(data_dir=str(tmp_path)).create_post(record_memory=True)
+
+    packet = post.creative_decision_packet
+    assert packet["ACTION"] == "create"
+    assert packet["REFERENCE_PATTERNS_USED"]
+    assert packet["SELECTED_ANSWER"]["reference_id"] in packet["REFERENCE_PATTERNS_USED"]
+    assert post.visual["layout_logic"] == packet["SELECTED_ANSWER"]["layout_logic"]
+    assert post.visual["copy_grammar"] == packet["SELECTED_ANSWER"]["copy_logic"]
+    assert "abstract principles" in packet["ASSUMPTIONS"][0]
+    assert "source executions" in packet["ASSUMPTIONS"][0]
+    assert post.creative_director["creative_decision_review"]["verdict"] == "PASS"
+
+
+def test_creative_reference_heartbeat_discovers_extracts_persists_and_retrieves(tmp_path):
+    def scout(*, need, limit):
+        assert "information-design" in need
+        return {"status": "OK", "candidates": [{
+            "source": "https://github.com/example/information-design", "name": "example/information-design",
+            "description": "An infographic and information design system", "stars": 100, "license": "MIT",
+            "source_type": "public_repository", "use_boundary": "metadata-informed abstract principle only; no code, assets, layouts, or copy are reused",
+        }]}
+
+    heartbeat = creative_cognition.reference_heartbeat(str(tmp_path), level="STANDARD", knowledge_need="information-design layout knowledge", scout=scout)
+    graph = creative_cognition.load_reference_graph(str(tmp_path))
+    retrieved = creative_cognition.retrieve_references(reader_job="EXPLAIN_THIS", platform="instagram_feed", recent_visual_formats=[], data_dir=str(tmp_path))
+
+    assert heartbeat["acquisition"]["status"] == "OK"
+    assert heartbeat["extracted"] == 1
+    assert any(item["source"] == "https://github.com/example/information-design" for item in graph["references"])
+    assert all("no code, assets, layouts, or copy are reused" in item["license_or_use_boundary"] or item["source_type"] == "internal_repository" for item in graph["references"])
+    assert retrieved
+    packet = creative_cognition.decide(strategy={"audience": "household", "customer_moment": "outage planning", "human_need": "clarity", "human_value": "preparedness", "topic": "power priorities", "angle": "Prioritize essentials", "offering": "power station", "positioning": "calm preparedness", "benefit": "prioritize essentials", "human_outcome": "confidence", "reader_job": "EXPLAIN_THIS", "proof": [], "claim_limits": "supported facts only", "visual_objective": "show priorities"}, platform="instagram_feed", recent={}, data_dir=str(tmp_path))
+    assert packet["SELECTED_ANSWER"]["reference_id"].startswith("repo-")
+
+
+def test_autonomous_meeting_scopes_claim_platform_and_fatigue_outcomes(tmp_path):
+    strategy = {
+        "audience": "household", "customer_moment": "storm outage", "human_need": "clarity", "human_value": "preparedness",
+        "topic": "power priorities", "angle": "Prioritize essential devices", "offering": "power station",
+        "positioning": "calm preparedness", "non_price_edge": {"kind": "PRODUCT_EDGE"}, "important_capability": "",
+        "benefit": "prioritize essentials", "human_outcome": "confidence", "reader_job": "PREPARE_ME",
+        "proof": [], "claim_limits": "Do not claim unsupported runtime.", "visual_objective": "show a priority ladder", "CTA_strategy": "Learn more",
+    }
+    packet = creative_cognition.decide(strategy=strategy, platform="linkedin_feed", recent={"visual_formats": ["fact_card"]}, data_dir=str(tmp_path))
+    assert packet["ACTION"] == "create"
+    assert packet["platform_outcomes"]["linkedin"]["status"] == "DECLINED"
+    assert packet["novelty_process"]["triggered"] is True
+    assert packet["meetings"]
+    assert "Creative Director" in packet["specialist_verdicts"]
+
+    claim_packet = creative_cognition.decide(strategy=strategy | {"claims": ["Provides 12 hours of runtime"], "important_capability": "12-hour runtime"}, platform="instagram_feed", recent={}, data_dir=str(tmp_path))
+    assert claim_packet["ACTION"] == "do_not_publish"
+    assert claim_packet["research_tasks"]
+
+    routed = creative_cognition.route_meetings([
+        creative_cognition.AutonomousQuestion("Which opening is strongest?", "copy", "copy changes response", "copy grammar", 0.8, meeting_needed=True),
+        creative_cognition.AutonomousQuestion("What does performance suggest?", "performance", "learning should guide the next test", "next experiment", 0.8, meeting_needed=True),
+    ])
+    assert [item["meeting_type"] for item in routed] == ["COPY", "PERFORMANCE"]
+
+
+def test_creative_cognition_end_to_end_uses_memory_for_a_different_choice(tmp_path, monkeypatch):
+    monkeypatch.setattr(orchestrator, "_llm_copy_beats", lambda *args: None)
+    engine = orchestrator.SocialIntelligenceOrchestrator(data_dir=str(tmp_path))
+    first = engine.create_post(record_memory=True)
+    second = engine.create_post(record_memory=True)
+
+    assert first.creative_decision_packet["meetings"] or first.creative_decision_packet["ACTION"] == "create"
+    assert first.creative_decision_packet["creative_concepts"]
+    assert first.visual["layout_grammar"]["components"]
+    assert first.visual["information_priority"]["MUST_SHOW"]
+    assert first.visual["benefit_translation"]["PRACTICAL_BENEFIT"]
+    assert first.creative_decision_packet["originality_review"]["passed"]
+    assert first.creative_director["independent_human_connection_review"]["verdict"]
+    assert first.creative_director["strategy_integrity_review"]["verdict"] == "ALIGNED"
+    assert first.creative_decision_packet["SELECTED_ANSWER"]["creative_concept"] != second.creative_decision_packet["SELECTED_ANSWER"]["creative_concept"]
+
+
+def test_creative_cognition_reaches_platform_expressions_and_publish_decision(tmp_path, monkeypatch):
+    monkeypatch.setattr(orchestrator, "_llm_copy_beats", lambda *args: None)
+    post = orchestrator.SocialIntelligenceOrchestrator(data_dir=str(tmp_path)).create_post(record_memory=False)
+    monkeypatch.setattr(generate_posts, "run_social_intelligence", lambda **kwargs: [post.as_dict()])
+    monkeypatch.setattr(generate_posts, "load_products", lambda: [])
+    monkeypatch.setattr(generate_posts, "generate_visuals", lambda content, visual_plan: {})
+
+    legacy = generate_posts._route_generate_orchestrator("midday", platform="instagram")
+    decision = publish_decision.decide(
+        legacy_score={"total": 90, "platform_results": {"instagram": {"decision": "approve"}}},
+        validation={"passed": True, "errors": []}, duplicates={"ok": True, "reasons": []},
+        orchestrator_quality={"overall": 90},
+    )
+
+    assert legacy["creative_decision_packet"]["meetings"] or legacy["creative_decision_packet"]["ACTION"] == "create"
+    assert legacy["creative_decision_packet"]["specialist_verdicts"]["Originality Guardian"]["passed"]
+    assert legacy["platform_posts"]["facebook"]["strategy_lock"] == legacy["platform_posts"]["instagram"]["strategy_lock"]
+    assert legacy["platform_posts"]["linkedin"]["platform_selection"]["selected"] is False
+    assert decision["decision"] == "publish"
 
 
 def test_performance_signal_remains_cautious_and_provenanced():

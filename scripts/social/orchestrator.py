@@ -30,6 +30,7 @@ from . import (
     carousel_director,
     claim_intelligence,
     copy_intelligence,
+    creative_cognition,
     engines,
     libraries,
     lean_intelligence,
@@ -240,6 +241,7 @@ def _llm_copy_beats(
     structure_beats: list[str],
     bi_ctx: dict[str, Any] | None,
     offering: dict[str, Any] | None = None,
+    copy_grammar: str = "",
 ) -> dict[str, str] | None:
     """Ask Gemini to write the actual beat copy (Master Build §15 Copy Architect).
 
@@ -263,6 +265,8 @@ def _llm_copy_beats(
         f"Audience segment: {brief.audience_segment}. Tone: {brief.tone}.",
         f"Genre: {brief.genre.get('id', '')}.",
     ]
+    if copy_grammar:
+        prompt_parts.append(f"Use this original copy grammar, not canned wording: {copy_grammar}.")
     if offering and offering.get("name"):
         prompt_parts.append(
             f"This post must be specifically about this anchored product: {offering.get('name')}. "
@@ -374,6 +378,7 @@ class PostPackage:
     published_at: str | None = None
     business_context: dict[str, Any] | None = None
     anchored_offering: dict[str, Any] | None = None
+    creative_decision_packet: dict[str, Any] | None = None
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -392,6 +397,7 @@ class PostPackage:
             "published_at": self.published_at,
             "business_context": self.business_context,
             "anchored_offering": self.anchored_offering,
+            "creative_decision_packet": self.creative_decision_packet,
         }
 
 
@@ -477,10 +483,17 @@ class SocialIntelligenceOrchestrator:
         else:
             locked = _runtime_strategy_lock(brief, lean_context, bi_offering)
 
+        creative_packet = creative_cognition.decide(
+            strategy=locked, platform=platform, recent=recent, data_dir=self.data_dir
+        )
+
         # 3. Copy assembly — real Gemini copy when available, deterministic
         # template assembly as the network-free fallback (§15 Copy Architect).
         beats = copy_intelligence.structure_for(brief.genre)
-        llm_beats = _llm_copy_beats(brief, beats, bi_ctx, bi_offering)
+        llm_beats = _llm_copy_beats(
+            brief, beats, bi_ctx, bi_offering,
+            creative_packet["SELECTED_ANSWER"]["copy_logic"],
+        )
         beat_content = llm_beats or _assemble_copy(brief=brief, structure_beats=beats)
         copy_generation_method = "llm" if llm_beats else "template_fallback"
         copy_fallback_reason = None if llm_beats else model_router.last_error()
@@ -512,6 +525,7 @@ class SocialIntelligenceOrchestrator:
             memory_anchor=anchor,
             semantic_role=semantic_role,
         )
+        v_msg = f"{v_msg}. Composition principle: {creative_packet['SELECTED_ANSWER']['visual_logic']}"
         v_format = visual_intelligence.route_visual_format(
             genre=brief.genre,
             platform=platform,
@@ -534,6 +548,11 @@ class SocialIntelligenceOrchestrator:
             primary_subject=(bi_offering.get("name") if bi_offering else brief.topic_path.get("topic", brief.angle)),
             platform=platform,
         )
+        composition = creative_packet["layout_grammar"]
+        art.composition = "; ".join((composition["alignment"], composition["reading_flow"], composition["spacing_intent"]))
+        art.focal_point = composition["primary_focal_point"]
+        art.secondary_subjects = [composition["secondary_focal_point"]]
+        art.must_include.extend(creative_packet["information_priority"]["MUST_SHOW"])
         positive_prompt, negative_prompt = visual_intelligence.compile_image_prompt(
             art,
             extra_negatives=_bi_visual_prohibitions(bi_ctx),
@@ -640,6 +659,13 @@ class SocialIntelligenceOrchestrator:
                 "semantic_role": semantic_role,
                 "visual_message": v_msg,
                 "visual_format": v_format,
+                "layout_logic": creative_packet["SELECTED_ANSWER"]["layout_logic"],
+                "visual_logic": creative_packet["SELECTED_ANSWER"]["visual_logic"],
+                "copy_grammar": creative_packet["SELECTED_ANSWER"]["copy_logic"],
+                "layout_grammar": creative_packet["layout_grammar"],
+                "information_priority": creative_packet["information_priority"],
+                "benefit_translation": creative_packet["benefit_translation"],
+                "creative_concepts": creative_packet["creative_concepts"],
                 "necessity_score": necessity,
                 "required": must_render,
                 "art_direction": art.as_dict(),
@@ -648,7 +674,7 @@ class SocialIntelligenceOrchestrator:
                 "prompt_humanness": v_humanness,
                 "signature": visual_intelligence.visual_signature(
                     visual_format=v_format,
-                    layout_family="hero" if v_format not in {"carousel", "checklist"} else "list",
+                    layout_family=creative_packet["SELECTED_ANSWER"]["reference_id"],
                     focal_position="center",
                     color_family="brand_primary",
                     headline_position="top",
@@ -668,8 +694,14 @@ class SocialIntelligenceOrchestrator:
             provider_result=provider_result.as_dict(),
             business_context=bi_ctx,
             anchored_offering=bi_offering,
+            creative_decision_packet=creative_packet,
         )
         if locked:
+            package.creative_director["creative_decision_review"] = {
+                "verdict": "PASS" if creative_packet["ACTION"] == "create" else "DO_NOT_PUBLISH",
+                "reason": "creative decision has unresolved material objections" if creative_packet["ACTION"] != "create" else "creative decision packet selected a supported expression",
+                "decision_packet_action": creative_packet["ACTION"],
+            }
             package.creative_director["human_connection_review"] = strategy_lock.human_connection_critique(
                 strategy=locked,
                 copy=package.copy,
@@ -701,6 +733,10 @@ class SocialIntelligenceOrchestrator:
                         recent_ctas=recent.get("ctas", []),
                     ),
                     "quality_overall": q.overall,
+                    "creative_decision": creative_packet["MEMORY_UPDATE"],
+                    "copy_grammar": creative_packet["SELECTED_ANSWER"]["copy_logic"],
+                    "benefit_order": creative_packet["information_priority"]["MUST_SHOW"],
+                    "emotional_framing": creative_packet["benefit_translation"]["HUMAN_MEANING"],
                     "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
                 },
                 data_dir=self.data_dir,
@@ -710,6 +746,12 @@ class SocialIntelligenceOrchestrator:
                     "post_id": post_id,
                     "visual_format": v_format,
                     "visual_signature": package.visual["signature"],
+                    "creative_decision": creative_packet["MEMORY_UPDATE"],
+                    "layout_grammar": creative_packet["layout_grammar"],
+                    "product_role": creative_packet["layout_grammar"]["product_role"],
+                    "human_presence": creative_packet["layout_grammar"]["human_role"],
+                    "text_density": creative_packet["layout_grammar"]["text_density"],
+                    "art_direction": art.as_dict(),
                     "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
                 },
                 data_dir=self.data_dir,

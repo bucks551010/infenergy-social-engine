@@ -161,8 +161,14 @@ def recent(data_dir: str | None = None, *, limit: int = 20) -> dict[str, list[An
         "hooks": _recent_field(cdata["records"], "hook", limit),
         "ctas": _recent_field(cdata["records"], "cta_type", limit),
         "tones": _recent_field(cdata["records"], "tone", limit),
+        "copy_grammars": _recent_field(cdata["records"], "copy_grammar", limit),
+        "benefit_orders": _recent_field(cdata["records"], "benefit_order", limit),
+        "emotional_framings": _recent_field(cdata["records"], "emotional_framing", limit),
         "visual_signatures": _recent_field(vdata["records"], "visual_signature", limit),
         "visual_formats": _recent_field(vdata["records"], "visual_format", limit),
+        "layout_grammars": _recent_field(vdata["records"], "layout_grammar", limit),
+        "product_roles": _recent_field(vdata["records"], "product_role", limit),
+        "human_presence": _recent_field(vdata["records"], "human_presence", limit),
     }
 
 

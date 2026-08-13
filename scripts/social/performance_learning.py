@@ -27,10 +27,23 @@ def learn(*, publication_record: dict[str, Any], observation: dict[str, Any]) ->
     """Turn a raw platform observation into a low-confidence relationship hypothesis."""
     raw = observation.get("raw_observation", {}).get("metrics", {})
     strategy = publication_record.get("strategic_brief") or publication_record.get("strategy_lock") or {}
+    visual = publication_record.get("visual") or {}
+    copy = publication_record.get("copy") or {}
+    packet = publication_record.get("creative_decision_packet") or {}
     return observe(strategy=strategy, metrics=raw, platform=str(observation.get("platform", ""))) | {
         "observation": observation,
         "state": "NEW_HYPOTHESIS",
         "support_count": 1,
         "contradiction_count": 0,
         "relationship": "Audience x Angle x Platform",
+        "creative_relationships": {
+            "layout_family_x_platform": [visual.get("layout_logic", ""), observation.get("platform", "")],
+            "hook_family_x_platform": [strategy.get("genre_id", ""), observation.get("platform", "")],
+            "copy_grammar_x_reader_job": [visual.get("copy_grammar", ""), strategy.get("reader_job", "")],
+            "product_role_x_objective": [(visual.get("layout_grammar") or {}).get("product_role", ""), strategy.get("angle", "")],
+            "human_presence_x_customer_moment": [(visual.get("layout_grammar") or {}).get("human_role", ""), strategy.get("customer_moment", "")],
+            "benefit_presentation_x_audience": [(visual.get("benefit_translation") or {}).get("PRACTICAL_BENEFIT", ""), strategy.get("audience", "")],
+            "text_density_x_platform": [(visual.get("layout_grammar") or {}).get("text_density", ""), observation.get("platform", "")],
+            "visual_concept_x_audience": [(packet.get("SELECTED_ANSWER") or {}).get("creative_concept", ""), strategy.get("audience", "")],
+        },
     }

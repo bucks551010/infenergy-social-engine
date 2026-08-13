@@ -1,0 +1,168 @@
+from __future__ import annotations
+
+import os
+import shutil
+import sys
+import tempfile
+import json
+from pathlib import Path
+from unittest.mock import Mock, patch
+
+import pytest
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
+
+import publish_instagram
+import run_engine
+from social import reels
+
+
+def _components(**overrides):
+    base = {
+        "topic": "Portable power planning",
+        "logic_hook": "Know what must stay powered.",
+        "on_image_headline": "Start with the device that cannot go dark.",
+        "logic_bridge": "Match verified product facts to the job before you pack.",
+        "benefit_fragment": "supports a clearer portable-power decision",
+        "cta": "Compare your setup.",
+        "feature_bullets": ["154Wh"],
+    }
+    base.update(overrides)
+    return base
+
+
+def test_instagram_can_choose_reel_static_or_carousel_without_hard_coding():
+    reel = reels.choose_instagram_media(
+        strategy_lock={"reader_job": "decision education", "customer_moment": "planning an outage trip", "topic": "compare portable power"},
+        components=_components(),
+        visual_plan={"customer_moment": "outage", "visual_message": "decision"},
+    )
+    carousel = reels.choose_instagram_media(
+        strategy_lock={"reader_job": "education", "customer_moment": "planning a trip", "topic": "comparison"},
+        components=_components(),
+        visual_plan={},
+    )
+    static = reels.choose_instagram_media(strategy_lock={}, components=_components(logic_bridge=""), visual_plan={})
+    assert reel["selected_format"] == "REEL"
+    assert carousel["selected_format"] == "CAROUSEL"
+    assert static["selected_format"] == "STATIC"
+
+
+def test_final_state_precedes_motion_and_all_tracks_end_before_freeze():
+    decision = {"selected_format": "REEL", "content_job": "decision_support", "motion_value": {"score": 4}}
+    plan = reels.build_reel_plan(post_id="reel-1", components=_components(), decision=decision, strategy_lock={"strategy_version": 3})
+    assert plan["final_state"]["headline"]
+    assert plan["freeze_start_time"] == plan["motion_end_time"]
+    assert all(scene["end"] <= plan["freeze_start_time"] for scene in plan["scenes"])
+    assert reels.validate_reel_plan(plan)["status"] == "REEL_READY"
+
+
+def test_pre_render_gate_rejects_motion_that_continues_into_freeze():
+    decision = {"selected_format": "REEL", "content_job": "decision_support", "motion_value": {"score": 3}}
+    plan = reels.build_reel_plan(post_id="reel-2", components=_components(), decision=decision)
+    plan["scenes"][0]["end"] = plan["freeze_start_time"] + 0.1
+    gate = reels.validate_reel_plan(plan)
+    assert gate["status"] == "REVISE_STORYBOARD"
+    assert "animation_track_extends_into_freeze" in gate["reasons"]
+
+
+def test_technical_qa_fails_closed_for_missing_mp4():
+    result = reels.technical_qa({"reel_artifact_path": "missing.mp4"}, {"freeze_start_time": 3.0})
+    assert result["status"] == "FAIL"
+    assert "missing_or_empty_mp4" in result["reasons"]
+
+
+def test_real_renderer_freezes_actual_video_when_ffmpeg_is_available():
+    if not (os.environ.get("FFMPEG_BIN") or shutil.which("ffmpeg")):
+        pytest.skip("FFmpeg is not installed for local acceptance")
+    if not (os.environ.get("FFPROBE_BIN") or shutil.which("ffprobe")):
+        pytest.skip("FFprobe is not installed for local acceptance")
+    decision = {"selected_format": "REEL", "content_job": "decision_support", "motion_value": {"score": 4}}
+    plan = reels.build_reel_plan(post_id="rendered-reel", components=_components(), decision=decision)
+    with tempfile.TemporaryDirectory() as data_dir:
+        artifact = reels.render_reel(plan, source_image=None, data_dir=data_dir)
+        technical = reels.technical_qa(artifact, plan)
+        freeze = reels.freeze_qa(artifact, plan)
+        final_frame = reels.final_frame_qa(artifact)
+        cover = reels.cover_qa(artifact)
+    assert technical["status"] == "PASS"
+    assert freeze["status"] == "PASS", json.dumps(freeze)
+    assert freeze["freeze_verified"]
+    assert final_frame["status"] == "PASS"
+    assert cover["status"] == "PASS"
+
+
+@pytest.mark.parametrize(
+    ("post_id", "reader_job", "customer_moment", "topic"),
+    [
+        ("product-reveal", "product reveal", "packing for a trip", "portable power"),
+        ("spec-story", "decision education", "comparing verified specifications", "portable power comparison"),
+        ("human-use-case", "decision support", "keeping family devices ready during an outage", "outage planning"),
+        ("slideshow", "education", "planning a travel kit", "travel readiness"),
+        ("information-reel", "technical explanation", "choosing the right power reserve", "decision framework"),
+    ],
+)
+def test_local_reel_acceptance_families_render_without_publishing(post_id, reader_job, customer_moment, topic):
+    if not (os.environ.get("FFMPEG_BIN") or shutil.which("ffmpeg")):
+        pytest.skip("FFmpeg is not installed for local acceptance")
+    if not (os.environ.get("FFPROBE_BIN") or shutil.which("ffprobe")):
+        pytest.skip("FFprobe is not installed for local acceptance")
+    components = _components(topic=topic)
+    decision = {"selected_format": "REEL", "content_job": reader_job, "motion_value": {"score": 4}}
+    plan = reels.build_reel_plan(post_id=post_id, components=components, decision=decision, strategy_lock={"customer_moment": customer_moment})
+    with tempfile.TemporaryDirectory() as data_dir:
+        artifact = reels.render_reel(plan, source_image=None, data_dir=data_dir)
+        assert reels.technical_qa(artifact, plan)["status"] == "PASS"
+        assert reels.motion_qa(plan)["status"] == "PASS"
+        assert reels.freeze_qa(artifact, plan)["status"] == "PASS"
+        assert reels.final_frame_qa(artifact)["status"] == "PASS"
+        assert reels.cover_qa(artifact)["status"] == "PASS"
+        assert Path(artifact["static_derivative_path"]).exists()
+
+
+def test_reel_publisher_uses_public_video_cover_and_never_wordpress_upload():
+    response = Mock(ok=True)
+    response.json.side_effect = [{"id": "container-1"}, {"id": "ig-media-1"}]
+    content = {
+        "ig_caption": "Caption",
+        "platform_posts": {"instagram": {"media_type": "REEL"}},
+        "instagram_reel": {"public_urls": {"video": "https://media.example/reel.mp4", "cover": "https://media.example/cover.jpg"}},
+    }
+    with patch.dict(os.environ, {"META_IG_USER_ID": "ig-user", "META_PAGE_ACCESS_TOKEN": "token"}, clear=False), \
+         patch.object(publish_instagram, "_is_reachable_public_url", return_value=True), \
+         patch.object(publish_instagram, "_wait_for_media_container", return_value=(True, "finished")), \
+         patch.object(publish_instagram, "_post_with_retry", return_value=response) as post, \
+         patch.object(publish_instagram.publish_wordpress, "upload_media") as wordpress_upload:
+        result = publish_instagram.publish(content)
+    first_payload = post.call_args_list[0].args[1]
+    assert result == {"id": "ig-media-1", "container_id": "container-1", "media_type": "REEL"}
+    assert first_payload["media_type"] == "REELS"
+    assert first_payload["video_url"].endswith(".mp4")
+    assert first_payload["cover_url"].endswith(".jpg")
+    wordpress_upload.assert_not_called()
+
+
+def test_reel_receipt_is_durable_and_blocks_duplicate_meta_publish():
+    content = {
+        "post_id": "reel-candidate",
+        "platform_posts": {"instagram": {"media_type": "REEL"}},
+        "instagram_reel": {"reel_artifact_path": "/data/public_media/reel.mp4", "cover_path": "/data/public_media/cover.jpg", "final_freeze_frame_path": "/data/public_media/final.png"},
+    }
+    with tempfile.TemporaryDirectory() as data_dir, patch.dict(os.environ, {"DATA_DIR": data_dir}, clear=False):
+        receipt = run_engine._persist_publish_receipt(content, platform="instagram", external_post_id="ig-1", container_id="container-1", run_id="run-1")
+        loaded = run_engine._successful_publish_receipt(content, "instagram")
+        run_engine._mark_publish_postprocess_error(content, "instagram", RuntimeError("history failed"))
+        failed = run_engine._successful_publish_receipt(content, "instagram")
+    assert receipt["instagram_media_id"] == "ig-1"
+    assert loaded["container_id"] == "container-1"
+    assert failed["postprocess_status"] == "published_persistence_error"
+    assert run_engine._receipt_external_id(failed) == "ig-1"
+
+
+def test_reel_plan_keeps_caption_complementary_and_static_derivative_unpublished():
+    decision = {"selected_format": "REEL", "content_job": "decision_support", "motion_value": {"score": 4}}
+    plan = reels.build_reel_plan(post_id="reel-3", components=_components(), decision=decision)
+    assert "without restating" in plan["caption_strategy"]
+    assert plan["cover_strategy"] == "final_freeze_frame"
+    assert "static_derivative" not in plan.get("publish_targets", [])

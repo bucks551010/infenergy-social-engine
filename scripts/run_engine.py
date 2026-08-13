@@ -347,17 +347,29 @@ def _successful_publish_receipt(content: dict, platform: str) -> dict:
     return next((item for item in state["receipts"] if item.get("key") == key and item.get("publisher_status") == "published"), {})
 
 
-def _persist_publish_receipt(content: dict, *, platform: str, external_post_id: str, run_id: str) -> dict:
+def _receipt_external_id(receipt: dict) -> str:
+    return str(receipt.get("external_post_id") or receipt.get("facebook_post_id") or receipt.get("instagram_media_id") or "").strip()
+
+
+def _persist_publish_receipt(content: dict, *, platform: str, external_post_id: str, run_id: str, container_id: str = "") -> dict:
     state = _load_publish_receipts()
     key = _receipt_key(content, platform)
+    reel = content.get("instagram_reel") if isinstance(content.get("instagram_reel"), dict) else {}
     receipt = {
         "key": key,
         "platform": platform,
         "post_id": str(content.get("post_id") or ""),
+        "external_post_id": external_post_id,
         "facebook_post_id": external_post_id if platform == "facebook" else "",
+        "instagram_media_id": external_post_id if platform == "instagram" else "",
+        "container_id": container_id if platform == "instagram" else "",
+        "media_type": str(((content.get("platform_posts") or {}).get("instagram") or {}).get("media_type") or "IMAGE") if platform == "instagram" else "IMAGE",
         "published_at": datetime.now(timezone.utc).isoformat(),
         "source_candidate_id": str((content.get("generated_visuals") or {}).get("source_visual_candidate_id") or content.get("post_id") or ""),
-        "artifact_path": str((content.get("generated_visuals") or {}).get(platform) or ""),
+        "artifact_path": str(reel.get("reel_artifact_path") or (content.get("generated_visuals") or {}).get(platform) or ""),
+        "reel_artifact_path": str(reel.get("reel_artifact_path") or ""),
+        "cover_path": str(reel.get("cover_path") or ""),
+        "final_freeze_frame_path": str(reel.get("final_freeze_frame_path") or ""),
         "strategy_version": (_strategy_lock_for_revision(content) or {}).get("strategy_version"),
         "run_id": run_id,
         "publisher_status": "published",
@@ -922,6 +934,15 @@ def _live_visual_gate_errors(content: dict, effective_channels: dict[str, bool],
             errors.append(f"{platform}_visual_not_gemini")
         if require_product and overlays.get(platform) is not True:
             errors.append(f"{platform}_product_overlay_missing")
+    instagram_post = ((content.get("platform_posts") or {}).get("instagram") or {})
+    if effective_channels.get("instagram") and str(instagram_post.get("media_type") or "").upper() == "REEL":
+        reel = content.get("instagram_reel") if isinstance(content.get("instagram_reel"), dict) else {}
+        for qa_name in ("technical_qa", "motion_qa", "freeze_qa", "final_frame_qa", "cover_qa"):
+            if str((reel.get(qa_name) or {}).get("status") or "").upper() != "PASS":
+                errors.append(f"instagram_reel_{qa_name}_failed")
+        presentation = instagram_post.get("presentation") if isinstance(instagram_post.get("presentation"), dict) else {}
+        if str(presentation.get("presentation_critic") or "").upper() != "PASS":
+            errors.append("instagram_reel_platform_presentation_failed")
     return errors
 
 
@@ -1685,7 +1706,7 @@ def main() -> None:
     if effective_channels["facebook"]:
         existing_receipt = _successful_publish_receipt(content, "facebook") if not dry_run else {}
         if existing_receipt:
-            fb_result = {"id": existing_receipt["facebook_post_id"], "reused_receipt": True}
+            fb_result = {"id": _receipt_external_id(existing_receipt), "reused_receipt": True}
             print(f"[SKIP] Facebook already published: {fb_result['id']}")
         elif (not dry_run) and was_recent_channel_success(history, "fb", slot, skip_success_hours):
             print("[SKIP] Facebook recent successful publish within configured window")
@@ -1729,12 +1750,25 @@ def main() -> None:
     print("[4/5] Instagram...")
     t_ig = time.perf_counter()
     if effective_channels["instagram"]:
-        if (not dry_run) and was_recent_channel_success(history, "ig", slot, skip_success_hours):
+        existing_receipt = _successful_publish_receipt(content, "instagram") if not dry_run else {}
+        if existing_receipt:
+            ig_result = {"id": _receipt_external_id(existing_receipt), "reused_receipt": True}
+            print(f"[SKIP] Instagram already published: {ig_result['id']}")
+        elif (not dry_run) and was_recent_channel_success(history, "ig", slot, skip_success_hours):
             print("[SKIP] Instagram recent successful publish within configured window")
         else:
             try:
                 content["tracked_link_instagram"] = wp_link_ig
                 ig_result = publish_instagram.publish(content, dry_run=dry_run)
+                instagram_media_id = str(ig_result.get("id") or "").strip()
+                if instagram_media_id and instagram_media_id not in {"dry-run", "skipped"}:
+                    _persist_publish_receipt(
+                        content,
+                        platform="instagram",
+                        external_post_id=instagram_media_id,
+                        container_id=str(ig_result.get("container_id") or ""),
+                        run_id=str(runtime_metrics["started_at_utc"]),
+                    )
                 if str(ig_result.get("id", "")).strip().lower() == "skipped":
                     ig_reason = str(ig_result.get("reason", "")).strip()
                     if ig_reason:
@@ -1864,12 +1898,14 @@ def main() -> None:
     history["posts"] = history["posts"][-200:]
     try:
         generate_posts.save_history(history)
-        if str(fb_result.get("id") or "").strip() and not dry_run:
-            _mark_publish_postprocess_complete(content, "facebook")
+        for platform, result in (("facebook", fb_result), ("instagram", ig_result)):
+            if str(result.get("id") or "").strip() and not dry_run:
+                _mark_publish_postprocess_complete(content, platform)
     except Exception as exc:
-        if str(fb_result.get("id") or "").strip() and not dry_run:
-            _mark_publish_postprocess_error(content, "facebook", exc)
-            raise RuntimeError(f"published_persistence_error:facebook:{exc}") from exc
+        for platform, result in (("facebook", fb_result), ("instagram", ig_result)):
+            if str(result.get("id") or "").strip() and not dry_run:
+                _mark_publish_postprocess_error(content, platform, exc)
+                raise RuntimeError(f"published_persistence_error:{platform}:{exc}") from exc
         raise
 
     if errors:

@@ -116,6 +116,66 @@ def _is_reachable_image_url(url: str, timeout: int = 10) -> bool:
         return False
 
 
+def _is_reachable_public_url(url: str, *, media_kind: str, timeout: int = 15) -> bool:
+    if not is_safe_http_url(url):
+        return False
+    expected = "video" if media_kind == "video" else "image"
+    try:
+        response = requests.head(url, allow_redirects=True, timeout=timeout)
+        if response.status_code >= 400 or int(response.headers.get("Content-Length") or "1") <= 0:
+            return False
+        content_type = (response.headers.get("Content-Type") or "").lower()
+        return expected in content_type or "octet-stream" in content_type
+    except Exception:
+        return False
+
+
+def _publish_reel(content: dict, *, dry_run: bool) -> dict:
+    reel = content.get("instagram_reel") if isinstance(content.get("instagram_reel"), dict) else {}
+    urls = reel.get("public_urls") if isinstance(reel.get("public_urls"), dict) else {}
+    video_url = str(urls.get("video") or "").strip()
+    cover_url = str(urls.get("cover") or "").strip()
+    if not (_is_reachable_public_url(video_url, media_kind="video") and _is_reachable_public_url(cover_url, media_kind="image")):
+        raise RuntimeError("instagram_reel_public_artifact_preflight_failed")
+    if dry_run:
+        print("[DRY RUN] Instagram: would publish Reel container")
+        return {"id": "dry-run", "media_type": "REEL"}
+    ig_user_id = _required_env("META_IG_USER_ID")
+    access_token = _required_env("META_PAGE_ACCESS_TOKEN")
+    response = _post_with_retry(
+        f"{GRAPH_BASE}/{ig_user_id}/media",
+        {
+            "media_type": "REELS",
+            "video_url": video_url,
+            "cover_url": cover_url,
+            "share_to_feed": "true",
+            "caption": str(content.get("ig_caption") or ""),
+            "access_token": access_token,
+        },
+        timeout=45,
+    )
+    if not response.ok:
+        raise RuntimeError(f"instagram_reel_container_create_failed_http_{response.status_code}: {_graph_error_text(response)}")
+    creation_id = str(response.json().get("id") or "").strip()
+    if not creation_id:
+        raise RuntimeError("instagram_reel_container_missing_id")
+    ready, reason = _wait_for_media_container(ig_user_id, creation_id, access_token, timeout_sec=300)
+    if not ready:
+        raise RuntimeError(f"instagram_reel_container_not_ready:{reason}")
+    published = _post_with_retry(
+        f"{GRAPH_BASE}/{ig_user_id}/media_publish",
+        {"creation_id": creation_id, "access_token": access_token},
+        timeout=45,
+    )
+    if not published.ok:
+        raise RuntimeError(f"instagram_reel_publish_failed_http_{published.status_code}: {_graph_error_text(published)}")
+    media_id = str(published.json().get("id") or "").strip()
+    if not media_id:
+        raise RuntimeError("instagram_reel_publish_missing_id")
+    print(f"[Instagram] Reel posted: {media_id}")
+    return {"id": media_id, "container_id": creation_id, "media_type": "REEL"}
+
+
 def _dedupe_keep_order(items: list[str]) -> list[str]:
     out = []
     seen = set()
@@ -159,6 +219,10 @@ def _extract_page_image_candidate(page_url: str, timeout: int = 15) -> str:
 
 
 def publish(content: dict, dry_run: bool = False) -> dict:
+    media_type = str(((content.get("platform_posts") or {}).get("instagram") or {}).get("media_type") or "").strip().upper()
+    if media_type == "REEL":
+        return _publish_reel(content, dry_run=dry_run)
+
     ig_default_image = _env("IG_DEFAULT_IMAGE_URL")
     validate_urls = _env("IG_VALIDATE_IMAGE_URLS", "true").lower() in ("1", "true", "yes", "on")
     generated_image_path = str((content.get("generated_visuals") or {}).get("instagram", "")).strip()

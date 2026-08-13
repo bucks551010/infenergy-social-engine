@@ -268,6 +268,7 @@ def _route_generate_orchestrator(
         "selected_hook": selected_hook,
         "selected_cta": selected_cta,
         "copy": copy_pkg,
+        "strategy_lock": copy_pkg.get("strategy_lock") if isinstance(copy_pkg.get("strategy_lock"), dict) else {},
         "visual": visual_pkg,
         "layout_grammar": visual_pkg.get("layout_grammar", {}),
         "information_priority": visual_pkg.get("information_priority", {}),
@@ -330,6 +331,41 @@ def _route_generate_orchestrator(
     # posts get real, product-anchored creative instead of staying empty.
     legacy["visual_plan"] = visual_pkg
     legacy["generated_visuals"] = generate_visuals(legacy, visual_plan=visual_pkg)
+    from social import reels
+
+    instagram_decision = reels.choose_instagram_media(
+        strategy_lock=legacy["strategy_lock"],
+        components=components,
+        visual_plan=visual_pkg,
+    )
+    legacy["instagram_media_decision"] = instagram_decision
+    platform_posts["instagram"]["media_type"] = instagram_decision["selected_format"]
+    platform_posts["instagram"]["instagram_media_decision"] = instagram_decision
+    if instagram_decision["selected_format"] == "REEL":
+        reel_plan = reels.build_reel_plan(
+            post_id=str(legacy.get("post_id") or ""),
+            components=components,
+            decision=instagram_decision,
+            strategy_lock=legacy["strategy_lock"],
+        )
+        legacy["reel_plan"] = reel_plan
+        reel_gate = reels.validate_reel_plan(reel_plan)
+        legacy["reel_pre_render_gate"] = reel_gate
+        if reel_gate["status"] == "REEL_READY":
+            reel_artifacts = reels.render_reel(
+                reel_plan,
+                source_image=str((legacy.get("generated_visuals") or {}).get("instagram") or ""),
+            )
+            reel_artifacts["technical_qa"] = reels.technical_qa(reel_artifacts, reel_plan)
+            reel_artifacts["freeze_qa"] = reels.freeze_qa(reel_artifacts, reel_plan)
+            reel_artifacts["final_frame_qa"] = reels.final_frame_qa(reel_artifacts)
+            reel_artifacts["cover_qa"] = reels.cover_qa(reel_artifacts)
+            reel_artifacts["motion_qa"] = reels.motion_qa(reel_plan)
+            legacy["instagram_reel"] = reel_artifacts
+            platform_posts["instagram"]["reel"] = reel_artifacts
+        else:
+            legacy["instagram_media_decision"]["selected_format"] = "STATIC"
+            platform_posts["instagram"]["media_type"] = "STATIC"
     return legacy
 
 
@@ -5971,6 +6007,42 @@ Return ONLY valid JSON with these exact keys (no markdown, no code fences):
         content["on_image_headline"] = components["on_image_headline"]
         content["on_image_subline"] = components["on_image_subline"]
         content["generated_visuals"] = generate_visuals(content, visual_plan=visual_plan)
+        from social import reels
+
+        strategy_lock = content.get("strategy_lock") if isinstance(content.get("strategy_lock"), dict) else {}
+        instagram_decision = reels.choose_instagram_media(
+            strategy_lock=strategy_lock,
+            components=components,
+            visual_plan=visual_plan,
+        )
+        content["instagram_media_decision"] = instagram_decision
+        platform_posts["instagram"]["media_type"] = instagram_decision["selected_format"]
+        platform_posts["instagram"]["instagram_media_decision"] = instagram_decision
+        if instagram_decision["selected_format"] == "REEL":
+            reel_plan = reels.build_reel_plan(
+                post_id=post_id,
+                components=components,
+                decision=instagram_decision,
+                strategy_lock=strategy_lock,
+            )
+            content["reel_plan"] = reel_plan
+            reel_gate = reels.validate_reel_plan(reel_plan)
+            content["reel_pre_render_gate"] = reel_gate
+            if reel_gate["status"] == "REEL_READY":
+                reel_artifacts = reels.render_reel(
+                    reel_plan,
+                    source_image=str((content.get("generated_visuals") or {}).get("instagram") or ""),
+                )
+                reel_artifacts["technical_qa"] = reels.technical_qa(reel_artifacts, reel_plan)
+                reel_artifacts["freeze_qa"] = reels.freeze_qa(reel_artifacts, reel_plan)
+                reel_artifacts["final_frame_qa"] = reels.final_frame_qa(reel_artifacts)
+                reel_artifacts["cover_qa"] = reels.cover_qa(reel_artifacts)
+                reel_artifacts["motion_qa"] = reels.motion_qa(reel_plan)
+                content["instagram_reel"] = reel_artifacts
+                platform_posts["instagram"]["reel"] = reel_artifacts
+            else:
+                content["instagram_media_decision"]["selected_format"] = "STATIC"
+                platform_posts["instagram"]["media_type"] = "STATIC"
         content["visual_plan"] = visual_plan
         content["pre_generation_conference"] = pre_generation_conference
         content["phase2_creative_stack"] = phase2_stack

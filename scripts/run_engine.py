@@ -369,6 +369,29 @@ def _persist_publish_receipt(content: dict, *, platform: str, external_post_id: 
     return receipt
 
 
+def _persist_reconciled_publish_receipt(*, platform: str, external_post_id: str, published_at: str, run_started: str) -> dict:
+    """Record a confirmed external publish without inventing missing candidate data."""
+    state = _load_publish_receipts()
+    receipt = {
+        "key": f"{platform}:external:{external_post_id}",
+        "platform": platform,
+        "post_id": "",
+        "facebook_post_id": external_post_id if platform == "facebook" else "",
+        "published_at": published_at,
+        "source_candidate_id": "",
+        "artifact_path": "",
+        "strategy_version": None,
+        "run_id": run_started,
+        "publisher_status": "published",
+        "provider_response_status": "confirmed_external_success",
+        "postprocess_status": "published_persistence_error",
+        "reconciled": True,
+    }
+    state["receipts"] = [item for item in state["receipts"] if item.get("key") != receipt["key"]] + [receipt]
+    _save_publish_receipts(state)
+    return receipt
+
+
 def _mark_publish_postprocess_error(content: dict, platform: str, error: Exception) -> None:
     state = _load_publish_receipts()
     key = _receipt_key(content, platform)
@@ -392,7 +415,7 @@ def _reconcile_publish_receipt(receipt: dict) -> bool:
     """Append a minimal, honest recovery row for a receipt missing aggregate history."""
     facebook_id = str(receipt.get("facebook_post_id") or "").strip()
     post_id = str(receipt.get("post_id") or "").strip()
-    if not (facebook_id and post_id):
+    if not facebook_id:
         return False
     history = generate_posts.load_history()
     posts = history.get("posts", []) if isinstance(history.get("posts"), list) else []
@@ -415,7 +438,13 @@ def _reconcile_publish_receipt(receipt: dict) -> bool:
         "recovery": {
             "source": "durable_publish_receipt",
             "aggregate_history_previously_failed": True,
-            "recovered_fields": ["post_id", "fb_id", "published_at", "artifact_path", "strategy_version"],
+            "recovered_fields": [item for item, value in {
+                "post_id": post_id,
+                "fb_id": facebook_id,
+                "published_at": receipt.get("published_at"),
+                "artifact_path": receipt.get("artifact_path"),
+                "strategy_version": receipt.get("strategy_version"),
+            }.items() if value not in (None, "")],
             "artifact_path": receipt.get("artifact_path"),
             "strategy_version": receipt.get("strategy_version"),
         },
@@ -1682,7 +1711,7 @@ def main() -> None:
                         content,
                         platform="facebook",
                         external_post_id=facebook_post_id,
-                        run_id=datetime.now(timezone.utc).isoformat(),
+                        run_id=str(runtime_metrics["started_at_utc"]),
                     )
             except Exception as e:
                 errors.append(f"Facebook: {e}")

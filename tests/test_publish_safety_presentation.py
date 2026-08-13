@@ -49,6 +49,25 @@ def test_reconcile_receipt_creates_honest_recovery_row():
     assert row["recovery"]["aggregate_history_previously_failed"]
 
 
+def test_reconcile_external_success_does_not_invent_candidate_data():
+    with tempfile.TemporaryDirectory() as data_dir:
+        with patch.dict(os.environ, {"DATA_DIR": data_dir}, clear=False), patch.object(run_engine.generate_posts, "DATA_DIR", data_dir), patch.object(run_engine.generate_posts, "BASE_DATA_DIR", data_dir):
+            receipt = run_engine._persist_reconciled_publish_receipt(
+                platform="facebook",
+                external_post_id="1082101284324756",
+                published_at="2026-08-13T20:21:49.200910Z",
+                run_started="2026-08-13T20:19:39.115419Z",
+            )
+            assert run_engine._reconcile_publish_receipt(receipt)
+            history = run_engine.generate_posts.load_history()
+
+    row = history["posts"][-1]
+    assert receipt["reconciled"]
+    assert row["fb_id"] == "1082101284324756"
+    assert row["post_id"] == ""
+    assert "post_id" not in row["recovery"]["recovered_fields"]
+
+
 def test_normalization_accepts_orchestrator_without_legacy_date():
     normalized = run_engine._normalize_history_content(
         {"created_at": "2026-08-13T20:19:39+00:00", "strategic_brief": {"topic_path": {"topic": "Power Stations"}, "pillar_id": "portable_power"}},

@@ -549,6 +549,7 @@ def _auto_bootstrap_visual_repo() -> dict:
 def _start_slot_thread(
     slot: str,
     force_live: bool = False,
+    shadow_mode: bool = False,
     platforms_override: str = "",
     duplicate_mode: str = "",
     readiness_block_override: str = "",
@@ -561,16 +562,17 @@ def _start_slot_thread(
 
     thread = threading.Thread(
         target=run_slot,
-        args=(
-            slot,
-            force_live,
-            platforms_override,
-            duplicate_mode,
-            readiness_block_override,
-            product_id_override,
-            funnel_stage_override,
-            pipeline_override,
-        ),
+        kwargs={
+            "slot": slot,
+            "force_live": force_live,
+            "shadow_mode": shadow_mode,
+            "platforms_override": platforms_override,
+            "duplicate_mode": duplicate_mode,
+            "readiness_block_override": readiness_block_override,
+            "product_id_override": product_id_override,
+            "funnel_stage_override": funnel_stage_override,
+            "pipeline_override": pipeline_override,
+        },
         daemon=True,
     )
     thread.start()
@@ -637,6 +639,7 @@ class HealthHandler(BaseHTTPRequestHandler):
                 "uptime_seconds": _uptime_seconds(),
                 "last_run": LAST_RUN,
                 "dry_run": os.environ.get("SOCIAL_DRY_RUN", "true"),
+                "shadow_mode": os.environ.get("SOCIAL_SHADOW_MODE", "false"),
                 "recent_quality": _quality_summary(recent_posts),
                 "visual_repo_bootstrap": VISUAL_REPO_BOOTSTRAP,
             }
@@ -1214,6 +1217,7 @@ class HealthHandler(BaseHTTPRequestHandler):
             provided = params.get("token", [""])[0]
             slot = params.get("slot", ["morning"])[0]
             force_live = params.get("live", ["false"])[0].lower() in ("1", "true", "yes")
+            shadow_mode = params.get("shadow", ["false"])[0].lower() in ("1", "true", "yes")
             platforms_override = params.get("platforms", [""])[0]
             duplicate_mode = params.get("duplicate_mode", [""])[0].strip().lower()
             readiness_block_override = params.get("readiness_block", [""])[0].strip().lower()
@@ -1260,11 +1264,13 @@ class HealthHandler(BaseHTTPRequestHandler):
                 product_id_override=product_id_override,
                 funnel_stage_override=funnel_stage_override,
                 pipeline_override=pipeline_override,
+                shadow_mode=shadow_mode,
             )
             payload = {
                 "accepted": started,
                 "slot": slot,
                 "force_live": force_live,
+                "shadow_mode": shadow_mode,
                 "platforms": platforms_override,
                 "duplicate_mode": duplicate_mode or "env_default",
                 "readiness_block": readiness_block_override or "env_default",
@@ -1396,6 +1402,7 @@ def start_health_server() -> None:
 def run_slot(
     slot: str,
     force_live: bool = False,
+    shadow_mode: bool = False,
     platforms_override: str = "",
     duplicate_mode: str = "",
     readiness_block_override: str = "",
@@ -1425,6 +1432,7 @@ def run_slot(
         previous_product_override = os.environ.get("POST_PRODUCT_ID_OVERRIDE", "")
         previous_funnel_stage_override = os.environ.get("POST_FUNNEL_STAGE_OVERRIDE", "")
         previous_pipeline_override = os.environ.get("POST_PIPELINE_OVERRIDE", "")
+        previous_shadow_mode = os.environ.get("SOCIAL_SHADOW_MODE", "")
         os.environ["POST_SLOT"] = slot
         os.environ["POST_PLATFORMS"] = platforms_override
         if duplicate_mode:
@@ -1439,6 +1447,8 @@ def run_slot(
             os.environ["POST_PIPELINE_OVERRIDE"] = pipeline_override
         if force_live:
             os.environ["SOCIAL_DRY_RUN"] = "false"
+        if shadow_mode:
+            os.environ["SOCIAL_SHADOW_MODE"] = "true"
 
         _auto_bootstrap_visual_repo()
 
@@ -1506,6 +1516,10 @@ def run_slot(
                 os.environ["POST_PIPELINE_OVERRIDE"] = previous_pipeline_override
             elif "POST_PIPELINE_OVERRIDE" in os.environ:
                 del os.environ["POST_PIPELINE_OVERRIDE"]
+            if previous_shadow_mode:
+                os.environ["SOCIAL_SHADOW_MODE"] = previous_shadow_mode
+            elif "SOCIAL_SHADOW_MODE" in os.environ:
+                del os.environ["SOCIAL_SHADOW_MODE"]
             LAST_RUN["finished_at_utc"] = _utc_now()
 
 

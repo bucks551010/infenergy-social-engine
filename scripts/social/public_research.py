@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from hashlib import sha256
 from datetime import datetime, timezone
+from base64 import urlsafe_b64decode
 from html.parser import HTMLParser
 from typing import Any
 from urllib.parse import parse_qs, quote_plus, unquote, urlparse
@@ -30,15 +31,42 @@ def _query(task: research_router.ResearchTask) -> str:
     return f"{task.entity} {suffix}".strip()
 
 
+def _bing_destination(href: str) -> str:
+    encoded = parse_qs(urlparse(href).query).get("u", [""])[0]
+    if encoded.startswith("a1"):
+        try:
+            raw = encoded[2:]
+            return urlsafe_b64decode(raw + "=" * (-len(raw) % 4)).decode("utf-8")
+        except (UnicodeDecodeError, ValueError):
+            return ""
+    return href
+
+
+def _relevant(url: str, task: research_router.ResearchTask) -> bool:
+    tokens = [token for token in task.entity.lower().split() if len(token) > 3]
+    searchable = unquote(url).lower()
+    return bool(tokens) and all(token in searchable for token in tokens)
+
+
 def discover_web_candidates(task: research_router.ResearchTask) -> list[str]:
     """Discover at most three public candidates for a decision-scoped question."""
-    search_url = f"https://html.duckduckgo.com/html/?q={quote_plus(_query(task))}"
-    with urlopen(search_url, timeout=10) as response:  # nosec B310: fixed public discovery endpoint
-        parser = _SearchResults()
-        parser.feed(response.read().decode("utf-8", errors="replace"))
+    urls: list[str] = []
+    for search_url, decoder in (
+        (f"https://html.duckduckgo.com/html/?q={quote_plus(_query(task))}", lambda href: href),
+        (f"https://www.bing.com/search?q={quote_plus(_query(task))}", _bing_destination),
+    ):
+        try:
+            with urlopen(search_url, timeout=10) as response:  # nosec B310: fixed public discovery endpoints
+                parser = _SearchResults()
+                parser.feed(response.read().decode("utf-8", errors="replace"))
+            urls.extend(decoder(url) for url in parser.urls)
+        except OSError:
+            continue
+        if urls:
+            break
     excluded = {"duckduckgo.com", "google.com", "bing.com"}
     seen: set[str] = set()
-    return [url for url in parser.urls if urlparse(url).netloc.lower().removeprefix("www.") not in excluded and not (url in seen or seen.add(url))][:3]
+    return [url for url in urls if urlparse(url).netloc.lower().removeprefix("www.") not in excluded and _relevant(url, task) and not (url in seen or seen.add(url))][:3]
 
 
 def discover(*, task: research_router.ResearchTask, known_sources: list[str] | None = None) -> list[dict[str, Any]]:

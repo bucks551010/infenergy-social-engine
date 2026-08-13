@@ -7,7 +7,7 @@ from datetime import datetime, timedelta, timezone
 from hashlib import sha256
 from html.parser import HTMLParser
 from typing import Any
-from urllib.request import urlopen
+from urllib.request import Request, urlopen
 
 
 @dataclass(frozen=True)
@@ -82,7 +82,8 @@ class _Text(HTMLParser):
 
 def inspect_first_party(url: str, previous_hash: str = "") -> dict[str, Any]:
     """Extract only decision-useful public facts and positioning language."""
-    with urlopen(url, timeout=20) as response:  # nosec B310: caller owns allowed first-party URL
+    request = Request(url, headers={"User-Agent": "InfenergySocialResearch/1.0 (+https://infenergypower.com/)"})
+    with urlopen(request, timeout=20) as response:  # nosec B310: caller owns allowed first-party URL
         html = response.read().decode("utf-8", errors="replace")
     parser = _Text()
     parser.feed(html)

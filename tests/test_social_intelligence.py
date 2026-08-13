@@ -232,6 +232,15 @@ def test_orchestrator_preserves_approved_strategy_in_copy_and_visual(monkeypatch
     assert "human_connection_review" in post.creative_director
 
 
+def test_orchestrator_derives_runtime_lock_and_final_reviews_without_council(monkeypatch):
+    monkeypatch.setattr(orchestrator, "_llm_copy_beats", lambda *args: None)
+    post = orchestrator.SocialIntelligenceOrchestrator().create_post(record_memory=False)
+
+    assert post.copy["strategy_lock"] == post.visual["strategy_lock"]
+    assert post.creative_director["independent_human_connection_review"]["verdict"]
+    assert post.creative_director["strategy_integrity_review"]["verdict"] == "ALIGNED"
+
+
 def test_performance_signal_remains_cautious_and_provenanced():
     signal = performance_learning.observe(strategy={"audience": "household", "angle": "prioritize essentials"}, metrics={"saves": 2}, platform="instagram")
     assert signal["type"] == "PERFORMANCE_EVIDENCE"
@@ -318,6 +327,14 @@ def test_discovery_failure_is_a_structured_research_outcome(monkeypatch):
     monkeypatch.setattr(public_research, "discover_web_candidates", lambda task: (_ for _ in ()).throw(OSError("offline")))
     task = research_router.route(question="Which competitors frame portable power differently?", why_needed="find whitespace", entity="portable power", decision_affected="positioning")
     assert public_research.research(task=task)[0]["failure"] == "SOURCE_UNAVAILABLE"
+
+
+def test_bing_destination_and_relevance_filtering():
+    encoded = "https://www.bing.com/ck/a?u=a1aHR0cHM6Ly9leGFtcGxlLmNvbS9wb3J0YWJsZS1wb3dlcg"
+    task = research_router.route(question="Which competitors frame portable power differently?", why_needed="find whitespace", entity="portable power", decision_affected="positioning")
+    assert public_research._bing_destination(encoded) == "https://example.com/portable-power"
+    assert public_research._relevant("https://example.com/portable-power", task)
+    assert not public_research._relevant("https://portableapps.com/", task)
 
 
 def test_autonomous_pre_publish_contract(tmp_path, monkeypatch):

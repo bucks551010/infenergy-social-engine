@@ -306,6 +306,53 @@ def _generation_diagnostics(content: dict) -> dict:
         "publish_decision": content.get("publish_decision", {}),
     }
 
+def _strategy_integrity_errors(content: dict) -> list[str]:
+    review = (content.get("creative_director") or {}).get("strategy_integrity_review", {})
+    if str(review.get("verdict", "")).upper() == "MATERIAL_DRIFT":
+        return ["strategy_integrity_material_drift"]
+    human_review = (content.get("creative_director") or {}).get("independent_human_connection_review", {})
+    if str(human_review.get("verdict", "")).upper() == "DO_NOT_PUBLISH":
+        return ["human_connection_review_do_not_publish"]
+    return []
+
+
+def _shadow_decision_record(content: dict) -> dict:
+    """Owner-readable explanation from existing decision artifacts, never hidden reasoning."""
+    strategy = (content.get("copy") or {}).get("strategy_lock") or content.get("strategic_brief") or {}
+    creative = content.get("creative_director") or {}
+    return {
+        "why_this_post_exists": content.get("topic", ""),
+        "who_it_is_for": strategy.get("audience") or content.get("audience_segment", ""),
+        "human_moment": strategy.get("customer_moment", ""),
+        "customer_need": strategy.get("human_need", ""),
+        "positioning": strategy.get("positioning", ""),
+        "non_price_edge": strategy.get("non_price_edge", {}),
+        "selected_angle": strategy.get("angle", ""),
+        "copy_intent": (content.get("copy") or {}).get("takeaway", ""),
+        "visual_intent": (content.get("visual") or {}).get("visual_objective", ""),
+        "claim_limits": strategy.get("claim_limits", ""),
+        "human_connection_verdict": creative.get("independent_human_connection_review", {}),
+        "strategy_integrity_verdict": creative.get("strategy_integrity_review", {}),
+        "final_publish_decision": content.get("publish_decision", {}),
+    }
+
+
+def _shadow_platform_records(content: dict, run_started: str, effective_channels: dict[str, bool]) -> list[dict]:
+    records = _build_platform_history_records(
+        content=content,
+        run_started=run_started,
+        effective_channels={name: False for name in effective_channels},
+        dry_run=False,
+        ids={"wordpress": "skipped", "facebook": "skipped", "instagram": "skipped", "linkedin": "skipped"},
+        tracked_links={"facebook": None, "instagram": None, "linkedin": None, "wordpress": None},
+        error_map={},
+        channel_reasons={name: "shadow_mode_no_external_publication" for name in effective_channels},
+    )
+    for record in records:
+        record["status"] = "shadow_not_published"
+        record["error"] = "shadow_mode_no_external_publication"
+    return records
+
 
 def _build_phase6_learning(
     *,
@@ -562,6 +609,7 @@ def _build_platform_history_records(
 def main() -> None:
     slot = os.environ.get("POST_SLOT", "morning")
     dry_run = os.environ.get("SOCIAL_DRY_RUN", "true").lower() == "true"
+    shadow_mode = _env_flag("SOCIAL_SHADOW_MODE", False)
     product_id_override = os.environ.get("POST_PRODUCT_ID_OVERRIDE", "").strip()
     funnel_stage_override = os.environ.get("POST_FUNNEL_STAGE_OVERRIDE", "").strip().upper()
     pipeline_override = os.environ.get("POST_PIPELINE_OVERRIDE", "").strip().lower()
@@ -622,7 +670,7 @@ def main() -> None:
     strategy_name, strategy_freshness = _latest_marketing_strategy_info()
 
     print(f"\n=== INF Energy Social Engine ===")
-    print(f"Slot: {slot} | Dry run: {dry_run} | UTC: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M')}\n")
+    print(f"Slot: {slot} | Dry run: {dry_run} | Shadow mode: {shadow_mode} | UTC: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M')}\n")
     print(
         "Channels: "
         f"wordpress={effective_channels['wordpress']} "
@@ -646,7 +694,7 @@ def main() -> None:
     print(f"Marketing strategy: {strategy_name} ({strategy_freshness})\n")
     print(f"Phase5 readiness: {json.dumps(phase5_readiness, ensure_ascii=True)}\n")
 
-    if (not dry_run) and readiness_block_on_red and phase5_readiness.get("overall") != "pass":
+    if (not dry_run) and not shadow_mode and readiness_block_on_red and phase5_readiness.get("overall") != "pass":
         print("[SKIP] Channel readiness check failed; blocking live publish")
         history = generate_posts.load_history()
         run_started = datetime.now(timezone.utc).isoformat()
@@ -871,7 +919,8 @@ def main() -> None:
     final_validation_ok = content.get("validation_status") == "passed"
     final_score = float(content.get("quality_score") or 0)
     duplicate_ok = bool(content.get("duplicate_check", {}).get("ok", True))
-    visual_gate_errors = _live_visual_gate_errors(content, effective_channels, dry_run)
+    visual_gate_errors = _live_visual_gate_errors(content, effective_channels, dry_run or shadow_mode)
+    visual_gate_errors.extend(_strategy_integrity_errors(content))
     if visual_gate_errors:
         content["validation_status"] = "failed"
         content["validation_errors"] = list(content.get("validation_errors", [])) + visual_gate_errors
@@ -892,7 +941,7 @@ def main() -> None:
         visual_errors=visual_gate_errors,
     )
     content["publish_decision"] = final_decision
-    if not final_decision["publishable"]:
+    if not final_decision["publishable"] and not shadow_mode:
         print("[SKIP] Content did not pass validation/quality thresholds; recording skipped run")
         history = generate_posts.load_history()
         run_started = datetime.now(timezone.utc).isoformat()
@@ -970,6 +1019,34 @@ def main() -> None:
         _apply_phase8_budget(runtime_metrics, "total", time.perf_counter() - t_total, total_budget)
         generate_posts.save_history(history)
         print("\n=== Done (skipped) ===\n")
+        return
+
+    if shadow_mode:
+        history = generate_posts.load_history()
+        run_started = datetime.now(timezone.utc).isoformat()
+        platform_records = _shadow_platform_records(content, run_started, effective_channels)
+        _apply_phase8_budget(runtime_metrics, "total", time.perf_counter() - t_total, total_budget)
+        history["posts"].append({
+            "post_id": content.get("post_id", ""), "platform": "multi", "published_at": run_started,
+            "date": content.get("date"), "slot": slot, "run_started_at_utc": run_started,
+            "topic": content.get("topic"), "audience_segment": content.get("audience_segment", ""),
+            "funnel_stage": content.get("funnel_stage", "EDUCATION"),
+            "product_id": content.get("product_id") or None, "quality_score": content.get("quality_score"),
+            "quality_component_scores": content.get("quality_component_scores", {}),
+            **_generation_diagnostics(content), **_conversion_learning_fields(content),
+            "validation_status": content.get("validation_status"), "validation_errors": content.get("validation_errors", []),
+            "duplicate_reasons": content.get("duplicate_check", {}).get("reasons", []),
+            "generation_attempts": attempts, "dry_run": dry_run, "shadow_mode": True,
+            "status": "shadow_completed", "decision_record": _shadow_decision_record(content),
+            "channel_reasons": channel_reasons, "phase5_channel_readiness": phase5_readiness,
+            "phase6_learning": _build_phase6_learning(content=content, platform_records=platform_records, errors=[], status="shadow_completed"),
+            "phase8_runtime": runtime_metrics, "platform_records": platform_records,
+            "wp_id": "shadow", "fb_id": "shadow", "ig_id": "shadow", "li_id": "shadow",
+        })
+        history["posts"] = history["posts"][-200:]
+        generate_posts.save_history(history)
+        print("[SHADOW] Decision recorded; no publisher or external media host was invoked")
+        print("\n=== Done (shadow) ===\n")
         return
 
     print(f"Topic: {content['topic']}")

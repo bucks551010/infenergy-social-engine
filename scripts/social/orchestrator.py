@@ -183,6 +183,40 @@ def _bi_get_offering(product_id: str) -> dict[str, Any] | None:
         return None
 
 
+def _runtime_strategy_lock(brief: engines.EngineBrief, lean_context: dict[str, Any], offering: dict[str, Any] | None) -> dict[str, Any]:
+    """Use selected product/audience evidence when Council has not provided a lock."""
+    human = lean_context.get("human_value") or {}
+    relationships = lean_context.get("relationships") or {}
+    understanding = lean_context.get("understanding") or {}
+    marketing = lean_context.get("marketing") or {}
+    facts = list(understanding.get("important_capabilities") or marketing.get("approved_marketing_claims") or [])
+    benefit = str((human.get("benefits") or facts or ["practical product-fit guidance"])[0])
+    moment = str(relationships.get("customer_moment") or (understanding.get("primary_use_cases") or ["choosing portable backup power"])[0])
+    need = str(relationships.get("primary_problem") or (marketing.get("customer_questions") or ["a practical power decision"])[0])
+    human_value = str(relationships.get("human_value") or "practical clarity")
+    candidate = {
+        "audience": brief.audience_segment,
+        "customer_moment": moment,
+        "human_need": need,
+        "human_value": human_value,
+        "topic": brief.topic_path.get("topic", ""),
+        "angle": brief.angle,
+        "offering": str((offering or {}).get("name") or lean_context.get("identity", {}).get("product_name") or "product guidance"),
+        "positioning": "verified product-fit guidance",
+        "non_price_edge": {"kind": "DECISION_SUPPORT_EDGE", "reason": "helps customers choose from verified product facts"},
+        "important_capability": facts[0] if facts else "verified product facts",
+        "benefit": benefit,
+        "human_outcome": human_value,
+        "reader_job": brief.reader_job,
+        "competitive_context": "not inferred without evidence",
+        "proof": facts,
+        "claim_limits": "Use only verified product facts; do not imply unsupported protection or urgency.",
+        "visual_objective": "make the product-fit decision easier to understand",
+        "CTA_strategy": marketing.get("cta") or _DEFAULT_CTA_BY_JOB.get(brief.reader_job, "Learn more"),
+    }
+    return strategy_lock.lock(candidate, context=candidate)
+
+
 # --- Engine rotation --------------------------------------------------------
 
 
@@ -441,7 +475,7 @@ class SocialIntelligenceOrchestrator:
             brief.topic_path["topic"] = locked["topic"]
             brief.reader_job = locked["reader_job"]
         else:
-            locked = None
+            locked = _runtime_strategy_lock(brief, lean_context, bi_offering)
 
         # 3. Copy assembly — real Gemini copy when available, deterministic
         # template assembly as the network-free fallback (§15 Copy Architect).

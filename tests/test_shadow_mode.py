@@ -8,6 +8,7 @@ _REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(_REPO, "scripts"))
 
 import run_engine  # noqa: E402
+from score_content import score_content  # noqa: E402
 
 
 def test_shadow_records_never_report_published():
@@ -41,3 +42,37 @@ def test_shadow_decision_record_uses_existing_reviews_only():
 
     assert record["who_it_is_for"] == "household"
     assert record["strategy_integrity_verdict"]["verdict"] == "ALIGNED"
+
+
+def test_single_platform_scores_ignore_missing_other_social_channels():
+    content = {
+        "selected_hook": "How do you match backup power to the device that matters?",
+        "selected_cta": "Compare options",
+        "product_name": "Power Station",
+        "fb_caption": "What device would you keep running first at home? Compare the device load before you choose. #PortablePower",
+        "ig_caption": "MATCH POWER TO THE DEVICE\n\nCompare device load before you choose. #PortablePower #BackupPower #Preparedness",
+        "li_text": "Continuity planning starts by matching device load to available backup power. Compare options. #Resilience",
+    }
+
+    for platform in ("facebook", "instagram", "linkedin"):
+        single = score_content(content, requested_platforms=[platform])
+        assert set(single["platform_results"]) == {platform}
+        assert single["total"] == single["platform_results"][platform]["total"]
+
+
+def test_multiplatform_score_contains_three_independent_native_verdicts():
+    content = {
+        "selected_hook": "How do you match backup power to the device that matters?",
+        "selected_cta": "Compare options",
+        "product_name": "Power Station",
+        "fb_caption": "What device would you keep running first at home? Compare the device load before you choose. #PortablePower",
+        "ig_caption": "MATCH POWER TO THE DEVICE\n\nCompare device load before you choose. #PortablePower #BackupPower #Preparedness",
+        "li_text": "Continuity planning starts by matching device load to available backup power. Compare options. #Resilience",
+    }
+
+    scored = score_content(content, requested_platforms=["facebook", "instagram", "linkedin"])
+
+    assert set(scored["platform_results"]) == {"facebook", "instagram", "linkedin"}
+    assert scored["platform_results"]["facebook"]["native_checks"] == ["conversational_context"]
+    assert scored["platform_results"]["instagram"]["native_checks"] == ["visual_hook_and_saveability"]
+    assert scored["platform_results"]["linkedin"]["native_checks"] == ["professional_decision_support"]

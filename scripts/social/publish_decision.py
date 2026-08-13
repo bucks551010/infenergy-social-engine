@@ -60,4 +60,5 @@ def decide(
         "orchestrator_critic_score": critic_total,
         "conversion_quality_score": float(conversion_quality_score),
         "reasons": reasons,
+        "platform_results": legacy_score.get("platform_results", {}),
     }

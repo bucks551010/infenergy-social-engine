@@ -306,6 +306,15 @@ def _generation_diagnostics(content: dict) -> dict:
         "publish_decision": content.get("publish_decision", {}),
     }
 
+
+def _attach_platform_quality(content: dict, scoring: dict) -> None:
+    posts = content.get("platform_posts") if isinstance(content.get("platform_posts"), dict) else {}
+    results = scoring.get("platform_results") if isinstance(scoring.get("platform_results"), dict) else {}
+    for platform, result in results.items():
+        if isinstance(posts.get(platform), dict):
+            posts[platform]["quality_score"] = result.get("total")
+            posts[platform]["quality_verdict"] = result
+
 def _strategy_integrity_errors(content: dict) -> list[str]:
     review = (content.get("creative_director") or {}).get("strategy_integrity_review", {})
     if str(review.get("verdict", "")).upper() == "MATERIAL_DRIFT":
@@ -664,7 +673,14 @@ def main() -> None:
         effective_channels[name] = bool(allowed)
         channel_reasons[name] = reason
 
-    check_secrets(dry_run=dry_run, channels=effective_channels)
+    platform_selection = preview_content.get("platform_selection") if isinstance(preview_content.get("platform_selection"), dict) else {}
+    for platform in ("facebook", "instagram", "linkedin"):
+        selection = platform_selection.get(platform) if isinstance(platform_selection.get(platform), dict) else {}
+        if effective_channels.get(platform) and selection.get("selected") is False:
+            effective_channels[platform] = False
+            channel_reasons[platform] = "strategy_platform_not_appropriate"
+
+    check_secrets(dry_run=dry_run or shadow_mode, channels=effective_channels)
     phase5_readiness = _build_phase5_channel_readiness(effective_channels, dry_run)
     readiness_block_on_red = os.environ.get("CHANNEL_READINESS_BLOCK_ON_RED", "true").strip().lower() in {"1", "true", "yes", "on"}
     strategy_name, strategy_freshness = _latest_marketing_strategy_info()
@@ -797,6 +813,7 @@ def main() -> None:
                     "warnings": list(validation.get("warnings", [])) + ["runtime_claim_not_supported_soft_fail"],
                 }
         scoring = score_content(content, requested_platforms=manual_platforms)
+        _attach_platform_quality(content, scoring)
         duplicates = check_duplicates(content, generate_posts.load_history(), windows=windows)
         if manual_platforms and manual_duplicate_mode == "allow_all":
             if duplicates.get("reasons"):
@@ -874,6 +891,7 @@ def main() -> None:
                     "warnings": list(validation.get("warnings", [])) + ["runtime_claim_not_supported_soft_fail"],
                 }
             scoring = score_content(content, requested_platforms=manual_platforms)
+            _attach_platform_quality(content, scoring)
             duplicates = check_duplicates(content, generate_posts.load_history(), windows=windows)
             if manual_duplicate_mode == "allow_all":
                 duplicates["reasons"] = []
@@ -933,7 +951,7 @@ def main() -> None:
         print(f"[QUALITY] Published with Conversion Quality Score {final_cqs_total} after exhausting retries (target 80).")
 
     final_decision = decide_publication(
-        legacy_score={"total": final_score},
+        legacy_score=scoring,
         validation={"passed": final_validation_ok, "errors": content.get("validation_errors", [])},
         duplicates=content.get("duplicate_check", {}),
         conversion_quality_score=final_cqs_total,

@@ -41,11 +41,15 @@ def due(record: dict[str, Any], *, now: datetime | None = None, windows_hours: t
 
 
 def collect_meta(record: dict[str, Any]) -> list[dict[str, Any]]:
-    """Fetch only metrics Graph returns for existing Facebook/Instagram IDs."""
+    """Fetch Meta observations and explicitly retain unavailable LinkedIn analytics."""
     token = os.environ.get("META_PAGE_ACCESS_TOKEN", "").strip()
+    linkedin_id = str(record.get("li_id", "") or "").strip()
+    linkedin_observations = []
+    if linkedin_id and linkedin_id not in {"skipped", "dry-run", "shadow"}:
+        linkedin_observations.append({"platform_post_id": linkedin_id, "platform": "linkedin", "status": "ANALYTICS_UNAVAILABLE", "reason": "linkedin_analytics_api_not_configured", "collected_at": datetime.now(timezone.utc).isoformat()})
     if not token:
-        return [{"status": "AUTHENTICATION_REQUIRED", "platform": platform} for platform, key in (("facebook", "fb_id"), ("instagram", "ig_id")) if record.get(key)]
-    observations: list[dict[str, Any]] = []
+        return linkedin_observations + [{"status": "AUTHENTICATION_REQUIRED", "platform": platform} for platform, key in (("facebook", "fb_id"), ("instagram", "ig_id")) if record.get(key)]
+    observations: list[dict[str, Any]] = linkedin_observations
     for platform, key in (("facebook", "fb_id"), ("instagram", "ig_id")):
         post_id = str(record.get(key, "") or "").strip()
         if not post_id or post_id in {"skipped", "dry-run"}:

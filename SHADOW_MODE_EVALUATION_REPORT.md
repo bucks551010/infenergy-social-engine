@@ -4,7 +4,8 @@ Run date: 2026-08-13 UTC
 
 ## Scope
 
-Three Instagram-only Shadow Mode scenarios ran through the normal orchestrator,
+Shadow Mode ran Facebook-only, Instagram-only, LinkedIn-only, and all-three
+Facebook + Instagram + LinkedIn scenarios through the normal orchestrator,
 platform adaptation, validation, quality governance, human review, Strategy
 Integrity review, and Publish Decision path. `SOCIAL_SHADOW_MODE=true` stopped
 each run before media hosting or any external publisher adapter.
@@ -20,6 +21,10 @@ readiness, portable power, and product education.
 | Auto-selected portable-power scenario (`55f19e41d74b`) | WEAK | Instagram caption populated (1075 characters), quality 100, human review `PASS`, integrity `ALIGNED`; authoritative decision `revise` because the orchestrator critic required revision. Gemini was unavailable, so copy used the recorded deterministic template fallback. |
 | SOREIN-MB2000, Education (`df54327303bd`) | FAIL | Instagram caption populated (1181 characters), human review `PASS`, integrity `ALIGNED`; authoritative decision `do_not_publish` because a runtime claim was not supported. |
 | INF-9792, Trust (`8d49bd14ddba`) | FAIL | Instagram caption populated (1079 characters), quality 98, human review `PASS`, integrity `ALIGNED`; authoritative decision `do_not_publish` because a runtime claim was unsupported and its image candidate did not match. |
+| PowerPulse Pro 200, Facebook-only | WEAK | Facebook package populated (1265 characters), Facebook quality `100/approve`, shared lock and reviews `PASS` / `ALIGNED`; aggregate decision `revise` because the orchestrator critic required revision. |
+| PowerPulse Pro 200, Instagram-only | WEAK | Instagram package populated (1075 characters), Instagram quality `100/approve`, shared lock and reviews `PASS` / `ALIGNED`; aggregate decision `revise` because the orchestrator critic required revision. |
+| PowerPulse Pro 200, LinkedIn-only | WEAK | LinkedIn package populated (1099 characters), LinkedIn quality `97/approve`, shared lock and reviews `PASS` / `ALIGNED`; aggregate decision `revise` because the orchestrator critic required revision. |
+| PowerPulse Pro 200, all three channels | WEAK | One lock generated native Facebook, Instagram, and LinkedIn captions with independent quality results of `100`, `100`, and `97`. All records were `shadow_not_published`; the final decision remained `revise`. |
 
 Every platform record was persisted as `shadow_not_published` with
 `shadow_mode_no_external_publication`. No external post, upload, or media
@@ -36,25 +41,36 @@ hosting call occurred.
 | Human connection | WEAK | The three runtime artifacts returned `PASS`, but these runs were deterministic fallback copy and did not validate varied real customer-language inputs. The system did not use emergency/family fear language as a reason to publish. |
 | Non-price edge | WEAK | Runtime locks used `DECISION_SUPPORT_EDGE` grounded in verified facts. Broader competitive edges remain unvalidated while research is unavailable. |
 | Candidate diversity / Council | FAIL | The current normal runtime did not receive a Council-approved strategy because competitor and consumer evidence were unavailable. Shadow records correctly show the downstream lock/reviews, but this is not evidence that a multi-candidate Council decision is ready. |
-| Platform adaptation | PASS | Instagram captions were populated in all three runs; absent WordPress, Facebook, and LinkedIn fields did not lower the Instagram-only quality scores. |
+| Facebook adaptation | PASS, local Shadow only | Facebook-only package, lock, reviews, and `100/approve` requested-platform quality were persisted. This is not deployed-runtime verification. |
+| Instagram adaptation | PASS, local Shadow only | Instagram-only package, lock, reviews, and `100/approve` requested-platform quality were persisted. |
+| LinkedIn adaptation | PASS, local Shadow only | LinkedIn-only package, lock, reviews, and `97/approve` requested-platform quality were persisted without LinkedIn credentials. |
+| Cross-platform scoring | PASS, local Shadow only | Single-platform runs contained only their requested platform result. The all-three run retained three independent results; absent unrelated content did not create a penalty. |
+| Platform selection | PASS, contract | A strategy without professional or business context selects Facebook + Instagram and rejects LinkedIn with `no supported professional or business context`. |
+| LinkedIn analytics | WEAK | There is no configured LinkedIn analytics API path. Published LinkedIn IDs now record `ANALYTICS_UNAVAILABLE` rather than fabricated or merged Meta metrics. |
 | Strategy integrity | PASS | Every sampled runtime package persisted `ALIGNED`. The unit contract separately proves `MATERIAL_DRIFT` becomes `strategy_integrity_material_drift`, which makes the authoritative decision non-publishable. |
 | Claim safety | PASS | Unsupported claims blocked two scenarios. The system did not publish around those failures. |
 
 ## Production Closure Status
 
-The original artificial Instagram score of `67` was not reproduced locally:
-the Instagram-only Shadow package carried a non-empty `ig_caption`, its
-Instagram platform record, selected audience/angle, model route/fallback,
-human review, integrity review, and authoritative Publish Decision.
+The original artificial `67` missing-channel penalty was not reproduced
+locally for Facebook-only, Instagram-only, or LinkedIn-only runs. Each
+requested platform carried its own non-empty package, selected
+audience/angle, model route/fallback, human review, integrity review, and
+authoritative Publish Decision input.
 
-Railway `/content-preview` remains unresolved because no authorized
-`MANUAL_RUN_TOKEN` was available. No credential was exposed, fabricated, or
-rotated. The deployed endpoint must be re-tested with authorization before
-Canary Mode or autonomous publication is considered.
+This proves only local Shadow runtime behavior for Facebook, Instagram, and
+LinkedIn. It does not prove deployed publishing, deployed credentials, or
+deployed platform APIs.
+
+Railway `/content-preview` remains unresolved for Facebook, Instagram, and
+LinkedIn because no authorized `MANUAL_RUN_TOKEN` was available. No credential
+was exposed, fabricated, or rotated. The deployed multi-platform path must be
+re-tested with authorization before Canary Mode or autonomous publication is
+considered.
 
 ## Required Next Validation
 
 1. Restore a permitted public research source or provide approved research access, then rerun question-only competitor and consumer discovery. Relevance must be reviewed before a source becomes evidence.
 2. Resolve the two observed product claim/image validation failures using the existing product truth and asset paths; do not loosen the gates.
 3. Run additional Shadow scenarios only after real consumer and competitor evidence is available, then assess Council candidate diversity and human-connection quality.
-4. Verify the protected Railway `/content-preview` with authorized access before any Canary Mode consideration.
+4. Verify the protected Railway `/content-preview` and an authorized multi-platform Shadow run before any Canary Mode consideration.

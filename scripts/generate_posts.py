@@ -88,6 +88,20 @@ def _social_platform_key(platform: str) -> str:
     }.get(value, value or "instagram_feed")
 
 
+def _select_social_platforms(strategy_lock: dict[str, Any]) -> dict[str, dict[str, str | bool]]:
+    """Select channels from the approved strategy; presentation never changes its truth."""
+    strategy_text = " ".join(str(strategy_lock.get(key, "")) for key in ("audience", "customer_moment", "topic", "angle", "reader_job", "positioning")).lower()
+    professional_context = any(term in strategy_text for term in ("business", "professional", "operator", "work", "workplace", "continuity", "industry", "team", "organization"))
+    return {
+        "facebook": {"selected": True, "reason": "recognizable customer context supports conversation and sharing"},
+        "instagram": {"selected": True, "reason": "visual-first educational expression is available"},
+        "linkedin": {
+            "selected": professional_context,
+            "reason": "professional decision-support context is supported" if professional_context else "no supported professional or business context",
+        },
+    }
+
+
 def _route_generate_orchestrator(
     slot: str = "",
     *,
@@ -157,7 +171,12 @@ def _route_generate_orchestrator(
         destination_url=(catalog_product or {}).get("product_url") or SITE_URL,
         components=components,
         quality_score=float(quality_pkg.get("overall") or 0),
+        strategy_lock=copy_pkg.get("strategy_lock") if isinstance(copy_pkg.get("strategy_lock"), dict) else {},
+        creative_reviews=first.get("creative_director") if isinstance(first.get("creative_director"), dict) else {},
     )
+    platform_selection = _select_social_platforms(copy_pkg.get("strategy_lock") if isinstance(copy_pkg.get("strategy_lock"), dict) else {})
+    for platform, package in platform_posts.items():
+        package["platform_selection"] = platform_selection[platform]
     wp_content = _join_paragraphs(selected_hook, copy_body, takeaway, selected_cta)
 
     legacy = {
@@ -208,6 +227,7 @@ def _route_generate_orchestrator(
         "ig_caption": platform_posts["instagram"]["caption"],
         "li_text": platform_posts["linkedin"]["caption"],
         "platform_posts": platform_posts,
+        "platform_selection": platform_selection,
     }
     for key in ("hook", "body_text", "takeaway", "memory_anchor"):
         legacy.setdefault(key, copy_pkg.get(key))
@@ -3688,6 +3708,8 @@ def _build_platform_posts(
     components: dict,
     quality_score: float,
     caption_overrides: dict | None = None,
+    strategy_lock: dict | None = None,
+    creative_reviews: dict | None = None,
 ) -> dict:
     fb_caption, fb_cta, fb_format = _adapt_facebook(components, funnel_stage)
     ig_caption, ig_cta, ig_visual, ig_alt = _adapt_instagram(components, funnel_stage)
@@ -3786,6 +3808,19 @@ def _build_platform_posts(
             platform_posts[platform]["caption"] = override_caption
         if override_cta:
             platform_posts[platform]["cta"] = override_cta
+
+    lock = dict(strategy_lock or {})
+    reviews = dict(creative_reviews or {})
+    native_posture = {
+        "facebook": "conversational education and discussion",
+        "instagram": "visual-first memorable takeaway",
+        "linkedin": "professional decision-support insight",
+    }
+    for platform, package in platform_posts.items():
+        package["strategy_lock"] = lock
+        package["human_connection_review"] = reviews.get("independent_human_connection_review", {})
+        package["strategy_integrity_review"] = reviews.get("strategy_integrity_review", {})
+        package["platform_posture"] = native_posture[platform]
 
     return platform_posts
 

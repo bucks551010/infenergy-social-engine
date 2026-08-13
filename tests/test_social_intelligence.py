@@ -93,11 +93,12 @@ def test_orchestrator_bridge_builds_publishable_platform_contract(monkeypatch):
             "memory_anchor": "Compare watt-hours and the device load before you buy.",
             "cta": "Compare options",
             "generation_method": "llm",
+            "strategy_lock": {"audience": "mobile_professional", "angle": "compare watt-hours", "positioning": "decision support", "non_price_edge": {"kind": "DECISION_SUPPORT_EDGE"}, "claim_limits": "verified facts only"},
         },
         "visual": {"visual_format": "fact_card"},
         "quality": {"overall": 88},
         "claim_ledger": {},
-        "creative_director": {"passed": True},
+        "creative_director": {"passed": True, "independent_human_connection_review": {"verdict": "PASS"}, "strategy_integrity_review": {"verdict": "ALIGNED"}},
     }
     monkeypatch.setattr(generate_posts, "run_social_intelligence", lambda count=1, platform="instagram_feed", **kw: [expected])
     monkeypatch.setattr(generate_posts, "load_products", lambda: [])
@@ -118,6 +119,26 @@ def test_orchestrator_bridge_builds_publishable_platform_contract(monkeypatch):
     assert "PowerPulse Pro 200" in result["ig_caption"]
     assert "41,600mAh" in result["ig_caption"]
     assert result["copy_generation_method"] == "llm"
+    for platform in ("facebook", "instagram", "linkedin"):
+        package = result["platform_posts"][platform]
+        assert package["strategy_lock"] == expected["copy"]["strategy_lock"]
+        assert package["human_connection_review"]["verdict"] == "PASS"
+        assert package["strategy_integrity_review"]["verdict"] == "ALIGNED"
+
+
+def test_platform_selection_can_decline_linkedin_without_professional_context():
+    selected = generate_posts._select_social_platforms({
+        "audience": "outdoor enthusiasts",
+        "customer_moment": "weekend camping trip",
+        "topic": "portable power for a campsite",
+        "angle": "keep a camera charged away from an outlet",
+        "reader_job": "HELP_ME_CHOOSE",
+        "positioning": "practical outdoor power guidance",
+    })
+
+    assert selected["facebook"]["selected"] is True
+    assert selected["instagram"]["selected"] is True
+    assert selected["linkedin"] == {"selected": False, "reason": "no supported professional or business context"}
 
 
 # --- libraries --------------------------------------------------------------
@@ -313,6 +334,14 @@ def test_human_review_escalates_weak_premise_to_change_angle():
 def test_analytics_windows_are_runtime_configurable(monkeypatch):
     monkeypatch.setenv("ANALYTICS_WINDOWS_HOURS", "1,12,48")
     assert analytics_ingestion.configured_windows() == (1, 12, 48)
+
+
+def test_linkedin_analytics_unavailability_is_explicit(monkeypatch):
+    monkeypatch.delenv("META_PAGE_ACCESS_TOKEN", raising=False)
+    observations = analytics_ingestion.collect_meta({"li_id": "linkedin-post-1"})
+    assert observations[0]["platform"] == "linkedin"
+    assert observations[0]["status"] == "ANALYTICS_UNAVAILABLE"
+    assert observations[0]["reason"] == "linkedin_analytics_api_not_configured"
 
 
 def test_competitor_and_customer_discovery_start_from_question_only(monkeypatch):

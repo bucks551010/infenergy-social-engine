@@ -79,7 +79,7 @@ def load_reference_graph(data_dir: str | None = None) -> dict[str, Any]:
             return state
     except (OSError, json.JSONDecodeError, AttributeError):
         pass
-    return {"references": [dict(item) for item in _SEED_REFERENCES]}
+    return {"references": [dict(item) for item in _SEED_REFERENCES], "copy_grammars": [dict(item) for item in COPY_GRAMMARS]}
 
 
 def save_reference_graph(state: dict[str, Any], data_dir: str | None = None) -> None:
@@ -155,6 +155,8 @@ def reference_heartbeat(data_dir: str | None = None, *, level: str = "LIGHT", kn
     known = {item.get("reference_id") for item in state["references"]}
     added = [dict(item) for item in _SEED_REFERENCES if item["reference_id"] not in known]
     state["references"].extend(added)
+    grammar_ids = {item.get("id") for item in state.get("copy_grammars", [])}
+    state.setdefault("copy_grammars", []).extend(dict(item) for item in COPY_GRAMMARS if item["id"] not in grammar_ids)
     budget = {"LIGHT": 0, "STANDARD": 2, "DEEP": 3}[level]
     acquisition = {"status": "NOT_REQUESTED", "candidates": []}
     extracted = 0
@@ -273,8 +275,9 @@ def _concept_competition(*, strategy: dict[str, Any], references: list[dict[str,
     return sorted(concepts, key=lambda item: item["score"], reverse=True)
 
 
-def _copy_grammar(*, reader_job: str, recent: dict[str, list[Any]], concepts: list[dict[str, Any]]) -> dict[str, Any]:
-    candidates = [item for item in COPY_GRAMMARS if reader_job in item["best_for"]] or list(COPY_GRAMMARS)
+def _copy_grammar(*, reader_job: str, recent: dict[str, list[Any]], concepts: list[dict[str, Any]], data_dir: str | None) -> dict[str, Any]:
+    persistent = load_reference_graph(data_dir).get("copy_grammars", [])
+    candidates = [item for item in persistent if reader_job in item["best_for"]] or list(persistent)
     used = {str(item) for item in recent.get("copy_grammars", [])}
     selected = next((item for item in candidates if item["id"] not in used), candidates[0])
     return {"selected": selected, "candidates": candidates[:3], "reason": "reader-job fit and memory-aware diversity"}
@@ -282,6 +285,7 @@ def _copy_grammar(*, reader_job: str, recent: dict[str, list[Any]], concepts: li
 
 def decide(*, strategy: dict[str, Any], platform: str, recent: dict[str, list[Any]], data_dir: str | None = None, signals: list[dict[str, Any]] | None = None) -> dict[str, Any]:
     """Run one bounded autonomous creative meeting and return its decision evidence."""
+    reference_heartbeat(data_dir, level="LIGHT")
     questions = detect_questions(strategy=strategy, platform=platform, recent=recent, signals=signals)
     meetings = route_meetings(questions)
     references = retrieve_references(reader_job=strategy.get("reader_job", ""), platform=platform, recent_visual_formats=recent.get("visual_formats", []), data_dir=data_dir)
@@ -290,7 +294,7 @@ def decide(*, strategy: dict[str, Any], platform: str, recent: dict[str, list[An
     concepts = _concept_competition(strategy=strategy, references=references, benefit=benefit, fatigue=fatigue)
     selected_concept = concepts[0]
     selected = next((item for item in references if item["reference_id"] == selected_concept["reference_id"]), references[0] if references else {"reference_id": "internal-fallback", "layout_logic": "clear hierarchy", "copy_logic": "question -> answer -> why it matters", "visual_logic": "one focal proof", "information_hierarchy": "headline, proof, explanation", "product_role": "supporting proof", "text_density": "medium"})
-    grammar = _copy_grammar(reader_job=strategy.get("reader_job", ""), recent=recent, concepts=concepts)
+    grammar = _copy_grammar(reader_job=strategy.get("reader_job", ""), recent=recent, concepts=concepts, data_dir=data_dir)
     selected = selected | {"copy_logic": " -> ".join(grammar["selected"]["steps"]), "creative_concept": selected_concept["id"]}
     platform_outcomes = {"facebook": {"status": "ELIGIBLE"}, "instagram": {"status": "ELIGIBLE"}, "linkedin": {"status": "ELIGIBLE"}}
     for question in questions:

@@ -294,6 +294,7 @@ def test_creative_reference_heartbeat_discovers_extracts_persists_and_retrieves(
     assert heartbeat["acquisition"]["status"] == "OK"
     assert heartbeat["extracted"] == 1
     assert any(item["source"] == "https://github.com/example/information-design" for item in graph["references"])
+    assert any(item["id"] == "question_answer" for item in graph["copy_grammars"])
     assert all("no code, assets, layouts, or copy are reused" in item["license_or_use_boundary"] or item["source_type"] == "internal_repository" for item in graph["references"])
     assert retrieved
     packet = creative_cognition.decide(strategy={"audience": "household", "customer_moment": "outage planning", "human_need": "clarity", "human_value": "preparedness", "topic": "power priorities", "angle": "Prioritize essentials", "offering": "power station", "positioning": "calm preparedness", "benefit": "prioritize essentials", "human_outcome": "confidence", "reader_job": "EXPLAIN_THIS", "proof": [], "claim_limits": "supported facts only", "visual_objective": "show priorities"}, platform="instagram_feed", recent={}, data_dir=str(tmp_path))

@@ -277,6 +277,49 @@ class PhaseThirteenFourteenTests(unittest.TestCase):
         self.assertEqual(save_calls[-1]["posts"][-1]["status"], "skipped_validation_or_quality")
         self.assertEqual(len(save_calls[-1]["posts"][-1]["generation_attempts"]), 2)
 
+    def test_run_engine_revise_retries_with_critic_feedback_and_strategy_lock(self) -> None:
+        save_calls: list[dict] = []
+        strategy_lock = {"audience": "mobile professional", "angle": "match power to devices", "topic": "Power Stations"}
+        first = deepcopy(_base_content())
+        first["product_id"] = "PPP-200"
+        first["copy"] = {"strategy_lock": strategy_lock}
+        first["final_platform_copy_reviews"] = {"facebook": {"issues": ["primary_benefit_not_explicit"]}}
+        second = deepcopy(first)
+        second["topic_hash"] = "topic456"
+        decisions = [
+            {"decision": "revise", "publishable": False, "reasons": ["orchestrator_critic_requires_revision"], "orchestrator_critic_score": 76},
+            {"decision": "publish", "publishable": True, "reasons": [], "orchestrator_critic_score": 84},
+            {"decision": "publish", "publishable": True, "reasons": [], "orchestrator_critic_score": 84},
+        ]
+
+        with patch.object(run_engine.generate_posts, "ensure_runtime_data", return_value=None), \
+            patch.object(run_engine.generate_posts, "generate", side_effect=[first, second]) as mock_generate, \
+            patch.object(run_engine.generate_posts, "load_history", return_value={"posts": []}), \
+            patch.object(run_engine.generate_posts, "save_history", side_effect=lambda history: save_calls.append(history)), \
+            patch.object(run_engine, "load_channel_schedule", return_value={}), \
+            patch.object(run_engine, "eligible_channels_for_slot", return_value={
+                "wordpress": (False, "disabled_env"), "facebook": (False, "not_scheduled"),
+                "instagram": (False, "not_scheduled"), "linkedin": (False, "not_scheduled"),
+            }), \
+            patch.object(run_engine, "validate_generated_content", return_value={"passed": True, "errors": [], "warnings": []}), \
+            patch.object(run_engine, "score_content", return_value={"total": 90, "decision": "approve", "component_scores": {}}), \
+            patch.object(run_engine, "decide_publication", side_effect=decisions), \
+            patch.object(run_engine, "load_anti_repeat_windows", return_value={}), \
+            patch.object(run_engine, "check_duplicates", return_value={"ok": True, "reasons": [], "signatures": {}}), \
+            patch.dict(os.environ, {"SOCIAL_DRY_RUN": "true", "POST_SLOT": "morning"}, clear=False):
+            run_engine.main()
+
+        self.assertEqual(mock_generate.call_count, 2)
+        retry_kwargs = mock_generate.call_args_list[1].kwargs
+        self.assertEqual(retry_kwargs["approved_strategy"], strategy_lock)
+        self.assertEqual(retry_kwargs["product_id_override"], "PPP-200")
+        self.assertIn("orchestrator_critic_requires_revision", retry_kwargs["revision_feedback"])
+        self.assertIn("primary_benefit_not_explicit", retry_kwargs["revision_feedback"])
+        attempts = save_calls[-1]["posts"][-1]["generation_attempts"]
+        self.assertEqual(len(attempts), 2)
+        self.assertEqual(attempts[0]["revision_scope"], "copy")
+        self.assertEqual(attempts[0]["strategy_lock"], strategy_lock)
+
     def test_run_engine_records_skipped_no_eligible_platforms(self) -> None:
         save_calls: list[dict] = []
         content = deepcopy(_base_content())

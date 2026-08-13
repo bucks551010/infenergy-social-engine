@@ -326,6 +326,35 @@ def _strategy_integrity_errors(content: dict) -> list[str]:
     return []
 
 
+def _strategy_lock_for_revision(content: dict) -> dict:
+    copy = content.get("copy") if isinstance(content.get("copy"), dict) else {}
+    trace = content.get("decision_trace") if isinstance(content.get("decision_trace"), dict) else {}
+    lock = copy.get("strategy_lock") or trace.get("strategy_lock")
+    return dict(lock) if isinstance(lock, dict) else {}
+
+
+def _revision_feedback(content: dict, decision: dict) -> list[str]:
+    """Convert existing critic output into auditable, bounded revision instructions."""
+    findings = [str(reason) for reason in decision.get("reasons", []) if str(reason)]
+    quality = content.get("orchestrator_quality") if isinstance(content.get("orchestrator_quality"), dict) else {}
+    findings.extend(str(reason) for reason in quality.get("reasons", []) if str(reason))
+    reviews = content.get("final_platform_copy_reviews") if isinstance(content.get("final_platform_copy_reviews"), dict) else {}
+    for review in reviews.values():
+        if isinstance(review, dict):
+            findings.extend(str(issue) for issue in review.get("issues", []) if str(issue))
+    creative = content.get("creative_director") if isinstance(content.get("creative_director"), dict) else {}
+    for key in ("copy_critic_review", "visual_critic_review"):
+        review = creative.get(key) if isinstance(creative.get(key), dict) else {}
+        findings.extend(str(issue) for issue in review.get("issues", []) if str(issue))
+    return list(dict.fromkeys(findings))
+
+
+def _revision_scope(content: dict) -> str:
+    creative = content.get("creative_director") if isinstance(content.get("creative_director"), dict) else {}
+    visual_review = creative.get("visual_critic_review") if isinstance(creative.get("visual_critic_review"), dict) else {}
+    return "copy_and_visual" if str(visual_review.get("verdict", "")).upper() == "REVISE" else "copy"
+
+
 def _shadow_decision_record(content: dict) -> dict:
     """Owner-readable explanation from existing decision artifacts, never hidden reasoning."""
     strategy = (content.get("copy") or {}).get("strategy_lock") or content.get("strategic_brief") or {}
@@ -741,15 +770,25 @@ def main() -> None:
     attempts: list[dict] = []
     windows = load_anti_repeat_windows()
     content = preview_content
+    locked_strategy: dict = {}
+    locked_product_id = product_id_override
+    pending_feedback: list[str] = []
+    pending_scope = "copy"
+    prior_generated_visuals: dict = {}
     t_generation = time.perf_counter()
     for idx in range(3):
         if idx > 0:
             content = generate_posts.generate(
                 slot,
                 funnel_stage_override=funnel_stage_override,
-                product_id_override=product_id_override,
+                product_id_override=locked_product_id,
                 pipeline_override=pipeline_override,
+                approved_strategy=locked_strategy or None,
+                revision_feedback=pending_feedback,
             )
+            if pending_scope == "copy" and prior_generated_visuals:
+                content["generated_visuals"] = prior_generated_visuals
+                content["revision_reused_components"] = ["generated_visuals"]
 
         validation = validate_generated_content(content)
         hard_block = str(os.environ.get("ORCHESTRATION_HARD_BLOCK", "false")).strip().lower() in {"1", "true", "yes", "on"}
@@ -813,6 +852,13 @@ def main() -> None:
             orchestrator_quality=content.get("orchestrator_quality"),
         )
         content["publish_decision"] = publish_decision
+        current_strategy = _strategy_lock_for_revision(content)
+        if not locked_strategy and current_strategy:
+            locked_strategy = current_strategy
+        if not locked_product_id:
+            locked_product_id = str(content.get("product_id") or "")
+        critic_feedback = _revision_feedback(content, publish_decision)
+        revision_scope = _revision_scope(content)
 
         attempts.append(
             {
@@ -824,6 +870,10 @@ def main() -> None:
                 "duplicates_ok": duplicates.get("ok"),
                 "duplicate_reasons": duplicates.get("reasons", []),
                 "conversion_quality_score": cqs_total,
+                "orchestrator_critic_score": publish_decision.get("orchestrator_critic_score"),
+                "critic_feedback": critic_feedback,
+                "revision_scope": revision_scope,
+                "strategy_lock": locked_strategy,
             }
         )
 
@@ -890,8 +940,11 @@ def main() -> None:
             if publish_decision["publishable"]:
                 break
 
-        # If score is in regenerate range and this is first attempt, try one more time.
-        if idx == 0 and publish_decision["decision"] in {"revise", "regenerate"}:
+        # A critic-directed revision is bounded to three candidates total.
+        if idx < 2 and publish_decision["decision"] in {"revise", "regenerate"}:
+            pending_feedback = critic_feedback or ["Improve the candidate so it meets the existing critic threshold."]
+            pending_scope = revision_scope
+            prior_generated_visuals = dict(content.get("generated_visuals") or {})
             continue
 
         # Otherwise stop on final attempt or hard rejection.

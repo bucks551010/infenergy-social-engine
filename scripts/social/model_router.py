@@ -21,7 +21,7 @@ DEFAULT_MODEL_ROUTES: dict[str, str] = {
     "topic_generation": "gemini-2.5-flash-lite",
     "strategy": "gemini-2.5-pro",
     "visual_direction": "gemini-2.5-pro",
-    "copy_editing": "gemini-2.5-flash-lite",
+    "copy_editing": "gemini-3.1-flash-lite",
     "image_analysis": "gemini-2.5-flash-lite",
     "fact_reasoning": "gemini-2.5-pro",
     "final_review": "gemini-2.5-pro",

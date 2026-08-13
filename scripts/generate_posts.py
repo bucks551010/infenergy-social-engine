@@ -4844,6 +4844,8 @@ def generate(
     funnel_stage_override: str = "",
     product_id_override: str = "",
     pipeline_override: str = "",
+    approved_strategy: dict[str, Any] | None = None,
+    revision_feedback: list[str] | None = None,
 ) -> dict:
     mode = _pipeline_mode(pipeline_override)
     platform = os.environ.get("POST_PLATFORMS", "instagram_feed").split(",")[0].strip() or "instagram_feed"
@@ -4856,6 +4858,8 @@ def generate(
             platform=platform,
             product_id_override=product_id_override,
             funnel_stage_override=funnel_stage_override,
+            approved_strategy=approved_strategy,
+            revision_feedback=revision_feedback,
         )
     if mode != "legacy" and _social_intelligence_enabled():
         return _route_generate_orchestrator(
@@ -4863,6 +4867,8 @@ def generate(
             platform=platform,
             product_id_override=product_id_override,
             funnel_stage_override=funnel_stage_override,
+            approved_strategy=approved_strategy,
+            revision_feedback=revision_feedback,
         )
 
     ensure_runtime_data()

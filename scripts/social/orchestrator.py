@@ -242,6 +242,7 @@ def _llm_copy_beats(
     bi_ctx: dict[str, Any] | None,
     offering: dict[str, Any] | None = None,
     copy_grammar: str = "",
+    revision_feedback: list[str] | None = None,
 ) -> dict[str, str] | None:
     """Ask Gemini to write the actual beat copy (Master Build §15 Copy Architect).
 
@@ -284,6 +285,13 @@ def _llm_copy_beats(
         prompt_parts.append("Verified facts you may cite: " + "; ".join(verified) + ".")
     if forbidden:
         prompt_parts.append("Never state or imply: " + "; ".join(forbidden) + ".")
+    if revision_feedback:
+        prompt_parts.append(
+            "Revise the copy to resolve these critic findings while preserving the locked audience, "
+            "customer moment, product, verified facts, and claim limits: "
+            + "; ".join(revision_feedback)
+            + "."
+        )
     prompt_parts.append(
         "Write truthful, specific, non-generic copy. Avoid AI-slop phrases such as "
         "'game-changer', 'unlock', 'revolutionize', 'in today's fast-paced world', 'buckle up'."
@@ -430,6 +438,7 @@ class SocialIntelligenceOrchestrator:
         record_memory: bool = True,
         product_id_override: str = "",
         approved_strategy: dict[str, Any] | None = None,
+        revision_feedback: list[str] | None = None,
     ) -> PostPackage:
         # 0. Recent state → recency-aware decisions
         recent = memory_intelligence.recent(self.data_dir, limit=20)
@@ -493,6 +502,7 @@ class SocialIntelligenceOrchestrator:
         llm_beats = _llm_copy_beats(
             brief, beats, bi_ctx, bi_offering,
             creative_packet["SELECTED_ANSWER"]["copy_logic"],
+            revision_feedback,
         )
         beat_content = llm_beats or _assemble_copy(brief=brief, structure_beats=beats)
         copy_generation_method = "llm" if llm_beats else "template_fallback"
@@ -661,6 +671,7 @@ class SocialIntelligenceOrchestrator:
                 "cta": selected_cta,
                 "generation_method": copy_generation_method,
                 "fallback_reason": copy_fallback_reason,
+                "revision_feedback": list(revision_feedback or []),
                 "strategy_lock": locked,
             },
             visual={

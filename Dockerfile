@@ -15,6 +15,9 @@ RUN if [ -n "$PIP_INDEX_URL" ]; then \
     fi
 
 COPY . ./
-RUN ln -s /data /app/data
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint
+RUN chmod +x /usr/local/bin/docker-entrypoint
 
+ENV DATA_DIR=/data
+ENTRYPOINT ["docker-entrypoint"]
 CMD ["python", "social_engine/start.py"]

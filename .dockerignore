@@ -4,7 +4,6 @@ __pycache__
 *.pyc
 venv
 .venv
-data
 artifacts
 generated_visuals
 *.mp4

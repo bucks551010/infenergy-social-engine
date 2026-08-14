@@ -124,6 +124,90 @@ def test_final_caption_lock_blocks_malformed_publisher_input():
     assert content["platform_posts"]["facebook"]["final_caption_qa"]["metrics"]["final_caption"] == content["fb_caption"]
 
 
+def test_final_caption_lock_persists_exact_flat_facebook_caption():
+    caption = "Hook.\n\n- First point\n- Second point\n\nSave this.\n\nhttps://example.com\n\n#PortablePower"
+    content = {
+        "post_components": {
+            "product_name": "PowerPulse Pro 200",
+            "benefit_fragment": "backup",
+            "feature_bullets": [],
+            "cta": "Save this.",
+        },
+        "platform_posts": {"facebook": {"caption": caption}},
+    }
+
+    run_engine._lock_final_captions(content, {"facebook": True, "instagram": False, "linkedin": False})
+    diagnostics = run_engine._generation_diagnostics(content)
+
+    assert content["platform_posts"]["facebook"]["final_caption"] == content["fb_caption"]
+    assert content["platform_posts"]["facebook"]["final_caption_lock"] == content["fb_caption"]
+    assert diagnostics["fb_caption"] == caption
+
+
+def test_remediation_context_clears_candidate_a_state_and_advances_selection():
+    content = {
+        "post_id": "candidate-a",
+        "candidate_attempt_id": "candidate-a:candidate-1",
+        "selection_rotation_index": 0,
+        "product_id": "PPP-200",
+        "copy": {
+            "hook": "Can I trust airport outlets?",
+            "takeaway": "Establish fit before reserve.",
+            "strategy_lock": {"angle": "Check output before reserve.", "customer_moment": "before a trip"},
+            "decision_insight": {"relationship": "Output determines fit before reserve."},
+            "evidence_readiness": {
+                "status": "RESEARCH_REQUIRED",
+                "claims": [{"claim": "Output determines fit before reserve.", "centrality": "CENTRAL", "research_status": "RESEARCH_REQUIRED"}],
+            },
+        },
+    }
+
+    remediation = run_engine._remediation_context(content, {"decision": "do_not_publish"}, {"ok": False})
+
+    assert remediation["original_candidate_attempt_id"] == "candidate-a:candidate-1"
+    assert remediation["candidate_attempt_id"] == "candidate-a:candidate-2"
+    assert remediation["selection_rotation_index"] == 1
+    assert remediation["excluded_product_ids"] == ["PPP-200"]
+    assert remediation["exclude_engine_a_decision_thesis"] is True
+    assert "Check output before reserve." in remediation["excluded_concepts"]
+
+
+def test_remediation_semantic_reuse_abstains_before_provider_generation(tmp_path, monkeypatch):
+    generated = []
+
+    class Provider:
+        def generate(self, **kwargs):
+            generated.append(kwargs)
+            raise AssertionError("a semantically blocked remediation candidate must not render")
+
+    monkeypatch.setattr(orchestrator, "_llm_copy_beats", lambda *args, **kwargs: None)
+    monkeypatch.setattr(orchestrator, "_runtime_strategy_lock", lambda brief, *args: {
+        "customer_moment": "before a trip",
+        "human_need": "airport outlet compatibility",
+        "angle": brief.angle,
+        "audience": brief.audience_segment,
+        "topic": brief.topic_path["topic"],
+        "reader_job": brief.reader_job,
+        "CTA_strategy": "Compare options",
+    })
+    monkeypatch.setattr(orchestrator.engines, "_pick_engine", lambda *args: "A", raising=False)
+
+    service = orchestrator.SocialIntelligenceOrchestrator(provider=Provider(), data_dir=str(tmp_path))
+    remediation = {
+        "excluded_concepts": ["before a trip", "airport outlet compatibility"],
+        "excluded_product_ids": ["PPP-200"],
+        "exclude_engine_a_decision_thesis": True,
+    }
+
+    try:
+        service.create_post(preferred_engine="A", record_memory=False, remediation_context=remediation)
+    except RuntimeError as exc:
+        assert str(exc) == "no viable opportunities generated"
+    else:
+        raise AssertionError("semantic reuse entered copy or visual generation")
+    assert generated == []
+
+
 def test_facebook_rejects_caption_mutated_after_final_lock():
     content = {
         "fb_caption": "different text",

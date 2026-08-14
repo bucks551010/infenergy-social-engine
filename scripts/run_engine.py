@@ -308,7 +308,8 @@ def _remediation_context(content: dict, decision: dict, duplicates: dict) -> dic
     concept = _remediation_concept(content)
     readiness = ((content.get("copy") or {}).get("evidence_readiness") or content.get("evidence_readiness") or {})
     claims = readiness.get("claims") if isinstance(readiness, dict) else []
-    return {"original_candidate_id": str(content.get("post_id") or ""), "original_concept": concept, "original_claim_ledger": content.get("claim_ledger") or {}, "original_evidence_readiness": readiness, "original_centrality_summary": {"central_unresolved": [str(claim.get("claim") or "") for claim in claims if isinstance(claim, dict) and claim.get("centrality") == "CENTRAL" and claim.get("research_status") == "RESEARCH_REQUIRED"], "status": str(readiness.get("status") or "")}, "remediation_reason": "central_evidence_block_requires_new_opportunity", "excluded_concepts": [value for value in concept.values() if value], "excluded_product_ids": [str(content.get("product_id"))] if not duplicates.get("ok", True) and content.get("product_id") else [], "exclude_engine_a_decision_thesis": True, "original_governance": decision}
+    candidate_attempt_id = str(content.get("candidate_attempt_id") or f"{content.get('post_id')}:candidate-1")
+    return {"original_candidate_id": str(content.get("post_id") or ""), "original_candidate_attempt_id": candidate_attempt_id, "original_concept": concept, "original_claim_ledger": content.get("claim_ledger") or {}, "original_evidence_readiness": readiness, "original_centrality_summary": {"central_unresolved": [str(claim.get("claim") or "") for claim in claims if isinstance(claim, dict) and claim.get("centrality") == "CENTRAL" and claim.get("research_status") == "RESEARCH_REQUIRED"], "status": str(readiness.get("status") or "")}, "remediation_reason": "central_evidence_block_requires_new_opportunity", "excluded_concepts": [value for value in concept.values() if value], "excluded_product_ids": [str(content.get("product_id"))] if not duplicates.get("ok", True) and content.get("product_id") else [], "exclude_engine_a_decision_thesis": True, "selection_rotation_index": int(content.get("selection_rotation_index") or 0) + 1, "candidate_attempt_id": f"{content.get('post_id')}:candidate-2", "original_governance": decision}
 
 
 def _semantic_difference(original: dict, replacement: dict) -> tuple[bool, str]:
@@ -333,6 +334,9 @@ def _generation_diagnostics(content: dict) -> dict:
     """Persist the evidence required to explain a rejected or published run."""
     return {
         "copy": content.get("copy", {}),
+        "candidate_attempt_id": content.get("candidate_attempt_id", ""),
+        "selection_rotation_index": content.get("selection_rotation_index"),
+        "fb_caption": content.get("fb_caption", ""),
         "orchestrator_quality": content.get("orchestrator_quality", {}),
         "claim_ledger": content.get("claim_ledger", {}),
         "creative_director": content.get("creative_director", {}),

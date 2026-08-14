@@ -168,7 +168,8 @@ def _route_generate_orchestrator(
         council_decision = {"decision": "strategy_reselected", "source": "evidence_safe_remediation"}
     else:
         council_decision = {"decision": "strategy_selected", "source": "caller_override"}
-    batch = run_social_intelligence(count=1, platform=social_platform, **kw)
+    rotation_index = int(remediation_context.get("selection_rotation_index", 0) or 0)
+    batch = run_social_intelligence(count=1, platform=social_platform, rotation_index=rotation_index, **kw)
     if not batch:
         return {}
 
@@ -255,6 +256,8 @@ def _route_generate_orchestrator(
 
     legacy = {
         "post_id": first.get("post_id"),
+        "candidate_attempt_id": str(remediation_context.get("candidate_attempt_id") or f"{first.get('post_id')}:candidate-1"),
+        "selection_rotation_index": rotation_index,
         "copy_generation_source": "social_intelligence_orchestrator",
         "business_context": first.get("business_context") or {},
         "anchored_offering": offering,

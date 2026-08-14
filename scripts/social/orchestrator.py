@@ -39,6 +39,7 @@ from . import (
     lean_intelligence,
     memory_intelligence,
     model_router,
+    opportunity_engine,
     quality_intelligence,
     strategy_lock,
     human_connection_review,
@@ -731,6 +732,20 @@ class SocialIntelligenceOrchestrator:
         else:
             locked = _runtime_strategy_lock(brief, lean_context, bi_offering, self.data_dir)
 
+        if remediation:
+            candidate_text = " ".join(
+                str(value or "")
+                for value in (
+                    brief.question,
+                    brief.angle,
+                    brief.curiosity,
+                    locked.get("customer_moment"),
+                    locked.get("human_need"),
+                )
+            )
+            if opportunity_engine.text_is_excluded(candidate_text, excluded_concepts):
+                raise RuntimeError("no viable opportunities generated")
+
         if engine_name == "A" and bi_offering:
             product_narrative = living_intelligence.product_expression_for_engine_a(
                 campaign=recent.get("campaign_state", {}),
@@ -1178,7 +1193,8 @@ class SocialIntelligenceOrchestrator:
     # --- Batch --------------------------------------------------------------
 
     def create_batch(self, *, count: int, platform: str = "instagram_feed", **kw: Any) -> list[PostPackage]:
+        rotation_index = int(kw.pop("rotation_index", 0) or 0)
         out: list[PostPackage] = []
         for i in range(count):
-            out.append(self.create_post(rotation_index=i, platform=platform, **kw))
+            out.append(self.create_post(rotation_index=rotation_index + i, platform=platform, **kw))
         return out

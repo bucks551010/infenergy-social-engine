@@ -21,6 +21,10 @@ def _concept_tokens(value: str) -> set[str]:
 
 def concept_is_excluded(candidate: OpportunityCandidate, excluded_concepts: Iterable[str]) -> bool:
     candidate_text = " ".join((str(candidate.topic_path.topic or ""), str(candidate.topic_path.microtopic or ""), str(candidate.topic_path.angle or ""), str(candidate.audience.question or ""), str(candidate.audience.curiosity or "")))
+    return text_is_excluded(candidate_text, excluded_concepts)
+
+
+def text_is_excluded(candidate_text: str, excluded_concepts: Iterable[str]) -> bool:
     candidate_tokens = _concept_tokens(candidate_text)
     for excluded in excluded_concepts:
         excluded_tokens = _concept_tokens(str(excluded))

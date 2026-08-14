@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from . import (
+    audience_value,
     copy_intelligence,
     libraries,
     opportunity_engine,
@@ -45,6 +46,7 @@ class EngineBrief:
     body_beats: dict[str, str] = field(default_factory=dict)
     takeaway: str = ""
     memory_anchor: str = ""
+    audience_value: dict[str, Any] = field(default_factory=dict)
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -67,6 +69,7 @@ class EngineBrief:
             "body_beats": self.body_beats,
             "takeaway": self.takeaway,
             "memory_anchor": self.memory_anchor,
+            "audience_value": self.audience_value,
         }
 
 
@@ -182,14 +185,27 @@ class AudienceValueEngine:
         preferred_pillar: str | None = None,
         rotation_index: int = 0,
     ) -> EngineBrief:
-        return _shared_brief(
+        recent = recent or {}
+        brief = _shared_brief(
             "B",
-            recent=recent or {},
+            recent=recent,
             audience_hint=audience_hint,
             seasonal_context=seasonal_context,
             preferred_pillar=preferred_pillar,
             rotation_index=rotation_index,
         )
+        opportunity = audience_value.discover(
+            recent=recent,
+            rotation_index=rotation_index,
+            seasonal_context=seasonal_context,
+        )
+        brief.audience_value = opportunity.as_dict()
+        if not opportunity.abstain:
+            brief.question = opportunity.reader_question
+            brief.angle = opportunity.reader_takeaway
+            brief.curiosity = opportunity.why_it_matters
+            brief.rationale.extend(["audience_value_engine", opportunity.state_reason])
+        return brief
 
 
 # --- Engine C — Brand & Community ------------------------------------------

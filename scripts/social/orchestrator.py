@@ -27,6 +27,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from . import (
+    audience_value,
     carousel_director,
     claim_intelligence,
     copy_intelligence,
@@ -245,6 +246,33 @@ def _runtime_strategy_lock(brief: engines.EngineBrief, lean_context: dict[str, A
     return locked
 
 
+def _audience_value_strategy_lock(brief: engines.EngineBrief) -> dict[str, Any]:
+    """Lock a product-free Engine B decision without weakening general review gates."""
+    value = brief.audience_value
+    candidate = {
+        "audience": brief.audience_segment,
+        "customer_moment": value["human_reality"].replace("_", " "),
+        "human_need": "practical clarity",
+        "human_value": "useful judgment",
+        "topic": brief.topic_path.get("topic", "audience value"),
+        "angle": value["reader_takeaway"],
+        "offering": "audience-value education",
+        "positioning": "product-free audience value",
+        "non_price_edge": {"kind": "AUDIENCE_VALUE", "reason": value["why_it_matters"]},
+        "important_capability": "a useful decision framework",
+        "benefit": value["practical_value"],
+        "human_outcome": value["reflection_value"],
+        "reader_job": brief.reader_job,
+        "competitive_context": "not applicable to product-free education",
+        "proof": [],
+        "claim_limits": "Do not name a product, SKU, link, price, or purchase outcome; state only the audience-value insight.",
+        "visual_objective": "make the human decision or routine visible",
+        "CTA_strategy": "",
+        "reader_memory": value["desired_memory_anchor"],
+    }
+    return strategy_lock.lock(candidate, context=candidate)
+
+
 # --- Engine rotation --------------------------------------------------------
 
 
@@ -387,6 +415,30 @@ def _assemble_copy(*, brief: engines.EngineBrief, structure_beats: list[str]) ->
     replace it with richer language, but the shape/beats/anchor are
     already defined so the LLM's job is bounded (§99 auditability).
     """
+    audience_value = brief.audience_value
+    if audience_value and not audience_value.get("abstain"):
+        question = str(audience_value.get("reader_question") or brief.question).strip()
+        explanation = str(audience_value.get("why_it_matters") or brief.curiosity).strip()
+        practical = str(audience_value.get("practical_value") or brief.angle).strip()
+        takeaway = str(audience_value.get("reader_takeaway") or brief.angle).strip()
+        value_templates = {
+            "hook": question,
+            "question": question,
+            "answer": explanation,
+            "explanation": explanation,
+            "example": str(audience_value.get("reflection_value") or "").strip(),
+            "takeaway": takeaway,
+            "lesson": takeaway,
+            "application": practical,
+            "what_to_do": practical,
+            "implication": str(audience_value.get("reflection_value") or takeaway).strip(),
+            "why": explanation,
+            "what_happens": str(audience_value.get("reflection_value") or "").strip(),
+            "scenario": question,
+            "consequence": explanation,
+        }
+        return {beat: value_templates.get(beat, takeaway) for beat in structure_beats}
+
     curiosity = brief.curiosity or brief.information_gap or brief.angle
     misc = brief.misconception or ""
     reality = brief.angle
@@ -493,6 +545,22 @@ class SocialIntelligenceOrchestrator:
     ) -> PostPackage:
         # 0. Recent state → recency-aware decisions
         recent = memory_intelligence.recent(self.data_dir, limit=20)
+        living_state: dict[str, Any] | None = None
+        try:
+            from . import living_intelligence
+            living_data_dir = self.data_dir or memory_intelligence._default_data_dir()
+            living_state = living_intelligence.load(living_data_dir)
+            campaign_meeting = living_intelligence.campaign_runtime_decision(
+                living_state.get("campaign_state", {}),
+                audience_signals=list(recent.get("audience_signals", [])),
+                open_threads=list(recent.get("continuity_threads", [])),
+                performance_lessons=list(recent.get("performance_lessons", [])),
+                product_pressure=bool(recent.get("commercial_pressure", [])),
+            )
+            recent = living_intelligence.campaign_decision_input(recent, campaign_meeting)
+        except Exception:
+            recent["campaign_state"] = {}
+            living_state = None
 
         # 0b. Optional BI Foundation hydration — only when the caller
         # didn't already specify a value and the flag is on.
@@ -506,6 +574,8 @@ class SocialIntelligenceOrchestrator:
                 bi_offering = forced_offering
                 if not preferred_pillar:
                     preferred_pillar = _category_to_pillar(forced_offering.get("category", ""))
+        if bi_offering:
+            recent["product_context"] = list(bi_offering.get("verified_facts") or []) + [str(bi_offering.get("name") or "")]
         lean_context = lean_intelligence.compile_product_social_intelligence(bi_offering)
         relationship_context = lean_context.get("relationships") or {}
         if bi_ctx:
@@ -532,6 +602,28 @@ class SocialIntelligenceOrchestrator:
             preferred_pillar=preferred_pillar,
             rotation_index=rotation_index,
         )
+        audience_value_only = (
+            engine_name == "B"
+            and bool(brief.audience_value)
+            and not brief.audience_value.get("abstain")
+            and not brief.audience_value.get("product_needed")
+        )
+        product_narrative: dict[str, Any] = {}
+        if engine_name == "B" and brief.audience_value and brief.audience_value.get("product_needed"):
+            try:
+                product_narrative = living_intelligence.product_narrative_decision(
+                    recent.get("campaign_state", {}), brief.audience_value,
+                    verified_facts=list((bi_offering or {}).get("verified_facts") or recent.get("product_context", [])),
+                    product_name=str((bi_offering or {}).get("name") or ""),
+                )
+                brief.audience_value["product_narrative"] = product_narrative
+            except Exception:
+                product_narrative = {}
+        if audience_value_only:
+            # The BI context may inform upstream audience selection, but cannot
+            # reintroduce a product into an explicitly product-free decision.
+            bi_offering = None
+            verified_facts = []
         # A Council-approved strategy is the parent object for both production
         # branches. The engine may supply structure, never a replacement angle.
         if approved_strategy:
@@ -540,6 +632,8 @@ class SocialIntelligenceOrchestrator:
             brief.angle = locked["angle"]
             brief.topic_path["topic"] = locked["topic"]
             brief.reader_job = locked["reader_job"]
+        elif audience_value_only:
+            locked = _audience_value_strategy_lock(brief)
         else:
             locked = _runtime_strategy_lock(brief, lean_context, bi_offering, self.data_dir)
 
@@ -558,6 +652,11 @@ class SocialIntelligenceOrchestrator:
             "candidates": concept_candidates,
             "winner": selected_concept,
         }
+        if brief.audience_value and not brief.audience_value.get("abstain"):
+            creative_packet["audience_value_platform_expressions"] = {
+                platform_name: audience_value.platform_expression(brief.audience_value, platform_name)
+                for platform_name in ("facebook", "instagram_static", "instagram_reel", "linkedin")
+            }
 
         # 3. Copy assembly — real Gemini copy when available, deterministic
         # template assembly as the network-free fallback (§15 Copy Architect).
@@ -589,7 +688,7 @@ class SocialIntelligenceOrchestrator:
         brief.body_beats = beat_content
         brief.takeaway = takeaway
         brief.memory_anchor = anchor
-        selected_cta = (locked or {}).get("CTA_strategy") or _DEFAULT_CTA_BY_JOB.get(brief.reader_job, "Learn more")
+        selected_cta = "" if audience_value_only else str(product_narrative.get("cta_class") or (locked or {}).get("CTA_strategy") or _DEFAULT_CTA_BY_JOB.get(brief.reader_job, "Learn more"))
 
         # 4. Visual direction
         necessity = visual_intelligence.visual_necessity_score(
@@ -850,11 +949,44 @@ class SocialIntelligenceOrchestrator:
                     "emotional_framing": creative_packet["benefit_translation"]["HUMAN_MEANING"],
                     "customer_moment": locked.get("customer_moment", ""),
                     "reader_job": locked.get("reader_job", ""),
+                    "audience_value_form": brief.audience_value.get("content_form", ""),
+                    "human_reality": brief.audience_value.get("human_reality", ""),
+                    "reader_question": brief.audience_value.get("reader_question", ""),
+                    "reader_takeaway": brief.audience_value.get("reader_takeaway", ""),
+                    "why_it_matters": brief.audience_value.get("why_it_matters", ""),
+                    "desired_memory_anchor": brief.audience_value.get("desired_memory_anchor", ""),
+                    "practical_value": brief.audience_value.get("practical_value", ""),
+                    "reflection_value": brief.audience_value.get("reflection_value", ""),
+                    "share_save_value": brief.audience_value.get("share_save_value", ""),
+                    "audience_value_product_needed": brief.audience_value.get("product_needed", False),
+                    "audience_value_cta_class": brief.audience_value.get("cta_class", ""),
+                    "question_answered": brief.audience_value.get("reader_question", ""),
+                    "question_created": brief.audience_value.get("unresolved_question", ""),
+                    "unresolved_thread": brief.audience_value.get("unresolved_question", ""),
+                    "continuity_thread": brief.audience_value.get("continuity_thread", {}),
+                    "thread_action": brief.audience_value.get("thread_action", "NONE"),
+                    "assumption_challenged": brief.audience_value.get("reflection_value", ""),
+                    "campaign_effect": brief.audience_value.get("campaign_effect", "NO_CAMPAIGN"),
+                    "campaign_state": recent.get("campaign_state", {}),
+                    "audience_state_change": (brief.audience_value.get("idea") or {}).get("audience_state", ""),
+                    "product_relevance_change": brief.audience_value.get("product_relevance", "NOT_RELEVANT"),
+                    "product_narrative": brief.audience_value.get("product_narrative", {}),
+                    "performance_lesson": (brief.audience_value.get("idea") or {}).get("why_now", ""),
+                    "performance_lesson_applied": brief.audience_value.get("performance_lesson_applied", ""),
+                    "commercial_pressure": "product_present" if bool(bi_offering) else "",
                     "hook_family": creative_packet.get("hook_selection", {}).get("family", ""),
                     "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
                 },
                 data_dir=self.data_dir,
             )
+            if living_state is not None and brief.audience_value:
+                try:
+                    living_state["campaign_state"] = living_intelligence.apply_campaign_post(
+                        recent.get("campaign_state", {}), brief.audience_value
+                    )
+                    living_intelligence.save(self.data_dir or memory_intelligence._default_data_dir(), living_state)
+                except Exception:
+                    pass
             memory_intelligence.append_visual_record(
                 {
                     "post_id": post_id,

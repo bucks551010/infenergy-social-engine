@@ -114,3 +114,23 @@ def test_no_viable_opportunity_is_a_persisted_abstention_not_a_scheduler_failure
     assert record["error"] == "no_viable_opportunities"
     assert record["platform_records"] == []
     assert record["final_memory"]["final_outcome"] == "abstain"
+
+
+def test_no_viable_replacement_preserves_the_original_remediation_audit():
+    content = {
+        "validation_status": "passed",
+        "validation_errors": [],
+        "evidence_remediation": {
+            "original_candidate_id": "candidate-a",
+            "original_concept": {"angle": "blocked method"},
+            "original_evidence_readiness": {"status": "RESEARCH_REQUIRED"},
+        },
+    }
+
+    run_engine._mark_no_viable_replacement_abstention(content)
+
+    assert content["validation_status"] == "failed"
+    assert "no_viable_replacement_opportunity" in content["validation_errors"]
+    assert content["evidence_remediation"]["status"] == "ABSTAINED_NO_VIABLE_REPLACEMENT"
+    assert content["evidence_remediation"]["original_candidate_id"] == "candidate-a"
+    assert content["evidence_remediation"]["semantic_difference_reason"] == "no_viable_replacement_opportunity"

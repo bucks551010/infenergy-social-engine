@@ -862,6 +862,17 @@ def _record_no_viable_opportunity_abstention(
     print("[ABSTAIN] No viable opportunities remain after freshness filtering.")
 
 
+def _mark_no_viable_replacement_abstention(content: dict) -> None:
+    """Keep the original candidate auditable when its one replacement cannot be selected."""
+    content["validation_status"] = "failed"
+    content["validation_errors"] = list(content.get("validation_errors", [])) + ["no_viable_replacement_opportunity"]
+    remediation = content.get("evidence_remediation")
+    if isinstance(remediation, dict):
+        remediation["status"] = "ABSTAINED_NO_VIABLE_REPLACEMENT"
+        remediation["replacement_candidate_id"] = ""
+        remediation["semantic_difference_reason"] = "no_viable_replacement_opportunity"
+
+
 def _build_phase6_learning(
     *,
     content: dict,
@@ -1314,15 +1325,21 @@ def main() -> None:
     t_generation = time.perf_counter()
     for idx in range(3):
         if idx > 0:
-            content = generate_posts.generate(
-                slot,
-                funnel_stage_override=funnel_stage_override,
-                product_id_override=locked_product_id,
-                pipeline_override=pipeline_override,
-                approved_strategy=locked_strategy or None,
-                revision_feedback=pending_feedback,
-                remediation_context=remediation_context,
-            )
+            try:
+                content = generate_posts.generate(
+                    slot,
+                    funnel_stage_override=funnel_stage_override,
+                    product_id_override=locked_product_id,
+                    pipeline_override=pipeline_override,
+                    approved_strategy=locked_strategy or None,
+                    revision_feedback=pending_feedback,
+                    remediation_context=remediation_context,
+                )
+            except RuntimeError as exc:
+                if str(exc) != "no viable opportunities generated":
+                    raise
+                _mark_no_viable_replacement_abstention(content)
+                break
             if evidence_remediation_used and remediation_context:
                 content["evidence_remediation"] = {**remediation_context, "status": "REMEDIATION_CANDIDATE", "attempt_limit": 1}
             if pending_scope == "copy" and _can_carry_forward_visuals(prior_generated_visuals, content, effective_channels):

@@ -680,6 +680,48 @@ def _enforce_candidate_claim_boundary(content: dict) -> list[str]:
     return list(dict.fromkeys(removed))
 
 
+def _lock_final_captions(content: dict, active_channels: dict[str, bool] | None = None) -> list[str]:
+    """Freeze the one public string after the last text mutation."""
+    from social import platform_presentation
+
+    components = content.get("post_components") if isinstance(content.get("post_components"), dict) else {}
+    posts = content.get("platform_posts") if isinstance(content.get("platform_posts"), dict) else {}
+    flat_fields = {"facebook": "fb_caption", "instagram": "ig_caption", "linkedin": "li_text"}
+    active_channels = active_channels or {platform: True for platform in flat_fields}
+    errors: list[str] = []
+    locks: dict[str, str] = {}
+    for platform, flat_field in flat_fields.items():
+        package = posts.get(platform) if isinstance(posts.get(platform), dict) else {}
+        caption = str(package.get("final_caption") or package.get("caption") or content.get(flat_field) or "").strip()
+        if not caption:
+            if active_channels.get(platform):
+                errors.append(f"{platform}_final_caption_missing")
+            continue
+        if not components and not isinstance(package.get("final_caption_qa"), dict):
+            package["caption"] = caption
+            package["final_caption"] = caption
+            package["final_caption_lock"] = caption
+            content[flat_field] = caption
+            locks[platform] = caption
+            continue
+        qa = platform_presentation.final_caption_qa(
+            caption,
+            platform=platform,
+            components=components,
+            planning_instructions=list(package.get("planning_instructions") or []),
+        )
+        package["caption"] = caption
+        package["final_caption"] = caption
+        package["final_caption_qa"] = qa
+        package["final_caption_lock"] = caption
+        content[flat_field] = caption
+        locks[platform] = caption
+        if active_channels.get(platform) and qa.get("status") != "PRESENTATION_READY":
+            errors.append(f"{platform}_final_presentation_not_ready")
+    content["final_caption_locks"] = locks
+    return errors
+
+
 def _revision_scope(content: dict) -> str:
     creative = content.get("creative_director") if isinstance(content.get("creative_director"), dict) else {}
     visual_review = creative.get("visual_critic_review") if isinstance(creative.get("visual_critic_review"), dict) else {}
@@ -1347,7 +1389,14 @@ def main() -> None:
                 content["revision_reused_components"] = ["generated_visuals"]
 
         claim_corrections = _enforce_candidate_claim_boundary(content)
+        caption_lock_errors = _lock_final_captions(content, effective_channels)
         validation = validate_generated_content(content)
+        if caption_lock_errors:
+            validation = {
+                "passed": False,
+                "errors": list(validation.get("errors", [])) + caption_lock_errors,
+                "warnings": list(validation.get("warnings", [])),
+            }
         hard_block = str(os.environ.get("ORCHESTRATION_HARD_BLOCK", "false")).strip().lower() in {"1", "true", "yes", "on"}
         if content.get("orchestration_blocked"):
             if hard_block:
@@ -1717,6 +1766,7 @@ def main() -> None:
         run_started = datetime.now(timezone.utc).isoformat()
         platform_records = _shadow_platform_records(content, run_started, effective_channels)
         _apply_phase8_budget(runtime_metrics, "total", time.perf_counter() - t_total, total_budget)
+        shadow_status = "shadow_completed" if final_decision["publishable"] else "shadow_abstained_governance"
         history["posts"].append({
             "post_id": content.get("post_id", ""), "platform": "multi", "published_at": run_started,
             "date": content.get("date"), "slot": slot, "run_started_at_utc": run_started,
@@ -1729,9 +1779,9 @@ def main() -> None:
             "duplicate_reasons": content.get("duplicate_check", {}).get("reasons", []),
             "generation_attempts": attempts, "dry_run": dry_run, "shadow_mode": True,
             "artifact_visual_qa": content.get("artifact_visual_qa", {}),
-            "status": "shadow_completed", "decision_record": _shadow_decision_record(content),
+            "status": shadow_status, "decision_record": _shadow_decision_record(content),
             "channel_reasons": channel_reasons, "phase5_channel_readiness": phase5_readiness,
-            "phase6_learning": _build_phase6_learning(content=content, platform_records=platform_records, errors=[], status="shadow_completed"),
+            "phase6_learning": _build_phase6_learning(content=content, platform_records=platform_records, errors=list(final_decision.get("reasons", [])), status=shadow_status),
             "phase8_runtime": runtime_metrics, "platform_records": platform_records,
             "wp_id": "shadow", "fb_id": "shadow", "ig_id": "shadow", "li_id": "shadow",
         })

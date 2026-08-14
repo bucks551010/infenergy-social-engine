@@ -311,6 +311,7 @@ def _route_generate_orchestrator(
         "wp_title": selected_hook or topic,
         "wp_content": wp_content,
         "wp_excerpt": takeaway or selected_hook,
+        "post_components": components,
         "fb_caption": platform_posts["facebook"]["final_caption"],
         "ig_caption": platform_posts["instagram"]["final_caption"],
         "li_text": platform_posts["linkedin"]["final_caption"],

@@ -8,6 +8,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
 import run_engine
+import publish_facebook
 from social import claim_governance, claim_intelligence, orchestrator, platform_presentation, publish_decision
 
 
@@ -92,6 +93,54 @@ def test_final_caption_qa_rejects_malformed_phrase_and_remediation_suppresses_en
     monkeypatch.setattr(orchestrator, "_llm_copy_beats", lambda *args, **kwargs: None)
     post = orchestrator.SocialIntelligenceOrchestrator(data_dir=str(tmp_path)).create_post(preferred_engine="A", record_memory=False, remediation_context={"exclude_engine_a_decision_thesis": True})
     assert post.copy["decision_insight"] == {}
+
+
+def test_final_caption_lock_blocks_malformed_publisher_input():
+    caption = "PowerPulse Pro 200 backup.\n\nFor before a trip, compare the details.\n\nSave this.\n\nhttps://example.com\n\n#PortablePower"
+    content = {
+        "post_components": {
+            "product_name": "PowerPulse Pro 200",
+            "benefit_fragment": "backup",
+            "feature_bullets": [],
+            "cta": "Save this.",
+        },
+        "platform_posts": {"facebook": {"caption": caption}},
+        "fb_caption": caption,
+    }
+
+    errors = run_engine._lock_final_captions(content)
+    decision = publish_decision.decide(
+        legacy_score={"total": 97.0, "platform_results": {}},
+        validation={"passed": not errors, "errors": errors},
+        duplicates={"ok": True, "reasons": []},
+        conversion_quality_score=100.0,
+        orchestrator_quality={"overall": 90.0, "critic_findings": []},
+        evidence_readiness={"ready": True, "status": "READY"},
+    )
+
+    assert "facebook_final_presentation_not_ready" in errors
+    assert decision["publishable"] is False
+    assert content["platform_posts"]["facebook"]["final_caption"] == content["fb_caption"]
+    assert content["platform_posts"]["facebook"]["final_caption_qa"]["metrics"]["final_caption"] == content["fb_caption"]
+
+
+def test_facebook_rejects_caption_mutated_after_final_lock():
+    content = {
+        "fb_caption": "different text",
+        "platform_posts": {"facebook": {
+            "final_caption": "approved text",
+            "final_caption_lock": "approved text",
+            "final_caption_qa": {"metrics": {"final_caption": "approved text"}},
+        }},
+    }
+    content["platform_posts"]["facebook"]["final_caption_lock"] = "mutated text"
+
+    try:
+        publish_facebook.publish(content, "", dry_run=True)
+    except RuntimeError as exc:
+        assert str(exc) == "facebook_final_caption_authority_mismatch"
+    else:
+        raise AssertionError("publisher accepted a caption changed after final lock")
 
 
 def test_no_viable_opportunity_is_a_persisted_abstention_not_a_scheduler_failure(monkeypatch):

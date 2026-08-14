@@ -9,6 +9,7 @@ sys.path.insert(0, os.path.join(_REPO, "scripts"))
 
 import run_engine  # noqa: E402
 from score_content import score_content  # noqa: E402
+import worker  # noqa: E402
 
 
 def test_shadow_records_never_report_published():
@@ -63,6 +64,22 @@ def test_shadow_decision_record_persists_creative_cognition():
     assert record["creative_concept"] == "decision-support"
     assert record["copy_approach"] == "educational_insight"
     assert record["originality_verdict"]["passed"] is True
+
+
+def test_history_audit_redacts_secret_bearing_fields(tmp_path, monkeypatch):
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    (tmp_path / "post_history.json").write_text(
+        '{"posts":[{"post_id":"audit-1","publish_decision":{"decision":"do_not_publish"},"api_token":"hidden","nested":{"password":"hidden","caption":"safe"}}]}',
+        encoding="utf-8",
+    )
+
+    audit = worker._history_audit("audit-1")
+
+    assert audit["post_id"] == "audit-1"
+    assert audit["publish_decision"]["decision"] == "do_not_publish"
+    assert "api_token" not in audit
+    assert "password" not in audit["nested"]
+    assert audit["nested"]["caption"] == "safe"
 
 
 def test_single_platform_scores_ignore_missing_other_social_channels():

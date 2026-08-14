@@ -289,6 +289,34 @@ def _load_history(limit: int = 20) -> list[dict]:
     return posts[-limit:]
 
 
+_AUDIT_SECRET_KEY_PARTS = ("token", "secret", "password", "authorization", "api_key", "credential")
+
+
+def _public_audit(value):
+    """Expose persisted run evidence while excluding credential-bearing fields."""
+    if isinstance(value, dict):
+        return {
+            str(key): _public_audit(item)
+            for key, item in value.items()
+            if not any(part in str(key).lower() for part in _AUDIT_SECRET_KEY_PARTS)
+        }
+    if isinstance(value, list):
+        return [_public_audit(item) for item in value]
+    return value
+
+
+def _history_audit(post_id: str) -> dict | None:
+    target = str(post_id or "").strip()
+    if not target:
+        return None
+    history = _load_json(os.path.join(_data_dir(), "post_history.json"), {"posts": []})
+    posts = history.get("posts", []) if isinstance(history, dict) else []
+    for post in reversed(posts):
+        if isinstance(post, dict) and str(post.get("post_id") or "") == target:
+            return _public_audit(post)
+    return None
+
+
 def _latest_file(pattern: str) -> str:
     paths = glob.glob(pattern)
     if not paths:
@@ -765,6 +793,21 @@ class HealthHandler(BaseHTTPRequestHandler):
             }
             body = json.dumps(payload).encode("utf-8")
             self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
+        if parsed.path.startswith("/history/"):
+            post_id = parsed.path.removeprefix("/history/").strip()
+            audit = _history_audit(post_id)
+            if audit is None:
+                body = json.dumps({"status": "not_found", "post_id": post_id}).encode("utf-8")
+                self.send_response(404)
+            else:
+                body = json.dumps({"status": "ok", "time_utc": _utc_now(), "audit": audit}, default=str).encode("utf-8")
+                self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()

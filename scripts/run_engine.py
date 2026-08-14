@@ -1276,6 +1276,7 @@ def main() -> None:
             duplicates=duplicates,
             conversion_quality_score=cqs_total,
             orchestrator_quality=content.get("orchestrator_quality"),
+            evidence_readiness=((content.get("copy") or {}).get("evidence_readiness") or content.get("evidence_readiness")),
         )
         content["publish_decision"] = publish_decision
         current_strategy = _strategy_lock_for_revision(content)
@@ -1376,6 +1377,7 @@ def main() -> None:
                 duplicates=duplicates,
                 conversion_quality_score=cqs_total,
                 orchestrator_quality=content.get("orchestrator_quality"),
+                evidence_readiness=((content.get("copy") or {}).get("evidence_readiness") or content.get("evidence_readiness")),
             )
             content["publish_decision"] = publish_decision
             attempts.append(
@@ -1457,6 +1459,7 @@ def main() -> None:
         conversion_quality_score=final_cqs_total,
         orchestrator_quality=content.get("orchestrator_quality"),
         visual_errors=visual_gate_errors,
+        evidence_readiness=((content.get("copy") or {}).get("evidence_readiness") or content.get("evidence_readiness")),
     )
     content["publish_decision"] = final_decision
     if not final_decision["publishable"] and not shadow_mode:

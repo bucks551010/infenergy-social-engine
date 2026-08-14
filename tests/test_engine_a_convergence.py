@@ -88,13 +88,18 @@ def test_final_critic_remains_authoritative_over_legacy_score():
     assert decision["decision"] == "revise"
 
 
-def test_production_engine_a_state_replays_as_publishable_decision_support():
+def test_production_engine_a_state_replays_with_explained_decision_dependency():
     question, facts, narrative = _production_state()
     beats = orchestrator._engine_a_product_expression_beats(
         {"hook": question, "answer": "", "explanation": "", "example": "", "takeaway": ""}, narrative, facts
     )
     body = " ".join(value for key, value in beats.items() if key != "hook")
     ledger = claim_intelligence.build_ledger(beats["hook"] + " " + body, verified_facts=facts, forbidden_claims=[])
+    response_contract = quality_intelligence.expected_response_contract(
+        reader_job="HELP_ME_CHOOSE",
+        cta_class=narrative["cta_class"],
+        content_role=narrative["role"],
+    )
     score = quality_intelligence.score(
         hook=beats["hook"],
         body=body,
@@ -108,6 +113,7 @@ def test_production_engine_a_state_replays_as_publishable_decision_support():
         visual_prompt_humanness=1.0,
         caption_visual_relationship="VISUAL_EXPLAINS_CAPTION",
         engine="A",
+        response_contract=response_contract,
     )
     decision = publish_decision.decide(
         legacy_score={"total": 97.0, "platform_results": {}},
@@ -119,7 +125,14 @@ def test_production_engine_a_state_replays_as_publishable_decision_support():
 
     assert narrative["role"] == "FIT_DEMONSTRATION"
     assert narrative["commercial_intensity"] == "LIGHT"
-    assert "Start with the device's actual power requirement" in beats["answer"]
+    assert "determine whether the device can be supported" in beats["answer"]
+    assert "stored capacity describes reserve" in beats["answer"]
     assert "sustaining professional devices" not in body
-    assert decision["publishable"] is True
+    assert "runs laptops" not in body
+    assert "supports your laptop" not in body
     assert "hook-payoff mismatch" not in decision["critic_findings"]
+    assert score.semantic_evidence["novelty"]["type"] == "DECISION_DEPENDENCY"
+    assert score.semantic_evidence["conversation"]["type"] == "SELF_DIAGNOSTIC"
+    assert score.factors["conversation_potential"] == 0.35
+    assert score.factors["response_value"] == 0.8
+    assert score.response_contract["expected_response_type"] == "COMPARE_DECISION"

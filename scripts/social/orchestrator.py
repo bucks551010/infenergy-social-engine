@@ -30,6 +30,7 @@ from . import (
     audience_value,
     carousel_director,
     claim_intelligence,
+    claim_governance,
     copy_intelligence,
     creative_cognition,
     creative_intelligence,
@@ -388,29 +389,75 @@ def _revision_objectives(feedback: list[str] | None, strategy: dict[str, Any]) -
     return objectives
 
 
+def _engine_a_decision_insight(narrative: dict[str, Any], verified_facts: list[str]) -> dict[str, Any]:
+    """Derive the decision relationship that a fit demonstration must explain."""
+    facts = [str(fact).strip() for fact in verified_facts if str(fact).strip()]
+    capacity = next((fact for fact in facts if "wh" in fact.lower()), "")
+    output = next((fact for fact in facts if "w" in fact.lower() and "wh" not in fact.lower()), "")
+    access = next((fact for fact in facts if "v" in fact.lower()), "")
+    fact_roles = [
+        {"fact": output, "decision_role": "available_output", "human_relevance": "compare it with the device requirement"},
+        {"fact": access, "decision_role": "connection_access", "human_relevance": "confirm the needed connection is available"},
+        {"fact": capacity, "decision_role": "stored_reserve", "human_relevance": "estimate reserve only after fit is established"},
+    ]
+    return {
+        "decision_question": str(narrative.get("product_entry_question") or "").strip(),
+        "structure": "DEPENDENCY" if output and access and capacity else "BOUNDARY_CHECK",
+        "criterion_a": "the device's actual requirement and needed connection",
+        "criterion_b": "the stored-energy reserve",
+        "relationship": "available output and connection determine whether the device can be supported in the first place; stored capacity describes reserve after that compatibility check",
+        "why_relationship_matters": "a larger stored-energy number cannot establish fit when the required output or connection is unknown",
+        "decision_consequence": "compare the device requirement with the published output and access first, then judge whether the published reserve suits the work period",
+        "practical_check": "find the device requirement and connection, then compare both with the published product details",
+        "verified_product_evidence": [item for item in fact_roles if item["fact"]],
+        "limitation_or_boundary": "the product facts do not establish fit until the reader checks the actual device requirement",
+        "human_application": str(narrative.get("human_reality") or "the current situation").strip(),
+        "memory_anchor": "Establish fit before estimating reserve.",
+    }
+
+
+def _render_engine_a_decision_beats(
+    beat_content: dict[str, str],
+    narrative: dict[str, Any],
+    insight: dict[str, Any],
+) -> dict[str, str]:
+    """Render the discovered decision structure without turning product facts into compatibility claims."""
+    question = str(insight.get("decision_question") or "").strip()
+    product = str(narrative.get("product_name") or "this offering").strip()
+    evidence = [item for item in insight.get("verified_product_evidence", []) if isinstance(item, dict) and item.get("fact")]
+    evidence_text = " ".join(
+        f"Its published {item['fact']} describes {item['decision_role'].replace('_', ' ')}."
+        for item in evidence
+    )
+    result = dict(beat_content)
+    result["hook"] = question or str(result.get("hook") or "")
+    result["answer"] = (
+        f"{insight['relationship'].capitalize()}. {insight['why_relationship_matters'].capitalize()}."
+    )
+    result["explanation"] = (
+        f"For {insight['human_application']}, {insight['decision_consequence']}."
+    )
+    result["example"] = (
+        f"{product} is a fit example, not an automatic answer. {evidence_text} "
+        f"{insight['limitation_or_boundary'].capitalize()}."
+    )
+    result["takeaway"] = str(insight["memory_anchor"])
+    return result
+
+
 def _engine_a_product_expression_beats(
     beat_content: dict[str, str],
     narrative: dict[str, Any],
     verified_facts: list[str],
 ) -> dict[str, str]:
-    """Make an Engine A fit demonstration teach the decision before naming product proof."""
+    """Make an Engine A fit demonstration teach a portable decision relationship."""
     if narrative.get("role") not in {"FIT_DEMONSTRATION", "DECISION_SUPPORT"} or narrative.get("narrative_hijack"):
         return beat_content
-    question = str(narrative.get("product_entry_question") or "").strip()
-    reality = str(narrative.get("human_reality") or "the current situation").strip()
-    product = str(narrative.get("product_name") or "this offering").strip()
-    facts = [str(fact).strip() for fact in verified_facts if str(fact).strip()]
-    capacity = next((fact for fact in facts if "wh" in fact.lower()), "the published capacity")
-    output = next((fact for fact in facts if "w" in fact.lower() and "wh" not in fact.lower()), "the published output")
-    ac_access = next((fact for fact in facts if "v" in fact.lower()), "the published connection")
-    method = "Start with the device's actual power requirement. Then check the available output and connection; use stored energy to judge reserve after the fit is established."
-    result = dict(beat_content)
-    result["hook"] = question or str(result.get("hook") or "")
-    result["answer"] = method + " That first check is more useful than starting with the largest battery number."
-    result["explanation"] = f"For {reality}, use the same sequence every time you compare a portable power option."
-    result["example"] = f"{product} is one fit demonstration. Its published {output} describes the output boundary. Its published {capacity} describes stored-energy reserve. Its published {ac_access} describes available AC access."
-    result["takeaway"] = "Check the device requirement first, then output and connection, then the reserve you need."
-    return result
+    return _render_engine_a_decision_beats(
+        beat_content,
+        narrative,
+        _engine_a_decision_insight(narrative, verified_facts),
+    )
 
 
 def _llm_concept_stems(brief: engines.EngineBrief, anchor: str) -> list[str] | None:
@@ -705,11 +752,16 @@ class SocialIntelligenceOrchestrator:
             revision_objectives,
         )
         beat_content = llm_beats or _assemble_copy(brief=brief, structure_beats=beats)
+        decision_insight: dict[str, Any] = {}
         if engine_name == "A":
-            beat_content = _engine_a_product_expression_beats(
-                beat_content,
+            decision_insight = _engine_a_decision_insight(
                 product_narrative,
                 list((bi_offering or {}).get("verified_facts") or verified_facts or []),
+            )
+            beat_content = _render_engine_a_decision_beats(
+                beat_content,
+                product_narrative,
+                decision_insight,
             )
         removed_numeric_claims: list[str] = []
         claim_verified_facts = list((bi_offering or {}).get("verified_facts") or []) or _bi_verified_facts(bi_ctx)
@@ -815,13 +867,32 @@ class SocialIntelligenceOrchestrator:
             carousel_pkg["problems"] = problems
 
         # 7. Claim ledger
+        source_concepts = {
+            str(decision_insight.get("relationship") or ""): "decision_relationship",
+            str(decision_insight.get("decision_consequence") or ""): "decision_consequence",
+            hook_text: "hook_payoff",
+            takeaway: "takeaway",
+            anchor: "memory_anchor",
+        }
         ledger = claim_intelligence.build_ledger(
             hook_text + " " + body_text,
             verified_facts=verified_facts or [],
             forbidden_claims=_bi_forbidden_claims(bi_ctx),
+            source_concepts=source_concepts,
+        )
+        evidence_readiness = claim_governance.assess(
+            ledger,
+            hook=hook_text,
+            decision_insight=decision_insight,
+            takeaway=takeaway,
         )
 
         # 8. Quality gate
+        response_contract = quality_intelligence.expected_response_contract(
+            reader_job=brief.reader_job,
+            cta_class=selected_cta,
+            content_role=str(product_narrative.get("role") or ""),
+        )
         q = quality_intelligence.score(
             hook=hook_text,
             body=body_text,
@@ -836,6 +907,7 @@ class SocialIntelligenceOrchestrator:
             caption_visual_relationship=alloc.relationship,
             engine=engine_name,
             brand_voice=_bi_brand_voice(bi_ctx),
+            response_contract=response_contract,
         )
         cd = quality_intelligence.creative_director_test(
             strategy_reason=f"engine={engine_name} pillar={brief.pillar.get('id')} genre={brief.genre.get('id')}",
@@ -901,6 +973,9 @@ class SocialIntelligenceOrchestrator:
                 "removed_unsupported_numeric_claims": removed_numeric_claims,
                 "strategy_lock": locked,
                 "product_narrative": product_narrative,
+                "decision_insight": decision_insight,
+                "response_contract": response_contract,
+                "evidence_readiness": evidence_readiness,
             },
             visual={
                 "semantic_role": semantic_role,

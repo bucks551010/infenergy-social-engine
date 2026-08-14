@@ -821,6 +821,47 @@ def _shadow_platform_records(content: dict, run_started: str, effective_channels
     return records
 
 
+def _record_no_viable_opportunity_abstention(
+    *,
+    slot: str,
+    dry_run: bool,
+    shadow_mode: bool,
+    runtime_metrics: dict,
+    total_started: float,
+) -> None:
+    """Record a normal terminal decision when freshness leaves no eligible opportunity."""
+    run_started = str(runtime_metrics.get("started_at_utc") or datetime.now(timezone.utc).isoformat())
+    _apply_phase8_budget(
+        runtime_metrics,
+        "total",
+        time.perf_counter() - total_started,
+        float(os.environ.get("PHASE8_BUDGET_TOTAL_SEC", "420")),
+    )
+    history = generate_posts.load_history()
+    history.setdefault("posts", []).append({
+        "post_id": f"abstain-{_stable_hash(run_started + slot)[:12]}",
+        "platform_post_id": None,
+        "platform": "multi",
+        "published_at": run_started,
+        "run_started_at_utc": run_started,
+        "slot": slot,
+        "error": "no_viable_opportunities",
+        "status": "abstained_no_viable_opportunity",
+        "dry_run": dry_run,
+        "shadow_mode": shadow_mode,
+        "platform_records": [],
+        "generation_attempts": [],
+        "final_memory": {
+            "final_outcome": "abstain",
+            "reason": "no_viable_opportunities",
+        },
+        "phase8_runtime": runtime_metrics,
+    })
+    history["posts"] = history["posts"][-200:]
+    generate_posts.save_history(history)
+    print("[ABSTAIN] No viable opportunities remain after freshness filtering.")
+
+
 def _build_phase6_learning(
     *,
     content: dict,
@@ -1173,12 +1214,24 @@ def main() -> None:
     # Compute a stage first so schedule rules can enforce stage eligibility.
     generate_posts.ensure_runtime_data()
     t_preview = time.perf_counter()
-    preview_content = generate_posts.generate(
-        slot,
-        funnel_stage_override=funnel_stage_override,
-        product_id_override=product_id_override,
-        pipeline_override=pipeline_override,
-    )
+    try:
+        preview_content = generate_posts.generate(
+            slot,
+            funnel_stage_override=funnel_stage_override,
+            product_id_override=product_id_override,
+            pipeline_override=pipeline_override,
+        )
+    except RuntimeError as exc:
+        if str(exc) != "no viable opportunities generated":
+            raise
+        _record_no_viable_opportunity_abstention(
+            slot=slot,
+            dry_run=dry_run,
+            shadow_mode=shadow_mode,
+            runtime_metrics=runtime_metrics,
+            total_started=t_total,
+        )
+        return
     _apply_phase8_budget(runtime_metrics, "preview_generation", time.perf_counter() - t_preview, generation_budget)
     funnel_stage = str(preview_content.get("funnel_stage", "EDUCATION"))
 

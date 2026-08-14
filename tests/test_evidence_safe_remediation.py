@@ -92,3 +92,25 @@ def test_final_caption_qa_rejects_malformed_phrase_and_remediation_suppresses_en
     monkeypatch.setattr(orchestrator, "_llm_copy_beats", lambda *args, **kwargs: None)
     post = orchestrator.SocialIntelligenceOrchestrator(data_dir=str(tmp_path)).create_post(preferred_engine="A", record_memory=False, remediation_context={"exclude_engine_a_decision_thesis": True})
     assert post.copy["decision_insight"] == {}
+
+
+def test_no_viable_opportunity_is_a_persisted_abstention_not_a_scheduler_failure(monkeypatch):
+    saved: list[dict] = []
+    monkeypatch.setattr(run_engine.generate_posts, "ensure_runtime_data", lambda: None)
+    monkeypatch.setattr(
+        run_engine.generate_posts,
+        "generate",
+        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("no viable opportunities generated")),
+    )
+    monkeypatch.setattr(run_engine.generate_posts, "load_history", lambda: {"posts": []})
+    monkeypatch.setattr(run_engine.generate_posts, "save_history", lambda history: saved.append(history))
+    monkeypatch.setenv("SOCIAL_DRY_RUN", "true")
+    monkeypatch.setenv("POST_SLOT", "morning")
+
+    run_engine.main()
+
+    record = saved[-1]["posts"][-1]
+    assert record["status"] == "abstained_no_viable_opportunity"
+    assert record["error"] == "no_viable_opportunities"
+    assert record["platform_records"] == []
+    assert record["final_memory"]["final_outcome"] == "abstain"

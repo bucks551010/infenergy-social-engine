@@ -22,6 +22,7 @@ _SYSTEM_LIKE_SALES_TERMS = (
     "supporting proof", "decision evidence", "primary benefit", "human value",
     "reader job", "product role", "conversation mechanism", "strategy support",
 )
+_MALFORMED_PHRASE_PATTERNS = (r"\bfor\s+before\b", r"\b(?:in|on|at|for|with)\s+(?:in|on|at|for|with)\b")
 _SEMANTIC_STOPWORDS = {
     "a", "an", "and", "as", "at", "be", "by", "for", "from", "in", "is",
     "it", "of", "on", "or", "that", "the", "this", "to", "with", "you", "your",
@@ -492,6 +493,8 @@ def final_caption_qa(
         reasons.append("required_link_missing")
     if metrics["paragraph_count"] < 4:
         reasons.append("paragraph_structure_missing")
+    if any(re.search(pattern, str(caption or ""), flags=re.IGNORECASE) for pattern in _MALFORMED_PHRASE_PATTERNS):
+        reasons.append("broken_phrase")
     return {
         "status": "PRESENTATION_READY" if not reasons else "REVISE_PRESENTATION",
         "reasons": reasons,

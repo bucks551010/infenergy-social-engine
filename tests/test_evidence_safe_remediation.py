@@ -8,7 +8,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
 import run_engine
-from social import claim_governance, claim_intelligence, publish_decision
+from social import claim_governance, claim_intelligence, orchestrator, platform_presentation, publish_decision
 
 
 def _final_decision(readiness: dict) -> dict:
@@ -67,3 +67,28 @@ def test_remediation_attempt_is_bounded_and_research_findings_stay_terminal_afte
 
     assert run_engine._retryability_classification(decision, []) == "TERMINAL"
     assert "RESEARCH_REQUIRED" not in run_engine._evidence_safe_remediation_feedback({"product_id": "PPP-200"})[-1]
+
+
+def test_paraphrase_of_blocked_concept_is_not_a_remediation():
+    original = {"question": "Can I trust airport outlets?", "angle": "Establish fit before reserve.", "decision_thesis": "Output and connection determine support before stored capacity.", "payoff": "Compare output before reserve.", "human_reality": "before a trip"}
+    paraphrase = {"question": "Will this airport outlet support my gear?", "angle": "Check compatibility before battery reserve.", "decision_thesis": "Output and connection decide support before capacity.", "payoff": "Compare available output before stored reserve.", "human_reality": "airport travel"}
+    assert run_engine._semantic_difference(original, paraphrase) == (False, "replacement_semantically_overlaps_blocked_concept")
+
+
+def test_different_supported_concept_and_final_memory_are_auditable():
+    original = {"question": "Can I trust airport outlets?", "angle": "Establish fit before reserve.", "decision_thesis": "Output and connection determine support before stored capacity.", "payoff": "Compare output before reserve.", "human_reality": "before a trip"}
+    replacement = {"question": "Which published details belong on your packing list?", "angle": "Keep published details handy.", "decision_thesis": "", "payoff": "154Wh and 200W are published details.", "human_reality": "packing"}
+    assert run_engine._semantic_difference(original, replacement)[0] is True
+    content = {"selected_hook": replacement["question"], "copy": {"hook": replacement["question"], "takeaway": "Keep published details handy.", "strategy_lock": {"angle": replacement["angle"], "customer_moment": "packing"}, "evidence_readiness": {"status": "READY"}}, "evidence_remediation": {"original_concept": original}}
+    memory = run_engine._final_memory_record(content, "publish")
+    assert memory["question"] == replacement["question"]
+    assert memory["original_blocked_concept"] == original
+    assert memory["final_outcome"] == "publish"
+
+
+def test_final_caption_qa_rejects_malformed_phrase_and_remediation_suppresses_engine_a_thesis(tmp_path, monkeypatch):
+    caption = "PowerPulse Pro 200.\n\nFor before a trip, keep details nearby.\n\nSave this.\n\nhttps://example.com\n\n#PortablePower"
+    assert "broken_phrase" in platform_presentation.final_caption_qa(caption, platform="facebook", components={"product_name": "PowerPulse Pro 200", "benefit_fragment": "backup", "feature_bullets": [], "cta": "Save this."})["reasons"]
+    monkeypatch.setattr(orchestrator, "_llm_copy_beats", lambda *args, **kwargs: None)
+    post = orchestrator.SocialIntelligenceOrchestrator(data_dir=str(tmp_path)).create_post(preferred_engine="A", record_memory=False, remediation_context={"exclude_engine_a_decision_thesis": True})
+    assert post.copy["decision_insight"] == {}

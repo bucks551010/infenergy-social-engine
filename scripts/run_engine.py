@@ -298,6 +298,37 @@ def _conversion_learning_fields(content: dict) -> dict:
     }
 
 
+def _remediation_concept(content: dict) -> dict:
+    copy = content.get("copy") if isinstance(content.get("copy"), dict) else {}
+    insight = copy.get("decision_insight") if isinstance(copy.get("decision_insight"), dict) else {}
+    return {"question": str(content.get("selected_hook") or copy.get("hook") or ""), "angle": str((copy.get("strategy_lock") or {}).get("angle") or ""), "decision_thesis": str(insight.get("relationship") or ""), "payoff": str(insight.get("decision_consequence") or copy.get("takeaway") or ""), "human_reality": str((copy.get("strategy_lock") or {}).get("customer_moment") or "")}
+
+
+def _remediation_context(content: dict, decision: dict, duplicates: dict) -> dict:
+    concept = _remediation_concept(content)
+    readiness = ((content.get("copy") or {}).get("evidence_readiness") or content.get("evidence_readiness") or {})
+    claims = readiness.get("claims") if isinstance(readiness, dict) else []
+    return {"original_candidate_id": str(content.get("post_id") or ""), "original_concept": concept, "original_claim_ledger": content.get("claim_ledger") or {}, "original_evidence_readiness": readiness, "original_centrality_summary": {"central_unresolved": [str(claim.get("claim") or "") for claim in claims if isinstance(claim, dict) and claim.get("centrality") == "CENTRAL" and claim.get("research_status") == "RESEARCH_REQUIRED"], "status": str(readiness.get("status") or "")}, "remediation_reason": "central_evidence_block_requires_new_opportunity", "excluded_concepts": [value for value in concept.values() if value], "excluded_product_ids": [str(content.get("product_id"))] if not duplicates.get("ok", True) and content.get("product_id") else [], "exclude_engine_a_decision_thesis": True, "original_governance": decision}
+
+
+def _semantic_difference(original: dict, replacement: dict) -> tuple[bool, str]:
+    changed = [key for key in original if original.get(key) != replacement.get(key)]
+    if not changed:
+        return False, "replacement_repeats_original_concept"
+    aliases = {"access": "connection", "compatible": "fit", "compatibility": "fit", "device": "fit", "outlet": "airport", "outlets": "airport", "travel": "trip", "battery": "reserve", "capacity": "reserve", "stored": "reserve", "support": "fit"}
+    tokens = lambda values: {aliases.get(word.strip(".,;:?!"), word.strip(".,;:?!")) for value in values.values() for word in str(value).lower().split() if len(word.strip(".,;:?!")) > 3}
+    before, after = tokens(original), tokens(replacement)
+    if len(before & after) / max(1, min(len(before), len(after))) >= 0.35:
+        return False, "replacement_semantically_overlaps_blocked_concept"
+    return True, "replacement_changes_" + "_and_".join(changed)
+
+
+def _final_memory_record(content: dict, final_outcome: str) -> dict:
+    copy = content.get("copy") if isinstance(content.get("copy"), dict) else {}
+    remediation = content.get("evidence_remediation") if isinstance(content.get("evidence_remediation"), dict) else {}
+    return {"human_reality": (copy.get("strategy_lock") or {}).get("customer_moment", ""), "value_idea": (copy.get("strategy_lock") or {}).get("angle", ""), "question": copy.get("hook") or content.get("selected_hook", ""), "takeaway": copy.get("takeaway", ""), "memory_anchor": copy.get("memory_anchor", ""), "response_contract": copy.get("response_contract", {}), "evidence_outcome": (copy.get("evidence_readiness") or {}).get("status", ""), "remediation_used": bool(remediation), "original_blocked_concept": remediation.get("original_concept", {}), "final_concept": _remediation_concept(content), "final_outcome": final_outcome}
+
+
 def _generation_diagnostics(content: dict) -> dict:
     """Persist the evidence required to explain a rejected or published run."""
     return {
@@ -611,7 +642,7 @@ def _enforce_candidate_claim_boundary(content: dict) -> list[str]:
         mapping[key] = sanitized
         removed.extend(corrections)
 
-    for field in ("wp_content", "fb_caption", "ig_caption", "li_text", "selected_hook"):
+    for field in ("wp_content", "selected_hook"):
         sanitize(content, field)
     copy = content.get("copy")
     if isinstance(copy, dict):
@@ -629,6 +660,23 @@ def _enforce_candidate_claim_boundary(content: dict) -> list[str]:
         for post in posts.values():
             if isinstance(post, dict):
                 sanitize(post, "caption")
+                if isinstance(post.get("final_caption"), str):
+                    sanitize(post, "final_caption")
+        fields = {"facebook": "fb_caption", "instagram": "ig_caption", "linkedin": "li_text"}
+        for platform, flat in fields.items():
+            post = posts.get(platform) if isinstance(posts.get(platform), dict) else {}
+            if not isinstance(post.get("final_caption") or post.get("caption"), str):
+                sanitize(content, flat)
+        for platform, flat in fields.items():
+            post = posts.get(platform) if isinstance(posts.get(platform), dict) else {}
+            caption = str(post.get("final_caption") or post.get("caption") or content.get(flat) or "").strip()
+            if caption:
+                post["caption"] = caption
+                post["final_caption"] = caption
+                content[flat] = caption
+    else:
+        for flat in ("fb_caption", "ig_caption", "li_text"):
+            sanitize(content, flat)
     return list(dict.fromkeys(removed))
 
 
@@ -1209,6 +1257,7 @@ def main() -> None:
     previous_current_findings: list[str] = []
     evidence_remediation_used = False
     original_research_block: dict | None = None
+    remediation_context: dict | None = None
     t_generation = time.perf_counter()
     for idx in range(3):
         if idx > 0:
@@ -1219,13 +1268,10 @@ def main() -> None:
                 pipeline_override=pipeline_override,
                 approved_strategy=locked_strategy or None,
                 revision_feedback=pending_feedback,
+                remediation_context=remediation_context,
             )
-            if evidence_remediation_used and original_research_block:
-                content["evidence_remediation"] = {
-                    "status": "REMEDIATION_CANDIDATE",
-                    "original_candidate": original_research_block,
-                    "attempt_limit": 1,
-                }
+            if evidence_remediation_used and remediation_context:
+                content["evidence_remediation"] = {**remediation_context, "status": "REMEDIATION_CANDIDATE", "attempt_limit": 1}
             if pending_scope == "copy" and _can_carry_forward_visuals(prior_generated_visuals, content, effective_channels):
                 content["generated_visuals"] = prior_generated_visuals
                 content["revision_reused_components"] = ["generated_visuals"]
@@ -1430,14 +1476,17 @@ def main() -> None:
         ):
             if retryability == "EVIDENCE_SAFE_REMEDIATION":
                 evidence_remediation_used = True
+                remediation_context = _remediation_context(content, publish_decision, duplicates)
                 pending_feedback = _evidence_safe_remediation_feedback(content)
                 pending_scope = "strategy"
                 prior_generated_visuals = {}
                 content["evidence_remediation"] = {
                     "status": "ORIGINAL_BLOCKED",
-                    "original_candidate": original_research_block,
                     "attempt_limit": 1,
+                    **remediation_context,
                 }
+                locked_strategy = {}
+                locked_product_id = ""
             else:
                 pending_feedback = critic_feedback or ["Improve the candidate so it meets the existing critic threshold."]
                 pending_scope = diagnosis["repair_scope"] if diagnosis["repair_scope"] != "angle_and_hook_promise" else "strategy"
@@ -1468,6 +1517,15 @@ def main() -> None:
     _apply_phase8_budget(runtime_metrics, "generation", time.perf_counter() - t_generation, generation_budget)
 
     final_validation_ok = content.get("validation_status") == "passed"
+    if evidence_remediation_used and remediation_context:
+        replacement = _remediation_concept(content)
+        materially_different, reason = _semantic_difference(remediation_context["original_concept"], replacement)
+        readiness = ((content.get("copy") or {}).get("evidence_readiness") or content.get("evidence_readiness") or {})
+        content["evidence_remediation"] = {**remediation_context, "status": "REMEDIATION_CANDIDATE", "attempt_limit": 1, "replacement_candidate_id": str(content.get("post_id") or ""), "replacement_concept": replacement, "semantic_difference_reason": reason, "replacement_evidence_readiness": readiness, "visual_reuse_allowed": False}
+        if not materially_different:
+            content["validation_status"] = "failed"
+            content["validation_errors"] = list(content.get("validation_errors", [])) + ["remediation_reused_blocked_concept"]
+            final_validation_ok = False
     final_score = float(content.get("quality_score") or 0)
     duplicate_ok = bool(content.get("duplicate_check", {}).get("ok", True))
     _ensure_final_artifact_qa(content, effective_channels)
@@ -1501,6 +1559,9 @@ def main() -> None:
         evidence_readiness=((content.get("copy") or {}).get("evidence_readiness") or content.get("evidence_readiness")),
     )
     content["publish_decision"] = final_decision
+    if evidence_remediation_used and isinstance(content.get("evidence_remediation"), dict):
+        content["evidence_remediation"]["final_outcome"] = final_decision.get("decision")
+    content["final_memory"] = _final_memory_record(content, str(final_decision.get("decision") or ""))
     if not final_decision["publishable"] and not shadow_mode:
         print("[SKIP] Content did not pass validation/quality thresholds; recording skipped run")
         history = generate_posts.load_history()

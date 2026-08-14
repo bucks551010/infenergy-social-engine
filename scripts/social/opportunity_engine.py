@@ -6,10 +6,27 @@ ranks them across 13 dimensions before picking one. Data-driven, no LLM.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from typing import Any, Iterable
 
 from . import audience_intelligence, content_strategy, libraries
+
+_CONCEPT_STOP_WORDS = {"a", "an", "and", "are", "as", "at", "be", "by", "for", "from", "in", "is", "it", "of", "on", "or", "the", "this", "that", "to", "with", "your"}
+
+
+def _concept_tokens(value: str) -> set[str]:
+    return {token for token in re.findall(r"[a-z0-9]+", str(value or "").lower()) if len(token) > 2 and token not in _CONCEPT_STOP_WORDS}
+
+
+def concept_is_excluded(candidate: OpportunityCandidate, excluded_concepts: Iterable[str]) -> bool:
+    candidate_text = " ".join((str(candidate.topic_path.topic or ""), str(candidate.topic_path.microtopic or ""), str(candidate.topic_path.angle or ""), str(candidate.audience.question or ""), str(candidate.audience.curiosity or "")))
+    candidate_tokens = _concept_tokens(candidate_text)
+    for excluded in excluded_concepts:
+        excluded_tokens = _concept_tokens(str(excluded))
+        if candidate_tokens and excluded_tokens and len(candidate_tokens & excluded_tokens) / min(len(candidate_tokens), len(excluded_tokens)) >= 0.5:
+            return True
+    return False
 
 
 @dataclass
@@ -115,6 +132,7 @@ def generate(
     seasonal_context: str | None = None,
     preferred_pillar: str | None = None,
     limit: int = 6,
+    excluded_concepts: Iterable[str] = (),
 ) -> list[OpportunityCandidate]:
     """Produce ``limit`` ranked candidates. Highest total_score first."""
     candidates: list[OpportunityCandidate] = []
@@ -188,5 +206,6 @@ def generate(
             c.total = sum(c.scores.values()) / max(1, len(c.scores))
         survivors.append(c)
 
+    survivors = [candidate for candidate in survivors if not concept_is_excluded(candidate, excluded_concepts)]
     survivors.sort(key=lambda c: c.total, reverse=True)
     return survivors[:limit]

@@ -83,6 +83,7 @@ def _shared_brief(
     audience_hint: str | None,
     seasonal_context: str | None,
     preferred_pillar: str | None,
+    excluded_concepts: list[str] | None,
     rotation_index: int,
 ) -> EngineBrief:
     # 1. Opportunity generation
@@ -95,6 +96,7 @@ def _shared_brief(
         audience_hint=audience_hint,
         seasonal_context=seasonal_context,
         preferred_pillar=preferred_pillar,
+        excluded_concepts=excluded_concepts or [],
         limit=6,
     )
     if not candidates:
@@ -154,6 +156,7 @@ class ConversionEngine:
         audience_hint: str | None = None,
         seasonal_context: str | None = None,
         preferred_pillar: str | None = None,
+        excluded_concepts: list[str] | None = None,
         rotation_index: int = 0,
     ) -> EngineBrief:
         recent = recent or {}
@@ -166,6 +169,7 @@ class ConversionEngine:
             audience_hint=audience_hint,
             seasonal_context=seasonal_context,
             preferred_pillar=preferred_pillar or "product_education",
+            excluded_concepts=excluded_concepts,
             rotation_index=rotation_index,
         )
 
@@ -183,6 +187,7 @@ class AudienceValueEngine:
         audience_hint: str | None = None,
         seasonal_context: str | None = None,
         preferred_pillar: str | None = None,
+        excluded_concepts: list[str] | None = None,
         rotation_index: int = 0,
     ) -> EngineBrief:
         recent = recent or {}
@@ -192,6 +197,7 @@ class AudienceValueEngine:
             audience_hint=audience_hint,
             seasonal_context=seasonal_context,
             preferred_pillar=preferred_pillar,
+            excluded_concepts=excluded_concepts,
             rotation_index=rotation_index,
         )
         opportunity = audience_value.discover(
@@ -221,6 +227,7 @@ class BrandCommunityEngine:
         audience_hint: str | None = None,
         seasonal_context: str | None = None,
         preferred_pillar: str | None = None,
+        excluded_concepts: list[str] | None = None,
         rotation_index: int = 0,
     ) -> EngineBrief:
         return _shared_brief(
@@ -229,6 +236,7 @@ class BrandCommunityEngine:
             audience_hint=audience_hint,
             seasonal_context=seasonal_context,
             preferred_pillar=preferred_pillar or "brand_philosophy",
+            excluded_concepts=excluded_concepts,
             rotation_index=rotation_index,
         )
 

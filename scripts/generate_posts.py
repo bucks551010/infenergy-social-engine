@@ -159,10 +159,13 @@ def _route_generate_orchestrator(
     """Return the first orchestrated post package in the legacy payload shape used by the runtime."""
     social_platform = _social_platform_key(platform)
     council_decision: dict[str, Any] = {}
-    if not isinstance(kw.get("approved_strategy"), dict):
+    remediation_context = kw.get("remediation_context") if isinstance(kw.get("remediation_context"), dict) else {}
+    if not remediation_context and not isinstance(kw.get("approved_strategy"), dict):
         approved_strategy, council_decision = _living_strategy_for_generation()
         if approved_strategy:
             kw["approved_strategy"] = approved_strategy
+    elif remediation_context:
+        council_decision = {"decision": "strategy_reselected", "source": "evidence_safe_remediation"}
     else:
         council_decision = {"decision": "strategy_selected", "source": "caller_override"}
     batch = run_social_intelligence(count=1, platform=social_platform, **kw)
@@ -4913,6 +4916,7 @@ def generate(
     pipeline_override: str = "",
     approved_strategy: dict[str, Any] | None = None,
     revision_feedback: list[str] | None = None,
+    remediation_context: dict[str, Any] | None = None,
 ) -> dict:
     mode = _pipeline_mode(pipeline_override)
     platform = os.environ.get("POST_PLATFORMS", "instagram_feed").split(",")[0].strip() or "instagram_feed"
@@ -4927,6 +4931,7 @@ def generate(
             funnel_stage_override=funnel_stage_override,
             approved_strategy=approved_strategy,
             revision_feedback=revision_feedback,
+            remediation_context=remediation_context,
         )
     if mode != "legacy" and _social_intelligence_enabled():
         return _route_generate_orchestrator(
@@ -4936,6 +4941,7 @@ def generate(
             funnel_stage_override=funnel_stage_override,
             approved_strategy=approved_strategy,
             revision_feedback=revision_feedback,
+            remediation_context=remediation_context,
         )
 
     ensure_runtime_data()

@@ -161,6 +161,23 @@ def _bi_pick_offering(rotation_index: int) -> dict[str, Any] | None:
     except Exception:
         return None
 
+def _bi_pick_eligible_offering(rotation_index: int, excluded_product_ids: set[str]) -> dict[str, Any] | None:
+    if not excluded_product_ids:
+        return _bi_pick_offering(rotation_index)
+    if not _bi_enabled():
+        return None
+    try:
+        from business_intelligence import api as bi_api
+        offerings = bi_api.get_business_profile().get("offerings", []) or []
+        for offset in range(len(offerings)):
+            candidate = offerings[(rotation_index + offset) % len(offerings)]
+            candidate_id = str(candidate.get("offering_id") or candidate.get("sku") or "")
+            if candidate_id and candidate_id not in excluded_product_ids:
+                return candidate
+    except Exception:
+        return None
+    return None
+
 
 def _bi_get_offering(product_id: str) -> dict[str, Any] | None:
     """Look up one specific catalog offering by id/sku (an explicit caller
@@ -614,6 +631,7 @@ class SocialIntelligenceOrchestrator:
         product_id_override: str = "",
         approved_strategy: dict[str, Any] | None = None,
         revision_feedback: list[str] | None = None,
+        remediation_context: dict[str, Any] | None = None,
     ) -> PostPackage:
         # 0. Recent state → recency-aware decisions
         recent = memory_intelligence.recent(self.data_dir, limit=20)
@@ -636,7 +654,10 @@ class SocialIntelligenceOrchestrator:
 
         # 0b. Optional BI Foundation hydration — only when the caller
         # didn't already specify a value and the flag is on.
-        bi_offering = _bi_get_offering(product_id_override) if product_id_override else _bi_pick_offering(rotation_index)
+        remediation = dict(remediation_context or {})
+        excluded_product_ids = {str(value) for value in remediation.get("excluded_product_ids", []) if str(value)}
+        excluded_concepts = [str(value) for value in remediation.get("excluded_concepts", []) if str(value)]
+        bi_offering = _bi_get_offering(product_id_override) if product_id_override else _bi_pick_eligible_offering(rotation_index, excluded_product_ids)
         bi_ctx = _load_bi_creative_context(
             str((bi_offering or {}).get("offering_id") or (bi_offering or {}).get("sku") or "")
         )
@@ -672,6 +693,7 @@ class SocialIntelligenceOrchestrator:
             audience_hint=audience_hint,
             seasonal_context=seasonal_context,
             preferred_pillar=preferred_pillar,
+            excluded_concepts=excluded_concepts,
             rotation_index=rotation_index,
         )
         audience_value_only = (
@@ -753,7 +775,7 @@ class SocialIntelligenceOrchestrator:
         )
         beat_content = llm_beats or _assemble_copy(brief=brief, structure_beats=beats)
         decision_insight: dict[str, Any] = {}
-        if engine_name == "A":
+        if engine_name == "A" and not remediation.get("exclude_engine_a_decision_thesis"):
             decision_insight = _engine_a_decision_insight(
                 product_narrative,
                 list((bi_offering or {}).get("verified_facts") or verified_facts or []),
@@ -976,6 +998,7 @@ class SocialIntelligenceOrchestrator:
                 "decision_insight": decision_insight,
                 "response_contract": response_contract,
                 "evidence_readiness": evidence_readiness,
+                "remediation_context": remediation,
             },
             visual={
                 "semantic_role": semantic_role,
@@ -1019,6 +1042,8 @@ class SocialIntelligenceOrchestrator:
             anchored_offering=bi_offering,
             creative_decision_packet=creative_packet,
         )
+        if remediation:
+            package.copy["remediation_context"] = remediation
         if locked:
             package.creative_director["creative_decision_review"] = {
                 "verdict": "PASS" if creative_packet["ACTION"] == "create" else "DO_NOT_PUBLISH",

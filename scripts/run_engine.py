@@ -324,6 +324,19 @@ def _semantic_difference(original: dict, replacement: dict) -> tuple[bool, str]:
     return True, "replacement_changes_" + "_and_".join(changed)
 
 
+def _finalize_evidence_remediation(content: dict, remediation_context: dict) -> None:
+    remediation = content.get("evidence_remediation") if isinstance(content.get("evidence_remediation"), dict) else {}
+    if remediation.get("status") == "ABSTAINED_NO_VIABLE_REPLACEMENT":
+        return
+    replacement = _remediation_concept(content)
+    materially_different, reason = _semantic_difference(remediation_context["original_concept"], replacement)
+    readiness = ((content.get("copy") or {}).get("evidence_readiness") or content.get("evidence_readiness") or {})
+    content["evidence_remediation"] = {**remediation_context, "status": "REMEDIATION_CANDIDATE", "attempt_limit": 1, "replacement_candidate_id": str(content.get("post_id") or ""), "replacement_candidate_attempt_id": str(content.get("candidate_attempt_id") or ""), "replacement_concept": replacement, "semantic_difference_reason": reason, "replacement_evidence_readiness": readiness, "visual_reuse_allowed": False}
+    if not materially_different:
+        content["validation_status"] = "failed"
+        content["validation_errors"] = list(content.get("validation_errors", [])) + ["remediation_reused_blocked_concept"]
+
+
 def _final_memory_record(content: dict, final_outcome: str) -> dict:
     copy = content.get("copy") if isinstance(content.get("copy"), dict) else {}
     remediation = content.get("evidence_remediation") if isinstance(content.get("evidence_remediation"), dict) else {}
@@ -1643,14 +1656,8 @@ def main() -> None:
 
     final_validation_ok = content.get("validation_status") == "passed"
     if evidence_remediation_used and remediation_context:
-        replacement = _remediation_concept(content)
-        materially_different, reason = _semantic_difference(remediation_context["original_concept"], replacement)
-        readiness = ((content.get("copy") or {}).get("evidence_readiness") or content.get("evidence_readiness") or {})
-        content["evidence_remediation"] = {**remediation_context, "status": "REMEDIATION_CANDIDATE", "attempt_limit": 1, "replacement_candidate_id": str(content.get("post_id") or ""), "replacement_concept": replacement, "semantic_difference_reason": reason, "replacement_evidence_readiness": readiness, "visual_reuse_allowed": False}
-        if not materially_different:
-            content["validation_status"] = "failed"
-            content["validation_errors"] = list(content.get("validation_errors", [])) + ["remediation_reused_blocked_concept"]
-            final_validation_ok = False
+        _finalize_evidence_remediation(content, remediation_context)
+        final_validation_ok = content.get("validation_status") == "passed"
     final_score = float(content.get("quality_score") or 0)
     duplicate_ok = bool(content.get("duplicate_check", {}).get("ok", True))
     _ensure_final_artifact_qa(content, effective_channels)

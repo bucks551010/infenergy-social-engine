@@ -267,3 +267,24 @@ def test_no_viable_replacement_preserves_the_original_remediation_audit():
     assert content["evidence_remediation"]["status"] == "ABSTAINED_NO_VIABLE_REPLACEMENT"
     assert content["evidence_remediation"]["original_candidate_id"] == "candidate-a"
     assert content["evidence_remediation"]["semantic_difference_reason"] == "no_viable_replacement_opportunity"
+
+
+def test_no_viable_replacement_is_not_reclassified_as_candidate_a_reuse():
+    content = {
+        "post_id": "candidate-a",
+        "candidate_attempt_id": "candidate-a:candidate-1",
+        "validation_status": "failed",
+        "validation_errors": ["no_viable_replacement_opportunity"],
+        "copy": {"hook": "Blocked question", "strategy_lock": {"angle": "Blocked angle"}},
+        "evidence_remediation": {
+            "status": "ABSTAINED_NO_VIABLE_REPLACEMENT",
+            "semantic_difference_reason": "no_viable_replacement_opportunity",
+        },
+    }
+    remediation = {"original_concept": {"question": "Blocked question", "angle": "Blocked angle"}}
+
+    run_engine._finalize_evidence_remediation(content, remediation)
+
+    assert content["evidence_remediation"]["status"] == "ABSTAINED_NO_VIABLE_REPLACEMENT"
+    assert content["evidence_remediation"]["semantic_difference_reason"] == "no_viable_replacement_opportunity"
+    assert "remediation_reused_blocked_concept" not in content["validation_errors"]

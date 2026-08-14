@@ -1,11 +1,12 @@
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from social import recovery
+from social import engines, recovery
 
 
 def test_duplicate_wins_over_presentation_repair():
@@ -37,3 +38,48 @@ def test_replacement_is_bounded_to_candidate_b():
     selected, _ = recovery.select_replacement(shortlist)
 
     assert selected["rank"] == 2
+
+
+def test_engine_brief_retains_shortlist_and_honors_selected_opportunity(monkeypatch):
+    genre_id = next(iter(engines.libraries.genres()))
+
+    def candidate(rank):
+        return SimpleNamespace(
+            pillar_id="brand_philosophy",
+            genre_id=genre_id,
+            topic_path=SimpleNamespace(topic=f"Topic {rank}", microtopic=f"micro-{rank}", angle=f"Angle {rank}"),
+            audience=SimpleNamespace(
+                reader_job="clarify", reader_job_config={}, segment_id="prepared", segment={},
+                information_gap="gap", curiosity=f"Reality {rank}", misconception="", question=f"Question {rank}",
+                emotional_driver="confidence", rationale=[],
+            ),
+            scores={"novelty": 0.8},
+            total=float(10 - rank),
+            score_summary=lambda: "score summary",
+        )
+
+    monkeypatch.setattr(engines.opportunity_engine, "generate", lambda **_: [candidate(rank) for rank in range(1, 7)])
+    baseline = engines._shared_brief(
+        "C",
+        recent={},
+        audience_hint=None,
+        seasonal_context=None,
+        preferred_pillar="brand_philosophy",
+        excluded_concepts=[],
+        rotation_index=0,
+    )
+    selected = baseline.opportunity_shortlist[1]
+    replacement = engines._shared_brief(
+        "C",
+        recent={},
+        audience_hint=None,
+        seasonal_context=None,
+        preferred_pillar="brand_philosophy",
+        excluded_concepts=[],
+        rotation_index=0,
+        selected_opportunity_id=selected["opportunity_id"],
+    )
+
+    assert len(baseline.opportunity_shortlist) >= 2
+    assert replacement.question == selected["question"]
+    assert replacement.as_dict()["opportunity_shortlist"] == baseline.opportunity_shortlist

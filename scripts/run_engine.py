@@ -307,10 +307,19 @@ def _remediation_concept(content: dict) -> dict:
 
 def _remediation_context(content: dict, decision: dict, duplicates: dict) -> dict:
     concept = _remediation_concept(content)
+    brief = content.get("strategic_brief") if isinstance(content.get("strategic_brief"), dict) else {}
+    shortlist = brief.get("opportunity_shortlist") if isinstance(brief.get("opportunity_shortlist"), list) else []
     readiness = ((content.get("copy") or {}).get("evidence_readiness") or content.get("evidence_readiness") or {})
     claims = (readiness.get("claims") or []) if isinstance(readiness, dict) else []
     candidate_attempt_id = str(content.get("candidate_attempt_id") or f"{content.get('post_id')}:candidate-1")
-    return {"original_candidate_id": str(content.get("post_id") or ""), "original_candidate_attempt_id": candidate_attempt_id, "original_concept": concept, "original_claim_ledger": content.get("claim_ledger") or {}, "original_evidence_readiness": readiness, "original_centrality_summary": {"central_unresolved": [str(claim.get("claim") or "") for claim in claims if isinstance(claim, dict) and claim.get("centrality") == "CENTRAL" and claim.get("research_status") == "RESEARCH_REQUIRED"], "status": str(readiness.get("status") or "")}, "remediation_reason": "central_evidence_block_requires_new_opportunity", "excluded_concepts": [value for value in concept.values() if value], "excluded_product_ids": [str(content.get("product_id"))] if not duplicates.get("ok", True) and content.get("product_id") else [], "exclude_engine_a_decision_thesis": True, "selection_rotation_index": int(content.get("selection_rotation_index") or 0) + 1, "candidate_attempt_id": f"{content.get('post_id')}:candidate-2", "original_governance": decision}
+    excluded_product_ids = [str(content.get("product_id"))] if not duplicates.get("ok", True) and content.get("product_id") else []
+    replacement, alternatives_considered = recovery.select_replacement(
+        shortlist,
+        excluded_product_ids=set(excluded_product_ids),
+        excluded_concepts=set(value for value in concept.values() if value),
+        blocked_human_realities={concept["human_reality"]} if concept.get("human_reality") else set(),
+    )
+    return {"original_candidate_id": str(content.get("post_id") or ""), "original_candidate_attempt_id": candidate_attempt_id, "original_concept": concept, "original_claim_ledger": content.get("claim_ledger") or {}, "original_evidence_readiness": readiness, "original_centrality_summary": {"central_unresolved": [str(claim.get("claim") or "") for claim in claims if isinstance(claim, dict) and claim.get("centrality") == "CENTRAL" and claim.get("research_status") == "RESEARCH_REQUIRED"], "status": str(readiness.get("status") or "")}, "remediation_reason": "central_evidence_block_requires_new_opportunity", "excluded_concepts": [value for value in concept.values() if value], "excluded_product_ids": excluded_product_ids, "exclude_engine_a_decision_thesis": True, "selection_rotation_index": int(content.get("selection_rotation_index") or 0) + 1, "candidate_attempt_id": f"{content.get('post_id')}:candidate-2", "original_governance": decision, "opportunity_shortlist": shortlist, "replacement_candidate": replacement, "alternatives_considered": alternatives_considered}
 
 
 def _semantic_difference(original: dict, replacement: dict) -> tuple[bool, str]:
@@ -1656,6 +1665,22 @@ def main() -> None:
             if retryability == "EVIDENCE_SAFE_REMEDIATION":
                 evidence_remediation_used = True
                 remediation_context = _remediation_context(content, publish_decision, duplicates)
+                replacement_candidate = remediation_context.get("replacement_candidate")
+                if not isinstance(replacement_candidate, dict):
+                    recovery_story.update({
+                        "candidate_a": _candidate_audit(content),
+                        "candidate_a_rank": 1,
+                        "candidate_a_blockers": list(dict.fromkeys(failure_reasons)),
+                        "classification": recovery_classification,
+                        "candidate_b_selected": False,
+                        "alternatives_considered": remediation_context.get("alternatives_considered", []),
+                    })
+                    content["evidence_remediation"] = {
+                        "status": "ABSTAINED_NO_VIABLE_REPLACEMENT",
+                        "attempt_limit": 1,
+                        **remediation_context,
+                    }
+                    break
                 remediation_context["recovery_mode"] = "STRATEGIC_REPLACEMENT"
                 recovery_story.update({
                     "candidate_a": _candidate_audit(content),
@@ -1663,8 +1688,8 @@ def main() -> None:
                     "candidate_a_blockers": list(dict.fromkeys(failure_reasons)),
                     "classification": recovery_classification,
                     "candidate_b_selected": True,
-                    "candidate_b_rank": 2,
-                    "alternatives_considered": [{"rank": "2", "result": "selected", "reason": "exclusion_aware_replacement"}],
+                    "candidate_b_rank": replacement_candidate.get("rank"),
+                    "alternatives_considered": remediation_context.get("alternatives_considered", []),
                 })
                 pending_feedback = _evidence_safe_remediation_feedback(content) if research_required else [
                     "Select a materially different opportunity. Preserve all claim, evidence, freshness, and governance requirements.",

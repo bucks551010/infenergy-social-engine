@@ -696,6 +696,7 @@ class SocialIntelligenceOrchestrator:
             preferred_pillar=preferred_pillar,
             excluded_concepts=excluded_concepts,
             rotation_index=rotation_index,
+            selected_opportunity_id=str((remediation.get("replacement_candidate") or {}).get("opportunity_id") or ""),
         )
         audience_value_only = (
             engine_name == "B"

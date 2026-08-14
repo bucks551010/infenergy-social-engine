@@ -19,6 +19,7 @@ from . import (
     copy_intelligence,
     libraries,
     opportunity_engine,
+    recovery,
 )
 
 
@@ -41,6 +42,7 @@ class EngineBrief:
     tone: str
     opportunity_score: float
     rationale: list[str] = field(default_factory=list)
+    opportunity_shortlist: list[dict[str, Any]] = field(default_factory=list)
     # Populated later by copy stage
     hook: str = ""
     body_beats: dict[str, str] = field(default_factory=dict)
@@ -65,6 +67,7 @@ class EngineBrief:
             "tone": self.tone,
             "opportunity_score": self.opportunity_score,
             "rationale": self.rationale,
+            "opportunity_shortlist": self.opportunity_shortlist,
             "hook": self.hook,
             "body_beats": self.body_beats,
             "takeaway": self.takeaway,
@@ -85,6 +88,7 @@ def _shared_brief(
     preferred_pillar: str | None,
     excluded_concepts: list[str] | None,
     rotation_index: int,
+    selected_opportunity_id: str = "",
 ) -> EngineBrief:
     # 1. Opportunity generation
     candidates = opportunity_engine.generate(
@@ -101,7 +105,14 @@ def _shared_brief(
     )
     if not candidates:
         raise RuntimeError("no viable opportunities generated")
-    best = candidates[0]
+    shortlist = [
+        {**recovery.compact_candidate(candidate, rank), "engine": engine}
+        for rank, candidate in enumerate(candidates, start=1)
+    ]
+    best = next(
+        (candidate for candidate, compact in zip(candidates, shortlist) if compact["opportunity_id"] == selected_opportunity_id),
+        candidates[0],
+    )
 
     pillars = libraries.pillars()
     pillar = dict(pillars[best.pillar_id])
@@ -133,6 +144,7 @@ def _shared_brief(
         tone=tone,
         opportunity_score=best.total,
         rationale=list(aud.rationale) + [best.score_summary()],
+        opportunity_shortlist=shortlist,
     )
 
 
@@ -158,6 +170,7 @@ class ConversionEngine:
         preferred_pillar: str | None = None,
         excluded_concepts: list[str] | None = None,
         rotation_index: int = 0,
+        selected_opportunity_id: str = "",
     ) -> EngineBrief:
         recent = recent or {}
         # For now, produce a social-shaped brief anchored to a
@@ -171,6 +184,7 @@ class ConversionEngine:
             preferred_pillar=preferred_pillar or "product_education",
             excluded_concepts=excluded_concepts,
             rotation_index=rotation_index,
+            selected_opportunity_id=selected_opportunity_id,
         )
 
 
@@ -189,6 +203,7 @@ class AudienceValueEngine:
         preferred_pillar: str | None = None,
         excluded_concepts: list[str] | None = None,
         rotation_index: int = 0,
+        selected_opportunity_id: str = "",
     ) -> EngineBrief:
         recent = recent or {}
         brief = _shared_brief(
@@ -199,6 +214,7 @@ class AudienceValueEngine:
             preferred_pillar=preferred_pillar,
             excluded_concepts=excluded_concepts,
             rotation_index=rotation_index,
+            selected_opportunity_id=selected_opportunity_id,
         )
         opportunity = audience_value.discover(
             recent=recent,
@@ -206,7 +222,7 @@ class AudienceValueEngine:
             seasonal_context=seasonal_context,
         )
         brief.audience_value = opportunity.as_dict()
-        if not opportunity.abstain:
+        if not opportunity.abstain and not selected_opportunity_id:
             brief.question = opportunity.reader_question
             brief.angle = opportunity.reader_takeaway
             brief.curiosity = opportunity.why_it_matters
@@ -229,6 +245,7 @@ class BrandCommunityEngine:
         preferred_pillar: str | None = None,
         excluded_concepts: list[str] | None = None,
         rotation_index: int = 0,
+        selected_opportunity_id: str = "",
     ) -> EngineBrief:
         return _shared_brief(
             "C",
@@ -238,6 +255,7 @@ class BrandCommunityEngine:
             preferred_pillar=preferred_pillar or "brand_philosophy",
             excluded_concepts=excluded_concepts,
             rotation_index=rotation_index,
+            selected_opportunity_id=selected_opportunity_id,
         )
 
 

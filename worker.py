@@ -276,6 +276,10 @@ def _auto_refresh_meta_if_due() -> tuple[bool, str]:
     return ok, payload.get("error", "refresh_failed") if not ok else "refreshed"
 
 
+def _external_social_access_allowed(force_live: bool, shadow_mode: bool) -> bool:
+    return bool(force_live) and not bool(shadow_mode)
+
+
 def _load_history(limit: int = 20) -> list[dict]:
     history_path = os.path.join(_data_dir(), "post_history.json")
     history = _load_json(history_path, {"posts": []})
@@ -1452,11 +1456,15 @@ def run_slot(
 
         _auto_bootstrap_visual_repo()
 
-        refresh_ok, refresh_reason = _auto_refresh_meta_if_due()
-        if refresh_ok:
-            print("[META] Token refresh completed before run")
-        elif refresh_reason not in ("not_due", "auto_refresh_disabled"):
-            print(f"[META] Token refresh skipped/failed: {refresh_reason}")
+        external_social_access_allowed = _external_social_access_allowed(force_live, shadow_mode)
+        if external_social_access_allowed:
+            refresh_ok, refresh_reason = _auto_refresh_meta_if_due()
+            if refresh_ok:
+                print("[META] Token refresh completed before run")
+            elif refresh_reason not in ("not_due", "auto_refresh_disabled"):
+                print(f"[META] Token refresh skipped/failed: {refresh_reason}")
+        else:
+            print("[META] Token refresh skipped: external social access disabled")
         try:
             timeout_sec = int(os.environ.get("RUN_SLOT_TIMEOUT_SEC", "420"))
             scripts_dir = os.path.join(os.path.dirname(__file__), "scripts")

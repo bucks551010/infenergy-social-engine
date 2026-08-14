@@ -208,6 +208,7 @@ def _route_generate_orchestrator(
         selected_cta=selected_cta,
         product=product_for_adaptation,
         funnel_stage=funnel_stage,
+        product_narrative=copy_pkg.get("product_narrative") if isinstance(copy_pkg.get("product_narrative"), dict) else None,
     )
     components.update({
         "logic_hook": selected_hook,
@@ -3634,6 +3635,7 @@ def _build_post_components(
     funnel_stage: str,
     product_intelligence: dict | None = None,
     logical_strategy: dict | None = None,
+    product_narrative: dict | None = None,
 ) -> dict:
     product_name = (product or {}).get("name", "Infenergy preparedness solution")
     product_id = (product or {}).get("id", "")
@@ -3684,6 +3686,27 @@ def _build_post_components(
         cta = "Build your backup-power setup."
 
     strategy = logical_strategy if isinstance(logical_strategy, dict) else {}
+    narrative = product_narrative if isinstance(product_narrative, dict) else {}
+    if narrative.get("role") in {"FIT_DEMONSTRATION", "DECISION_SUPPORT", "EVIDENCE", "EXAMPLE"} and not narrative.get("narrative_hijack"):
+        capacity = next((str(metric) for metric in metrics if "wh" in str(metric).lower()), m1)
+        output = next((str(metric) for metric in metrics if "w" in str(metric).lower() and "wh" not in str(metric).lower()), m2)
+        ac_access = next((str(metric) for metric in metrics if "v" in str(metric).lower()), "")
+        human_reality = str(narrative.get("human_reality") or "the current mobile-work situation")
+        decision_principle = (
+            "Start with the device's actual power requirement. Then check the available output and connection; "
+            "use stored energy to judge the reserve after the fit is established."
+        )
+        situation = f"For {human_reality}, the useful question is whether the equipment and power source fit the same job."
+        info = decision_principle
+        why = "A larger battery number alone does not establish device fit."
+        product_connection = (
+            f"{product_name} is a fit demonstration, not the answer by default: {output} is its stated output boundary, "
+            f"{capacity} describes its stored-energy reserve"
+            + (f", and {ac_access} describes its AC access." if ac_access else ".")
+        )
+        proof = "; ".join(item for item in (capacity, output, ac_access) if item) + "."
+        feature_bullets = [item for item in (capacity, output, ac_access) if item]
+        cta = "Save this decision sequence and compare your current setup." if narrative.get("cta_class") == "COMPARE" else selected_cta
     return {
         "product_id": product_id or None,
         "hook": selected_hook,
@@ -3706,6 +3729,7 @@ def _build_post_components(
         "emotional_outcome": str(strategy.get("emotional_outcome") or "confidence through better preparation"),
         "on_image_headline": str(strategy.get("on_image_headline") or selected_hook),
         "on_image_subline": str(strategy.get("on_image_subline") or m1),
+        "product_narrative": narrative,
     }
 
 

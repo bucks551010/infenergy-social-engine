@@ -148,8 +148,14 @@ def extract_claims(text: str) -> list[Claim]:
         s = s.strip()
         if not s:
             continue
+        low = s.lower()
+        if (
+            not _STAT_RE.search(s)
+            and low.startswith(("start with", "then check", "check the", "use the", "compare the"))
+        ):
+            continue
         has_stat = bool(_STAT_RE.search(s))
-        has_domain = any(d in s.lower() for d in HIGH_RISK_DOMAINS + MEDIUM_RISK_MARKERS)
+        has_domain = any(d in low for d in HIGH_RISK_DOMAINS + MEDIUM_RISK_MARKERS)
         if not (has_stat or has_domain):
             continue
         ctype = _classify_claim_type(s)

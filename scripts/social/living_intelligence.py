@@ -321,11 +321,40 @@ def product_narrative_decision(
         "role": role, "commercial_intensity": intensity, "cta_class": cta,
         "product_entry_question": question, "product_entry_need": str(audience_value.get("practical_value") or ""),
         "product_entry_decision": str(audience_value.get("reader_takeaway") or ""),
+        "human_reality": reality,
         "product_entry_campaign_context": understanding, "verified_fact": fact,
         "product_name": product_name or "this verified offering", "narrative_hijack": False,
         "visual_direction": "Show the decision criterion beside the verified capability; keep the human task as the primary visual subject.",
         "reason": "the verified fact answers the current campaign question without replacing the audience-value lesson",
     }
+
+
+def product_expression_for_engine_a(
+    *,
+    campaign: dict[str, Any],
+    reader_job: str,
+    question: str,
+    human_reality: str,
+    practical_value: str,
+    takeaway: str,
+    verified_facts: list[str],
+    product_name: str = "",
+) -> dict[str, Any]:
+    """Apply the existing product-entry policy after Engine A selects a product opportunity."""
+    role_campaign = dict(campaign)
+    role_campaign.setdefault("content_roles_used", ["DECISION_SUPPORT" if reader_job == "HELP_ME_CHOOSE" else "EDUCATION"])
+    return product_narrative_decision(
+        role_campaign,
+        {
+            "product_relevance": "NATURALLY_RELEVANT",
+            "reader_question": question,
+            "human_reality": human_reality,
+            "practical_value": practical_value,
+            "reader_takeaway": takeaway,
+        },
+        verified_facts=verified_facts,
+        product_name=product_name,
+    )
 
 
 def product_entry_copy(audience_value: dict[str, Any], narrative: dict[str, Any]) -> str:

@@ -516,16 +516,37 @@ def format_caption(components: dict[str, Any], *, platform: str) -> tuple[str, d
     """Use one proof in copy; let a spec-carrying visual carry the rest."""
     hook, context, payoff, specs = _compact_parts(components, platform)
     cta = str(components.get("cta") or "Learn more").strip()
-    if platform == "instagram":
+    narrative = components.get("product_narrative") if isinstance(components.get("product_narrative"), dict) else {}
+    decision_support = narrative.get("role") in {"FIT_DEMONSTRATION", "DECISION_SUPPORT"}
+    if decision_support:
+        product_proof = str(components.get("product_connection") or payoff).strip()
+        tags, categories = _portfolio(components, platform, " ".join((hook, context, product_proof)))
+        caption = "\n\n".join(filter(None, [hook, context, product_proof, cta, " ".join(f"#{tag}" for tag in tags)]))
+        presentation = evaluate(caption, platform=platform, visual_specs=specs, components=components)
+        presentation.update({
+            "priority_layers": ["scroll_stopper", "decision_method", "product_proof", "action_discovery"],
+            "selected_hashtags": [f"#{tag}" for tag in tags],
+            "hashtag_categories": categories,
+            "semantic_layer_evidence": {
+                "hook": hook,
+                "decision_method": context,
+                "product_proof": product_proof,
+                "cta": cta,
+            },
+            "reordered_for_priority": True,
+            "platform_expression": "decision_support_with_product_proof",
+        })
+    elif platform == "instagram":
         caption = "\n\n".join(filter(None, [hook, context, payoff, cta, "#PortablePower #Preparedness #TravelPower"]))
     elif platform == "linkedin":
         caption = "\n\n".join(filter(None, [hook, context, "The decision is less about accumulating specs and more about matching the supported job to the equipment you carry.", payoff, cta, "#PortablePower #Resilience #BusinessContinuity"]))
     else:
         caption = "\n\n".join(filter(None, [hook, context, payoff, cta, "#PortablePower #Preparedness #BackupPower"]))
-    caption, priority = refine_caption(caption, components=components, platform=platform, include_proof=False)
-    presentation = evaluate(caption, platform=platform, visual_specs=specs)
+    if not decision_support:
+        caption, priority = refine_caption(caption, components=components, platform=platform, include_proof=False)
+        presentation = evaluate(caption, platform=platform, visual_specs=specs, components=components)
+        presentation.update(priority)
     presentation.update({
-        **priority,
         "platform_role": platform,
         "emoji_mode": "NONE",
         "decoration_decisions": ["whitespace: hierarchy", "cta_separation: visibility"],

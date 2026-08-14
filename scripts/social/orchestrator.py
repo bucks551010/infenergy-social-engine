@@ -388,6 +388,31 @@ def _revision_objectives(feedback: list[str] | None, strategy: dict[str, Any]) -
     return objectives
 
 
+def _engine_a_product_expression_beats(
+    beat_content: dict[str, str],
+    narrative: dict[str, Any],
+    verified_facts: list[str],
+) -> dict[str, str]:
+    """Make an Engine A fit demonstration teach the decision before naming product proof."""
+    if narrative.get("role") not in {"FIT_DEMONSTRATION", "DECISION_SUPPORT"} or narrative.get("narrative_hijack"):
+        return beat_content
+    question = str(narrative.get("product_entry_question") or "").strip()
+    reality = str(narrative.get("human_reality") or "the current situation").strip()
+    product = str(narrative.get("product_name") or "this offering").strip()
+    facts = [str(fact).strip() for fact in verified_facts if str(fact).strip()]
+    capacity = next((fact for fact in facts if "wh" in fact.lower()), "the published capacity")
+    output = next((fact for fact in facts if "w" in fact.lower() and "wh" not in fact.lower()), "the published output")
+    ac_access = next((fact for fact in facts if "v" in fact.lower()), "the published connection")
+    method = "Start with the device's actual power requirement. Then check the available output and connection; use stored energy to judge reserve after the fit is established."
+    result = dict(beat_content)
+    result["hook"] = question or str(result.get("hook") or "")
+    result["answer"] = method + " That first check is more useful than starting with the largest battery number."
+    result["explanation"] = f"For {reality}, use the same sequence every time you compare a portable power option."
+    result["example"] = f"{product} is one fit demonstration. Its published {output} describes the output boundary. Its published {capacity} describes stored-energy reserve. Its published {ac_access} describes available AC access."
+    result["takeaway"] = "Check the device requirement first, then output and connection, then the reserve you need."
+    return result
+
+
 def _llm_concept_stems(brief: engines.EngineBrief, anchor: str) -> list[str] | None:
     """Ask Gemini for creative-concept stems (Master Build §30 / §15 Art Director)."""
     prompt = (
@@ -637,6 +662,18 @@ class SocialIntelligenceOrchestrator:
         else:
             locked = _runtime_strategy_lock(brief, lean_context, bi_offering, self.data_dir)
 
+        if engine_name == "A" and bi_offering:
+            product_narrative = living_intelligence.product_expression_for_engine_a(
+                campaign=recent.get("campaign_state", {}),
+                reader_job=brief.reader_job,
+                question=brief.question or brief.hook,
+                human_reality=str(locked.get("customer_moment") or ""),
+                practical_value=str(brief.information_gap or brief.angle),
+                takeaway=str(brief.angle),
+                verified_facts=list(bi_offering.get("verified_facts") or []),
+                product_name=str(bi_offering.get("name") or ""),
+            )
+
         creative_packet = creative_cognition.decide(
             strategy=locked, platform=platform, recent=recent, data_dir=self.data_dir
         )
@@ -668,6 +705,12 @@ class SocialIntelligenceOrchestrator:
             revision_objectives,
         )
         beat_content = llm_beats or _assemble_copy(brief=brief, structure_beats=beats)
+        if engine_name == "A":
+            beat_content = _engine_a_product_expression_beats(
+                beat_content,
+                product_narrative,
+                list((bi_offering or {}).get("verified_facts") or verified_facts or []),
+            )
         removed_numeric_claims: list[str] = []
         claim_verified_facts = list((bi_offering or {}).get("verified_facts") or []) or _bi_verified_facts(bi_ctx)
         for beat, value in list(beat_content.items()):
@@ -857,6 +900,7 @@ class SocialIntelligenceOrchestrator:
                 "revision_objectives": revision_objectives,
                 "removed_unsupported_numeric_claims": removed_numeric_claims,
                 "strategy_lock": locked,
+                "product_narrative": product_narrative,
             },
             visual={
                 "semantic_role": semantic_role,

@@ -128,7 +128,7 @@ def score(
     factors["hook"] = hs
 
     # novelty: proxy — presence of a specific number or angle keyword
-    factors["novelty"] = 0.8 if any(k in body.lower() for k in ("quietly", "actually", "few people", "overlooked")) else 0.55
+    factors["novelty"] = 0.8 if any(k in body.lower() for k in ("quietly", "actually", "few people", "overlooked", "first check", "fit before capacity")) else 0.55
 
     # information_value: from density + genre density
     factors["information_value"] = 0.6 * float(genre.get("avg_information_density", 0.5)) + 0.4 * copy_intelligence.density(body)
@@ -158,7 +158,8 @@ def score(
     ctas = set(genre.get("cta_preferences", []))
     factors["saveability"] = 0.9 if "SAVE" in ctas else 0.4
     factors["shareability"] = 0.85 if "SHARE" in ctas else 0.4
-    factors["conversation_potential"] = 0.8 if ("COMMENT" in ctas or "REFLECT" in ctas) else 0.35
+    meaningful_question = hook.strip().endswith("?") and any(term in body.lower() for term in ("first check", "compare", "decision", "fit"))
+    factors["conversation_potential"] = 0.8 if ("COMMENT" in ctas or "REFLECT" in ctas or meaningful_question) else 0.35
 
     factors["brand_alignment"] = 0.85
     if brand_voice:

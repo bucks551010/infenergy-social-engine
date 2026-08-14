@@ -18,10 +18,11 @@ def test_shadow_records_never_report_published():
         {"wordpress": True, "facebook": True, "instagram": True, "linkedin": True},
     )
 
-    assert len(records) == 3
-    assert "wordpress" not in {record["platform"] for record in records}
+    assert {record["platform"] for record in records} == {"facebook", "instagram", "linkedin", "wordpress"}
     assert {record["status"] for record in records} == {"shadow_not_published"}
     assert {record["error"] for record in records} == {"shadow_mode_no_external_publication"}
+    wordpress = next(record for record in records if record["platform"] == "wordpress")
+    assert wordpress["platform_post_id"] == "skipped"
 
 
 def test_material_integrity_drift_is_a_runtime_publish_error():

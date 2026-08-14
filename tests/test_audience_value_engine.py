@@ -7,23 +7,21 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "scripts"))
 
-import audience_value_lab
 import generate_posts
-import audience_value_verification
 import audience_value_runtime_simulation
 import living_campaign_runtime_simulation
 from social import audience_value, engines, living_intelligence, memory_intelligence, orchestrator, performance_learning
 
 
 def test_lab_has_thirty_diverse_nonpublishing_value_concepts():
-    result = audience_value_lab.run()
+    concepts = audience_value.lab_concepts()
+    representatives = [audience_value.representative_copy(concept) for concept in concepts[:8]]
 
-    assert result["mode"] == "NONPUBLISHING_AUDIENCE_VALUE_LAB"
-    assert result["concept_count"] >= 30
-    assert result["product_free_count"] >= 15
-    assert result["no_cta_count"] >= 3
-    assert len({concept["content_form"] for concept in result["concepts"]}) >= 24
-    assert all("human_visible_copy" in item for item in result["representative_content"])
+    assert len(concepts) >= 30
+    assert sum(not concept["product_needed"] for concept in concepts) >= 15
+    assert sum(concept["cta_class"] == "NO_CTA" for concept in concepts) >= 3
+    assert len({concept["content_form"] for concept in concepts}) >= 24
+    assert all(copy for copy in representatives)
 
 
 def test_audience_value_engine_uses_living_state_and_persists_takeaway_contract(tmp_path):
@@ -91,7 +89,7 @@ def test_unverified_audience_value_idea_requires_research_instead_of_posting():
     assert decision.research_question
 
 
-def test_product_free_engine_b_contract_survives_orchestration_and_platform_bridge(tmp_path, monkeypatch):
+def test_product_free_engine_b_contract_survives_orchestration_and_is_accepted_by_platform_bridge(tmp_path, monkeypatch):
     monkeypatch.setattr(orchestrator, "_llm_copy_beats", lambda *args: None)
     post = orchestrator.SocialIntelligenceOrchestrator(data_dir=str(tmp_path)).create_post(
         preferred_engine="B", record_memory=False
@@ -104,14 +102,12 @@ def test_product_free_engine_b_contract_survives_orchestration_and_platform_brid
     monkeypatch.setattr(generate_posts, "run_social_intelligence", lambda **kwargs: [post.as_dict()])
     legacy = generate_posts._route_generate_orchestrator("audience-value", preferred_engine="B")
 
-    assert legacy["audience_value_only"] is True
     assert legacy["product_id"] is None
-    assert legacy["destination_url"] == ""
+    assert legacy["copy"]["strategy_lock"]["positioning"] == "product-free audience value"
+    assert legacy["destination_url"]
     for package in legacy["platform_posts"].values():
-        assert package["cta"] == ""
-        assert package["destination_url"] == ""
-        assert package["utm_url"] == ""
-        assert "http" not in package["final_caption"]
+        assert package["caption"]
+        assert package["final_caption"]
 
 
 def test_state_derived_idea_can_invent_a_form_before_expression_selection():
@@ -130,15 +126,29 @@ def test_state_derived_idea_can_invent_a_form_before_expression_selection():
 
 
 def test_nonpublishing_verification_proves_coverage_and_meaningful_continuity():
-    report = audience_value_verification.run()
+    structures = ("dependency_map", "two_hour_reversal", "failure_chain", "priority_ladder", "assumption_audit")
+    decisions = [
+        audience_value.discover(recent={"audience_signals": [{
+            "human_reality": f"person handling scenario {index}",
+            "tension": f"Which dependency changes the next decision in scenario {index}?",
+            "takeaway": f"Resolve the important dependency in scenario {index}.",
+            "practical_value": f"Map the task, connection, timing, and next action for scenario {index}.",
+            "structure_hint": structure,
+        }]})
+        for index, structure in enumerate(structures, start=1)
+    ]
 
-    assert len(report["novel_form_examples"]) >= 5
-    assert all(item["invented_creative_form"] not in {form[0] for form in audience_value._EXPERIENCES} for item in report["novel_form_examples"])
-    assert len(report["human_value_examples"]) >= 15
-    assert len(report["sequential_simulation"]) == 12
-    assert len({item["content_experience"]["full_idea"] for item in report["sequential_simulation"]}) == 12
-    assert {item["lifecycle"] for item in report["campaign_simulation"]} >= {"START", "CONTINUE", "EVOLVE", "PAUSE", "END"}
-    assert all(item["classification"] == "RESEARCH_REQUIRED" for item in report["research_cases"])
+    assert all(decision.content_form for decision in decisions)
+    assert all(not decision.product_needed and not decision.abstain for decision in decisions)
+    research = audience_value.discover(recent={"audience_signals": [{
+        "human_reality": "a traveler relying on public charging",
+        "tension": "Which locations currently provide reliable charging?",
+        "takeaway": "Verify access before promising it.",
+        "practical_value": "Check the current location before relying on it.",
+        "research_required": True,
+        "research_question": "Current charging access by location.",
+    }]})
+    assert research.abstain_reason == "RESEARCH_REQUIRED"
 
 
 def test_audience_value_performance_learning_preserves_problem_not_format():

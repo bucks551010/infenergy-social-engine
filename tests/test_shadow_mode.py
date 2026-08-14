@@ -82,6 +82,18 @@ def test_history_audit_redacts_secret_bearing_fields(tmp_path, monkeypatch):
     assert audit["nested"]["caption"] == "safe"
 
 
+def test_generation_diagnostics_persists_final_memory_and_remediation():
+    content = {
+        "final_memory": {"final_outcome": "abstain", "memory_anchor": "Keep it factual."},
+        "evidence_remediation": {"status": "ABSTAINED_NO_VIABLE_REPLACEMENT"},
+    }
+
+    diagnostics = run_engine._generation_diagnostics(content)
+
+    assert diagnostics["final_memory"]["final_outcome"] == "abstain"
+    assert diagnostics["evidence_remediation"]["status"] == "ABSTAINED_NO_VIABLE_REPLACEMENT"
+
+
 def test_single_platform_scores_ignore_missing_other_social_channels():
     content = {
         "selected_hook": "How do you match backup power to the device that matters?",

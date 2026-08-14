@@ -342,6 +342,8 @@ def _generation_diagnostics(content: dict) -> dict:
         "platform_posts": content.get("platform_posts", {}),
         "creative_decision_packet": content.get("creative_decision_packet", {}),
         "publish_decision": content.get("publish_decision", {}),
+        "evidence_remediation": content.get("evidence_remediation", {}),
+        "final_memory": content.get("final_memory", {}),
     }
 
 

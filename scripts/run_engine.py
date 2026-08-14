@@ -584,6 +584,17 @@ def _retryability_classification(decision: dict, findings: list[str]) -> str:
     return "TERMINAL"
 
 
+def _evidence_safe_remediation_feedback(content: dict) -> list[str]:
+    """Request one new, verified-facts-first candidate after research governance blocks a claim."""
+    product = str(content.get("product_name") or content.get("product_id") or "the product")
+    return [
+        "The prior candidate is blocked by central unsupported reasoning. Do not restate, soften, or remove metadata from that claim.",
+        f"Choose a materially new, single-situation angle for {product} using only verified product facts already supplied to the generator.",
+        "Express feature to function to practical use to human value without asserting compatibility, runtime, safety, outage performance, or other unverified consequences.",
+        "Keep one natural human situation, a useful verified-fact takeaway, and an earned CTA. Abstain if no such angle is available.",
+    ]
+
+
 def _enforce_candidate_claim_boundary(content: dict) -> list[str]:
     """Remove only unsupported unit-bearing numeric sentences before validation."""
     verified_facts = list(content.get("product_metrics") or [])
@@ -1196,6 +1207,8 @@ def main() -> None:
     prior_generated_visuals: dict = {}
     previous_decision: str | None = None
     previous_current_findings: list[str] = []
+    evidence_remediation_used = False
+    original_research_block: dict | None = None
     t_generation = time.perf_counter()
     for idx in range(3):
         if idx > 0:
@@ -1207,6 +1220,12 @@ def main() -> None:
                 approved_strategy=locked_strategy or None,
                 revision_feedback=pending_feedback,
             )
+            if evidence_remediation_used and original_research_block:
+                content["evidence_remediation"] = {
+                    "status": "REMEDIATION_CANDIDATE",
+                    "original_candidate": original_research_block,
+                    "attempt_limit": 1,
+                }
             if pending_scope == "copy" and _can_carry_forward_visuals(prior_generated_visuals, content, effective_channels):
                 content["generated_visuals"] = prior_generated_visuals
                 content["revision_reused_components"] = ["generated_visuals"]
@@ -1290,6 +1309,12 @@ def main() -> None:
         historical_feedback = list(pending_feedback)
         issue_closure = _issue_closure(historical_feedback, critic_feedback)
         retryability = _retryability_classification(publish_decision, critic_feedback)
+        research_required = str(publish_decision.get("decision") or "") == "do_not_publish" and "RESEARCH_REQUIRED" in {
+            str(reason) for reason in publish_decision.get("reasons", [])
+        }
+        if research_required and not evidence_remediation_used:
+            original_research_block = _candidate_audit(content)
+            retryability = "EVIDENCE_SAFE_REMEDIATION"
         diagnosis = _cognitive_diagnosis(
             content,
             strategy=current_strategy or locked_strategy,
@@ -1322,6 +1347,10 @@ def main() -> None:
                 "strategy_lock": locked_strategy,
                 "visual_generation": generated_visuals.get("visual_generation", {}),
                 "candidate": _candidate_audit(content),
+                "evidence_remediation": {
+                    "used": evidence_remediation_used,
+                    "original_research_block": original_research_block,
+                },
             }
         )
 
@@ -1395,13 +1424,25 @@ def main() -> None:
                 break
 
         # A critic-directed revision is bounded to three candidates total.
-        if idx < 2 and scoring.get("decision") != "reject" and (
+        if idx < 2 and not evidence_remediation_used and scoring.get("decision") != "reject" and (
             publish_decision["decision"] in {"revise", "regenerate"}
-            or (publish_decision["decision"] == "do_not_publish" and retryability == "RETRYABLE_CONTENT")
+            or (publish_decision["decision"] == "do_not_publish" and retryability in {"RETRYABLE_CONTENT", "EVIDENCE_SAFE_REMEDIATION"})
         ):
-            pending_feedback = critic_feedback or ["Improve the candidate so it meets the existing critic threshold."]
-            pending_scope = diagnosis["repair_scope"] if diagnosis["repair_scope"] != "angle_and_hook_promise" else "strategy"
-            if diagnosis["metacognition"]["action"] == "RECONSIDER_ANGLE" and locked_strategy:
+            if retryability == "EVIDENCE_SAFE_REMEDIATION":
+                evidence_remediation_used = True
+                pending_feedback = _evidence_safe_remediation_feedback(content)
+                pending_scope = "strategy"
+                prior_generated_visuals = {}
+                content["evidence_remediation"] = {
+                    "status": "ORIGINAL_BLOCKED",
+                    "original_candidate": original_research_block,
+                    "attempt_limit": 1,
+                }
+            else:
+                pending_feedback = critic_feedback or ["Improve the candidate so it meets the existing critic threshold."]
+                pending_scope = diagnosis["repair_scope"] if diagnosis["repair_scope"] != "angle_and_hook_promise" else "strategy"
+                prior_generated_visuals = dict(content.get("generated_visuals") or {})
+            if retryability != "EVIDENCE_SAFE_REMEDIATION" and diagnosis["metacognition"]["action"] == "RECONSIDER_ANGLE" and locked_strategy:
                 new_angle, new_hook = _safe_reconsidered_angle(locked_strategy)
                 locked_strategy = strategy_lock_intelligence.reconsider_angle(
                     locked_strategy,
@@ -1414,8 +1455,6 @@ def main() -> None:
                     "Use the reopened verified-facts angle. Do not restore removed runtime, efficiency, or appliance compatibility claims.",
                 ]))
                 prior_generated_visuals = {}
-            else:
-                prior_generated_visuals = dict(content.get("generated_visuals") or {})
             previous_decision = str(publish_decision["decision"])
             previous_current_findings = list(critic_feedback)
             continue

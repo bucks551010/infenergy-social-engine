@@ -11,7 +11,6 @@ from typing import Any
 
 import requests
 
-from social import cloudflare_visual, generation_policy
 from url_safety import is_safe_http_url
 
 BASE_DIR = os.path.dirname(__file__)
@@ -1082,8 +1081,6 @@ def generate_visuals(content: dict[str, Any], visual_plan: dict[str, Any] | None
     template_name = _select_visual_template(plan, "facebook")
     image_strategy = str(plan.get("image_strategy") or os.environ.get("VISUAL_IMAGE_STRATEGY", "gemini_generated")).strip().lower()
     gemini_available = bool(os.environ.get("GEMINI_API_KEY", "").strip())
-    free_mode = generation_policy.mode() in {"FREE_AI_ONLY", "FREE_AI_ALLOWED"}
-    selected_provider = "cloudflare" if free_mode else str(os.environ.get("IMAGE_PROVIDER", "gemini")).strip().lower()
     render_engines: dict[str, str] = {}
     product_overlay_applied: dict[str, bool] = {}
     fallback_reasons: dict[str, str] = {}
@@ -1105,21 +1102,12 @@ def generate_visuals(content: dict[str, Any], visual_plan: dict[str, Any] | None
         file_name = f"{post_id}_{platform}.png"
         file_path = os.path.join(VISUAL_DIR, file_name)
 
-        # An AI provider must supply the final creative. Pillow is limited to
-        # technical image normalization and artifact verification, never design.
-        if selected_provider == "cloudflare":
-            rendered, reason, metadata = _generate_cloudflare_full_creative(content, platform, plan, file_path)
-        elif not gemini_available:
-            rendered, reason, metadata = _generate_gemini_full_creative(content, platform, plan, file_path)
-        else:
-            authorized, reason = generation_policy.paid_authorized("gemini", "image")
-            if authorized:
-                rendered, reason, metadata = _generate_gemini_full_creative(content, platform, plan, file_path)
-            else:
-                rendered, metadata = False, {"visual_generation_attempted": False, "generation_status": "failed", "visual_provider": "gemini", "provider_error_class": "COST_MODE_BLOCKED"}
+        # Gemini generates the final creative directly; Pillow only normalizes
+        # and validates the artifact for downstream publication.
+        rendered, reason, metadata = _generate_gemini_full_creative(content, platform, plan, file_path)
         visual_generation[platform] = metadata
         if rendered:
-            render_engines[platform] = selected_provider
+            render_engines[platform] = "gemini"
             product_overlay_applied[platform] = product_specific_source_present
             visuals[platform] = file_path
             artifact_reviews[platform] = review_rendered_visual(file_path, platform)

@@ -12,9 +12,6 @@ import time
 from dataclasses import dataclass, field
 from typing import Any
 
-from . import generation_policy
-
-
 DEFAULT_MODEL_ROUTES: dict[str, str] = {
     # The fast route remains entirely deployment-configurable. The earlier
     # gemini-2.5-flash default returned 404 for this deployment, so use the
@@ -87,10 +84,6 @@ def generate_json(task: str, prompt: str, *, system_instruction: str = "") -> di
     or the call/parse fails for any reason.
     """
     global _LAST_ERROR
-    authorized, reason = generation_policy.paid_authorized("gemini", "text")
-    if not authorized:
-        _LAST_ERROR = f"gemini_blocked:{reason}"
-        return None
     api_key = os.environ.get("GEMINI_API_KEY", "").strip()
     if not api_key:
         _LAST_ERROR = "GEMINI_API_KEY not set"
@@ -114,7 +107,6 @@ def generate_json(task: str, prompt: str, *, system_instruction: str = "") -> di
                 contents=prompt,
                 config=types.GenerateContentConfig(**config_kwargs),
             )
-            generation_policy.record_paid_call("text", "gemini")
             text = str(getattr(response, "text", "") or "").strip()
             if not text:
                 errors.append(f"model={model}: empty response text")
@@ -127,8 +119,6 @@ def generate_json(task: str, prompt: str, *, system_instruction: str = "") -> di
             return parsed
         except Exception as exc:
             errors.append(f"model={model}: {type(exc).__name__}: {exc}")
-            generation_policy.mark_provider_unavailable("gemini", str(exc))
-            break
     _LAST_ERROR = f"task={task}: " + " | ".join(errors)
     print(f"[model_router] {_LAST_ERROR}")
     return None

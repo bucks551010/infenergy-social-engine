@@ -138,50 +138,26 @@ def test_pre_visual_gate_authorizes_only_publishable_candidate():
     assert gate["selected_candidate"] == "candidate-a:candidate-1"
 
 
-def test_pre_visual_gate_defers_missing_facebook_artifact_requirements():
-    content = _pre_visual_content(validation_status="failed")
-    content["validation_errors"] = ["facebook_visual_missing", "facebook_visual_not_ai_generated"]
-    content["publish_decision"] = {"publishable": False, "reasons": list(content["validation_errors"])}
-
-    gate = run_engine._pre_visual_gate(content, {"facebook": True, "instagram": False, "linkedin": False}, {"total": 97.0, "platform_results": {}})
-
-    assert gate["status"] == "PASS"
-    assert gate["flux_authorized"] is True
-    assert gate["copy_ready"] is True
-    assert gate["image_calls"] == 0
-
-
-def test_authorized_product_free_candidate_generates_missing_artifact_metadata(monkeypatch, tmp_path):
+def test_product_free_gemini_artifact_uses_normalized_visual_handoff(tmp_path):
+    artifact = tmp_path / "engine-b-facebook.png"
+    from PIL import Image
+    Image.new("RGB", (1200, 1200), "#224466").save(artifact)
     content = _pre_visual_content()
     content.update({
         "post_id": "engine-b-product-free",
         "candidate_attempt_id": "engine-b-product-free:candidate-1",
         "strategy_lock": {"product_relevance": "NOT_RELEVANT", "product_role": "NONE"},
-        "generated_visuals": {"strategy_fingerprint": "metadata-only"},
+        "generated_visuals": {
+            "facebook": str(artifact),
+            "render_engines": {"facebook": "gemini"},
+            "product_overlay_applied": {"facebook": False},
+            "visual_generation": {"facebook": {"visual_generation_attempted": True, "visual_provider": "gemini", "visual_model": "gemini-2.5-flash-image"}},
+        },
         "publish_decision": {"publishable": True, "reasons": []},
     })
-    content["pre_visual_gate"] = run_engine._pre_visual_gate(
-        content, {"facebook": True, "instagram": False, "linkedin": False}, {"total": 97.0, "platform_results": {}}
-    )
-    calls = []
-
-    def fake_generate(candidate, visual_plan=None, platforms=None):
-        calls.append((candidate, platforms))
-        artifact = tmp_path / "engine-b-facebook.png"
-        from PIL import Image
-        Image.new("RGB", (1024, 1024), "#224466").save(artifact)
-        return {
-            "facebook": str(artifact),
-            "render_engines": {"facebook": "cloudflare"},
-            "product_overlay_applied": {"facebook": False},
-            "visual_generation": {"facebook": {"visual_generation_attempted": True, "visual_provider": "cloudflare", "model": "@cf/black-forest-labs/flux-2-klein-9b"}},
-        }
-
-    monkeypatch.setattr(run_engine.generate_posts, "generate_visuals", fake_generate)
     reviews = run_engine._ensure_final_artifact_qa(content, {"facebook": True, "instagram": False, "linkedin": False})
 
-    assert calls and calls[0][1] == ["facebook"]
-    assert content["generated_visuals"]["render_engines"]["facebook"] == "cloudflare"
+    assert content["generated_visuals"]["render_engines"]["facebook"] == "gemini"
     assert reviews["facebook"]["verdict"] == "PASS"
     assert "facebook_product_overlay_missing" not in run_engine._live_visual_gate_errors(content, {"facebook": True}, dry_run=False)
 
@@ -254,32 +230,6 @@ def test_product_free_orchestrator_package_uses_homepage_without_catalog_injecti
         package, {"facebook": True, "instagram": False, "linkedin": False}
     ) == []
 
-
-def test_blocked_powerpulse_candidate_cannot_reach_flux_but_retained_audience_value_candidate_can(monkeypatch, tmp_path):
-    calls = []
-
-    def fake_generate(**kwargs):
-        calls.append(kwargs)
-        return False, "mock_provider", {"visual_generation_attempted": True, "visual_provider": "cloudflare"}
-
-    monkeypatch.setenv("GENERATION_COST_MODE", "FREE_AI_ONLY")
-    monkeypatch.setattr(social_visuals.cloudflare_visual, "generate", fake_generate)
-    candidate_a = _pre_visual_content(evidence={"ready": False, "status": "RESEARCH_REQUIRED"})
-    candidate_a.update({"post_id": "powerpulse-a", "candidate_attempt_id": "powerpulse-a:candidate-1", "product_id": "PPP-200"})
-    candidate_a["publish_decision"] = {"publishable": False, "reasons": ["RESEARCH_REQUIRED"]}
-    candidate_b = _pre_visual_content()
-    candidate_b.update({"post_id": "audience-b", "candidate_attempt_id": "audience-b:candidate-2", "product_id": "", "topic": "Daily routine"})
-    candidate_b["publish_decision"] = {"publishable": True, "reasons": []}
-
-    candidate_a["pre_visual_gate"] = run_engine._pre_visual_gate(candidate_a, {"facebook": True, "instagram": False, "linkedin": False}, {"total": 97.0, "platform_results": {}})
-    candidate_b["pre_visual_gate"] = run_engine._pre_visual_gate(candidate_b, {"facebook": True, "instagram": False, "linkedin": False}, {"total": 97.0, "platform_results": {}})
-
-    assert candidate_a["pre_visual_gate"]["flux_authorized"] is False
-    assert candidate_b["pre_visual_gate"]["flux_authorized"] is True
-    social_visuals._generate_cloudflare_full_creative(candidate_b, "facebook", {}, str(tmp_path / "b.png"))
-
-    assert len(calls) == 1
-    assert calls[0]["candidate_id"] == "audience-b:candidate-2"
 
 def test_incidental_medium_claim_does_not_block_and_verified_central_claim_can_proceed():
     incidental = claim_intelligence.build_ledger("The published output is 200W. Capacity is an important specification.", verified_facts=["200W"], forbidden_claims=[])

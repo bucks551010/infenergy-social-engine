@@ -157,7 +157,6 @@ def _route_generate_orchestrator(
     **kw: Any,
 ) -> dict[str, Any]:
     """Return the first orchestrated post package in the legacy payload shape used by the runtime."""
-    defer_visuals = bool(kw.pop("defer_visuals", False))
     social_platform = _social_platform_key(platform)
     council_decision: dict[str, Any] = {}
     remediation_context = kw.get("remediation_context") if isinstance(kw.get("remediation_context"), dict) else {}
@@ -350,7 +349,7 @@ def _route_generate_orchestrator(
     # generate_visuals() step the legacy pipeline uses so orchestrator
     # posts get real, product-anchored creative instead of staying empty.
     legacy["visual_plan"] = visual_pkg
-    legacy["generated_visuals"] = {} if defer_visuals else generate_visuals(legacy, visual_plan=visual_pkg)
+    legacy["generated_visuals"] = generate_visuals(legacy, visual_plan=visual_pkg)
     from social import reels
 
     instagram_decision = reels.choose_instagram_media(
@@ -371,7 +370,7 @@ def _route_generate_orchestrator(
         legacy["reel_plan"] = reel_plan
         reel_gate = reels.validate_reel_plan(reel_plan)
         legacy["reel_pre_render_gate"] = reel_gate
-        if reel_gate["status"] == "REEL_READY" and not defer_visuals:
+        if reel_gate["status"] == "REEL_READY":
             reel_artifacts = reels.render_reel(
                 reel_plan,
                 source_image=str((legacy.get("generated_visuals") or {}).get("instagram") or ""),
@@ -383,8 +382,6 @@ def _route_generate_orchestrator(
             reel_artifacts["motion_qa"] = reels.motion_qa(reel_plan)
             legacy["instagram_reel"] = reel_artifacts
             platform_posts["instagram"]["reel"] = reel_artifacts
-        elif reel_gate["status"] == "REEL_READY":
-            legacy["reel_render_deferred"] = True
         else:
             legacy["instagram_media_decision"]["selected_format"] = "STATIC"
             platform_posts["instagram"]["media_type"] = "STATIC"
@@ -4263,12 +4260,6 @@ def _build_fallback_content_no_product(
 
 
 def _generate_json_with_gemini(prompt: str, model_candidates: list[str], attempts_per_model: int = 2) -> dict | None:
-    from social import generation_policy
-
-    authorized, reason = generation_policy.paid_authorized("gemini", "text")
-    if not authorized:
-        print(f"[Gemini] caption generation skipped: {reason}")
-        return None
     api_key = os.environ.get("GEMINI_API_KEY", "").strip()
     if not api_key:
         print("[Gemini] caption generation skipped: GEMINI_API_KEY not set")
@@ -4286,7 +4277,6 @@ def _generate_json_with_gemini(prompt: str, model_candidates: list[str], attempt
                     contents=prompt,
                     config=types.GenerateContentConfig(response_mime_type="application/json"),
                 )
-                generation_policy.record_paid_call("text", "gemini")
                 raw = (response.text or "").strip()
                 if not raw:
                     last_error = f"{model_name}:empty_response"
@@ -4300,7 +4290,6 @@ def _generate_json_with_gemini(prompt: str, model_candidates: list[str], attempt
             except Exception as e:
                 last_error = f"{model_name}:attempt{attempt + 1}:{type(e).__name__}:{str(e)[:200]}"
                 if any(marker in last_error.lower() for marker in terminal_markers):
-                    generation_policy.mark_provider_unavailable("gemini", last_error)
                     return None
                 continue
                 continue
@@ -4945,11 +4934,7 @@ def generate(
     revision_feedback: list[str] | None = None,
     remediation_context: dict[str, Any] | None = None,
     verified_facts_override: list[str] | None = None,
-    defer_visuals: bool = False,
 ) -> dict:
-    from social import generation_policy
-
-    generation_policy.start_run()
     mode = _pipeline_mode(pipeline_override)
     platform = os.environ.get("POST_PLATFORMS", "instagram_feed").split(",")[0].strip() or "instagram_feed"
 
@@ -4965,7 +4950,6 @@ def generate(
             revision_feedback=revision_feedback,
             remediation_context=remediation_context,
             verified_facts=verified_facts_override,
-            defer_visuals=defer_visuals,
         )
     if mode != "legacy" and _social_intelligence_enabled():
         return _route_generate_orchestrator(
@@ -4977,7 +4961,6 @@ def generate(
             revision_feedback=revision_feedback,
             remediation_context=remediation_context,
             verified_facts=verified_facts_override,
-            defer_visuals=defer_visuals,
         )
 
     ensure_runtime_data()

@@ -1272,7 +1272,7 @@ def _live_visual_gate_errors(content: dict, effective_channels: dict[str, bool],
     for platform in requested:
         if not str(visuals.get(platform, "")).strip():
             errors.append(f"{platform}_visual_missing")
-        if require_ai_visual and str(render_engines.get(platform, "")) not in {"gemini", "cloudflare"}:
+        if require_ai_visual and str(render_engines.get(platform, "")) != "gemini":
             errors.append(f"{platform}_visual_not_ai_generated")
         if contract["product_overlay_required"] and overlays.get(platform) is not True:
             errors.append(f"{platform}_product_overlay_missing")
@@ -1407,12 +1407,7 @@ def _ensure_final_artifact_qa(content: dict, effective_channels: dict[str, bool]
         if effective_channels.get(platform):
             existing_review = reviews.get(platform) if isinstance(reviews.get(platform), dict) else {}
             artifact_path = str(visuals.get(platform) or existing_review.get("artifact_path") or "")
-            allow_native_size = str(((visuals.get("render_engines") or {}).get(platform) or "")) == "cloudflare"
-            reviews[platform] = (
-                review_rendered_visual(artifact_path, platform, allow_native_size=True)
-                if allow_native_size
-                else review_rendered_visual(artifact_path, platform)
-            )
+            reviews[platform] = review_rendered_visual(artifact_path, platform)
     visuals["artifact_reviews"] = reviews
     content["artifact_visual_qa"] = reviews
     return reviews
@@ -1598,7 +1593,6 @@ def main() -> None:
             funnel_stage_override=funnel_stage_override,
             product_id_override=product_id_override,
             pipeline_override=pipeline_override,
-            defer_visuals=True,
         )
     except RuntimeError as exc:
         if str(exc) != "no viable opportunities generated":
@@ -1712,7 +1706,6 @@ def main() -> None:
                     revision_feedback=pending_feedback,
                     remediation_context=remediation_context,
                     verified_facts_override=research_verified_facts or None,
-                    defer_visuals=True,
                 )
             except RuntimeError as exc:
                 if str(exc) != "no viable opportunities generated":
@@ -1969,7 +1962,6 @@ def main() -> None:
                 funnel_stage_override="ATTENTION",
                 product_id_override="INF-9792",
                 pipeline_override=pipeline_override,
-                defer_visuals=True,
             )
             validation = validate_generated_content(content)
             strict_runtime_claims = str(os.environ.get("STRICT_RUNTIME_CLAIMS", "false")).strip().lower() in {"1", "true", "yes", "on"}
@@ -2108,13 +2100,8 @@ def main() -> None:
             content["validation_errors"] = list(revalidated.get("errors", []))
             final_validation_ok = bool(revalidated.get("passed"))
             recovery_story["presentation_repairs"] = repaired
-    pre_visual_gate = _pre_visual_gate(content, effective_channels, scoring)
-    content["pre_visual_gate"] = pre_visual_gate
-    if pre_visual_gate["flux_authorized"]:
-        _ensure_final_artifact_qa(content, effective_channels)
-        artifact_errors = _artifact_visual_errors_by_platform(content, effective_channels)
-    else:
-        artifact_errors = {}
+    _ensure_final_artifact_qa(content, effective_channels)
+    artifact_errors = _artifact_visual_errors_by_platform(content, effective_channels)
     for platform, issues in artifact_errors.items():
         effective_channels[platform] = False
         channel_reasons[platform] = f"artifact_visual_qa:{','.join(issues)}"

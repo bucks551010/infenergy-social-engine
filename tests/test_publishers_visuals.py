@@ -229,7 +229,7 @@ class PublisherVisualTests(unittest.TestCase):
                 "facebook": "editorial.png",
                 "instagram": "editorial.png",
                 "linkedin": "editorial.png",
-                "render_engines": {"facebook": "cloudflare", "instagram": "cloudflare", "linkedin": "cloudflare"},
+                "render_engines": {"facebook": "gemini", "instagram": "gemini", "linkedin": "gemini"},
                 "product_overlay_applied": {"facebook": False, "instagram": False, "linkedin": False},
             },
         }

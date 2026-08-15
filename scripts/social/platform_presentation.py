@@ -490,7 +490,7 @@ def final_caption_qa(
         reasons.append("primary_value_not_visible")
     if platform == "facebook" and numeric_proof_available and not metrics["specs_present"]:
         reasons.append("verified_proof_missing")
-    if platform == "facebook" and not metrics["link_present"]:
+    if platform == "facebook" and not product_free and not metrics["link_present"]:
         reasons.append("required_link_missing")
     if metrics["paragraph_count"] < 4:
         reasons.append("paragraph_structure_missing")

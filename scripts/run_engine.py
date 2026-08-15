@@ -344,6 +344,15 @@ def _remediation_context(content: dict, decision: dict, duplicates: dict) -> dic
     return {"original_candidate_id": str(content.get("post_id") or ""), "original_candidate_attempt_id": candidate_attempt_id, "original_concept": concept, "blocked_opportunity_fingerprint": blocked_fingerprint, "original_claim_ledger": content.get("claim_ledger") or {}, "original_evidence_readiness": readiness, "original_centrality_summary": {"central_unresolved": [str(claim.get("claim") or "") for claim in claims if isinstance(claim, dict) and claim.get("centrality") == "CENTRAL" and claim.get("research_status") == "RESEARCH_REQUIRED"], "status": str(readiness.get("status") or "")}, "remediation_reason": "central_evidence_block_requires_new_opportunity", "blocked_content_mode": blocked_content_mode, "fallback_type": "CONTENT_MODE_SHIFT" if replacement else "NO_VIABLE_LOW_CLAIM_MODE", "excluded_concepts": [value for value in concept.values() if value], "excluded_product_ids": excluded_product_ids, "exclude_engine_a_decision_thesis": True, "selection_rotation_index": int(content.get("selection_rotation_index") or 0) + 1, "candidate_attempt_id": f"{content.get('post_id')}:candidate-2", "original_governance": decision, "opportunity_shortlist": shortlist, "replacement_candidate": replacement, "alternatives_considered": alternatives_considered}
 
 
+def _quality_recovery_context(content: dict, decision: dict, duplicates: dict) -> dict:
+    """Retire a weak premise after its bounded copy work and continue the retained bench."""
+    context = _remediation_context(content, decision, duplicates)
+    context["remediation_reason"] = "candidate_quality_below_threshold_requires_new_opportunity"
+    context["fallback_type"] = "CANDIDATE_SHIFT" if context.get("replacement_candidate") else "NO_VIABLE_CANDIDATE_SHIFT"
+    context["exclude_engine_a_decision_thesis"] = False
+    return context
+
+
 def _semantic_difference(original: dict, replacement: dict) -> tuple[bool, str]:
     changed = [key for key in original if original.get(key) != replacement.get(key)]
     if not changed:
@@ -1531,7 +1540,7 @@ def main() -> None:
     print(f"Phase5 readiness: {json.dumps(phase5_readiness, ensure_ascii=True)}\n")
 
     print("[1/5] Generating content with Gemini...")
-    # Phase 8: up to three generation attempts with score/validation gating.
+    # Two bounded copy attempts per candidate, then one retained alternative.
     attempts: list[dict] = []
     windows = load_anti_repeat_windows()
     content = preview_content
@@ -1547,7 +1556,7 @@ def main() -> None:
     remediation_context: dict | None = None
     recovery_story: dict = {"candidate_a": {}, "classification": "", "alternatives_considered": [], "candidate_b_selected": False, "presentation_repairs": []}
     t_generation = time.perf_counter()
-    for idx in range(2):
+    for idx in range(4):
         if idx > 0:
             try:
                 content = generate_posts.generate(
@@ -1722,6 +1731,40 @@ def main() -> None:
         if publish_decision["publishable"]:
             break
 
+        quality_candidate_shift_needed = (
+            idx % 2 == 1
+            and idx < 3
+            and not evidence_remediation_used
+            and validation.get("passed")
+            and duplicates.get("ok")
+            and str(((content.get("copy") or {}).get("evidence_readiness") or {}).get("status") or "READY") == "READY"
+            and len([finding for finding in critic_feedback if finding in {
+                "hook-payoff mismatch", "novelty_angle_weak", "specificity_weak", "intent_response_value_weak",
+            }]) >= 2
+        )
+        if quality_candidate_shift_needed:
+            remediation_context = _quality_recovery_context(content, publish_decision, duplicates)
+            replacement_candidate = remediation_context.get("replacement_candidate")
+            if isinstance(replacement_candidate, dict):
+                recovery_story.update({
+                    "candidate_a": _candidate_audit(content),
+                    "candidate_a_rank": 1,
+                    "candidate_a_blockers": list(dict.fromkeys(critic_feedback)),
+                    "classification": "QUALITY_CANDIDATE_SHIFT",
+                    "candidate_b_selected": True,
+                    "candidate_b_rank": replacement_candidate.get("rank"),
+                    "alternatives_considered": remediation_context.get("alternatives_considered", []),
+                })
+                pending_feedback = [
+                    "Select a materially different opportunity that improves novelty, specificity, and reader response value.",
+                    "Preserve existing claim, evidence, freshness, and governance requirements.",
+                ]
+                pending_scope = "strategy"
+                prior_generated_visuals = {}
+                locked_strategy = {}
+                locked_product_id = ""
+                continue
+
         # Manual live override path: if operator explicitly requests allow_all, swap to a known-safe
         # product/stage combo for one retry so publishing can proceed.
         if (
@@ -1784,8 +1827,8 @@ def main() -> None:
             if publish_decision["publishable"]:
                 break
 
-        # A critic-directed revision is bounded to three candidates total.
-        if idx < 2 and not evidence_remediation_used and scoring.get("decision") != "reject" and (
+        # Each selected candidate receives one bounded critic-directed revision.
+        if idx % 2 == 0 and not evidence_remediation_used and scoring.get("decision") != "reject" and (
             publish_decision["decision"] in {"revise", "regenerate"}
             or (publish_decision["decision"] == "do_not_publish" and retryability in {"RETRYABLE_CONTENT", "EVIDENCE_SAFE_REMEDIATION"})
         ):

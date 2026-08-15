@@ -6,6 +6,7 @@ from types import SimpleNamespace
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
+import run_engine
 from social import engines, memory_intelligence, orchestrator, recovery
 
 
@@ -158,6 +159,29 @@ def test_evidence_recovery_promotes_distinct_low_claim_content_mode():
     assert selected["content_mode"] == "BRAND_PERSPECTIVE"
     assert selected["claim_burden_level"] == 0
     assert {item["reason"] for item in considered[:-1]} & {"claim_burden_too_high", "blocked_content_mode"}
+
+
+def test_quality_recovery_selects_a_distinct_retained_candidate():
+    content = {
+        "post_id": "candidate-a",
+        "selection_rotation_index": 0,
+        "strategic_brief": {"opportunity_shortlist": [
+            {"rank": 1, "candidate_id": "B:weak", "content_mode": "DECISION_SUPPORT", "topic": "Power", "question": "What matters first?", "angle": "Rank the jobs.", "human_reality": "before a trip", "claim_burden_level": 0},
+            {"rank": 2, "candidate_id": "C:distinct", "content_mode": "BRAND_PERSPECTIVE", "topic": "Preparedness", "question": "What deserves attention?", "angle": "Start with the routine.", "human_reality": "at the kitchen table", "claim_burden_level": 0},
+        ]},
+        "copy": {
+            "hook": "What matters first?",
+            "takeaway": "Rank the jobs.",
+            "strategy_lock": {"angle": "Rank the jobs.", "customer_moment": "before a trip"},
+            "evidence_readiness": {"status": "READY"},
+        },
+    }
+
+    context = run_engine._quality_recovery_context(content, {"decision": "revise"}, {"ok": True})
+
+    assert context["remediation_reason"] == "candidate_quality_below_threshold_requires_new_opportunity"
+    assert context["fallback_type"] == "CANDIDATE_SHIFT"
+    assert context["replacement_candidate"]["candidate_id"] == "C:distinct"
 
 
 def test_recent_evidence_block_is_attempt_only_exclusion_not_published_exposure(tmp_path):

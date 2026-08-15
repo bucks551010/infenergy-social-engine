@@ -138,6 +138,19 @@ def test_pre_visual_gate_authorizes_only_publishable_candidate():
     assert gate["selected_candidate"] == "candidate-a:candidate-1"
 
 
+def test_pre_visual_gate_defers_missing_facebook_artifact_requirements():
+    content = _pre_visual_content(validation_status="failed")
+    content["validation_errors"] = ["facebook_visual_missing", "facebook_visual_not_ai_generated"]
+    content["publish_decision"] = {"publishable": False, "reasons": list(content["validation_errors"])}
+
+    gate = run_engine._pre_visual_gate(content, {"facebook": True, "instagram": False, "linkedin": False}, {"total": 97.0, "platform_results": {}})
+
+    assert gate["status"] == "PASS"
+    assert gate["flux_authorized"] is True
+    assert gate["copy_ready"] is True
+    assert gate["image_calls"] == 0
+
+
 def test_authorized_product_free_candidate_generates_missing_artifact_metadata(monkeypatch, tmp_path):
     content = _pre_visual_content()
     content.update({

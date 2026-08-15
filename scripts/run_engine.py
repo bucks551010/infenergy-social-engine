@@ -1421,7 +1421,17 @@ def _ensure_final_artifact_qa(content: dict, effective_channels: dict[str, bool]
 def _pre_visual_gate(content: dict, effective_channels: dict[str, bool], scoring: dict) -> dict:
     """Use existing non-visual governance as the authorization boundary for costly image inference."""
     social_channels = ("facebook", "instagram", "linkedin")
-    validation_ok = content.get("validation_status") == "passed"
+    deferred_artifact_errors = {
+        f"{platform}_{requirement}"
+        for platform in social_channels
+        for requirement in ("visual_missing", "visual_not_ai_generated", "product_overlay_missing")
+    }
+    validation_errors = [str(error) for error in content.get("validation_errors", [])]
+    nonvisual_validation_errors = [
+        error for error in validation_errors if error not in deferred_artifact_errors
+    ]
+    only_deferred_artifact_errors = bool(validation_errors) and not nonvisual_validation_errors
+    validation_ok = content.get("validation_status") == "passed" or only_deferred_artifact_errors
     duplicates = content.get("duplicate_check") if isinstance(content.get("duplicate_check"), dict) else {}
     duplicate_ok = bool(duplicates.get("ok", True))
     strategy_errors = _strategy_integrity_errors(content)
@@ -1431,10 +1441,10 @@ def _pre_visual_gate(content: dict, effective_channels: dict[str, bool], scoring
     claims_ready = evidence_status not in {"RESEARCH_REQUIRED", "HIGH_RISK_UNVERIFIED"}
     evidence_ready = evidence_status == "READY"
     decision = content.get("publish_decision") if isinstance(content.get("publish_decision"), dict) else {}
-    if not decision:
+    if not decision or only_deferred_artifact_errors:
         decision = decide_publication(
             legacy_score=scoring,
-            validation={"passed": validation_ok and not strategy_errors and not presentation_errors, "errors": list(content.get("validation_errors", [])) + strategy_errors + presentation_errors},
+            validation={"passed": validation_ok and not strategy_errors and not presentation_errors, "errors": nonvisual_validation_errors + strategy_errors + presentation_errors},
             duplicates=duplicates,
             conversion_quality_score=float((content.get("conversion_quality_score") or {}).get("total", 100) or 100),
             orchestrator_quality=content.get("orchestrator_quality"),

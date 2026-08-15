@@ -657,7 +657,10 @@ class SocialIntelligenceOrchestrator:
         # didn't already specify a value and the flag is on.
         remediation = dict(remediation_context or {})
         excluded_product_ids = {str(value) for value in remediation.get("excluded_product_ids", []) if str(value)}
-        excluded_concepts = [str(value) for value in remediation.get("excluded_concepts", []) if str(value)]
+        excluded_concepts = list(dict.fromkeys([
+            *(str(value) for value in remediation.get("excluded_concepts", []) if str(value)),
+            *(str(value) for value in recent.get("attempt_only_exclusions", []) if str(value)),
+        ]))
         bi_offering = _bi_get_offering(product_id_override) if product_id_override else _bi_pick_eligible_offering(rotation_index, excluded_product_ids)
         bi_ctx = _load_bi_creative_context(
             str((bi_offering or {}).get("offering_id") or (bi_offering or {}).get("sku") or "")
@@ -684,8 +687,28 @@ class SocialIntelligenceOrchestrator:
                 else:
                     verified_facts = _bi_verified_facts(bi_ctx)
 
-        # 1. Engine
-        engine_name = (preferred_engine or _pick_engine(rotation_index)).upper()
+        # 1. Cheap global opportunity competition. Only its winning record is
+        # allowed to reach strategy, copy, evidence, and visual generation.
+        selected_replacement = remediation.get("replacement_candidate") if isinstance(remediation.get("replacement_candidate"), dict) else None
+        competitive_pool: list[dict[str, Any]] = []
+        if selected_replacement:
+            competitive_pool = list(remediation.get("opportunity_shortlist") or [])
+            selected_opportunity = selected_replacement
+        elif preferred_engine:
+            selected_opportunity = None
+        else:
+            competitive_pool = engines.build_competitive_pool(
+                recent=recent,
+                audience_hint=audience_hint,
+                seasonal_context=seasonal_context,
+                preferred_pillar=preferred_pillar,
+                excluded_concepts=excluded_concepts,
+                rotation_index=rotation_index,
+            )
+            if not competitive_pool:
+                raise RuntimeError("no viable opportunities generated")
+            selected_opportunity = competitive_pool[0]
+        engine_name = str((selected_opportunity or {}).get("engine") or preferred_engine or _pick_engine(rotation_index)).upper()
         engine = engines.get_engine(engine_name)
 
         # 2. Strategic brief
@@ -696,14 +719,18 @@ class SocialIntelligenceOrchestrator:
             preferred_pillar=preferred_pillar,
             excluded_concepts=excluded_concepts,
             rotation_index=rotation_index,
-            selected_opportunity_id=str((remediation.get("replacement_candidate") or {}).get("opportunity_id") or ""),
+            selected_opportunity_id=str((selected_opportunity or {}).get("opportunity_id") or ""),
         )
+        if competitive_pool:
+            brief.opportunity_shortlist = competitive_pool
+            brief.rationale.append(f"global_opportunity_competition:selected={selected_opportunity.get('candidate_id', '')}")
         audience_value_only = (
             engine_name == "B"
             and bool(brief.audience_value)
             and not brief.audience_value.get("abstain")
             and not brief.audience_value.get("product_needed")
         )
+        anchored_offering_metadata = bi_offering
         product_narrative: dict[str, Any] = {}
         if engine_name == "B" and brief.audience_value and brief.audience_value.get("product_needed"):
             try:
@@ -1055,7 +1082,7 @@ class SocialIntelligenceOrchestrator:
             },
             provider_result=provider_result.as_dict(),
             business_context=bi_ctx,
-            anchored_offering=bi_offering,
+            anchored_offering=anchored_offering_metadata,
             creative_decision_packet=creative_packet,
         )
         if remediation:
@@ -1197,5 +1224,8 @@ class SocialIntelligenceOrchestrator:
         rotation_index = int(kw.pop("rotation_index", 0) or 0)
         out: list[PostPackage] = []
         for i in range(count):
-            out.append(self.create_post(rotation_index=rotation_index + i, platform=platform, **kw))
+            current_rotation = rotation_index + i
+            batch_kw = dict(kw)
+            batch_kw.setdefault("preferred_engine", _pick_engine(current_rotation))
+            out.append(self.create_post(rotation_index=current_rotation, platform=platform, **batch_kw))
         return out

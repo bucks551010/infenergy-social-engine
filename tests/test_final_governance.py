@@ -8,6 +8,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
 import run_engine
+import social_visuals
 from social import claim_governance, claim_intelligence, publish_decision, quality_intelligence
 
 
@@ -134,6 +135,33 @@ def test_pre_visual_gate_authorizes_only_publishable_candidate():
     assert gate["flux_authorized"] is True
     assert gate["image_calls"] == 0
     assert gate["selected_candidate"] == "candidate-a:candidate-1"
+
+
+def test_blocked_powerpulse_candidate_cannot_reach_flux_but_retained_audience_value_candidate_can(monkeypatch, tmp_path):
+    calls = []
+
+    def fake_generate(**kwargs):
+        calls.append(kwargs)
+        return False, "mock_provider", {"visual_generation_attempted": True, "visual_provider": "cloudflare"}
+
+    monkeypatch.setenv("GENERATION_COST_MODE", "FREE_AI_ONLY")
+    monkeypatch.setattr(social_visuals.cloudflare_visual, "generate", fake_generate)
+    candidate_a = _pre_visual_content(evidence={"ready": False, "status": "RESEARCH_REQUIRED"})
+    candidate_a.update({"post_id": "powerpulse-a", "candidate_attempt_id": "powerpulse-a:candidate-1", "product_id": "PPP-200"})
+    candidate_a["publish_decision"] = {"publishable": False, "reasons": ["RESEARCH_REQUIRED"]}
+    candidate_b = _pre_visual_content()
+    candidate_b.update({"post_id": "audience-b", "candidate_attempt_id": "audience-b:candidate-2", "product_id": "", "topic": "Daily routine"})
+    candidate_b["publish_decision"] = {"publishable": True, "reasons": []}
+
+    candidate_a["pre_visual_gate"] = run_engine._pre_visual_gate(candidate_a, {"facebook": True, "instagram": False, "linkedin": False}, {"total": 97.0, "platform_results": {}})
+    candidate_b["pre_visual_gate"] = run_engine._pre_visual_gate(candidate_b, {"facebook": True, "instagram": False, "linkedin": False}, {"total": 97.0, "platform_results": {}})
+
+    assert candidate_a["pre_visual_gate"]["flux_authorized"] is False
+    assert candidate_b["pre_visual_gate"]["flux_authorized"] is True
+    social_visuals._generate_cloudflare_full_creative(candidate_b, "facebook", {}, str(tmp_path / "b.png"))
+
+    assert len(calls) == 1
+    assert calls[0]["candidate_id"] == "audience-b:candidate-2"
 
 def test_incidental_medium_claim_does_not_block_and_verified_central_claim_can_proceed():
     incidental = claim_intelligence.build_ledger("The published output is 200W. Capacity is an important specification.", verified_facts=["200W"], forbidden_claims=[])

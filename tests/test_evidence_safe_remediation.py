@@ -187,6 +187,25 @@ def test_replacement_selector_rejects_powerpulse_before_trip_fit_reserve_paraphr
     assert considered[0]["reason"] == "blocked_opportunity_fingerprint"
 
 
+def test_blocked_candidate_a_retains_distinct_candidate_b_before_any_visual_generation(tmp_path, monkeypatch):
+    generated = []
+    pool = [
+        {"rank": 1, "candidate_id": "A:blocked", "opportunity_id": "blocked", "engine": "A", "product_id": "PPP-200", "topic": "PowerPulse", "question": "Can it fit before a trip?", "angle": "Establish fit before reserve.", "human_reality": "before a trip"},
+        {"rank": 2, "candidate_id": "B:distinct", "opportunity_id": "distinct", "engine": "B", "product_id": "", "topic": "Daily routine", "question": "Which routine depends on the next outlet?", "angle": "Map the job before choosing what to protect.", "human_reality": "a normal workday"},
+    ]
+    content = {
+        "post_id": "candidate-a", "candidate_attempt_id": "candidate-a:candidate-1", "product_id": "PPP-200",
+        "strategic_brief": {"opportunity_shortlist": pool},
+        "copy": {"hook": "Can it fit before a trip?", "takeaway": "Establish fit before reserve.", "strategy_lock": {"angle": "Establish fit before reserve.", "customer_moment": "before a trip"}, "decision_insight": {"relationship": "Output determines fit before reserve."}, "evidence_readiness": {"status": "RESEARCH_REQUIRED", "claims": [{"claim": "Output determines fit before reserve.", "centrality": "CENTRAL", "research_status": "RESEARCH_REQUIRED"}]}}
+    }
+
+    remediation = run_engine._remediation_context(content, {"decision": "do_not_publish"}, {"ok": True})
+
+    assert remediation["replacement_candidate"]["candidate_id"] == "B:distinct"
+    assert remediation["replacement_candidate"]["engine"] == "B"
+    assert generated == []
+
+
 def test_remediation_semantic_reuse_abstains_before_provider_generation(tmp_path, monkeypatch):
     generated = []
 

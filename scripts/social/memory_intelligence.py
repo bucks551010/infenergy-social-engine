@@ -190,6 +190,26 @@ def _recent_field(records: list[dict[str, Any]], field: str, limit: int) -> list
     return out
 
 
+def _attempt_only_exclusions(data_dir: str | None, limit: int) -> list[str]:
+    """Return recent evidence-blocked concepts without treating them as exposure."""
+    try:
+        with open(post_history_path(data_dir), "r", encoding="utf-8") as handle:
+            records = json.load(handle).get("posts", [])
+    except (OSError, json.JSONDecodeError, AttributeError):
+        return []
+    exclusions: list[str] = []
+    for record in reversed(records if isinstance(records, list) else []):
+        remediation = record.get("evidence_remediation") if isinstance(record, dict) else None
+        readiness = (remediation or {}).get("original_evidence_readiness") if isinstance(remediation, dict) else None
+        concept = (remediation or {}).get("original_concept") if isinstance(remediation, dict) else None
+        if not isinstance(readiness, dict) or readiness.get("status") != "RESEARCH_REQUIRED" or not isinstance(concept, dict):
+            continue
+        exclusions.extend(str(value) for value in concept.values() if str(value).strip())
+        if len(exclusions) >= limit:
+            break
+    return exclusions[:limit]
+
+
 def recent(data_dir: str | None = None, *, limit: int = 20) -> dict[str, list[Any]]:
     cdata = _load(content_memory_path(data_dir))
     vdata = _load(visual_memory_path(data_dir))
@@ -232,6 +252,7 @@ def recent(data_dir: str | None = None, *, limit: int = 20) -> dict[str, list[An
         "headline_placements": _recent_field(vdata["records"], "headline_placement", limit),
         "art_direction_families": _recent_field(vdata["records"], "art_direction_family", limit),
         "visual_concepts": _recent_field(vdata["records"], "visual_concept", limit),
+        "attempt_only_exclusions": _attempt_only_exclusions(data_dir, limit),
     }
 
 

@@ -6,7 +6,7 @@ from types import SimpleNamespace
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from social import engines, recovery
+from social import engines, memory_intelligence, recovery
 
 
 def test_duplicate_wins_over_presentation_repair():
@@ -83,3 +83,51 @@ def test_engine_brief_retains_shortlist_and_honors_selected_opportunity(monkeypa
     assert len(baseline.opportunity_shortlist) >= 2
     assert replacement.question == selected["question"]
     assert replacement.as_dict()["opportunity_shortlist"] == baseline.opportunity_shortlist
+
+
+def test_cross_engine_pool_prefers_evidence_safe_audience_value_over_blocked_commercial_option(monkeypatch):
+    genre_id = next(iter(engines.libraries.genres()))
+
+    def candidate(engine, total, question, angle, reality):
+        return SimpleNamespace(
+            pillar_id="brand_philosophy", genre_id=genre_id,
+            topic_path=SimpleNamespace(topic="Power habits", microtopic=engine, angle=angle),
+            audience=SimpleNamespace(reader_job="TEACH_ME", reader_job_config={}, segment_id="prepared", segment={}, information_gap="daily routine", curiosity=reality, misconception="", question=question, emotional_driver="confidence", rationale=[]),
+            scores={"novelty": 0.9, "platform_fit": 0.8}, total=total,
+            score_summary=lambda: "high value",
+        )
+
+    pool_by_engine = {
+        "A": [candidate("A", 0.92, "Will PowerPulse fit before a trip?", "Establish fit before reserve.", "before a trip")],
+        "B": [candidate("B", 0.9, "Which routine depends on the next outlet?", "Map the job before choosing what to protect.", "a normal workday")],
+        "C": [candidate("C", 0.62, "What does reliable technology feel like?", "Notice the routine behind the tool.", "an ordinary day")],
+    }
+    monkeypatch.setattr(engines.opportunity_engine, "generate", lambda engine, **_: pool_by_engine[engine])
+
+    pool = engines.build_competitive_pool(recent={})
+
+    assert len(pool) == 3
+    assert pool[0]["engine"] == "B"
+    assert pool[0]["product_relevance"] == "NOT_REQUIRED"
+    assert pool[0]["known_evidence_burden"] == "LOW"
+    assert pool[1]["engine"] == "A"
+    assert len({record["opportunity_id"] for record in pool}) == len(pool)
+
+
+def test_recent_evidence_block_is_attempt_only_exclusion_not_published_exposure(tmp_path):
+    history = {
+        "posts": [{
+            "evidence_remediation": {
+                "original_evidence_readiness": {"status": "RESEARCH_REQUIRED"},
+                "original_concept": {"question": "Can PowerPulse fit before a trip?", "angle": "Establish fit before reserve."},
+            },
+            "final_memory": {"final_outcome": "do_not_publish"},
+        }]
+    }
+    path = tmp_path / "post_history.json"
+    path.write_text(__import__("json").dumps(history), encoding="utf-8")
+
+    recent = memory_intelligence.recent(str(tmp_path))
+
+    assert "Can PowerPulse fit before a trip?" in recent["attempt_only_exclusions"]
+    assert recent["topics"] == []

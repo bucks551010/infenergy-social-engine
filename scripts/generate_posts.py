@@ -157,6 +157,7 @@ def _route_generate_orchestrator(
     **kw: Any,
 ) -> dict[str, Any]:
     """Return the first orchestrated post package in the legacy payload shape used by the runtime."""
+    defer_visuals = bool(kw.pop("defer_visuals", False))
     social_platform = _social_platform_key(platform)
     council_decision: dict[str, Any] = {}
     remediation_context = kw.get("remediation_context") if isinstance(kw.get("remediation_context"), dict) else {}
@@ -339,7 +340,7 @@ def _route_generate_orchestrator(
     # generate_visuals() step the legacy pipeline uses so orchestrator
     # posts get real, product-anchored creative instead of staying empty.
     legacy["visual_plan"] = visual_pkg
-    legacy["generated_visuals"] = generate_visuals(legacy, visual_plan=visual_pkg)
+    legacy["generated_visuals"] = {} if defer_visuals else generate_visuals(legacy, visual_plan=visual_pkg)
     from social import reels
 
     instagram_decision = reels.choose_instagram_media(
@@ -360,7 +361,7 @@ def _route_generate_orchestrator(
         legacy["reel_plan"] = reel_plan
         reel_gate = reels.validate_reel_plan(reel_plan)
         legacy["reel_pre_render_gate"] = reel_gate
-        if reel_gate["status"] == "REEL_READY":
+        if reel_gate["status"] == "REEL_READY" and not defer_visuals:
             reel_artifacts = reels.render_reel(
                 reel_plan,
                 source_image=str((legacy.get("generated_visuals") or {}).get("instagram") or ""),
@@ -372,6 +373,8 @@ def _route_generate_orchestrator(
             reel_artifacts["motion_qa"] = reels.motion_qa(reel_plan)
             legacy["instagram_reel"] = reel_artifacts
             platform_posts["instagram"]["reel"] = reel_artifacts
+        elif reel_gate["status"] == "REEL_READY":
+            legacy["reel_render_deferred"] = True
         else:
             legacy["instagram_media_decision"]["selected_format"] = "STATIC"
             platform_posts["instagram"]["media_type"] = "STATIC"
@@ -4933,6 +4936,7 @@ def generate(
     approved_strategy: dict[str, Any] | None = None,
     revision_feedback: list[str] | None = None,
     remediation_context: dict[str, Any] | None = None,
+    defer_visuals: bool = False,
 ) -> dict:
     from social import generation_policy
 
@@ -4951,6 +4955,7 @@ def generate(
             approved_strategy=approved_strategy,
             revision_feedback=revision_feedback,
             remediation_context=remediation_context,
+            defer_visuals=defer_visuals,
         )
     if mode != "legacy" and _social_intelligence_enabled():
         return _route_generate_orchestrator(
@@ -4961,6 +4966,7 @@ def generate(
             approved_strategy=approved_strategy,
             revision_feedback=revision_feedback,
             remediation_context=remediation_context,
+            defer_visuals=defer_visuals,
         )
 
     ensure_runtime_data()

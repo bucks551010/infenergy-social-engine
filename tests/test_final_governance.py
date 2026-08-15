@@ -7,6 +7,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
+import run_engine
 from social import claim_governance, claim_intelligence, publish_decision, quality_intelligence
 
 
@@ -74,6 +75,65 @@ def test_central_research_required_claim_blocks_quality_and_legacy_overrides():
     assert decision["decision"] == "do_not_publish"
     assert "RESEARCH_REQUIRED" in decision["reasons"]
 
+
+def _pre_visual_content(*, validation_status="passed", duplicate_ok=True, duplicate_reasons=None, evidence=None, presentation_ready=True):
+    caption = "Hook.\n\n- First point\n- Second point\n\nSave this.\n\nhttps://example.com\n\n#PortablePower"
+    package = {
+        "caption": caption,
+        "final_caption": caption,
+        "final_caption_qa": {"status": "PRESENTATION_READY", "metrics": {"final_caption": caption}},
+    }
+    if not presentation_ready:
+        package["final_caption_qa"] = {"status": "PRESENTATION_BLOCKED", "metrics": {"final_caption": caption}}
+    return {
+        "post_id": "candidate-a",
+        "candidate_attempt_id": "candidate-a:candidate-1",
+        "validation_status": validation_status,
+        "validation_errors": [] if validation_status == "passed" else ["copy_invalid"],
+        "duplicate_check": {"ok": duplicate_ok, "reasons": duplicate_reasons or []},
+        "copy": {"evidence_readiness": evidence or {"ready": True, "status": "READY"}},
+        "platform_posts": {"facebook": package},
+        "fb_caption": caption,
+    }
+
+
+def test_pre_visual_gate_blocks_evidence_and_duplicate_candidates_without_image_calls():
+    blocked_cases = [
+        _pre_visual_content(evidence={"ready": False, "status": "RESEARCH_REQUIRED"}),
+        _pre_visual_content(duplicate_ok=False, duplicate_reasons=["duplicate_product_within_window"]),
+        _pre_visual_content(duplicate_ok=False, duplicate_reasons=["semantic_duplicate_within_window"]),
+    ]
+
+    for content in blocked_cases:
+        gate = run_engine._pre_visual_gate(content, {"facebook": True, "instagram": False, "linkedin": False}, {"total": 97.0, "platform_results": {}})
+        assert gate["status"] == "FAIL"
+        assert gate["flux_authorized"] is False
+        assert gate["image_calls"] == 0
+
+
+def test_pre_visual_gate_blocks_copy_presentation_and_campaign_without_image_calls():
+    malformed = _pre_visual_content(presentation_ready=False)
+    no_active_channel = _pre_visual_content()
+
+    for content, channels in (
+        (malformed, {"facebook": True, "instagram": False, "linkedin": False}),
+        (no_active_channel, {"facebook": False, "instagram": False, "linkedin": False}),
+    ):
+        gate = run_engine._pre_visual_gate(content, channels, {"total": 97.0, "platform_results": {}})
+        assert gate["status"] == "FAIL"
+        assert gate["flux_authorized"] is False
+        assert gate["image_calls"] == 0
+
+
+def test_pre_visual_gate_authorizes_only_publishable_candidate():
+    content = _pre_visual_content()
+    content["publish_decision"] = {"publishable": True, "reasons": []}
+    gate = run_engine._pre_visual_gate(content, {"facebook": True, "instagram": False, "linkedin": False}, {"total": 97.0, "platform_results": {}})
+
+    assert gate["status"] == "PASS"
+    assert gate["flux_authorized"] is True
+    assert gate["image_calls"] == 0
+    assert gate["selected_candidate"] == "candidate-a:candidate-1"
 
 def test_incidental_medium_claim_does_not_block_and_verified_central_claim_can_proceed():
     incidental = claim_intelligence.build_ledger("The published output is 200W. Capacity is an important specification.", verified_facts=["200W"], forbidden_claims=[])

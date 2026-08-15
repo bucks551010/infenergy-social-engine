@@ -1193,19 +1193,77 @@ def _ensure_final_artifact_qa(content: dict, effective_channels: dict[str, bool]
         active_platforms = [platform for platform in ("facebook", "instagram", "linkedin") if effective_channels.get(platform)]
         visuals = generate_posts.generate_visuals(content, visual_plan=content.get("visual_plan"), platforms=active_platforms)
         content["generated_visuals"] = visuals
+    pre_visual_gate = content.get("pre_visual_gate") if isinstance(content.get("pre_visual_gate"), dict) else {}
+    if pre_visual_gate:
+        generation = visuals.get("visual_generation") if isinstance(visuals.get("visual_generation"), dict) else {}
+        pre_visual_gate["estimated_flux_neurons"] = {
+            platform: metadata.get("estimated_neurons")
+            for platform, metadata in generation.items()
+            if isinstance(metadata, dict) and metadata.get("estimated_neurons") is not None
+        }
+        pre_visual_gate["image_calls"] = sum(
+            1 for metadata in generation.values()
+            if isinstance(metadata, dict) and metadata.get("visual_generation_attempted")
+        )
+        content["pre_visual_gate"] = pre_visual_gate
     reviews = visuals.get("artifact_reviews") if isinstance(visuals.get("artifact_reviews"), dict) else {}
     for platform in ("facebook", "instagram", "linkedin"):
         if effective_channels.get(platform):
             existing_review = reviews.get(platform) if isinstance(reviews.get(platform), dict) else {}
             artifact_path = str(visuals.get(platform) or existing_review.get("artifact_path") or "")
-            reviews[platform] = review_rendered_visual(
-                artifact_path,
-                platform,
-                allow_native_size=str(((visuals.get("render_engines") or {}).get(platform) or "")) == "cloudflare",
+            allow_native_size = str(((visuals.get("render_engines") or {}).get(platform) or "")) == "cloudflare"
+            reviews[platform] = (
+                review_rendered_visual(artifact_path, platform, allow_native_size=True)
+                if allow_native_size
+                else review_rendered_visual(artifact_path, platform)
             )
     visuals["artifact_reviews"] = reviews
     content["artifact_visual_qa"] = reviews
     return reviews
+
+
+def _pre_visual_gate(content: dict, effective_channels: dict[str, bool], scoring: dict) -> dict:
+    """Use existing non-visual governance as the authorization boundary for costly image inference."""
+    social_channels = ("facebook", "instagram", "linkedin")
+    validation_ok = content.get("validation_status") == "passed"
+    duplicates = content.get("duplicate_check") if isinstance(content.get("duplicate_check"), dict) else {}
+    duplicate_ok = bool(duplicates.get("ok", True))
+    strategy_errors = _strategy_integrity_errors(content)
+    presentation_errors = _final_presentation_errors(content, effective_channels)
+    evidence = ((content.get("copy") or {}).get("evidence_readiness") or content.get("evidence_readiness") or {})
+    evidence_status = str(evidence.get("status") or "READY") if isinstance(evidence, dict) else "READY"
+    claims_ready = evidence_status not in {"RESEARCH_REQUIRED", "HIGH_RISK_UNVERIFIED"}
+    evidence_ready = evidence_status == "READY"
+    decision = content.get("publish_decision") if isinstance(content.get("publish_decision"), dict) else {}
+    if not decision:
+        decision = decide_publication(
+            legacy_score=scoring,
+            validation={"passed": validation_ok and not strategy_errors and not presentation_errors, "errors": list(content.get("validation_errors", [])) + strategy_errors + presentation_errors},
+            duplicates=duplicates,
+            conversion_quality_score=float((content.get("conversion_quality_score") or {}).get("total", 100) or 100),
+            orchestrator_quality=content.get("orchestrator_quality"),
+            visual_errors=[],
+            evidence_readiness=evidence,
+        )
+    active_social_channels = any(effective_channels.get(platform) for platform in social_channels)
+    passed = bool(active_social_channels and validation_ok and duplicate_ok and claims_ready and evidence_ready and not strategy_errors and not presentation_errors and decision.get("publishable"))
+    reasons = list(dict.fromkeys(list(decision.get("reasons", [])) + strategy_errors + presentation_errors))
+    return {
+        "status": "PASS" if passed else "FAIL",
+        "strategy_ready": not strategy_errors,
+        "copy_ready": validation_ok,
+        "claims_ready": claims_ready,
+        "evidence_ready": evidence_ready,
+        "freshness_ready": duplicate_ok,
+        "duplicate_ready": duplicate_ok,
+        "campaign_ready": active_social_channels,
+        "platform_text_ready": not presentation_errors,
+        "selected_candidate": str(content.get("candidate_attempt_id") or content.get("post_id") or ""),
+        "estimated_flux_neurons": {},
+        "flux_authorized": passed,
+        "image_calls": 0,
+        "reasons": reasons,
+    }
 
 
 def _record_material_strategy_lessons(content: dict, strategy: dict) -> list[dict]:
@@ -1334,6 +1392,7 @@ def main() -> None:
             funnel_stage_override=funnel_stage_override,
             product_id_override=product_id_override,
             pipeline_override=pipeline_override,
+            defer_visuals=True,
         )
     except RuntimeError as exc:
         if str(exc) != "no viable opportunities generated":
@@ -1438,6 +1497,7 @@ def main() -> None:
                     approved_strategy=locked_strategy or None,
                     revision_feedback=pending_feedback,
                     remediation_context=remediation_context,
+                    defer_visuals=True,
                 )
             except RuntimeError as exc:
                 if str(exc) != "no viable opportunities generated":
@@ -1616,6 +1676,7 @@ def main() -> None:
                 funnel_stage_override="ATTENTION",
                 product_id_override="INF-9792",
                 pipeline_override=pipeline_override,
+                defer_visuals=True,
             )
             validation = validate_generated_content(content)
             strict_runtime_claims = str(os.environ.get("STRICT_RUNTIME_CLAIMS", "false")).strip().lower() in {"1", "true", "yes", "on"}
@@ -1752,8 +1813,13 @@ def main() -> None:
             content["validation_errors"] = list(revalidated.get("errors", []))
             final_validation_ok = bool(revalidated.get("passed"))
             recovery_story["presentation_repairs"] = repaired
-    _ensure_final_artifact_qa(content, effective_channels)
-    artifact_errors = _artifact_visual_errors_by_platform(content, effective_channels)
+    pre_visual_gate = _pre_visual_gate(content, effective_channels, scoring)
+    content["pre_visual_gate"] = pre_visual_gate
+    if pre_visual_gate["flux_authorized"]:
+        _ensure_final_artifact_qa(content, effective_channels)
+        artifact_errors = _artifact_visual_errors_by_platform(content, effective_channels)
+    else:
+        artifact_errors = {}
     for platform, issues in artifact_errors.items():
         effective_channels[platform] = False
         channel_reasons[platform] = f"artifact_visual_qa:{','.join(issues)}"

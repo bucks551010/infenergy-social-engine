@@ -1206,6 +1206,24 @@ def _ensure_final_artifact_qa(content: dict, effective_channels: dict[str, bool]
             if isinstance(metadata, dict) and metadata.get("visual_generation_attempted")
         )
         content["pre_visual_gate"] = pre_visual_gate
+    if content.get("reel_render_deferred") and visuals.get("instagram"):
+        from social import reels
+
+        reel_plan = content.get("reel_plan") if isinstance(content.get("reel_plan"), dict) else {}
+        reel_gate = reels.validate_reel_plan(reel_plan)
+        content["reel_pre_render_gate"] = reel_gate
+        if reel_gate.get("status") == "REEL_READY":
+            reel_artifacts = reels.render_reel(reel_plan, source_image=str(visuals["instagram"]))
+            reel_artifacts["technical_qa"] = reels.technical_qa(reel_artifacts, reel_plan)
+            reel_artifacts["freeze_qa"] = reels.freeze_qa(reel_artifacts, reel_plan)
+            reel_artifacts["final_frame_qa"] = reels.final_frame_qa(reel_artifacts)
+            reel_artifacts["cover_qa"] = reels.cover_qa(reel_artifacts)
+            reel_artifacts["motion_qa"] = reels.motion_qa(reel_plan)
+            content["instagram_reel"] = reel_artifacts
+            platform_posts = content.get("platform_posts") if isinstance(content.get("platform_posts"), dict) else {}
+            if isinstance(platform_posts.get("instagram"), dict):
+                platform_posts["instagram"]["reel"] = reel_artifacts
+            content["reel_render_deferred"] = False
     reviews = visuals.get("artifact_reviews") if isinstance(visuals.get("artifact_reviews"), dict) else {}
     for platform in ("facebook", "instagram", "linkedin"):
         if effective_channels.get(platform):

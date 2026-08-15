@@ -6,7 +6,7 @@ from types import SimpleNamespace
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from social import engines, memory_intelligence, recovery
+from social import engines, memory_intelligence, orchestrator, recovery
 
 
 def test_duplicate_wins_over_presentation_repair():
@@ -131,3 +131,20 @@ def test_recent_evidence_block_is_attempt_only_exclusion_not_published_exposure(
 
     assert "Can PowerPulse fit before a trip?" in recent["attempt_only_exclusions"]
     assert recent["topics"] == []
+
+
+def test_single_post_batch_uses_global_pool_instead_of_forcing_rotation_engine(monkeypatch, tmp_path):
+    selected = []
+
+    def fake_create_post(self, **kwargs):
+        selected.append(kwargs.get("preferred_engine"))
+        return SimpleNamespace(engine="B")
+
+    monkeypatch.setattr(orchestrator, "_pick_engine", lambda _: "A")
+    monkeypatch.setattr(orchestrator.SocialIntelligenceOrchestrator, "create_post", fake_create_post)
+    service = orchestrator.SocialIntelligenceOrchestrator(data_dir=str(tmp_path))
+
+    service.create_batch(count=1)
+    service.create_batch(count=2)
+
+    assert selected == [None, "A", "A"]

@@ -1226,6 +1226,7 @@ class SocialIntelligenceOrchestrator:
         for i in range(count):
             current_rotation = rotation_index + i
             batch_kw = dict(kw)
-            batch_kw.setdefault("preferred_engine", _pick_engine(current_rotation))
+            if count > 1:
+                batch_kw.setdefault("preferred_engine", _pick_engine(current_rotation))
             out.append(self.create_post(rotation_index=current_rotation, platform=platform, **batch_kw))
         return out

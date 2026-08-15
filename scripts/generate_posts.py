@@ -339,8 +339,7 @@ def _route_generate_orchestrator(
     # generate_visuals() step the legacy pipeline uses so orchestrator
     # posts get real, product-anchored creative instead of staying empty.
     legacy["visual_plan"] = visual_pkg
-    from social import generation_policy
-    legacy["generated_visuals"] = {} if generation_policy.mode() in {"FREE_AI_ONLY", "FREE_AI_ALLOWED"} else generate_visuals(legacy, visual_plan=visual_pkg)
+    legacy["generated_visuals"] = generate_visuals(legacy, visual_plan=visual_pkg)
     from social import reels
 
     instagram_decision = reels.choose_instagram_media(
@@ -6126,8 +6125,7 @@ Return ONLY valid JSON with these exact keys (no markdown, no code fences):
         platform_posts["instagram"]["carousel_campaign"] = social_media_assets["asset_2_carousel_campaign"]
         content["on_image_headline"] = components["on_image_headline"]
         content["on_image_subline"] = components["on_image_subline"]
-        from social import generation_policy
-        content["generated_visuals"] = {} if generation_policy.mode() in {"FREE_AI_ONLY", "FREE_AI_ALLOWED"} else generate_visuals(content, visual_plan=visual_plan)
+        content["generated_visuals"] = generate_visuals(content, visual_plan=visual_plan)
         from social import reels
 
         strategy_lock = content.get("strategy_lock") if isinstance(content.get("strategy_lock"), dict) else {}
@@ -6459,8 +6457,7 @@ Return ONLY valid JSON with these exact keys (no markdown, no code fences):
     platform_posts["instagram"]["carousel_campaign"] = social_media_assets["asset_2_carousel_campaign"]
     content["on_image_headline"] = components["on_image_headline"]
     content["on_image_subline"] = components["on_image_subline"]
-    from social import generation_policy
-    content["generated_visuals"] = {} if generation_policy.mode() in {"FREE_AI_ONLY", "FREE_AI_ALLOWED"} else generate_visuals(content, visual_plan=visual_plan)
+    content["generated_visuals"] = generate_visuals(content, visual_plan=visual_plan)
     content["visual_plan"] = visual_plan
     content["pre_generation_conference"] = pre_generation_conference
     content["phase2_creative_stack"] = phase2_stack

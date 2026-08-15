@@ -217,7 +217,7 @@ class PublisherVisualTests(unittest.TestCase):
         }
         errors = _live_visual_gate_errors(content, {"facebook": True}, dry_run=False)
         self.assertIn("product_specific_image_source_missing", errors)
-        self.assertIn("facebook_visual_not_gemini", errors)
+        self.assertIn("facebook_visual_not_ai_generated", errors)
         self.assertIn("facebook_product_overlay_missing", errors)
 
     def test_live_visual_gate_skips_product_checks_when_no_product_anchored(self) -> None:
@@ -235,7 +235,7 @@ class PublisherVisualTests(unittest.TestCase):
         errors = _live_visual_gate_errors(content, {"facebook": True}, dry_run=False)
         self.assertNotIn("product_specific_image_source_missing", errors)
         self.assertNotIn("facebook_product_overlay_missing", errors)
-        self.assertIn("facebook_visual_not_gemini", errors)
+        self.assertIn("facebook_visual_not_ai_generated", errors)
 
     def test_live_visual_gate_accepts_gemini_product_composite(self) -> None:
         content = {

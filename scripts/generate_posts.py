@@ -339,7 +339,8 @@ def _route_generate_orchestrator(
     # generate_visuals() step the legacy pipeline uses so orchestrator
     # posts get real, product-anchored creative instead of staying empty.
     legacy["visual_plan"] = visual_pkg
-    legacy["generated_visuals"] = generate_visuals(legacy, visual_plan=visual_pkg)
+    from social import generation_policy
+    legacy["generated_visuals"] = {} if generation_policy.mode() in {"FREE_AI_ONLY", "FREE_AI_ALLOWED"} else generate_visuals(legacy, visual_plan=visual_pkg)
     from social import reels
 
     instagram_decision = reels.choose_instagram_media(
@@ -4252,6 +4253,12 @@ def _build_fallback_content_no_product(
 
 
 def _generate_json_with_gemini(prompt: str, model_candidates: list[str], attempts_per_model: int = 2) -> dict | None:
+    from social import generation_policy
+
+    authorized, reason = generation_policy.paid_authorized("gemini", "text")
+    if not authorized:
+        print(f"[Gemini] caption generation skipped: {reason}")
+        return None
     api_key = os.environ.get("GEMINI_API_KEY", "").strip()
     if not api_key:
         print("[Gemini] caption generation skipped: GEMINI_API_KEY not set")
@@ -4259,6 +4266,7 @@ def _generate_json_with_gemini(prompt: str, model_candidates: list[str], attempt
 
     client = genai.Client(api_key=api_key)
     last_error = "no_model_candidates_configured"
+    terminal_markers = ("quota", "billing", "credit", "rate limit", "429", "payment", "503")
 
     for model_name in model_candidates:
         for attempt in range(max(1, attempts_per_model)):
@@ -4268,6 +4276,7 @@ def _generate_json_with_gemini(prompt: str, model_candidates: list[str], attempt
                     contents=prompt,
                     config=types.GenerateContentConfig(response_mime_type="application/json"),
                 )
+                generation_policy.record_paid_call("text", "gemini")
                 raw = (response.text or "").strip()
                 if not raw:
                     last_error = f"{model_name}:empty_response"
@@ -4280,6 +4289,10 @@ def _generate_json_with_gemini(prompt: str, model_candidates: list[str], attempt
                 return json.loads(raw.strip())
             except Exception as e:
                 last_error = f"{model_name}:attempt{attempt + 1}:{type(e).__name__}:{str(e)[:200]}"
+                if any(marker in last_error.lower() for marker in terminal_markers):
+                    generation_policy.mark_provider_unavailable("gemini", last_error)
+                    return None
+                continue
                 continue
 
     # Every model/attempt failed. Log the real reason so this is diagnosable in
@@ -4922,6 +4935,9 @@ def generate(
     revision_feedback: list[str] | None = None,
     remediation_context: dict[str, Any] | None = None,
 ) -> dict:
+    from social import generation_policy
+
+    generation_policy.start_run()
     mode = _pipeline_mode(pipeline_override)
     platform = os.environ.get("POST_PLATFORMS", "instagram_feed").split(",")[0].strip() or "instagram_feed"
 
@@ -6110,7 +6126,8 @@ Return ONLY valid JSON with these exact keys (no markdown, no code fences):
         platform_posts["instagram"]["carousel_campaign"] = social_media_assets["asset_2_carousel_campaign"]
         content["on_image_headline"] = components["on_image_headline"]
         content["on_image_subline"] = components["on_image_subline"]
-        content["generated_visuals"] = generate_visuals(content, visual_plan=visual_plan)
+        from social import generation_policy
+        content["generated_visuals"] = {} if generation_policy.mode() in {"FREE_AI_ONLY", "FREE_AI_ALLOWED"} else generate_visuals(content, visual_plan=visual_plan)
         from social import reels
 
         strategy_lock = content.get("strategy_lock") if isinstance(content.get("strategy_lock"), dict) else {}
@@ -6442,7 +6459,8 @@ Return ONLY valid JSON with these exact keys (no markdown, no code fences):
     platform_posts["instagram"]["carousel_campaign"] = social_media_assets["asset_2_carousel_campaign"]
     content["on_image_headline"] = components["on_image_headline"]
     content["on_image_subline"] = components["on_image_subline"]
-    content["generated_visuals"] = generate_visuals(content, visual_plan=visual_plan)
+    from social import generation_policy
+    content["generated_visuals"] = {} if generation_policy.mode() in {"FREE_AI_ONLY", "FREE_AI_ALLOWED"} else generate_visuals(content, visual_plan=visual_plan)
     content["visual_plan"] = visual_plan
     content["pre_generation_conference"] = pre_generation_conference
     content["phase2_creative_stack"] = phase2_stack

@@ -1102,7 +1102,7 @@ def _live_visual_gate_errors(content: dict, effective_channels: dict[str, bool],
     visuals = content.get("generated_visuals") if isinstance(content.get("generated_visuals"), dict) else {}
     render_engines = visuals.get("render_engines") if isinstance(visuals.get("render_engines"), dict) else {}
     overlays = visuals.get("product_overlay_applied") if isinstance(visuals.get("product_overlay_applied"), dict) else {}
-    require_gemini = os.environ.get("LIVE_REQUIRE_GEMINI_VISUAL", "true").strip().lower() in {"1", "true", "yes", "on"}
+    require_ai_visual = os.environ.get("LIVE_REQUIRE_AI_VISUAL", "true").strip().lower() in {"1", "true", "yes", "on"}
     has_anchored_product = bool(str(content.get("product_id") or "").strip())
     require_product = has_anchored_product and os.environ.get("LIVE_REQUIRE_PRODUCT_VISUAL", "true").strip().lower() in {"1", "true", "yes", "on"}
 
@@ -1112,8 +1112,8 @@ def _live_visual_gate_errors(content: dict, effective_channels: dict[str, bool],
     for platform in requested:
         if not str(visuals.get(platform, "")).strip():
             errors.append(f"{platform}_visual_missing")
-        if require_gemini and str(render_engines.get(platform, "")) != "gemini":
-            errors.append(f"{platform}_visual_not_gemini")
+        if require_ai_visual and str(render_engines.get(platform, "")) not in {"gemini", "cloudflare"}:
+            errors.append(f"{platform}_visual_not_ai_generated")
         if require_product and overlays.get(platform) is not True:
             errors.append(f"{platform}_product_overlay_missing")
     instagram_post = ((content.get("platform_posts") or {}).get("instagram") or {})
@@ -1190,14 +1190,19 @@ def _ensure_final_artifact_qa(content: dict, effective_channels: dict[str, bool]
         return {}
     visuals = content.get("generated_visuals") if isinstance(content.get("generated_visuals"), dict) else {}
     if not visuals:
-        visuals = generate_posts.generate_visuals(content, visual_plan=content.get("visual_plan"))
+        active_platforms = [platform for platform in ("facebook", "instagram", "linkedin") if effective_channels.get(platform)]
+        visuals = generate_posts.generate_visuals(content, visual_plan=content.get("visual_plan"), platforms=active_platforms)
         content["generated_visuals"] = visuals
     reviews = visuals.get("artifact_reviews") if isinstance(visuals.get("artifact_reviews"), dict) else {}
     for platform in ("facebook", "instagram", "linkedin"):
         if effective_channels.get(platform):
             existing_review = reviews.get(platform) if isinstance(reviews.get(platform), dict) else {}
             artifact_path = str(visuals.get(platform) or existing_review.get("artifact_path") or "")
-            reviews[platform] = review_rendered_visual(artifact_path, platform)
+            reviews[platform] = review_rendered_visual(
+                artifact_path,
+                platform,
+                allow_native_size=str(((visuals.get("render_engines") or {}).get(platform) or "")) == "cloudflare",
+            )
     visuals["artifact_reviews"] = reviews
     content["artifact_visual_qa"] = reviews
     return reviews

@@ -12,6 +12,8 @@ import time
 from dataclasses import dataclass, field
 from typing import Any
 
+from . import generation_policy
+
 
 DEFAULT_MODEL_ROUTES: dict[str, str] = {
     # The fast route remains entirely deployment-configurable. The earlier
@@ -84,9 +86,13 @@ def generate_json(task: str, prompt: str, *, system_instruction: str = "") -> di
     Returns ``None`` when GEMINI_API_KEY is unset, the SDK is unavailable,
     or the call/parse fails for any reason.
     """
+    global _LAST_ERROR
+    authorized, reason = generation_policy.paid_authorized("gemini", "text")
+    if not authorized:
+        _LAST_ERROR = f"gemini_blocked:{reason}"
+        return None
     api_key = os.environ.get("GEMINI_API_KEY", "").strip()
     if not api_key:
-        global _LAST_ERROR
         _LAST_ERROR = "GEMINI_API_KEY not set"
         return None
     try:
@@ -108,6 +114,7 @@ def generate_json(task: str, prompt: str, *, system_instruction: str = "") -> di
                 contents=prompt,
                 config=types.GenerateContentConfig(**config_kwargs),
             )
+            generation_policy.record_paid_call("text", "gemini")
             text = str(getattr(response, "text", "") or "").strip()
             if not text:
                 errors.append(f"model={model}: empty response text")
@@ -120,6 +127,8 @@ def generate_json(task: str, prompt: str, *, system_instruction: str = "") -> di
             return parsed
         except Exception as exc:
             errors.append(f"model={model}: {type(exc).__name__}: {exc}")
+            generation_policy.mark_provider_unavailable("gemini", str(exc))
+            break
     _LAST_ERROR = f"task={task}: " + " | ".join(errors)
     print(f"[model_router] {_LAST_ERROR}")
     return None

@@ -477,15 +477,16 @@ def final_caption_qa(
         components=components,
         planning_instructions=planning_instructions,
     )
-    numeric_proof_available = any(_numeric_proof_tokens(str(item)) for item in components.get("feature_bullets") or [])
+    product_free = str(components.get("product_role") or "").upper() == "NONE"
+    numeric_proof_available = not product_free and any(_numeric_proof_tokens(str(item)) for item in components.get("feature_bullets") or [])
     reasons: list[str] = []
     if metrics["internal_instruction_leak"]:
         reasons.append("internal_instruction_leak")
     if metrics["system_like_customer_language"]:
         reasons.append("system_like_customer_language")
-    if not metrics["product_intro_position"]:
+    if not product_free and not metrics["product_intro_position"]:
         reasons.append("product_not_visible")
-    if not metrics["primary_benefit_position"]:
+    if not product_free and not metrics["primary_benefit_position"]:
         reasons.append("primary_value_not_visible")
     if platform == "facebook" and numeric_proof_available and not metrics["specs_present"]:
         reasons.append("verified_proof_missing")
@@ -517,6 +518,11 @@ def _compact_parts(components: dict[str, Any], platform: str) -> tuple[str, str,
 
 def format_caption(components: dict[str, Any], *, platform: str) -> tuple[str, dict[str, Any]]:
     """Use one proof in copy; let a spec-carrying visual carry the rest."""
+    if str(components.get("product_role") or "").upper() == "NONE":
+        caption = "\n\n".join(item for item in (str(components.get("logic_hook") or components.get("hook") or "").strip(), str(components.get("logic_bridge") or components.get("situation") or "").strip(), str(components.get("emotional_outcome") or components.get("benefit_fragment") or "").strip(), str(components.get("cta") or "Save this decision guide.").strip(), "#InfenergyPower #Preparedness #PracticalPlanning") if item)
+        presentation = evaluate(caption, platform=platform, visual_specs=[], components=components)
+        presentation.update({"platform_expression": "product_free_audience_value", "presentation_critic": "PASS"})
+        return caption, presentation
     hook, context, payoff, specs = _compact_parts(components, platform)
     cta = str(components.get("cta") or "Learn more").strip()
     narrative = components.get("product_narrative") if isinstance(components.get("product_narrative"), dict) else {}

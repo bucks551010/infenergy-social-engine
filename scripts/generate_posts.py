@@ -198,6 +198,11 @@ def _route_generate_orchestrator(
     selected_hook = str(copy_pkg.get("hook") or "").strip()
     selected_cta = str(copy_pkg.get("cta") or "Learn more").strip()
     funnel_stage = _normalize_funnel_stage_override(funnel_stage_override) or "EDUCATION"
+    from social import visual_contract
+
+    strategy_lock = copy_pkg.get("strategy_lock") if isinstance(copy_pkg.get("strategy_lock"), dict) else {}
+    role_contract = visual_contract.requirements({"copy": copy_pkg, "strategy_lock": strategy_lock, "anchored_offering": offering, "strategic_brief": brief})
+    product_free = role_contract["product_role"] == "NONE"
     product_for_adaptation = {
         "id": offering.get("offering_id") or offering.get("sku") or "",
         "name": offering.get("name", ""),
@@ -206,6 +211,8 @@ def _route_generate_orchestrator(
         "metrics": (catalog_product or {}).get("metrics", []) or list(offering.get("verified_facts", [])),
         "fact_snippet": (catalog_product or {}).get("fact_snippet", "") or offering.get("description_clean", ""),
     }
+    if product_free:
+        product_for_adaptation = {}
     topic = str((brief.get("topic_path") or {}).get("topic") or "Product education").strip()
     components = _build_post_components(
         topic=topic,
@@ -222,6 +229,8 @@ def _route_generate_orchestrator(
         "emotional_outcome": takeaway or components["emotional_outcome"],
         "on_image_headline": selected_hook or components["on_image_headline"],
         "on_image_subline": takeaway or components["on_image_subline"],
+        "product_relevance": role_contract["product_relevance"],
+        "product_role": role_contract["product_role"],
     })
     platform_posts = _build_platform_posts(
         post_id=str(first.get("post_id") or ""),
@@ -262,13 +271,13 @@ def _route_generate_orchestrator(
         "copy_generation_source": "social_intelligence_orchestrator",
         "business_context": first.get("business_context") or {},
         "anchored_offering": offering,
-        "product_id": offering.get("offering_id") or offering.get("sku") or None,
-        "product_name": offering.get("name", ""),
-        "product_sku": offering.get("sku", ""),
-        "product_image_url": (offering.get("images") or [""])[0],
-        "product_image_candidates": (offering.get("images") or [])[1:],
-        "product_url": (catalog_product or {}).get("product_url", ""),
-        "destination_url": SITE_URL,
+        "product_id": None if product_free else offering.get("offering_id") or offering.get("sku") or None,
+        "product_name": "" if product_free else offering.get("name", ""),
+        "product_sku": "" if product_free else offering.get("sku", ""),
+        "product_image_url": "" if product_free else (offering.get("images") or [""])[0],
+        "product_image_candidates": [] if product_free else (offering.get("images") or [])[1:],
+        "product_url": "" if product_free else (catalog_product or {}).get("product_url", ""),
+        "destination_url": "" if product_free else SITE_URL,
         "product_price": (catalog_product or {}).get("price", ""),
         "product_sale_price": (catalog_product or {}).get("sale_price", ""),
         "product_metrics": (catalog_product or {}).get("metrics", []) or list(offering.get("verified_facts", [])),
@@ -277,7 +286,7 @@ def _route_generate_orchestrator(
         "selected_hook": selected_hook,
         "selected_cta": selected_cta,
         "copy": copy_pkg,
-        "strategy_lock": copy_pkg.get("strategy_lock") if isinstance(copy_pkg.get("strategy_lock"), dict) else {},
+        "strategy_lock": {**strategy_lock, "product_relevance": role_contract["product_relevance"], "product_role": role_contract["product_role"]},
         "visual": visual_pkg,
         "layout_grammar": visual_pkg.get("layout_grammar", {}),
         "information_priority": visual_pkg.get("information_priority", {}),
@@ -3954,12 +3963,10 @@ def _apply_platform_presentation_priority(platform_posts: dict, components: dict
         package = platform_posts.get(platform, {}) if isinstance(platform_posts, dict) else {}
         if not isinstance(package, dict):
             continue
-        refined_caption, priority = platform_presentation.refine_caption(
-            str(package.get("caption", "")),
-            components=components,
-            platform=platform,
-            product_led=bool(components.get("product_id")),
-        )
+        if str(components.get("product_role") or "").upper() == "NONE":
+            refined_caption, priority = platform_presentation.format_caption(components, platform=platform)
+        else:
+            refined_caption, priority = platform_presentation.refine_caption(str(package.get("caption", "")), components=components, platform=platform, product_led=bool(components.get("product_id")))
         final_caption = platform_presentation.render_platform_caption(
             refined_caption,
             destination_url=str(package.get("utm_url") or package.get("destination_url") or ""),

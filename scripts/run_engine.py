@@ -1110,12 +1110,14 @@ def _live_visual_gate_errors(content: dict, effective_channels: dict[str, bool],
     if not requested:
         return []
 
+    from social import visual_contract
+
     visuals = content.get("generated_visuals") if isinstance(content.get("generated_visuals"), dict) else {}
     render_engines = visuals.get("render_engines") if isinstance(visuals.get("render_engines"), dict) else {}
     overlays = visuals.get("product_overlay_applied") if isinstance(visuals.get("product_overlay_applied"), dict) else {}
-    require_ai_visual = os.environ.get("LIVE_REQUIRE_AI_VISUAL", "true").strip().lower() in {"1", "true", "yes", "on"}
-    has_anchored_product = bool(str(content.get("product_id") or "").strip())
-    require_product = has_anchored_product and os.environ.get("LIVE_REQUIRE_PRODUCT_VISUAL", "true").strip().lower() in {"1", "true", "yes", "on"}
+    contract = visual_contract.requirements(content)
+    require_ai_visual = contract["ai_visual_required"] and os.environ.get("LIVE_REQUIRE_AI_VISUAL", "true").strip().lower() in {"1", "true", "yes", "on"}
+    require_product = contract["product_reference_required"] and os.environ.get("LIVE_REQUIRE_PRODUCT_VISUAL", "true").strip().lower() in {"1", "true", "yes", "on"}
 
     errors: list[str] = []
     if require_product and str(visuals.get("product_specific_source_present", "false")).lower() != "true":
@@ -1125,7 +1127,7 @@ def _live_visual_gate_errors(content: dict, effective_channels: dict[str, bool],
             errors.append(f"{platform}_visual_missing")
         if require_ai_visual and str(render_engines.get(platform, "")) not in {"gemini", "cloudflare"}:
             errors.append(f"{platform}_visual_not_ai_generated")
-        if require_product and overlays.get(platform) is not True:
+        if contract["product_overlay_required"] and overlays.get(platform) is not True:
             errors.append(f"{platform}_product_overlay_missing")
     instagram_post = ((content.get("platform_posts") or {}).get("instagram") or {})
     if effective_channels.get("instagram") and str(instagram_post.get("media_type") or "").upper() == "REEL":
@@ -1202,14 +1204,23 @@ def _ensure_final_artifact_qa(content: dict, effective_channels: dict[str, bool]
     pre_visual_gate = content.get("pre_visual_gate") if isinstance(content.get("pre_visual_gate"), dict) else {}
     candidate_id = str(content.get("candidate_attempt_id") or content.get("post_id") or "")
     visuals = content.get("generated_visuals") if isinstance(content.get("generated_visuals"), dict) else {}
-    if not visuals:
+    active_platforms = [platform for platform in ("facebook", "instagram", "linkedin") if effective_channels.get(platform)]
+    existing_reviews = visuals.get("artifact_reviews") if isinstance(visuals.get("artifact_reviews"), dict) else {}
+    has_required_artifacts = bool(visuals) and all(
+        str(
+            visuals.get(platform)
+            or (existing_reviews.get(platform) if isinstance(existing_reviews.get(platform), dict) else {}).get("artifact_path")
+            or ""
+        ).strip()
+        for platform in active_platforms
+    )
+    if not has_required_artifacts:
         if not (
             pre_visual_gate.get("status") == "PASS"
             and pre_visual_gate.get("flux_authorized") is True
             and str(pre_visual_gate.get("selected_candidate") or "") == candidate_id
         ):
             return {}
-        active_platforms = [platform for platform in ("facebook", "instagram", "linkedin") if effective_channels.get(platform)]
         visuals = generate_posts.generate_visuals(content, visual_plan=content.get("visual_plan"), platforms=active_platforms)
         content["generated_visuals"] = visuals
     if pre_visual_gate:

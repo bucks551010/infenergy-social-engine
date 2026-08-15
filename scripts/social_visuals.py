@@ -855,7 +855,10 @@ def _generate_gemini_full_creative(content: dict[str, Any], platform: str, visua
 
 def _build_cloudflare_image_prompt(content: dict[str, Any], platform: str, visual_plan: dict[str, Any]) -> str:
     """Compile approved strategy into an art-directed, text-free image brief."""
+    from social import visual_contract
+
     strategy = content.get("strategy_lock") if isinstance(content.get("strategy_lock"), dict) else {}
+    contract = visual_contract.requirements(content, visual_plan)
     layout = _safe_json_dict(content.get("layout_grammar") or visual_plan.get("layout_grammar"))
     platform_key = platform.split("_", 1)[0]
     interpretation = _safe_json_dict((content.get("platform_interpretations") or visual_plan.get("platform_interpretations") or {}).get(platform_key))
@@ -863,7 +866,7 @@ def _build_cloudflare_image_prompt(content: dict[str, Any], platform: str, visua
     product_name = normalize_brand_text(str(content.get("product_name") or "")).strip()
     product_direction = (
         f"An approved reference image of {product_name} is attached. Preserve its exact shape, ports, screen, buttons, panels, colors, markings, logo, and proportions. Do not invent or replace it. "
-        if product_id else
+        if contract["product_fidelity_applicable"] and product_id else
         "No product is relevant. Do not show generators, batteries, power stations, solar panels, packages, or shopping cues. "
     )
     return (
@@ -887,14 +890,16 @@ def _build_cloudflare_image_prompt(content: dict[str, Any], platform: str, visua
 
 def _cloudflare_dimensions(platform: str) -> tuple[int, int]:
     target_width, target_height = _platform_visual_spec(platform)["target"]
-    if target_height > target_width:
-        return 1024, 1280
+    if target_width == target_height:
+        return 1024, 1024
     if target_width > target_height:
-        return 1280, 1024
-    return 1024, 1024
+        return 1280, max(1024, round(1280 * target_height / target_width))
+    return max(1024, round(1280 * target_width / target_height)), 1280
 
 
 def _cloudflare_references(content: dict[str, Any], repo_context: dict[str, Any]) -> list[bytes]:
+    from social import visual_contract
+
     references: list[bytes] = []
     repo_refs = repo_context.get("references", []) if isinstance(repo_context, dict) else []
     for reference in repo_refs[:3] if isinstance(repo_refs, list) else []:
@@ -902,7 +907,7 @@ def _cloudflare_references(content: dict[str, Any], repo_context: dict[str, Any]
         raw, _ = _read_image_bytes_any(source)
         if raw:
             references.append(raw)
-    if str(content.get("product_id") or "").strip():
+    if visual_contract.requirements(content)["product_fidelity_applicable"] and str(content.get("product_id") or "").strip():
         raw, _ = _read_image_bytes_any(_resolve_product_source(content, repo_context=repo_context))
         if raw:
             references.append(raw)

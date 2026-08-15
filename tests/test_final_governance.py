@@ -137,6 +137,41 @@ def test_pre_visual_gate_authorizes_only_publishable_candidate():
     assert gate["selected_candidate"] == "candidate-a:candidate-1"
 
 
+def test_authorized_product_free_candidate_generates_missing_artifact_metadata(monkeypatch, tmp_path):
+    content = _pre_visual_content()
+    content.update({
+        "post_id": "engine-b-product-free",
+        "candidate_attempt_id": "engine-b-product-free:candidate-1",
+        "strategy_lock": {"product_relevance": "NOT_RELEVANT", "product_role": "NONE"},
+        "generated_visuals": {"strategy_fingerprint": "metadata-only"},
+        "publish_decision": {"publishable": True, "reasons": []},
+    })
+    content["pre_visual_gate"] = run_engine._pre_visual_gate(
+        content, {"facebook": True, "instagram": False, "linkedin": False}, {"total": 97.0, "platform_results": {}}
+    )
+    calls = []
+
+    def fake_generate(candidate, visual_plan=None, platforms=None):
+        calls.append((candidate, platforms))
+        artifact = tmp_path / "engine-b-facebook.png"
+        from PIL import Image
+        Image.new("RGB", (1024, 1024), "#224466").save(artifact)
+        return {
+            "facebook": str(artifact),
+            "render_engines": {"facebook": "cloudflare"},
+            "product_overlay_applied": {"facebook": False},
+            "visual_generation": {"facebook": {"visual_generation_attempted": True, "visual_provider": "cloudflare", "model": "@cf/black-forest-labs/flux-2-klein-9b"}},
+        }
+
+    monkeypatch.setattr(run_engine.generate_posts, "generate_visuals", fake_generate)
+    reviews = run_engine._ensure_final_artifact_qa(content, {"facebook": True, "instagram": False, "linkedin": False})
+
+    assert calls and calls[0][1] == ["facebook"]
+    assert content["generated_visuals"]["render_engines"]["facebook"] == "cloudflare"
+    assert reviews["facebook"]["verdict"] == "PASS"
+    assert "facebook_product_overlay_missing" not in run_engine._live_visual_gate_errors(content, {"facebook": True}, dry_run=False)
+
+
 def test_blocked_powerpulse_candidate_cannot_reach_flux_but_retained_audience_value_candidate_can(monkeypatch, tmp_path):
     calls = []
 

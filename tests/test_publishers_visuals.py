@@ -23,6 +23,7 @@ from generate_posts import (  # noqa: E402
     _product_copy_profile,
 )
 from run_engine import _live_visual_gate_errors  # noqa: E402
+from social import visual_contract  # noqa: E402
 from social_visuals import (  # noqa: E402
     _build_gemini_image_prompt,
     _gemini_plate_quality,
@@ -205,7 +206,7 @@ class PublisherVisualTests(unittest.TestCase):
         self.assertEqual(render["artifact_path"], "")
         self.assertFalse(render["artifact_exists"])
 
-    def test_live_visual_gate_rejects_local_render_and_missing_product(self) -> None:
+    def test_live_visual_gate_rejects_local_render_and_missing_primary_product_reference(self) -> None:
         content = {
             "product_id": "SFT-20K",
             "generated_visuals": {
@@ -218,7 +219,57 @@ class PublisherVisualTests(unittest.TestCase):
         errors = _live_visual_gate_errors(content, {"facebook": True}, dry_run=False)
         self.assertIn("product_specific_image_source_missing", errors)
         self.assertIn("facebook_visual_not_ai_generated", errors)
-        self.assertIn("facebook_product_overlay_missing", errors)
+        self.assertNotIn("facebook_product_overlay_missing", errors)
+
+    def test_product_free_contract_requires_ai_visual_without_product_overlay(self) -> None:
+        content = {
+            "strategy_lock": {"product_relevance": "NOT_RELEVANT", "product_role": "NONE"},
+            "product_id": "PPP-200",
+            "generated_visuals": {
+                "facebook": "editorial.png",
+                "instagram": "editorial.png",
+                "linkedin": "editorial.png",
+                "render_engines": {"facebook": "cloudflare", "instagram": "cloudflare", "linkedin": "cloudflare"},
+                "product_overlay_applied": {"facebook": False, "instagram": False, "linkedin": False},
+            },
+        }
+        contract = visual_contract.requirements(content)
+        errors = _live_visual_gate_errors(content, {"facebook": True, "instagram": True, "linkedin": True}, dry_run=False)
+
+        self.assertEqual(contract["product_role"], "NONE")
+        self.assertTrue(contract["ai_visual_required"])
+        self.assertFalse(contract["product_overlay_required"])
+        self.assertFalse(contract["product_fidelity_applicable"])
+        self.assertEqual(errors, [])
+
+    def test_product_free_visual_missing_and_non_ai_artifact_still_block(self) -> None:
+        content = {
+            "strategy_lock": {"product_relevance": "NOT_RELEVANT", "product_role": "NONE"},
+            "generated_visuals": {"render_engines": {"facebook": "local_render"}, "product_overlay_applied": {"facebook": False}},
+        }
+        errors = _live_visual_gate_errors(content, {"facebook": True}, dry_run=False)
+
+        self.assertIn("facebook_visual_missing", errors)
+        self.assertIn("facebook_visual_not_ai_generated", errors)
+        self.assertNotIn("facebook_product_overlay_missing", errors)
+
+    def test_supporting_product_allows_ai_scene_without_overlay(self) -> None:
+        content = {"strategy_lock": {"product_relevance": "RELEVANT", "product_role": "SUPPORTING"}, "product_id": "PPP-200"}
+        contract = visual_contract.requirements(content)
+
+        self.assertTrue(contract["product_fidelity_applicable"])
+        self.assertFalse(contract["product_reference_required"])
+        self.assertFalse(contract["product_overlay_required"])
+
+    def test_primary_and_fit_demonstration_keep_product_truth_requirements(self) -> None:
+        primary = visual_contract.requirements({"strategy_lock": {"product_role": "PRIMARY"}, "product_id": "PPP-200"})
+        fit = visual_contract.requirements({"strategy_lock": {"product_role": "FIT_DEMONSTRATION"}, "product_id": "PPP-200"})
+
+        for contract in (primary, fit):
+            self.assertTrue(contract["product_presence_required"])
+            self.assertTrue(contract["product_reference_required"])
+            self.assertTrue(contract["product_fidelity_applicable"])
+            self.assertFalse(contract["product_overlay_required"])
 
     def test_live_visual_gate_skips_product_checks_when_no_product_anchored(self) -> None:
         # Educational/pillar content with no product_id must not be blocked by

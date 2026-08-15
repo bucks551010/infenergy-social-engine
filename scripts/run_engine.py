@@ -690,8 +690,9 @@ def _enforce_candidate_claim_boundary(content: dict) -> list[str]:
         if not isinstance(value, str) or not value.strip():
             return
         sanitized, corrections = remove_unsupported_numeric_claims(value, verified_facts)
-        mapping[key] = sanitized
-        removed.extend(corrections)
+        if corrections:
+            mapping[key] = sanitized
+            removed.extend(corrections)
 
     for field in ("wp_content", "selected_hook"):
         sanitize(content, field)

@@ -234,6 +234,13 @@ def test_product_free_orchestrator_package_uses_homepage_without_catalog_injecti
     assert package["post_components"]["product_role"] == "NONE"
     assert "PowerPulse" not in package["platform_posts"]["facebook"]["final_caption"]
 
+    original_caption = package["platform_posts"]["facebook"]["final_caption"]
+    assert run_engine._enforce_candidate_claim_boundary(package) == []
+    assert package["platform_posts"]["facebook"]["final_caption"] == original_caption
+    assert run_engine._lock_final_captions(
+        package, {"facebook": True, "instagram": False, "linkedin": False}
+    ) == []
+
 
 def test_blocked_powerpulse_candidate_cannot_reach_flux_but_retained_audience_value_candidate_can(monkeypatch, tmp_path):
     calls = []

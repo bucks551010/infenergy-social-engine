@@ -335,13 +335,13 @@ class AudienceValueEngine:
             rotation_index=rotation_index,
             selected_opportunity_id=selected_opportunity_id,
         )
-        opportunity = audience_value.discover(
-            recent=recent,
-            rotation_index=rotation_index,
-            seasonal_context=seasonal_context,
-        )
-        brief.audience_value = opportunity.as_dict()
-        if not opportunity.abstain and not selected_opportunity_id:
+        if not selected_opportunity_id:
+            opportunity = audience_value.discover(
+                recent=recent,
+                rotation_index=rotation_index,
+                seasonal_context=seasonal_context,
+            )
+            brief.audience_value = opportunity.as_dict()
             brief.question = opportunity.reader_question
             brief.angle = opportunity.reader_takeaway
             brief.curiosity = opportunity.why_it_matters

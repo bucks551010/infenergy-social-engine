@@ -712,12 +712,13 @@ class SocialIntelligenceOrchestrator:
         engine = engines.get_engine(engine_name)
 
         # 2. Strategic brief
+        brief_exclusions = [] if selected_opportunity else excluded_concepts
         brief = engine.build(
             recent=recent,
             audience_hint=audience_hint,
             seasonal_context=seasonal_context,
             preferred_pillar=preferred_pillar,
-            excluded_concepts=excluded_concepts,
+            excluded_concepts=brief_exclusions,
             rotation_index=rotation_index,
             selected_opportunity_id=str((selected_opportunity or {}).get("opportunity_id") or ""),
         )
@@ -760,7 +761,7 @@ class SocialIntelligenceOrchestrator:
         else:
             locked = _runtime_strategy_lock(brief, lean_context, bi_offering, self.data_dir)
 
-        if remediation:
+        if remediation and not selected_opportunity:
             candidate_text = " ".join(
                 str(value or "")
                 for value in (

@@ -86,6 +86,27 @@ def test_engine_brief_retains_shortlist_and_honors_selected_opportunity(monkeypa
     assert replacement.as_dict()["opportunity_shortlist"] == baseline.opportunity_shortlist
 
 
+def test_engine_b_selected_pool_winner_is_not_overwritten_by_unrelated_audience_value(monkeypatch):
+    genre_id = next(iter(engines.libraries.genres()))
+    candidate = SimpleNamespace(
+        pillar_id="brand_philosophy", genre_id=genre_id,
+        topic_path=SimpleNamespace(topic="Distinct topic", microtopic="distinct", angle="Keep the selected premise."),
+        audience=SimpleNamespace(
+            reader_job="TEACH_ME", reader_job_config={}, segment_id="prepared", segment={}, information_gap="gap",
+            curiosity="a distinct human reality", misconception="", question="What does this routine need?", emotional_driver="confidence", rationale=[],
+        ),
+        scores={"novelty": 0.9}, total=0.9, score_summary=lambda: "selected",
+    )
+    monkeypatch.setattr(engines.opportunity_engine, "generate", lambda **_: [candidate])
+    monkeypatch.setattr(engines.audience_value, "discover", lambda **_: (_ for _ in ()).throw(AssertionError("selected winner must not be overwritten")))
+
+    brief = engines.AudienceValueEngine().build(recent={}, selected_opportunity_id="brand_philosophy:any:distinct")
+
+    assert brief.question == "What does this routine need?"
+    assert brief.angle == "Keep the selected premise."
+    assert brief.audience_value == {}
+
+
 def test_cross_engine_pool_prefers_evidence_safe_audience_value_over_blocked_commercial_option(monkeypatch):
     genre_id = next(iter(engines.libraries.genres()))
 
@@ -184,6 +205,25 @@ def test_quality_recovery_selects_a_distinct_retained_candidate():
     assert context["replacement_candidate"]["candidate_id"] == "C:distinct"
 
 
+def test_logical_candidate_key_survives_regenerated_post_ids():
+    content = {
+        "post_id": "first-artifact",
+        "candidate_attempt_id": "first-artifact:candidate-1",
+        "product_id": "PPP-200",
+        "strategic_brief": {
+            "engine": "B",
+            "pillar_id": "preparedness",
+            "genre_id": "decision_support",
+            "reader_job": "TEACH_ME",
+            "question": "What needs attention first?",
+            "angle": "Rank needs by consequence.",
+        },
+    }
+    regenerated = {**content, "post_id": "second-artifact", "candidate_attempt_id": "second-artifact:candidate-1"}
+
+    assert run_engine._logical_candidate_key(content) == run_engine._logical_candidate_key(regenerated)
+
+
 def test_field_replenishment_retains_avoidance_context_for_new_opportunity_generation():
     content = {
         "post_id": "candidate-a",
@@ -216,9 +256,59 @@ def test_field_replenishment_retains_avoidance_context_for_new_opportunity_gener
     assert context["quality_failure_reasons"] == ["novelty_angle_weak", "specificity_weak"]
     assert context["selection_rotation_index"] == 4
     assert context["retained_field_exclusions"] == ["What matters first?"]
-    assert "Output determines the fit decision." not in context["excluded_concepts"]
+    assert len(context["excluded_concepts"]) == 1
+    assert "What matters first?" in context["excluded_concepts"][0]
+    assert "Rank the jobs." in context["excluded_concepts"][0]
+    assert "before a trip" in context["excluded_concepts"][0]
     assert "replacement_candidate" not in context
     assert "opportunity_shortlist" not in context
+
+
+def test_replenished_winner_reaches_its_selected_engine_build_without_second_filter(monkeypatch, tmp_path):
+    selected = {
+        "rank": 1,
+        "candidate_id": "C:fresh",
+        "opportunity_id": "brand_philosophy:community:fresh",
+        "engine": "C",
+        "topic": "Energy access",
+        "question": "What keeps a normal day moving?",
+        "angle": "Name the routine before naming the tool.",
+        "human_reality": "an ordinary workday",
+    }
+    brief = engines.EngineBrief(
+        engine="C", pillar={"id": "brand_philosophy"}, genre={"id": "community"},
+        reader_job="TEACH_ME", reader_job_config={}, audience_segment="prepared", audience_segment_config={},
+        information_gap="practical clarity", curiosity=selected["human_reality"], misconception="",
+        question=selected["question"], emotional_driver="confidence", topic_path={"topic": selected["topic"]},
+        angle=selected["angle"], tone="clear", opportunity_score=0.9,
+    )
+    called = []
+
+    class SelectedEngine:
+        def build(self, **kwargs):
+            called.append(kwargs)
+            return brief
+
+    monkeypatch.setattr(orchestrator.engines, "build_competitive_pool", lambda **_: [selected])
+    monkeypatch.setattr(orchestrator.engines, "get_engine", lambda name: SelectedEngine())
+    monkeypatch.setattr(orchestrator.opportunity_engine, "text_is_excluded", lambda *_: True)
+    monkeypatch.setattr(orchestrator, "_runtime_strategy_lock", lambda *_: {
+        "audience": "prepared", "angle": selected["angle"], "topic": selected["topic"], "reader_job": "TEACH_ME",
+        "customer_moment": selected["human_reality"], "human_need": "practical clarity", "human_value": "useful judgment",
+    })
+    monkeypatch.setattr(orchestrator, "_assemble_copy", lambda **_: {"hook": selected["question"], "takeaway": selected["angle"]})
+    monkeypatch.setattr(orchestrator, "_llm_copy_beats", lambda *_: None)
+    monkeypatch.setattr(orchestrator, "_bi_pick_eligible_offering", lambda *_: None)
+
+    service = orchestrator.SocialIntelligenceOrchestrator(data_dir=str(tmp_path))
+    package = service.create_post(remediation_context={
+        "recovery_mode": "FIELD_REPLENISHMENT",
+        "excluded_concepts": ["old premise | old angle | old reality"],
+        "selection_rotation_index": 1,
+    })
+
+    assert called and called[0]["selected_opportunity_id"] == selected["opportunity_id"]
+    assert package.engine == "C"
 
 
 def test_recent_evidence_block_is_attempt_only_exclusion_not_published_exposure(tmp_path):

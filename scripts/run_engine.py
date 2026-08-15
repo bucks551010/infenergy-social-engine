@@ -359,12 +359,15 @@ def _field_replenishment_context(content: dict, quality_context: dict, critic_fe
     strategy = (content.get("copy") or {}).get("strategy_lock") or {}
     readiness = ((content.get("copy") or {}).get("evidence_readiness") or content.get("evidence_readiness") or {})
     claims = readiness.get("claims") if isinstance(readiness, dict) and isinstance(readiness.get("claims"), list) else []
+    search_exclusion = " | ".join(
+        str(concept[key]) for key in ("question", "angle", "human_reality") if concept.get(key)
+    )
     context = {
         **quality_context,
         "recovery_mode": "FIELD_REPLENISHMENT",
         "remediation_reason": "retained_field_exhausted_after_quality_rejections",
         "retained_field_exclusions": list(quality_context.get("excluded_concepts", [])),
-        "excluded_concepts": [str(concept[key]) for key in ("question", "angle", "human_reality") if concept.get(key)],
+        "excluded_concepts": [search_exclusion] if search_exclusion else [],
         "blocked_human_realities": [concept["human_reality"]] if concept.get("human_reality") else [],
         "blocked_content_modes": [str(quality_context.get("blocked_content_mode") or "")] if quality_context.get("blocked_content_mode") else [],
         "blocked_reader_jobs": [str(strategy.get("reader_job") or content.get("reader_job") or "")] if strategy.get("reader_job") or content.get("reader_job") else [],
@@ -376,6 +379,22 @@ def _field_replenishment_context(content: dict, quality_context: dict, critic_fe
     context.pop("replacement_candidate", None)
     context.pop("opportunity_shortlist", None)
     return context
+
+
+def _logical_candidate_key(content: dict) -> str:
+    """Identify a strategic opportunity across regenerated copy artifacts."""
+    brief = content.get("strategic_brief") if isinstance(content.get("strategic_brief"), dict) else {}
+    strategy = (content.get("copy") or {}).get("strategy_lock") or {}
+    identity = {
+        "engine": brief.get("engine"),
+        "pillar": brief.get("pillar_id"),
+        "genre": brief.get("genre_id"),
+        "question": brief.get("question") or content.get("selected_hook") or (content.get("copy") or {}).get("hook"),
+        "angle": brief.get("angle") or strategy.get("angle"),
+        "reader_job": brief.get("reader_job") or strategy.get("reader_job") or content.get("reader_job"),
+        "product_id": content.get("product_id"),
+    }
+    return _stable_hash(json.dumps(identity, sort_keys=True, ensure_ascii=True)) or str(content.get("candidate_attempt_id") or content.get("post_id") or "")
 
 
 def _research_recovery(content: dict) -> dict:
@@ -1664,6 +1683,9 @@ def main() -> None:
     research_recovery_used = False
     research_verified_facts: list[str] = []
     field_replenished = False
+    candidate_realizations: dict[str, int] = {}
+    active_candidate_key = ""
+    candidate_identity_reset = True
     original_research_block: dict | None = None
     remediation_context: dict | None = None
     recovery_story: dict = {"candidate_a": {}, "classification": "", "alternatives_considered": [], "candidate_b_selected": False, "presentation_repairs": []}
@@ -1756,6 +1778,12 @@ def main() -> None:
         generated_visuals["source_visual_candidate_id"] = str(generated_visuals.get("source_visual_candidate_id") or content.get("post_id") or "")
         generated_visuals["strategy_fingerprint"] = _visual_strategy_fingerprint(content)
         content["generated_visuals"] = generated_visuals
+        if candidate_identity_reset or not active_candidate_key:
+            active_candidate_key = _logical_candidate_key(content) or f"realization-{idx + 1}"
+            candidate_identity_reset = False
+        candidate_key = active_candidate_key
+        candidate_realizations[candidate_key] = candidate_realizations.get(candidate_key, 0) + 1
+        candidate_realization_count = candidate_realizations[candidate_key]
 
         # Conversion Logic Engine rule (spec section 23): below 80 CQS, automatically
         # attempt improvement before publishing rather than accepting a "warning"-only gate.
@@ -1866,7 +1894,7 @@ def main() -> None:
             break
 
         quality_candidate_shift_needed = (
-            idx % 2 == 1
+            candidate_realization_count >= 2
             and idx + 1 < decision_budget
             and not evidence_remediation_used
             and validation.get("passed")
@@ -1897,6 +1925,7 @@ def main() -> None:
                 prior_generated_visuals = {}
                 locked_strategy = {}
                 locked_product_id = ""
+                candidate_identity_reset = True
                 continue
             if not field_replenished:
                 remediation_context = _field_replenishment_context(content, remediation_context, critic_feedback)
@@ -1910,6 +1939,7 @@ def main() -> None:
                 locked_strategy = {}
                 locked_product_id = ""
                 field_replenished = True
+                candidate_identity_reset = True
                 continue
             recovery_story["candidate_field_exhausted"] = True
             break
@@ -1977,7 +2007,7 @@ def main() -> None:
                 break
 
         # Each selected candidate receives one bounded critic-directed revision.
-        if idx % 2 == 0 and not evidence_remediation_used and scoring.get("decision") != "reject" and (
+        if candidate_realization_count == 1 and not evidence_remediation_used and (
             publish_decision["decision"] in {"revise", "regenerate"}
             or (publish_decision["decision"] == "do_not_publish" and retryability in {"RETRYABLE_CONTENT", "EVIDENCE_SAFE_REMEDIATION"})
         ):
@@ -2022,6 +2052,7 @@ def main() -> None:
                 }
                 locked_strategy = {}
                 locked_product_id = ""
+                candidate_identity_reset = True
             else:
                 pending_feedback = critic_feedback or ["Improve the candidate so it meets the existing critic threshold."]
                 pending_scope = diagnosis["repair_scope"] if diagnosis["repair_scope"] != "angle_and_hook_promise" else "strategy"
@@ -2046,8 +2077,9 @@ def main() -> None:
         if publish_decision["decision"] == "do_not_publish":
             break
 
-        # Otherwise stop on final attempt or hard rejection.
-        if idx == 2 or scoring.get("decision") == "reject":
+        # The governed decision is authoritative for recovery; legacy scoring
+        # identifies weak copy but must not terminate viable search territory.
+        if idx + 1 >= decision_budget:
             break
     _apply_phase8_budget(runtime_metrics, "generation", time.perf_counter() - t_generation, generation_budget)
 

@@ -588,6 +588,7 @@ def _start_slot_thread(
     product_id_override: str = "",
     funnel_stage_override: str = "",
     pipeline_override: str = "",
+    engine_override: str = "",
 ) -> bool:
     if RUN_LOCK.locked():
         return False
@@ -604,6 +605,7 @@ def _start_slot_thread(
             "product_id_override": product_id_override,
             "funnel_stage_override": funnel_stage_override,
             "pipeline_override": pipeline_override,
+            "engine_override": engine_override,
         },
         daemon=True,
     )
@@ -1271,6 +1273,7 @@ class HealthHandler(BaseHTTPRequestHandler):
             product_id_override = params.get("product_id", [""])[0].strip()
             funnel_stage_override = params.get("funnel_stage", [""])[0].strip().upper()
             pipeline_override = params.get("pipeline", [""])[0].strip().lower()
+            engine_override = params.get("engine", [""])[0].strip().lower()
             if duplicate_mode and duplicate_mode not in ("strict", "exact_only", "allow_all"):
                 duplicate_mode = ""
             if readiness_block_override and readiness_block_override not in ("true", "false", "1", "0", "yes", "no"):
@@ -1281,6 +1284,10 @@ class HealthHandler(BaseHTTPRequestHandler):
                 pipeline_override = "best_of"
             if pipeline_override and pipeline_override not in ("legacy", "orchestrator", "best_of"):
                 pipeline_override = ""
+            if engine_override in ("product", "product_centered", "engine_a"):
+                engine_override = "product"
+            elif engine_override not in ("a", "b", "c"):
+                engine_override = ""
             if slot not in ("morning", "midday", "evening"):
                 slot = "morning"
 
@@ -1311,6 +1318,7 @@ class HealthHandler(BaseHTTPRequestHandler):
                 product_id_override=product_id_override,
                 funnel_stage_override=funnel_stage_override,
                 pipeline_override=pipeline_override,
+                engine_override=engine_override,
                 shadow_mode=shadow_mode,
             )
             payload = {
@@ -1324,6 +1332,7 @@ class HealthHandler(BaseHTTPRequestHandler):
                 "product_id": product_id_override or "auto",
                 "funnel_stage": funnel_stage_override or "auto",
                 "pipeline": pipeline_override or "env_default",
+                "engine": engine_override or "auto",
                 "message": "run started" if started else "run already in progress",
                 "time_utc": _utc_now(),
             }
@@ -1456,6 +1465,7 @@ def run_slot(
     product_id_override: str = "",
     funnel_stage_override: str = "",
     pipeline_override: str = "",
+    engine_override: str = "",
 ) -> None:
     with RUN_LOCK:
         LAST_RUN["status"] = "running"
@@ -1479,6 +1489,7 @@ def run_slot(
         previous_product_override = os.environ.get("POST_PRODUCT_ID_OVERRIDE", "")
         previous_funnel_stage_override = os.environ.get("POST_FUNNEL_STAGE_OVERRIDE", "")
         previous_pipeline_override = os.environ.get("POST_PIPELINE_OVERRIDE", "")
+        previous_engine_override = os.environ.get("POST_ENGINE_OVERRIDE", "")
         previous_shadow_mode = os.environ.get("SOCIAL_SHADOW_MODE", "")
         os.environ["POST_SLOT"] = slot
         os.environ["POST_PLATFORMS"] = platforms_override
@@ -1492,6 +1503,8 @@ def run_slot(
             os.environ["POST_FUNNEL_STAGE_OVERRIDE"] = funnel_stage_override
         if pipeline_override:
             os.environ["POST_PIPELINE_OVERRIDE"] = pipeline_override
+        if engine_override:
+            os.environ["POST_ENGINE_OVERRIDE"] = engine_override
         if force_live:
             os.environ["SOCIAL_DRY_RUN"] = "false"
         if shadow_mode:
@@ -1567,6 +1580,10 @@ def run_slot(
                 os.environ["POST_PIPELINE_OVERRIDE"] = previous_pipeline_override
             elif "POST_PIPELINE_OVERRIDE" in os.environ:
                 del os.environ["POST_PIPELINE_OVERRIDE"]
+            if previous_engine_override:
+                os.environ["POST_ENGINE_OVERRIDE"] = previous_engine_override
+            elif "POST_ENGINE_OVERRIDE" in os.environ:
+                del os.environ["POST_ENGINE_OVERRIDE"]
             if previous_shadow_mode:
                 os.environ["SOCIAL_SHADOW_MODE"] = previous_shadow_mode
             elif "SOCIAL_SHADOW_MODE" in os.environ:

@@ -35,6 +35,7 @@ def _run_slot(monkeypatch, *, force_live: bool, shadow_mode: bool, platforms: st
         shadow_mode=shadow_mode,
         platforms_override=platforms,
         pipeline_override="orchestrator",
+        engine_override="product",
         readiness_block_override="true",
     )
     return refresh, completed
@@ -48,6 +49,7 @@ def test_shadow_forbids_meta_refresh_even_when_refresh_is_forced(monkeypatch):
     assert completed.call_args.kwargs["env"]["SOCIAL_DRY_RUN"] == "true"
     assert completed.call_args.kwargs["env"]["POST_PLATFORMS"] == "facebook"
     assert completed.call_args.kwargs["env"]["POST_PIPELINE_OVERRIDE"] == "orchestrator"
+    assert completed.call_args.kwargs["env"]["POST_ENGINE_OVERRIDE"] == "product"
 
 
 def test_non_live_run_forbids_meta_refresh(monkeypatch):

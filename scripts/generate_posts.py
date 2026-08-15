@@ -4937,6 +4937,11 @@ def generate(
 ) -> dict:
     mode = _pipeline_mode(pipeline_override)
     platform = os.environ.get("POST_PLATFORMS", "instagram_feed").split(",")[0].strip() or "instagram_feed"
+    preferred_engine = os.environ.get("POST_ENGINE_OVERRIDE", "").strip().upper()
+    if preferred_engine == "PRODUCT":
+        preferred_engine = "A"
+    if preferred_engine not in {"A", "B", "C"}:
+        preferred_engine = ""
 
     if mode == "best_of":
         return _generate_best_of(slot, funnel_stage_override=funnel_stage_override, product_id_override=product_id_override)
@@ -4950,6 +4955,7 @@ def generate(
             revision_feedback=revision_feedback,
             remediation_context=remediation_context,
             verified_facts=verified_facts_override,
+            preferred_engine=preferred_engine or None,
         )
     if mode != "legacy" and _social_intelligence_enabled():
         return _route_generate_orchestrator(
@@ -4961,6 +4967,7 @@ def generate(
             revision_feedback=revision_feedback,
             remediation_context=remediation_context,
             verified_facts=verified_facts_override,
+            preferred_engine=preferred_engine or None,
         )
 
     ensure_runtime_data()

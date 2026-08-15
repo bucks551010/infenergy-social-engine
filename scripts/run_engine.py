@@ -1168,11 +1168,13 @@ def _repair_final_presentations(content: dict, effective_channels: dict[str, boo
         if qa.get("status") == "PRESENTATION_READY":
             continue
         caption, presentation = platform_presentation.format_caption(components, platform=platform)
-        package["caption"] = platform_presentation.render_platform_caption(
+        final_caption = platform_presentation.render_platform_caption(
             caption,
             destination_url=str(content.get("destination_url") or ""),
             platform=platform,
         )
+        package["caption"] = final_caption
+        package["final_caption"] = final_caption
         package["presentation"] = presentation
         packages[platform] = package
         repaired.append(platform)

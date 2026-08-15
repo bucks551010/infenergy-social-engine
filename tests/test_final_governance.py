@@ -9,6 +9,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 import run_engine
 import social_visuals
+import generate_posts
 from social import claim_governance, claim_intelligence, publish_decision, quality_intelligence
 
 
@@ -170,6 +171,68 @@ def test_authorized_product_free_candidate_generates_missing_artifact_metadata(m
     assert content["generated_visuals"]["render_engines"]["facebook"] == "cloudflare"
     assert reviews["facebook"]["verdict"] == "PASS"
     assert "facebook_product_overlay_missing" not in run_engine._live_visual_gate_errors(content, {"facebook": True}, dry_run=False)
+
+
+def test_presentation_repair_replaces_stale_final_caption_before_locking():
+    components = {
+        "product_role": "NONE",
+        "logic_hook": "Define the job before comparing tools.",
+        "logic_bridge": "Write the device, connection, time window, and constraint first.",
+        "emotional_outcome": "The requirement becomes clearer when you describe the task first.",
+        "cta": "Save this planning prompt.",
+    }
+    content = {
+        "destination_url": "https://www.infenergypower.com",
+        "post_components": components,
+        "platform_posts": {
+            "facebook": {
+                "caption": "Stale flattened caption.",
+                "final_caption": "Stale flattened caption.",
+                "final_caption_qa": {"status": "REVISE_PRESENTATION"},
+            }
+        },
+    }
+
+    repaired = run_engine._repair_final_presentations(
+        content, {"facebook": True, "instagram": False, "linkedin": False}
+    )
+    package = content["platform_posts"]["facebook"]
+
+    assert repaired == ["facebook"]
+    assert package["caption"] == package["final_caption"] == content["fb_caption"]
+    assert package["final_caption_lock"] == package["final_caption"]
+    assert package["final_caption_qa"]["status"] == "PRESENTATION_READY"
+    assert "https://www.infenergypower.com" in package["final_caption"]
+
+
+def test_product_free_orchestrator_package_uses_homepage_without_catalog_injection(monkeypatch):
+    product_free_copy = {
+        "hook": "Define the job before comparing tools.",
+        "body_text": "Write the device, connection, time window, and constraint first.",
+        "takeaway": "The requirement becomes clearer when you describe the task first.",
+        "cta": "Save this planning prompt.",
+        "strategy_lock": {"positioning": "product-free audience value"},
+    }
+    candidate = {
+        "post_id": "product-free-candidate",
+        "copy": product_free_copy,
+        "visual": {},
+        "quality": {"overall": 90},
+        "anchored_offering": {"offering_id": "PPP-200", "name": "PowerPulse Pro 200", "sku": "PPP-200"},
+        "brief": {"audience_segment": "mobile_professional", "topic_path": {"topic": "Preparedness"}},
+        "creative_decision_packet": {},
+    }
+    monkeypatch.setattr(generate_posts, "run_social_intelligence", lambda **_: [candidate])
+    monkeypatch.setattr(generate_posts, "load_products", lambda: [{"id": "PPP-200", "product_url": "https://www.infenergypower.com/products/ppp-200"}])
+
+    package = generate_posts._route_generate_orchestrator(defer_visuals=True)
+
+    assert package["product_id"] is None
+    assert package["product_name"] == ""
+    assert package["product_url"] == ""
+    assert package["destination_url"] == generate_posts.SITE_URL
+    assert package["post_components"]["product_role"] == "NONE"
+    assert "PowerPulse" not in package["platform_posts"]["facebook"]["final_caption"]
 
 
 def test_blocked_powerpulse_candidate_cannot_reach_flux_but_retained_audience_value_candidate_can(monkeypatch, tmp_path):

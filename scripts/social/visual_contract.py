@@ -41,10 +41,17 @@ def requirements(content: dict[str, Any], visual_plan: dict[str, Any] | None = N
     ).upper()
     aliases = {"DECISION_SUPPORT": "SUPPORTING", "SUPPORTING_PROOF": "SUPPORTING"}
     role = aliases.get(raw_role, raw_role)
-    if relevance == "NOT_RELEVANT":
+    positioning = str(strategy.get("positioning") or "").strip().lower()
+    if relevance == "NOT_RELEVANT" or "product-free" in positioning:
+        relevance = "NOT_RELEVANT"
         role = "NONE"
     elif not role:
-        role = "PRIMARY" if str(content.get("product_id") or "").strip() else "NONE"
+        attached_product = _first_text(
+            content.get("product_id"),
+            offering.get("offering_id"),
+            offering.get("sku"),
+        )
+        role = "PRIMARY" if attached_product else "NONE"
 
     overlay_requested = any(
         value is True

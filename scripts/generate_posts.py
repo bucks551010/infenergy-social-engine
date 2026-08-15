@@ -203,6 +203,7 @@ def _route_generate_orchestrator(
     strategy_lock = copy_pkg.get("strategy_lock") if isinstance(copy_pkg.get("strategy_lock"), dict) else {}
     role_contract = visual_contract.requirements({"copy": copy_pkg, "strategy_lock": strategy_lock, "anchored_offering": offering, "strategic_brief": brief})
     product_free = role_contract["product_role"] == "NONE"
+    destination_url = SITE_URL if product_free else (catalog_product or {}).get("product_url") or SITE_URL
     product_for_adaptation = {
         "id": offering.get("offering_id") or offering.get("sku") or "",
         "name": offering.get("name", ""),
@@ -237,7 +238,7 @@ def _route_generate_orchestrator(
         campaign_id="",
         audience_segment=str(brief.get("audience_segment") or ""),
         funnel_stage=funnel_stage,
-        destination_url=(catalog_product or {}).get("product_url") or SITE_URL,
+        destination_url=destination_url,
         components=components,
         quality_score=float(quality_pkg.get("overall") or 0),
         strategy_lock=copy_pkg.get("strategy_lock") if isinstance(copy_pkg.get("strategy_lock"), dict) else {},
@@ -277,7 +278,7 @@ def _route_generate_orchestrator(
         "product_image_url": "" if product_free else (offering.get("images") or [""])[0],
         "product_image_candidates": [] if product_free else (offering.get("images") or [])[1:],
         "product_url": "" if product_free else (catalog_product or {}).get("product_url", ""),
-        "destination_url": "" if product_free else SITE_URL,
+        "destination_url": destination_url,
         "product_price": (catalog_product or {}).get("price", ""),
         "product_sale_price": (catalog_product or {}).get("sale_price", ""),
         "product_metrics": (catalog_product or {}).get("metrics", []) or list(offering.get("verified_facts", [])),

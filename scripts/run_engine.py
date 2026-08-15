@@ -322,6 +322,14 @@ def _remediation_context(content: dict, decision: dict, duplicates: dict) -> dic
         "product_role": (content.get("copy") or {}).get("strategy_lock", {}).get("product_role"),
         "evidence_dependency": "CENTRAL_RESEARCH_REQUIRED" if any(isinstance(claim, dict) and claim.get("centrality") == "CENTRAL" and claim.get("research_status") == "RESEARCH_REQUIRED" for claim in claims) else "",
     })
+    strategy = (content.get("copy") or {}).get("strategy_lock") or {}
+    blocked_content_mode = "PRODUCT_FIT" if content.get("product_id") else "AUDIENCE_VALUE" if "product-free" in str(strategy.get("positioning") or "").lower() else "DECISION_SUPPORT"
+    central_research_block = any(
+        isinstance(claim, dict)
+        and claim.get("centrality") == "CENTRAL"
+        and claim.get("research_status") == "RESEARCH_REQUIRED"
+        for claim in claims
+    )
     excluded_product_ids = [str(content.get("product_id"))] if not duplicates.get("ok", True) and content.get("product_id") else []
     replacement, alternatives_considered = recovery.select_replacement(
         shortlist,
@@ -329,8 +337,11 @@ def _remediation_context(content: dict, decision: dict, duplicates: dict) -> dic
         excluded_concepts=set(value for value in concept.values() if value),
         blocked_human_realities={concept["human_reality"]} if concept.get("human_reality") else set(),
         blocked_fingerprint=blocked_fingerprint,
+        max_claim_burden_level=1 if central_research_block else None,
+        required_content_mode_change=central_research_block,
+        blocked_content_mode=blocked_content_mode,
     )
-    return {"original_candidate_id": str(content.get("post_id") or ""), "original_candidate_attempt_id": candidate_attempt_id, "original_concept": concept, "blocked_opportunity_fingerprint": blocked_fingerprint, "original_claim_ledger": content.get("claim_ledger") or {}, "original_evidence_readiness": readiness, "original_centrality_summary": {"central_unresolved": [str(claim.get("claim") or "") for claim in claims if isinstance(claim, dict) and claim.get("centrality") == "CENTRAL" and claim.get("research_status") == "RESEARCH_REQUIRED"], "status": str(readiness.get("status") or "")}, "remediation_reason": "central_evidence_block_requires_new_opportunity", "excluded_concepts": [value for value in concept.values() if value], "excluded_product_ids": excluded_product_ids, "exclude_engine_a_decision_thesis": True, "selection_rotation_index": int(content.get("selection_rotation_index") or 0) + 1, "candidate_attempt_id": f"{content.get('post_id')}:candidate-2", "original_governance": decision, "opportunity_shortlist": shortlist, "replacement_candidate": replacement, "alternatives_considered": alternatives_considered}
+    return {"original_candidate_id": str(content.get("post_id") or ""), "original_candidate_attempt_id": candidate_attempt_id, "original_concept": concept, "blocked_opportunity_fingerprint": blocked_fingerprint, "original_claim_ledger": content.get("claim_ledger") or {}, "original_evidence_readiness": readiness, "original_centrality_summary": {"central_unresolved": [str(claim.get("claim") or "") for claim in claims if isinstance(claim, dict) and claim.get("centrality") == "CENTRAL" and claim.get("research_status") == "RESEARCH_REQUIRED"], "status": str(readiness.get("status") or "")}, "remediation_reason": "central_evidence_block_requires_new_opportunity", "blocked_content_mode": blocked_content_mode, "fallback_type": "CONTENT_MODE_SHIFT" if replacement else "NO_VIABLE_LOW_CLAIM_MODE", "excluded_concepts": [value for value in concept.values() if value], "excluded_product_ids": excluded_product_ids, "exclude_engine_a_decision_thesis": True, "selection_rotation_index": int(content.get("selection_rotation_index") or 0) + 1, "candidate_attempt_id": f"{content.get('post_id')}:candidate-2", "original_governance": decision, "opportunity_shortlist": shortlist, "replacement_candidate": replacement, "alternatives_considered": alternatives_considered}
 
 
 def _semantic_difference(original: dict, replacement: dict) -> tuple[bool, str]:

@@ -155,10 +155,29 @@ def _opportunity_record(candidate: opportunity_engine.OpportunityCandidate, *, e
     path = candidate.topic_path
     candidate_text = " ".join((path.topic, path.microtopic, path.angle, audience.question, audience.curiosity))
     product_centered = engine == "A"
-    evidence_burden = "REQUIRES_PRODUCT_EVIDENCE" if product_centered else "LOW"
+    content_mode = {
+        "A": "PRODUCT_FIT",
+        "B": "DECISION_SUPPORT",
+        "C": "BRAND_PERSPECTIVE",
+    }.get(engine, "AUDIENCE_VALUE")
+    technical_terms = {"capacity", "output", "connection", "compatibility", "stored energy", "specification"}
+    depends_on_category_fact = engine == "B" and any(term in candidate_text.lower() for term in technical_terms)
+    claim_burden_level = 1 if product_centered else 2 if depends_on_category_fact else 0
+    evidence_burden = "REQUIRES_PRODUCT_EVIDENCE" if claim_burden_level == 1 else "LOW"
     commercial_intensity = "PRODUCT_LIGHT" if product_centered else "NONE"
-    truth_penalty = 0.22 if product_centered else 0.0
+    truth_penalty = 0.22 if product_centered else 0.14 if claim_burden_level == 2 else 0.0
     audience_bonus = 0.12 if engine == "B" else 0.0
+    publishability = {
+        "status": "PASS",
+        "central_message_identifiable": bool(path.angle),
+        "truth_basis": "verified_product_facts" if claim_burden_level == 1 else "owner_approved_decision_guidance" if claim_burden_level == 2 else "brand_perspective_or_planning_prompt",
+        "claim_burden_level": claim_burden_level,
+        "evidence_available": claim_burden_level < 3,
+        "freshness_acceptable": float(candidate.scores.get("novelty", 0.0)) >= 0.5,
+        "audience_value_meaningful": float(candidate.scores.get("usefulness", 0.65)) >= 0.55,
+        "platform_fit_plausible": float(candidate.scores.get("platform_fit", 0.7)) >= 0.5,
+        "visual_concept_possible": float(candidate.scores.get("visual_potential", 0.7)) >= 0.5,
+    }
     return {
         **compact,
         "candidate_id": f"{engine}:{compact['opportunity_id']}",
@@ -172,6 +191,7 @@ def _opportunity_record(candidate: opportunity_engine.OpportunityCandidate, *, e
         "one_big_idea": path.angle,
         "reader_job": audience.reader_job,
         "content_job": candidate.genre_id,
+        "content_mode": content_mode,
         "product_relevance": "EARNED_BY_EVIDENCE" if product_centered else "NOT_REQUIRED",
         "product_id": "",
         "product_role": "DECISION_SUPPORT" if product_centered else "NONE",
@@ -179,6 +199,8 @@ def _opportunity_record(candidate: opportunity_engine.OpportunityCandidate, *, e
         "expected_response": audience.reader_job,
         "campaign_fit": "ELIGIBLE",
         "known_evidence_burden": evidence_burden,
+        "claim_burden_level": claim_burden_level,
+        "publishability_precheck": publishability,
         "recent_semantic_similarity": round(1.0 - float(candidate.scores.get("novelty", 0.0)), 3),
         "recent_product_pressure": len(recent.get("product_roles", [])),
         "likely_platform_fit": round(float(candidate.scores.get("platform_fit", 0.0)), 3),
@@ -228,7 +250,7 @@ def build_competitive_pool(
                 continue
             records.append(record)
 
-    records.sort(key=lambda item: float(item["global_score"]), reverse=True)
+    records.sort(key=lambda item: (float(item["global_score"]), -int(item["claim_burden_level"])), reverse=True)
     retained: list[dict[str, Any]] = []
     seen_opportunities: set[str] = set()
     for record in records:

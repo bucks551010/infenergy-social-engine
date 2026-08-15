@@ -114,6 +114,52 @@ def test_cross_engine_pool_prefers_evidence_safe_audience_value_over_blocked_com
     assert len({record["opportunity_id"] for record in pool}) == len(pool)
 
 
+def test_lightweight_pool_exposes_publishability_and_claim_burden_before_copy(monkeypatch):
+    genre_id = next(iter(engines.libraries.genres()))
+
+    def candidate(engine):
+        return SimpleNamespace(
+            pillar_id="brand_philosophy", genre_id=genre_id,
+            topic_path=SimpleNamespace(topic="Planning", microtopic=engine, angle="Name the job before choosing a tool."),
+            audience=SimpleNamespace(reader_job="PREPARE_ME", reader_job_config={}, segment_id="prepared", segment={}, information_gap="planning", curiosity="an ordinary routine", misconception="", question="What needs to keep working first?", emotional_driver="confidence", rationale=[]),
+            scores={"novelty": 0.9, "platform_fit": 0.8, "usefulness": 0.9, "visual_potential": 0.8}, total=0.9,
+            score_summary=lambda: "high value",
+        )
+
+    monkeypatch.setattr(engines.opportunity_engine, "generate", lambda engine, **_: [candidate(engine)])
+    pool = engines.build_competitive_pool(recent={})
+
+    assert pool
+    for record in pool:
+        contract = record["publishability_precheck"]
+        assert contract["status"] == "PASS"
+        assert contract["central_message_identifiable"]
+        assert contract["evidence_available"]
+        assert record["claim_burden_level"] in {0, 1, 2}
+        assert record["content_mode"] in {"PRODUCT_FIT", "DECISION_SUPPORT", "BRAND_PERSPECTIVE"}
+
+
+def test_evidence_recovery_promotes_distinct_low_claim_content_mode():
+    shortlist = [
+        {"rank": 1, "content_mode": "DECISION_SUPPORT", "claim_burden_level": 2, "topic": "Device fit", "question": "What fits?", "angle": "Match output to the job.", "human_reality": "device fit"},
+        {"rank": 2, "content_mode": "DECISION_SUPPORT", "claim_burden_level": 2, "topic": "Device fit", "question": "Which output fits?", "angle": "Compare output to the job.", "human_reality": "device fit"},
+        {"rank": 3, "content_mode": "BRAND_PERSPECTIVE", "claim_burden_level": 0, "topic": "Preparation", "question": "What would you want to keep working first?", "angle": "Start a plan with the job that changes the day.", "human_reality": "an ordinary routine"},
+    ]
+
+    selected, considered = recovery.select_replacement(
+        shortlist,
+        blocked_fingerprint=shortlist[0],
+        max_claim_burden_level=1,
+        required_content_mode_change=True,
+        blocked_content_mode="DECISION_SUPPORT",
+    )
+
+    assert selected and selected["rank"] == 3
+    assert selected["content_mode"] == "BRAND_PERSPECTIVE"
+    assert selected["claim_burden_level"] == 0
+    assert {item["reason"] for item in considered[:-1]} & {"claim_burden_too_high", "blocked_content_mode"}
+
+
 def test_recent_evidence_block_is_attempt_only_exclusion_not_published_exposure(tmp_path):
     history = {
         "posts": [{

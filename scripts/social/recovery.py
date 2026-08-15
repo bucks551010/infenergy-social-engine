@@ -82,6 +82,9 @@ def select_replacement(
     excluded_concepts: set[str] | None = None,
     blocked_human_realities: set[str] | None = None,
     blocked_fingerprint: dict[str, Any] | None = None,
+    max_claim_burden_level: int | None = None,
+    required_content_mode_change: bool = False,
+    blocked_content_mode: str = "",
 ) -> tuple[dict[str, Any] | None, list[dict[str, str]]]:
     """Choose Candidate B in rank order, recording compact skip evidence."""
     excluded_product_ids = {str(value) for value in excluded_product_ids or set()}
@@ -97,9 +100,15 @@ def select_replacement(
         text = " ".join(str(candidate.get(key) or "") for key in ("topic", "question", "angle")).lower()
         human_reality = str(candidate.get("human_reality") or "").lower()
         candidate_tokens = _fingerprint_tokens(candidate)
+        claim_burden_level = int(candidate.get("claim_burden_level", 0) or 0)
+        content_mode = str(candidate.get("content_mode") or "").upper()
         reason = ""
         if product_id and product_id in excluded_product_ids:
             reason = "duplicate_product_within_window"
+        elif max_claim_burden_level is not None and claim_burden_level > max_claim_burden_level:
+            reason = "claim_burden_too_high"
+        elif required_content_mode_change and blocked_content_mode and content_mode == blocked_content_mode:
+            reason = "blocked_content_mode"
         elif any(concept in text for concept in excluded_concepts):
             reason = "blocked_semantic_concept"
         elif human_reality and human_reality in blocked_human_realities:

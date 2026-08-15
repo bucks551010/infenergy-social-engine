@@ -28,7 +28,7 @@ def decide(
     """Return the only publish decision consumed by the runtime."""
     legacy_total = float(legacy_score.get("total") or 0)
     critic_total = (orchestrator_quality or {}).get("overall")
-    critic_total = float(critic_total) if critic_total is not None else None
+    critic_total = round(float(critic_total), 1) if critic_total is not None else None
     reasons: list[str] = []
 
     if not validation.get("passed", False):

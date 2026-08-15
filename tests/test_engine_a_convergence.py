@@ -88,6 +88,20 @@ def test_final_critic_remains_authoritative_over_legacy_score():
     assert decision["decision"] == "revise"
 
 
+def test_critic_score_at_threshold_after_operational_rounding_publishes():
+    decision = publish_decision.decide(
+        legacy_score={"total": 85.0, "component_scores": {}},
+        validation={"passed": True, "errors": []},
+        duplicates={"ok": True, "reasons": []},
+        conversion_quality_score=100.0,
+        orchestrator_quality={"overall": 81.99285714285715, "critic_findings": []},
+    )
+
+    assert decision["orchestrator_critic_score"] == 82.0
+    assert decision["publishable"] is True
+    assert decision["decision"] == "publish"
+
+
 def test_production_engine_a_state_replays_with_explained_decision_dependency():
     question, facts, narrative = _production_state()
     beats = orchestrator._engine_a_product_expression_beats(

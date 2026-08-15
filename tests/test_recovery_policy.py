@@ -201,6 +201,8 @@ def test_field_replenishment_retains_avoidance_context_for_new_opportunity_gener
         "blocked_opportunity_fingerprint": "failed-fingerprint",
         "blocked_content_mode": "DECISION_SUPPORT",
         "excluded_concepts": ["What matters first?"],
+        "replacement_candidate": {"candidate_id": "retained"},
+        "opportunity_shortlist": [{"candidate_id": "retained"}],
     }
 
     context = run_engine._field_replenishment_context(content, quality_context, ["novelty_angle_weak", "specificity_weak"])
@@ -213,6 +215,10 @@ def test_field_replenishment_retains_avoidance_context_for_new_opportunity_gener
     assert "Output determines device fit." in context["failed_claim_dependencies"]
     assert context["quality_failure_reasons"] == ["novelty_angle_weak", "specificity_weak"]
     assert context["selection_rotation_index"] == 4
+    assert context["retained_field_exclusions"] == ["What matters first?"]
+    assert "Output determines the fit decision." not in context["excluded_concepts"]
+    assert "replacement_candidate" not in context
+    assert "opportunity_shortlist" not in context
 
 
 def test_recent_evidence_block_is_attempt_only_exclusion_not_published_exposure(tmp_path):

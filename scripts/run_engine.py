@@ -359,14 +359,12 @@ def _field_replenishment_context(content: dict, quality_context: dict, critic_fe
     strategy = (content.get("copy") or {}).get("strategy_lock") or {}
     readiness = ((content.get("copy") or {}).get("evidence_readiness") or content.get("evidence_readiness") or {})
     claims = readiness.get("claims") if isinstance(readiness, dict) and isinstance(readiness.get("claims"), list) else []
-    return {
+    context = {
         **quality_context,
         "recovery_mode": "FIELD_REPLENISHMENT",
         "remediation_reason": "retained_field_exhausted_after_quality_rejections",
-        "excluded_concepts": list(dict.fromkeys([
-            *(str(value) for value in quality_context.get("excluded_concepts", []) if value),
-            *(str(value) for value in concept.values() if value),
-        ])),
+        "retained_field_exclusions": list(quality_context.get("excluded_concepts", [])),
+        "excluded_concepts": [str(concept[key]) for key in ("question", "angle", "human_reality") if concept.get(key)],
         "blocked_human_realities": [concept["human_reality"]] if concept.get("human_reality") else [],
         "blocked_content_modes": [str(quality_context.get("blocked_content_mode") or "")] if quality_context.get("blocked_content_mode") else [],
         "blocked_reader_jobs": [str(strategy.get("reader_job") or content.get("reader_job") or "")] if strategy.get("reader_job") or content.get("reader_job") else [],
@@ -375,6 +373,9 @@ def _field_replenishment_context(content: dict, quality_context: dict, critic_fe
         "selection_rotation_index": int(content.get("selection_rotation_index") or 0) + 1,
         "candidate_attempt_id": f"{content.get('post_id')}:replenished-field",
     }
+    context.pop("replacement_candidate", None)
+    context.pop("opportunity_shortlist", None)
+    return context
 
 
 def _research_recovery(content: dict) -> dict:

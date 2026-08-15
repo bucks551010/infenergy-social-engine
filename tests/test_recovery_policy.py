@@ -184,6 +184,37 @@ def test_quality_recovery_selects_a_distinct_retained_candidate():
     assert context["replacement_candidate"]["candidate_id"] == "C:distinct"
 
 
+def test_field_replenishment_retains_avoidance_context_for_new_opportunity_generation():
+    content = {
+        "post_id": "candidate-a",
+        "selection_rotation_index": 3,
+        "reader_job": "PREPARE_ME",
+        "copy": {
+            "hook": "What matters first?",
+            "takeaway": "Rank the jobs.",
+            "decision_insight": {"relationship": "Output determines the fit decision."},
+            "strategy_lock": {"angle": "Rank the jobs.", "customer_moment": "before a trip", "reader_job": "PREPARE_ME"},
+            "evidence_readiness": {"claims": [{"claim": "Output determines device fit.", "centrality": "CENTRAL"}]},
+        },
+    }
+    quality_context = {
+        "blocked_opportunity_fingerprint": "failed-fingerprint",
+        "blocked_content_mode": "DECISION_SUPPORT",
+        "excluded_concepts": ["What matters first?"],
+    }
+
+    context = run_engine._field_replenishment_context(content, quality_context, ["novelty_angle_weak", "specificity_weak"])
+
+    assert context["recovery_mode"] == "FIELD_REPLENISHMENT"
+    assert context["blocked_opportunity_fingerprint"] == "failed-fingerprint"
+    assert context["blocked_content_modes"] == ["DECISION_SUPPORT"]
+    assert context["blocked_reader_jobs"] == ["PREPARE_ME"]
+    assert context["blocked_human_realities"] == ["before a trip"]
+    assert "Output determines device fit." in context["failed_claim_dependencies"]
+    assert context["quality_failure_reasons"] == ["novelty_angle_weak", "specificity_weak"]
+    assert context["selection_rotation_index"] == 4
+
+
 def test_recent_evidence_block_is_attempt_only_exclusion_not_published_exposure(tmp_path):
     history = {
         "posts": [{

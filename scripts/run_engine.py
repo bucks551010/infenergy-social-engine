@@ -353,6 +353,112 @@ def _quality_recovery_context(content: dict, decision: dict, duplicates: dict) -
     return context
 
 
+def _field_replenishment_context(content: dict, quality_context: dict, critic_feedback: list[str]) -> dict:
+    """Keep the failed premise out of one bounded fresh opportunity field."""
+    concept = _remediation_concept(content)
+    strategy = (content.get("copy") or {}).get("strategy_lock") or {}
+    readiness = ((content.get("copy") or {}).get("evidence_readiness") or content.get("evidence_readiness") or {})
+    claims = readiness.get("claims") if isinstance(readiness, dict) and isinstance(readiness.get("claims"), list) else []
+    return {
+        **quality_context,
+        "recovery_mode": "FIELD_REPLENISHMENT",
+        "remediation_reason": "retained_field_exhausted_after_quality_rejections",
+        "excluded_concepts": list(dict.fromkeys([
+            *(str(value) for value in quality_context.get("excluded_concepts", []) if value),
+            *(str(value) for value in concept.values() if value),
+        ])),
+        "blocked_human_realities": [concept["human_reality"]] if concept.get("human_reality") else [],
+        "blocked_content_modes": [str(quality_context.get("blocked_content_mode") or "")] if quality_context.get("blocked_content_mode") else [],
+        "blocked_reader_jobs": [str(strategy.get("reader_job") or content.get("reader_job") or "")] if strategy.get("reader_job") or content.get("reader_job") else [],
+        "failed_claim_dependencies": [str(claim.get("claim") or "") for claim in claims if isinstance(claim, dict) and claim.get("centrality") == "CENTRAL"],
+        "quality_failure_reasons": list(dict.fromkeys(critic_feedback)),
+        "selection_rotation_index": int(content.get("selection_rotation_index") or 0) + 1,
+        "candidate_attempt_id": f"{content.get('post_id')}:replenished-field",
+    }
+
+
+def _research_recovery(content: dict) -> dict:
+    """Resolve one central evidence gap through the existing bounded research stack."""
+    from social import living_intelligence, public_research, research_router
+
+    copy = content.get("copy") if isinstance(content.get("copy"), dict) else {}
+    readiness = copy.get("evidence_readiness") if isinstance(copy.get("evidence_readiness"), dict) else {}
+    need = next((item for item in readiness.get("research_needs", []) if isinstance(item, dict)), None)
+    if not need:
+        return {"status": "NOT_WORTH_RESEARCHING", "reason": "no_central_gap"}
+
+    claim = str(need.get("claim_to_verify") or need.get("claim") or "").strip()
+    claim_type = str(need.get("claim_type") or "general_informational")
+    verified_product_fact = str(need.get("evidence_available") or "").upper() == "VERIFIED_PRODUCT_FACT"
+    strategy = copy.get("strategy_lock") if isinstance(copy.get("strategy_lock"), dict) else {}
+    entity = str(content.get("product_name") or content.get("topic") or strategy.get("topic") or "Infenergy Power").strip()
+    question = str(need.get("research_question") or f"What authoritative evidence supports: {claim}").strip()
+    task = research_router.route(
+        question=question,
+        why_needed=str(need.get("why_needed") or "The claim is central to the public message."),
+        entity=entity,
+        decision_affected="social_claim_verification",
+        freshness_requirement="current",
+    )
+    data_dir = os.environ.get("DATA_DIR", os.path.join(os.path.dirname(__file__), "..", "data"))
+    state = living_intelligence.load(data_dir)
+    cached = state.get("research_evidence") if isinstance(state.get("research_evidence"), list) else []
+    reusable = next(
+        (
+            item for item in cached
+            if isinstance(item, dict)
+            and str(item.get("claim") or "") == claim
+            and research_router.is_fresh(item, task)
+            and public_research.validate_claim_authority(
+                claim=claim,
+                claim_type=claim_type,
+                evidence=item,
+                verified_product_fact=verified_product_fact,
+            ).get("accepted")
+            and float(public_research.validate_claim_authority(
+                claim=claim,
+                claim_type=claim_type,
+                evidence=item,
+                verified_product_fact=verified_product_fact,
+            ).get("support_confidence") or 0) >= 0.75
+        ),
+        None,
+    )
+    if reusable:
+        return {"status": "RESOLVED", "source": "evidence_memory", "task": task.as_dict(), "evidence": [reusable], "verified_facts": [claim]}
+
+    results = public_research.research(task=task)
+    accepted: list[dict] = []
+    claim_tokens = {token for token in claim.lower().split() if len(token.strip(".,;:?!")) > 3}
+    for result in results:
+        if not isinstance(result, dict) or result.get("failure"):
+            continue
+        extract = " ".join(str(value) for value in result.get("extract", []))
+        extract_tokens = {token.strip(".,;:?!").lower() for token in extract.split() if len(token.strip(".,;:?!")) > 3}
+        authority = public_research.validate_claim_authority(
+            claim=claim,
+            claim_type=claim_type,
+            evidence=result,
+            verified_product_fact=verified_product_fact,
+        )
+        if authority["accepted"] and float(authority["support_confidence"] or 0) >= 0.75 and len(claim_tokens & extract_tokens) >= 2:
+            accepted.append({
+                **result,
+                **authority,
+                "claim": claim,
+                "candidate_id": str(content.get("candidate_attempt_id") or content.get("post_id") or ""),
+                "status": "RESOLVED",
+                "verification_requirement": "central_claim_authoritative_match",
+            })
+    if not accepted:
+        failure = next((str(item.get("failure")) for item in results if isinstance(item, dict) and item.get("failure")), "CLAIM_NOT_SUPPORTED")
+        return {"status": "INSUFFICIENT_EVIDENCE", "failure": failure, "task": task.as_dict(), "sources": results}
+
+    state["research_evidence"] = [*cached, *accepted][-100:]
+    living_intelligence.save(data_dir, state)
+    return {"status": "RESOLVED", "source": "public_research", "task": task.as_dict(), "evidence": accepted, "verified_facts": [claim]}
+
+
 def _semantic_difference(original: dict, replacement: dict) -> tuple[bool, str]:
     changed = [key for key in original if original.get(key) != replacement.get(key)]
     if not changed:
@@ -1540,7 +1646,9 @@ def main() -> None:
     print(f"Phase5 readiness: {json.dumps(phase5_readiness, ensure_ascii=True)}\n")
 
     print("[1/5] Generating content with Gemini...")
-    # Two bounded copy attempts per candidate, then one retained alternative.
+    # Explore the retained field cheaply through bounded candidate revisions,
+    # then permit one fresh field with the failed premise excluded.
+    decision_budget = max(2, int(os.environ.get("CONTENT_DECISION_MAX_REALIZATIONS", "8")))
     attempts: list[dict] = []
     windows = load_anti_repeat_windows()
     content = preview_content
@@ -1552,11 +1660,14 @@ def main() -> None:
     previous_decision: str | None = None
     previous_current_findings: list[str] = []
     evidence_remediation_used = False
+    research_recovery_used = False
+    research_verified_facts: list[str] = []
+    field_replenished = False
     original_research_block: dict | None = None
     remediation_context: dict | None = None
     recovery_story: dict = {"candidate_a": {}, "classification": "", "alternatives_considered": [], "candidate_b_selected": False, "presentation_repairs": []}
     t_generation = time.perf_counter()
-    for idx in range(4):
+    for idx in range(decision_budget):
         if idx > 0:
             try:
                 content = generate_posts.generate(
@@ -1567,6 +1678,7 @@ def main() -> None:
                     approved_strategy=locked_strategy or None,
                     revision_feedback=pending_feedback,
                     remediation_context=remediation_context,
+                    verified_facts_override=research_verified_facts or None,
                     defer_visuals=True,
                 )
             except RuntimeError as exc:
@@ -1670,7 +1782,28 @@ def main() -> None:
         research_required = str(publish_decision.get("decision") or "") == "do_not_publish" and "RESEARCH_REQUIRED" in {
             str(reason) for reason in publish_decision.get("reasons", [])
         }
-        if research_required and not evidence_remediation_used:
+        research_outcome: dict = {}
+        if research_required and not research_recovery_used:
+            research_recovery_used = True
+            research_outcome = _research_recovery(content)
+            content["research_recovery"] = research_outcome
+            if research_outcome.get("status") == "RESOLVED":
+                research_verified_facts = list(research_outcome.get("verified_facts") or [])
+                pending_feedback = [
+                    "Use the newly verified evidence precisely; do not add claims beyond its stated scope.",
+                    "Keep the existing human reality, reader value, and strategy intact.",
+                ]
+                pending_scope = "copy"
+                original_research_block = _candidate_audit(content)
+                attempts.append({
+                    "attempt": f"{idx + 1}:research",
+                    "decision": "research_resolved_continue_same_candidate",
+                    "research_recovery": research_outcome,
+                })
+                continue
+            original_research_block = _candidate_audit(content)
+            retryability = "EVIDENCE_SAFE_REMEDIATION"
+        elif research_required and not evidence_remediation_used:
             original_research_block = _candidate_audit(content)
             retryability = "EVIDENCE_SAFE_REMEDIATION"
         failure_reasons = list(validation.get("errors", [])) + list(duplicates.get("reasons", [])) + list(publish_decision.get("reasons", []))
@@ -1689,7 +1822,7 @@ def main() -> None:
             removed_claims=claim_corrections,
             findings=critic_feedback,
         )
-        diagnosis["metacognition"]["attempt_budget_remaining"] = 2 - idx
+        diagnosis["metacognition"]["attempt_budget_remaining"] = decision_budget - idx - 1
 
         attempts.append(
             {
@@ -1733,7 +1866,7 @@ def main() -> None:
 
         quality_candidate_shift_needed = (
             idx % 2 == 1
-            and idx < 3
+            and idx + 1 < decision_budget
             and not evidence_remediation_used
             and validation.get("passed")
             and duplicates.get("ok")
@@ -1764,6 +1897,21 @@ def main() -> None:
                 locked_strategy = {}
                 locked_product_id = ""
                 continue
+            if not field_replenished:
+                remediation_context = _field_replenishment_context(content, remediation_context, critic_feedback)
+                recovery_story["field_replenished"] = True
+                pending_feedback = [
+                    "Explore a materially different human reality, content mode, and reader payoff from the retired premise.",
+                    "Preserve existing evidence, freshness, and governance requirements.",
+                ]
+                pending_scope = "strategy"
+                prior_generated_visuals = {}
+                locked_strategy = {}
+                locked_product_id = ""
+                field_replenished = True
+                continue
+            recovery_story["candidate_field_exhausted"] = True
+            break
 
         # Manual live override path: if operator explicitly requests allow_all, swap to a known-safe
         # product/stage combo for one retry so publishing can proceed.

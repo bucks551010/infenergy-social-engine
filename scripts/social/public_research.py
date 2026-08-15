@@ -96,6 +96,70 @@ def research(*, task: research_router.ResearchTask, known_sources: list[str] | N
         return [{"failure": "SOURCE_UNAVAILABLE", "decision_affected": task.decision_affected}]
 
 
+def claim_authority_class(claim: str, claim_type: str, *, verified_product_fact: bool = False) -> str:
+    """Classify evidence authority needs from the existing claim ledger type and scope."""
+    text = f"{claim} {claim_type}".lower()
+    if verified_product_fact:
+        return "OWNED_PRODUCT_FACT"
+    if any(term in text for term in ("owner-approved", "approved principle", "brand principle")):
+        return "OWNER_APPROVED_PRINCIPLE"
+    if "infenergy" in text and any(term in text for term in ("business", "company", "founded", "located", "contact", "policy")):
+        return "OWNED_BUSINESS_FACT"
+    if "infenergy" in text and any(term in text for term in ("mission", "purpose", "positioning", "brand")):
+        return "BRAND_POSITIONING"
+    if claim_type == "safety_claim" or any(term in text for term in ("safe", "safety", "hazard", "risk of", "danger")):
+        return "SAFETY_FACT"
+    if any(term in text for term in ("compatible", "compatibility", "works with", "supports", "device fit")):
+        return "COMPATIBILITY_FACT"
+    if any(term in text for term in ("regulatory", "regulation", "compliance", "legal requirement", "standard")):
+        return "REGULATORY_FACT"
+    if any(term in text for term in ("current", "today", "availability", "price", "market", "industry", "latest")):
+        return "CURRENT_EXTERNAL_FACT"
+    if any(term in text for term in ("electrical", "output", "connection", "wattage", "runtime", "causes", "determines")):
+        return "TECHNICAL_CATEGORY_FACT"
+    if claim_type in {"quantitative_technical_fact", "research_claim", "certification_claim"}:
+        return "TECHNICAL_CATEGORY_FACT"
+    if claim_type == "comparative_claim":
+        return "CURRENT_EXTERNAL_FACT"
+    if any(term in text for term in ("manufacturer", "manual", "datasheet", "model")):
+        return "MANUFACTURER_PRODUCT_FACT"
+    return "OBSERVATION"
+
+
+def validate_claim_authority(
+    *,
+    claim: str,
+    claim_type: str,
+    evidence: dict[str, Any],
+    verified_product_fact: bool = False,
+) -> dict[str, Any]:
+    """Decide whether provenance may support this claim type; hostname alone never proves technical truth."""
+    authority_class = claim_authority_class(claim, claim_type, verified_product_fact=verified_product_fact)
+    hostname = urlparse(str(evidence.get("provenance") or "")).hostname or ""
+    first_party = hostname.lower() == "infenergypower.com" or hostname.lower().endswith(".infenergypower.com")
+    declared_authority = str(evidence.get("authority") or "").upper()
+    required_primary = {
+        "MANUFACTURER_PRODUCT_FACT": {"PRIMARY_MANUFACTURER"},
+        "TECHNICAL_CATEGORY_FACT": {"PRIMARY_TECHNICAL", "PRIMARY_MANUFACTURER"},
+        "SAFETY_FACT": {"PRIMARY_TECHNICAL", "PRIMARY_REGULATORY", "PRIMARY_MANUFACTURER"},
+        "COMPATIBILITY_FACT": {"PRIMARY_TECHNICAL", "PRIMARY_MANUFACTURER"},
+        "REGULATORY_FACT": {"PRIMARY_REGULATORY"},
+        "CURRENT_EXTERNAL_FACT": {"PRIMARY_TECHNICAL", "PRIMARY_REGULATORY", "PRIMARY_MANUFACTURER"},
+    }
+    primary = declared_authority in required_primary.get(authority_class, set())
+    first_party_allowed = authority_class in {"OWNED_BUSINESS_FACT", "BRAND_POSITIONING", "OWNER_APPROVED_PRINCIPLE"}
+    first_party_allowed = first_party_allowed or (authority_class == "OWNED_PRODUCT_FACT" and verified_product_fact)
+    accepted = (first_party and first_party_allowed) or (not first_party and primary)
+    confidence = 0.8 if first_party and first_party_allowed else float(evidence.get("confidence") or 0)
+    return {
+        "claim_authority_class": authority_class,
+        "authority": "FIRST_PARTY" if first_party else declared_authority or "UNVERIFIED_PUBLIC",
+        "accepted": accepted,
+        "support_confidence": confidence,
+        "reason": "first_party_owned_scope" if first_party and first_party_allowed else "primary_external_source" if primary else "source_not_authoritative_for_claim_type",
+    }
+
+
 def test_discovery_failure_is_a_structured_research_outcome(monkeypatch):
     monkeypatch.setattr(public_research, "discover_web_candidates", lambda task: (_ for _ in ()).throw(OSError("offline")))
     task = research_router.route(question="Which competitors frame portable power differently?", why_needed="find whitespace", entity="portable power", decision_affected="positioning")
@@ -111,7 +175,9 @@ def collect(*, task: research_router.ResearchTask, urls: list[str]) -> list[dict
         if not text:
             continue
         now = datetime.now(timezone.utc).isoformat()
-        evidence.append({"type": task.preferred_source.upper(), "provenance": url, "content_hash": page["content_hash"], "confidence": 0.55, "extract": text[:12], "decision_affected": task.decision_affected, "observed_at": now, "last_verified_at": now, "freshness_class": research_router.freshness_class(task)})
+        hostname = urlparse(url).hostname or ""
+        is_infenergy_first_party = hostname.lower() == "infenergypower.com" or hostname.lower().endswith(".infenergypower.com")
+        evidence.append({"type": task.preferred_source.upper(), "provenance": url, "content_hash": page["content_hash"], "confidence": 0.55, "authority": "FIRST_PARTY_CANDIDATE" if is_infenergy_first_party else "UNVERIFIED_PUBLIC", "extract": text[:12], "decision_affected": task.decision_affected, "observed_at": now, "last_verified_at": now, "freshness_class": research_router.freshness_class(task)})
     return evidence
 
 

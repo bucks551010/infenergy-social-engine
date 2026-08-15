@@ -4944,6 +4944,7 @@ def generate(
     approved_strategy: dict[str, Any] | None = None,
     revision_feedback: list[str] | None = None,
     remediation_context: dict[str, Any] | None = None,
+    verified_facts_override: list[str] | None = None,
     defer_visuals: bool = False,
 ) -> dict:
     from social import generation_policy
@@ -4963,6 +4964,7 @@ def generate(
             approved_strategy=approved_strategy,
             revision_feedback=revision_feedback,
             remediation_context=remediation_context,
+            verified_facts=verified_facts_override,
             defer_visuals=defer_visuals,
         )
     if mode != "legacy" and _social_intelligence_enabled():
@@ -4974,6 +4976,7 @@ def generate(
             approved_strategy=approved_strategy,
             revision_feedback=revision_feedback,
             remediation_context=remediation_context,
+            verified_facts=verified_facts_override,
             defer_visuals=defer_visuals,
         )
 

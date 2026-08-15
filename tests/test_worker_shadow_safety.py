@@ -52,6 +52,22 @@ def test_shadow_forbids_meta_refresh_even_when_refresh_is_forced(monkeypatch):
     assert completed.call_args.kwargs["env"]["POST_ENGINE_OVERRIDE"] == "product"
 
 
+def test_manual_run_scopes_product_exclusion_and_product_free_contract(monkeypatch):
+    refresh = Mock(return_value=(True, {"ok": True}))
+    completed = Mock(return_value=CompletedProcess(args=[], returncode=0, stdout="", stderr=""))
+    monkeypatch.setattr(worker, "_refresh_meta_tokens", refresh)
+    monkeypatch.setattr(worker, "_auto_bootstrap_visual_repo", Mock())
+    monkeypatch.setattr(worker.subprocess, "run", completed)
+    monkeypatch.setitem(sys.modules, "social.living_intelligence", type("Living", (), {"heartbeat": Mock()}))
+    monkeypatch.setenv("SOCIAL_DRY_RUN", "true")
+
+    worker.run_slot("morning", shadow_mode=True, engine_override="b", excluded_product_ids="PPP-200", require_product_free=True)
+
+    env = completed.call_args.kwargs["env"]
+    assert env["POST_EXCLUDED_PRODUCT_IDS"] == "PPP-200"
+    assert env["POST_REQUIRE_PRODUCT_FREE"] == "true"
+
+
 def test_non_live_run_forbids_meta_refresh(monkeypatch):
     refresh, completed = _run_slot(monkeypatch, force_live=False, shadow_mode=False)
 

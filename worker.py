@@ -589,6 +589,8 @@ def _start_slot_thread(
     funnel_stage_override: str = "",
     pipeline_override: str = "",
     engine_override: str = "",
+    excluded_product_ids: str = "",
+    require_product_free: bool = False,
 ) -> bool:
     if RUN_LOCK.locked():
         return False
@@ -606,6 +608,8 @@ def _start_slot_thread(
             "funnel_stage_override": funnel_stage_override,
             "pipeline_override": pipeline_override,
             "engine_override": engine_override,
+            "excluded_product_ids": excluded_product_ids,
+            "require_product_free": require_product_free,
         },
         daemon=True,
     )
@@ -1274,6 +1278,10 @@ class HealthHandler(BaseHTTPRequestHandler):
             funnel_stage_override = params.get("funnel_stage", [""])[0].strip().upper()
             pipeline_override = params.get("pipeline", [""])[0].strip().lower()
             engine_override = params.get("engine", [""])[0].strip().lower()
+            excluded_product_ids = ",".join(dict.fromkeys(
+                value.strip() for value in params.get("excluded_products", [""])[0].split(",") if value.strip()
+            ))
+            require_product_free = params.get("product_free", ["false"])[0].lower() in ("1", "true", "yes")
             if duplicate_mode and duplicate_mode not in ("strict", "exact_only", "allow_all"):
                 duplicate_mode = ""
             if readiness_block_override and readiness_block_override not in ("true", "false", "1", "0", "yes", "no"):
@@ -1288,6 +1296,8 @@ class HealthHandler(BaseHTTPRequestHandler):
                 engine_override = "product"
             elif engine_override not in ("a", "b", "c"):
                 engine_override = ""
+            if require_product_free:
+                engine_override = "b"
             if slot not in ("morning", "midday", "evening"):
                 slot = "morning"
 
@@ -1319,6 +1329,8 @@ class HealthHandler(BaseHTTPRequestHandler):
                 funnel_stage_override=funnel_stage_override,
                 pipeline_override=pipeline_override,
                 engine_override=engine_override,
+                excluded_product_ids=excluded_product_ids,
+                require_product_free=require_product_free,
                 shadow_mode=shadow_mode,
             )
             payload = {
@@ -1333,6 +1345,8 @@ class HealthHandler(BaseHTTPRequestHandler):
                 "funnel_stage": funnel_stage_override or "auto",
                 "pipeline": pipeline_override or "env_default",
                 "engine": engine_override or "auto",
+                "excluded_products": bool(excluded_product_ids),
+                "product_free": require_product_free,
                 "message": "run started" if started else "run already in progress",
                 "time_utc": _utc_now(),
             }
@@ -1466,6 +1480,8 @@ def run_slot(
     funnel_stage_override: str = "",
     pipeline_override: str = "",
     engine_override: str = "",
+    excluded_product_ids: str = "",
+    require_product_free: bool = False,
 ) -> None:
     with RUN_LOCK:
         LAST_RUN["status"] = "running"
@@ -1490,6 +1506,8 @@ def run_slot(
         previous_funnel_stage_override = os.environ.get("POST_FUNNEL_STAGE_OVERRIDE", "")
         previous_pipeline_override = os.environ.get("POST_PIPELINE_OVERRIDE", "")
         previous_engine_override = os.environ.get("POST_ENGINE_OVERRIDE", "")
+        previous_excluded_product_ids = os.environ.get("POST_EXCLUDED_PRODUCT_IDS", "")
+        previous_require_product_free = os.environ.get("POST_REQUIRE_PRODUCT_FREE", "")
         previous_shadow_mode = os.environ.get("SOCIAL_SHADOW_MODE", "")
         os.environ["POST_SLOT"] = slot
         os.environ["POST_PLATFORMS"] = platforms_override
@@ -1505,6 +1523,10 @@ def run_slot(
             os.environ["POST_PIPELINE_OVERRIDE"] = pipeline_override
         if engine_override:
             os.environ["POST_ENGINE_OVERRIDE"] = engine_override
+        if excluded_product_ids:
+            os.environ["POST_EXCLUDED_PRODUCT_IDS"] = excluded_product_ids
+        if require_product_free:
+            os.environ["POST_REQUIRE_PRODUCT_FREE"] = "true"
         if force_live:
             os.environ["SOCIAL_DRY_RUN"] = "false"
         if shadow_mode:
@@ -1584,6 +1606,14 @@ def run_slot(
                 os.environ["POST_ENGINE_OVERRIDE"] = previous_engine_override
             elif "POST_ENGINE_OVERRIDE" in os.environ:
                 del os.environ["POST_ENGINE_OVERRIDE"]
+            if previous_excluded_product_ids:
+                os.environ["POST_EXCLUDED_PRODUCT_IDS"] = previous_excluded_product_ids
+            elif "POST_EXCLUDED_PRODUCT_IDS" in os.environ:
+                del os.environ["POST_EXCLUDED_PRODUCT_IDS"]
+            if previous_require_product_free:
+                os.environ["POST_REQUIRE_PRODUCT_FREE"] = previous_require_product_free
+            elif "POST_REQUIRE_PRODUCT_FREE" in os.environ:
+                del os.environ["POST_REQUIRE_PRODUCT_FREE"]
             if previous_shadow_mode:
                 os.environ["SOCIAL_SHADOW_MODE"] = previous_shadow_mode
             elif "SOCIAL_SHADOW_MODE" in os.environ:

@@ -81,6 +81,31 @@ def test_normal_generation_defaults_to_the_orchestrator(monkeypatch):
     assert generate_posts._pipeline_mode() == "orchestrator"
 
 
+def test_manual_product_exclusion_is_merged_into_every_orchestrator_generation(monkeypatch):
+    captured = {}
+    monkeypatch.setenv("POST_EXCLUDED_PRODUCT_IDS", "PPP-200")
+    monkeypatch.setattr(generate_posts, "_route_generate_orchestrator", lambda *args, **kwargs: captured.update(kwargs) or {})
+
+    generate_posts.generate(
+        "morning",
+        pipeline_override="orchestrator",
+        remediation_context={"excluded_product_ids": ["OTHER-1"]},
+    )
+
+    assert captured["remediation_context"]["excluded_product_ids"] == ["OTHER-1", "PPP-200"]
+
+
+def test_strict_product_free_generation_sets_a_non_product_remediation_contract(monkeypatch):
+    captured = {}
+    monkeypatch.setenv("POST_REQUIRE_PRODUCT_FREE", "true")
+    monkeypatch.setattr(generate_posts, "_route_generate_orchestrator", lambda *args, **kwargs: captured.update(kwargs) or {})
+
+    generate_posts.generate("morning", pipeline_override="orchestrator")
+
+    assert captured["preferred_engine"] == "B"
+    assert captured["remediation_context"]["require_product_free"] is True
+
+
 def test_orchestrator_bridge_passes_council_strategy_to_generation(monkeypatch):
     approved = {
         "audience": "preparedness household", "customer_moment": "storm outage", "human_need": "confidence",

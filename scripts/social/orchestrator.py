@@ -725,11 +725,13 @@ class SocialIntelligenceOrchestrator:
         if competitive_pool:
             brief.opportunity_shortlist = competitive_pool
             brief.rationale.append(f"global_opportunity_competition:selected={selected_opportunity.get('candidate_id', '')}")
-        audience_value_only = (
-            engine_name == "B"
-            and bool(brief.audience_value)
-            and not brief.audience_value.get("abstain")
-            and not brief.audience_value.get("product_needed")
+        require_product_free = bool(remediation.get("require_product_free"))
+        audience_value_only = engine_name == "B" and (
+            require_product_free or (
+                bool(brief.audience_value)
+                and not brief.audience_value.get("abstain")
+                and not brief.audience_value.get("product_needed")
+            )
         )
         anchored_offering_metadata = bi_offering
         product_narrative: dict[str, Any] = {}

@@ -4937,11 +4937,23 @@ def generate(
 ) -> dict:
     mode = _pipeline_mode(pipeline_override)
     platform = os.environ.get("POST_PLATFORMS", "instagram_feed").split(",")[0].strip() or "instagram_feed"
+    session_excluded_product_ids = [
+        value.strip() for value in os.environ.get("POST_EXCLUDED_PRODUCT_IDS", "").split(",") if value.strip()
+    ]
+    effective_remediation_context = dict(remediation_context or {})
+    effective_remediation_context["excluded_product_ids"] = list(dict.fromkeys([
+        *(str(value) for value in effective_remediation_context.get("excluded_product_ids", []) if str(value)),
+        *session_excluded_product_ids,
+    ]))
+    if os.environ.get("POST_REQUIRE_PRODUCT_FREE", "").strip().lower() in {"1", "true", "yes", "on"}:
+        effective_remediation_context["require_product_free"] = True
     preferred_engine = os.environ.get("POST_ENGINE_OVERRIDE", "").strip().upper()
     if preferred_engine == "PRODUCT":
         preferred_engine = "A"
     if preferred_engine not in {"A", "B", "C"}:
         preferred_engine = ""
+    if effective_remediation_context.get("require_product_free"):
+        preferred_engine = "B"
 
     if mode == "best_of":
         return _generate_best_of(slot, funnel_stage_override=funnel_stage_override, product_id_override=product_id_override)
@@ -4953,7 +4965,7 @@ def generate(
             funnel_stage_override=funnel_stage_override,
             approved_strategy=approved_strategy,
             revision_feedback=revision_feedback,
-            remediation_context=remediation_context,
+            remediation_context=effective_remediation_context,
             verified_facts=verified_facts_override,
             preferred_engine=preferred_engine or None,
         )
@@ -4965,7 +4977,7 @@ def generate(
             funnel_stage_override=funnel_stage_override,
             approved_strategy=approved_strategy,
             revision_feedback=revision_feedback,
-            remediation_context=remediation_context,
+            remediation_context=effective_remediation_context,
             verified_facts=verified_facts_override,
             preferred_engine=preferred_engine or None,
         )

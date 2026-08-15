@@ -282,6 +282,14 @@ def _build_phase5_channel_readiness(effective_channels: dict[str, bool], dry_run
     }
 
 
+def _evidence_recovery_required(publish_decision: dict) -> bool:
+    """Identify claim-readiness blocks that need bounded recovery before abstaining."""
+    if str(publish_decision.get("decision") or "") != "do_not_publish":
+        return False
+    reasons = {str(reason) for reason in publish_decision.get("reasons", [])}
+    return bool(reasons & {"RESEARCH_REQUIRED", "HIGH_RISK_UNVERIFIED"})
+
+
 def _conversion_learning_fields(content: dict) -> dict:
     """Shared history-record fields that feed the Phase E performance memory loop.
 
@@ -1811,9 +1819,7 @@ def main() -> None:
         historical_feedback = list(pending_feedback)
         issue_closure = _issue_closure(historical_feedback, critic_feedback)
         retryability = _retryability_classification(publish_decision, critic_feedback)
-        research_required = str(publish_decision.get("decision") or "") == "do_not_publish" and "RESEARCH_REQUIRED" in {
-            str(reason) for reason in publish_decision.get("reasons", [])
-        }
+        research_required = _evidence_recovery_required(publish_decision)
         research_outcome: dict = {}
         if research_required and not research_recovery_used:
             research_recovery_used = True
@@ -1843,7 +1849,7 @@ def main() -> None:
         strategic_replacement_needed = any(
             marker in str(reason).lower()
             for reason in failure_reasons
-            for marker in ("duplicate", "research_required", "unsupported", "semantic", "stale", "campaign_conflict")
+            for marker in ("duplicate", "research_required", "high_risk_unverified", "unsupported", "semantic", "stale", "campaign_conflict")
         )
         if idx == 0 and strategic_replacement_needed and not evidence_remediation_used:
             original_research_block = _candidate_audit(content)

@@ -78,6 +78,26 @@ def test_central_research_required_claim_blocks_quality_and_legacy_overrides():
     assert "RESEARCH_REQUIRED" in decision["reasons"]
 
 
+def test_high_risk_unverified_decision_requires_evidence_safe_recovery():
+    decision = {
+        "decision": "do_not_publish",
+        "publishable": False,
+        "reasons": ["HIGH_RISK_UNVERIFIED"],
+    }
+
+    assert run_engine._evidence_recovery_required(decision) is True
+
+
+def test_non_evidence_publish_block_does_not_trigger_evidence_recovery():
+    decision = {
+        "decision": "do_not_publish",
+        "publishable": False,
+        "reasons": ["duplicate_product_within_window"],
+    }
+
+    assert run_engine._evidence_recovery_required(decision) is False
+
+
 def _pre_visual_content(*, validation_status="passed", duplicate_ok=True, duplicate_reasons=None, evidence=None, presentation_ready=True):
     caption = "Hook.\n\n- First point\n- Second point\n\nSave this.\n\nhttps://example.com\n\n#PortablePower"
     package = {

@@ -6,6 +6,7 @@ import base64
 import io
 import json
 import os
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -68,13 +69,15 @@ def reserve_budget(*, width: int, height: int, reference_sizes: list[tuple[int, 
     ledger = _load_ledger()
     daily = ledger.get(day) if isinstance(ledger.get(day), dict) else {"estimated_neurons": 0.0, "requests": 0, "entries": []}
     before = float(daily.get("estimated_neurons", 0.0))
+    reserved_before = float(daily.get("reserved_neurons", 0.0))
     request_count = int(daily.get("requests", 0))
     if request_count >= MAX_DAILY_REQUESTS:
         return False, {**estimate, "reason": "FREE_AI_DAILY_REQUEST_LIMIT", "daily_estimated_neurons_before": before, "daily_estimated_neurons_after": before}
-    if before + estimate["estimated_neurons"] > cap:
+    if before + reserved_before + estimate["estimated_neurons"] > cap:
         return False, {**estimate, "reason": "FREE_AI_BUDGET_EXHAUSTED", "daily_estimated_neurons_before": before, "daily_estimated_neurons_after": before}
-    after = round(before + estimate["estimated_neurons"], 2)
+    reserved_after = round(reserved_before + estimate["estimated_neurons"], 2)
     entry = {
+        "reservation_id": uuid.uuid4().hex,
         "at_utc": datetime.now(timezone.utc).isoformat(),
         "provider": "cloudflare",
         "model": MODEL,
@@ -85,12 +88,57 @@ def reserve_budget(*, width: int, height: int, reference_sizes: list[tuple[int, 
         "paid_api_used": False,
         **estimate,
         "daily_estimated_neurons_before": before,
-        "daily_estimated_neurons_after": after,
+        "daily_estimated_neurons_after": before,
+        "daily_reserved_neurons_before": reserved_before,
+        "daily_reserved_neurons_after": reserved_after,
+        "reservation_status": "reserved",
+        "provider_request_started": False,
+        "provider_request_completed": False,
     }
-    daily.update({"estimated_neurons": after, "requests": request_count + 1, "entries": [*(daily.get("entries") or []), entry][-30:]})
+    daily.update({"reserved_neurons": reserved_after, "reservations": int(daily.get("reservations", 0)) + 1, "entries": [*(daily.get("entries") or []), entry][-30:]})
     ledger[day] = daily
     _save_ledger(ledger)
     return True, entry
+
+
+def _update_reservation(reservation_id: str, *, started: bool = False, completed: bool = False, response_status: int | None = None) -> None:
+    """Record the transition from budget reservation to a real provider request."""
+    ledger = _load_ledger()
+    day = _utc_day()
+    daily = ledger.get(day) if isinstance(ledger.get(day), dict) else None
+    if not daily:
+        return
+    entries = daily.get("entries") if isinstance(daily.get("entries"), list) else []
+    entry = next((item for item in entries if isinstance(item, dict) and item.get("reservation_id") == reservation_id), None)
+    if not entry:
+        return
+    amount = float(entry.get("estimated_neurons", 0.0))
+    if started and not entry.get("provider_request_started"):
+        entry["provider_request_started"] = True
+        entry["provider_request_started_at_utc"] = datetime.now(timezone.utc).isoformat()
+        entry["reservation_status"] = "request_started"
+        daily["reserved_neurons"] = round(max(0.0, float(daily.get("reserved_neurons", 0.0)) - amount), 2)
+        daily["estimated_neurons"] = round(float(daily.get("estimated_neurons", 0.0)) + amount, 2)
+        daily["requests"] = int(daily.get("requests", 0)) + 1
+        daily["provider_requests_started"] = int(daily.get("provider_requests_started", 0)) + 1
+    if completed and not entry.get("provider_request_completed"):
+        entry["provider_request_completed"] = True
+        entry["provider_request_completed_at_utc"] = datetime.now(timezone.utc).isoformat()
+        entry["reservation_status"] = "completed"
+        daily["provider_requests_completed"] = int(daily.get("provider_requests_completed", 0)) + 1
+    if response_status is not None:
+        entry["provider_http_status"] = response_status
+    ledger[day] = daily
+    _save_ledger(ledger)
+
+
+def _authorized(authorization: dict[str, Any] | None, candidate_id: str) -> bool:
+    return bool(
+        isinstance(authorization, dict)
+        and authorization.get("status") == "PASS"
+        and authorization.get("flux_authorized") is True
+        and str(authorization.get("selected_candidate") or "") == str(candidate_id or "")
+    )
 
 
 def normalize_reference(raw: bytes) -> tuple[bytes, tuple[int, int]] | None:
@@ -107,11 +155,11 @@ def normalize_reference(raw: bytes) -> tuple[bytes, tuple[int, int]] | None:
         return None
 
 
-def generate(*, prompt: str, output_path: str, width: int, height: int, references: list[bytes], retry_number: int = 0) -> tuple[bool, str, dict[str, Any]]:
+def generate(*, prompt: str, output_path: str, width: int, height: int, references: list[bytes], retry_number: int = 0, authorization: dict[str, Any] | None = None, candidate_id: str = "") -> tuple[bool, str, dict[str, Any]]:
     account_id = os.environ.get("CLOUDFLARE_ACCOUNT_ID", "").strip()
     token = os.environ.get("CLOUDFLARE_API_TOKEN", "").strip()
     metadata: dict[str, Any] = {
-        "visual_generation_attempted": True,
+        "visual_generation_attempted": False,
         "visual_generation_mode": "cloudflare_generated",
         "visual_provider": "cloudflare",
         "visual_model": os.environ.get("CLOUDFLARE_IMAGE_MODEL", MODEL).strip() or MODEL,
@@ -121,6 +169,8 @@ def generate(*, prompt: str, output_path: str, width: int, height: int, referenc
         "paid_api_used": False,
         "cost_mode": os.environ.get("GENERATION_COST_MODE", "AUTO").strip().upper(),
     }
+    if not _authorized(authorization, candidate_id):
+        return False, "VISUAL_NOT_AUTHORIZED_PREVISUAL_GATE", metadata
     if not account_id or not token:
         return False, "FREE_AI_PROVIDER_NOT_CONFIGURED", metadata
     model = metadata["visual_model"]
@@ -138,6 +188,8 @@ def generate(*, prompt: str, output_path: str, width: int, height: int, referenc
     for index, (raw, _) in enumerate(normalized):
         files.append((f"input_image_{index}", (f"reference_{index}.jpg", raw, "image/jpeg")))
     try:
+        _update_reservation(str(provenance["reservation_id"]), started=True)
+        metadata["visual_generation_attempted"] = True
         response = requests.post(
             f"https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/run/{model}",
             headers={"Authorization": f"Bearer {token}"},
@@ -146,6 +198,7 @@ def generate(*, prompt: str, output_path: str, width: int, height: int, referenc
             timeout=180,
         )
         metadata["provider_http_status"] = response.status_code
+        _update_reservation(str(provenance["reservation_id"]), completed=True, response_status=response.status_code)
         if not response.ok:
             body = " ".join(response.text.split())[:240].replace(token, "[redacted]").replace(account_id, "[redacted_account]")
             if response.status_code == 429 or any(token in body.lower() for token in ("quota", "allocation", "limit", "paid")):

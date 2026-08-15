@@ -9,7 +9,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 import run_engine
 import publish_facebook
-from social import claim_governance, claim_intelligence, orchestrator, platform_presentation, publish_decision
+from social import claim_governance, claim_intelligence, orchestrator, platform_presentation, publish_decision, recovery
 
 
 def _final_decision(readiness: dict) -> dict:
@@ -170,6 +170,21 @@ def test_remediation_context_clears_candidate_a_state_and_advances_selection():
     assert remediation["excluded_product_ids"] == ["PPP-200"]
     assert remediation["exclude_engine_a_decision_thesis"] is True
     assert "Check output before reserve." in remediation["excluded_concepts"]
+
+
+def test_replacement_selector_rejects_powerpulse_before_trip_fit_reserve_paraphrase():
+    blocked = {
+        "product_id": "PPP-200", "question": "Can I trust airport outlets?", "angle": "Establish fit before reserve.",
+        "human_reality": "before a trip", "decision_thesis": "Output and connection determine support before stored capacity.",
+    }
+    shortlist = [
+        {"rank": 1, **blocked},
+        {"rank": 2, "product_id": "PPP-200", "question": "Will airport power support my gear?", "angle": "Check compatibility before battery capacity.", "human_reality": "airport travel"},
+        {"rank": 3, "product_id": "OTHER", "question": "Which published details belong on a packing list?", "angle": "Keep published details handy.", "human_reality": "packing"},
+    ]
+    selected, considered = recovery.select_replacement(shortlist, blocked_fingerprint=blocked)
+    assert selected and selected["rank"] == 3
+    assert considered[0]["reason"] == "blocked_opportunity_fingerprint"
 
 
 def test_remediation_semantic_reuse_abstains_before_provider_generation(tmp_path, monkeypatch):

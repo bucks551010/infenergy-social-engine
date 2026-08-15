@@ -54,17 +54,40 @@ def compact_candidate(candidate: Any, rank: int) -> dict[str, Any]:
     }
 
 
+def opportunity_fingerprint(candidate: dict[str, Any]) -> dict[str, str]:
+    """Keep the strategic identity of a blocked attempt separate from its copy."""
+    return {
+        "product_id": str(candidate.get("product_id") or ""),
+        "question": str(candidate.get("question") or ""),
+        "angle": str(candidate.get("angle") or ""),
+        "human_reality": str(candidate.get("human_reality") or ""),
+        "decision_thesis": str(candidate.get("decision_thesis") or ""),
+        "reader_job": str(candidate.get("reader_job") or ""),
+        "product_role": str(candidate.get("product_role") or ""),
+        "evidence_dependency": str(candidate.get("evidence_dependency") or ""),
+    }
+
+
+def _fingerprint_tokens(candidate: dict[str, Any]) -> set[str]:
+    aliases = {"compatible": "fit", "compatibility": "fit", "device": "fit", "capacity": "reserve", "battery": "reserve", "travel": "trip", "outlets": "outlet"}
+    ignored = {"before", "after", "which", "their", "this", "that", "with", "from", "your", "published"}
+    words = " ".join(str(value or "").lower() for value in opportunity_fingerprint(candidate).values()).split()
+    return {aliases.get(word.strip(".,;:?!"), word.strip(".,;:?!")) for word in words if len(word.strip(".,;:?!")) > 3 and word.strip(".,;:?!") not in ignored}
+
+
 def select_replacement(
     shortlist: list[dict[str, Any]],
     *,
     excluded_product_ids: set[str] | None = None,
     excluded_concepts: set[str] | None = None,
     blocked_human_realities: set[str] | None = None,
+    blocked_fingerprint: dict[str, Any] | None = None,
 ) -> tuple[dict[str, Any] | None, list[dict[str, str]]]:
     """Choose Candidate B in rank order, recording compact skip evidence."""
     excluded_product_ids = {str(value) for value in excluded_product_ids or set()}
     excluded_concepts = {str(value).lower() for value in excluded_concepts or set() if value}
     blocked_human_realities = {str(value).lower() for value in blocked_human_realities or set() if value}
+    blocked_tokens = _fingerprint_tokens(blocked_fingerprint or {})
     considered: list[dict[str, str]] = []
     for candidate in sorted(shortlist, key=lambda item: int(item.get("rank", 0))):
         rank = int(candidate.get("rank", 0))
@@ -73,6 +96,7 @@ def select_replacement(
         product_id = str(candidate.get("product_id") or "")
         text = " ".join(str(candidate.get(key) or "") for key in ("topic", "question", "angle")).lower()
         human_reality = str(candidate.get("human_reality") or "").lower()
+        candidate_tokens = _fingerprint_tokens(candidate)
         reason = ""
         if product_id and product_id in excluded_product_ids:
             reason = "duplicate_product_within_window"
@@ -80,6 +104,8 @@ def select_replacement(
             reason = "blocked_semantic_concept"
         elif human_reality and human_reality in blocked_human_realities:
             reason = "blocked_human_reality"
+        elif blocked_tokens and len(blocked_tokens & candidate_tokens) / max(1, min(len(blocked_tokens), len(candidate_tokens))) >= 0.35:
+            reason = "blocked_opportunity_fingerprint"
         if reason:
             considered.append({"rank": str(rank), "result": "skipped", "reason": reason})
             continue

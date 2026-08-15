@@ -312,14 +312,25 @@ def _remediation_context(content: dict, decision: dict, duplicates: dict) -> dic
     readiness = ((content.get("copy") or {}).get("evidence_readiness") or content.get("evidence_readiness") or {})
     claims = (readiness.get("claims") or []) if isinstance(readiness, dict) else []
     candidate_attempt_id = str(content.get("candidate_attempt_id") or f"{content.get('post_id')}:candidate-1")
+    blocked_fingerprint = recovery.opportunity_fingerprint({
+        "product_id": content.get("product_id"),
+        "question": concept["question"],
+        "angle": concept["angle"],
+        "human_reality": concept["human_reality"],
+        "decision_thesis": concept["decision_thesis"],
+        "reader_job": (content.get("copy") or {}).get("strategy_lock", {}).get("reader_job") or content.get("reader_job"),
+        "product_role": (content.get("copy") or {}).get("strategy_lock", {}).get("product_role"),
+        "evidence_dependency": "CENTRAL_RESEARCH_REQUIRED" if any(isinstance(claim, dict) and claim.get("centrality") == "CENTRAL" and claim.get("research_status") == "RESEARCH_REQUIRED" for claim in claims) else "",
+    })
     excluded_product_ids = [str(content.get("product_id"))] if not duplicates.get("ok", True) and content.get("product_id") else []
     replacement, alternatives_considered = recovery.select_replacement(
         shortlist,
         excluded_product_ids=set(excluded_product_ids),
         excluded_concepts=set(value for value in concept.values() if value),
         blocked_human_realities={concept["human_reality"]} if concept.get("human_reality") else set(),
+        blocked_fingerprint=blocked_fingerprint,
     )
-    return {"original_candidate_id": str(content.get("post_id") or ""), "original_candidate_attempt_id": candidate_attempt_id, "original_concept": concept, "original_claim_ledger": content.get("claim_ledger") or {}, "original_evidence_readiness": readiness, "original_centrality_summary": {"central_unresolved": [str(claim.get("claim") or "") for claim in claims if isinstance(claim, dict) and claim.get("centrality") == "CENTRAL" and claim.get("research_status") == "RESEARCH_REQUIRED"], "status": str(readiness.get("status") or "")}, "remediation_reason": "central_evidence_block_requires_new_opportunity", "excluded_concepts": [value for value in concept.values() if value], "excluded_product_ids": excluded_product_ids, "exclude_engine_a_decision_thesis": True, "selection_rotation_index": int(content.get("selection_rotation_index") or 0) + 1, "candidate_attempt_id": f"{content.get('post_id')}:candidate-2", "original_governance": decision, "opportunity_shortlist": shortlist, "replacement_candidate": replacement, "alternatives_considered": alternatives_considered}
+    return {"original_candidate_id": str(content.get("post_id") or ""), "original_candidate_attempt_id": candidate_attempt_id, "original_concept": concept, "blocked_opportunity_fingerprint": blocked_fingerprint, "original_claim_ledger": content.get("claim_ledger") or {}, "original_evidence_readiness": readiness, "original_centrality_summary": {"central_unresolved": [str(claim.get("claim") or "") for claim in claims if isinstance(claim, dict) and claim.get("centrality") == "CENTRAL" and claim.get("research_status") == "RESEARCH_REQUIRED"], "status": str(readiness.get("status") or "")}, "remediation_reason": "central_evidence_block_requires_new_opportunity", "excluded_concepts": [value for value in concept.values() if value], "excluded_product_ids": excluded_product_ids, "exclude_engine_a_decision_thesis": True, "selection_rotation_index": int(content.get("selection_rotation_index") or 0) + 1, "candidate_attempt_id": f"{content.get('post_id')}:candidate-2", "original_governance": decision, "opportunity_shortlist": shortlist, "replacement_candidate": replacement, "alternatives_considered": alternatives_considered}
 
 
 def _semantic_difference(original: dict, replacement: dict) -> tuple[bool, str]:
@@ -1188,12 +1199,19 @@ def _ensure_final_artifact_qa(content: dict, effective_channels: dict[str, bool]
     """Inspect the actual generated artifact before either governance or shadow stop."""
     if not any(effective_channels.get(platform) for platform in ("facebook", "instagram", "linkedin")):
         return {}
+    pre_visual_gate = content.get("pre_visual_gate") if isinstance(content.get("pre_visual_gate"), dict) else {}
+    candidate_id = str(content.get("candidate_attempt_id") or content.get("post_id") or "")
     visuals = content.get("generated_visuals") if isinstance(content.get("generated_visuals"), dict) else {}
     if not visuals:
+        if not (
+            pre_visual_gate.get("status") == "PASS"
+            and pre_visual_gate.get("flux_authorized") is True
+            and str(pre_visual_gate.get("selected_candidate") or "") == candidate_id
+        ):
+            return {}
         active_platforms = [platform for platform in ("facebook", "instagram", "linkedin") if effective_channels.get(platform)]
         visuals = generate_posts.generate_visuals(content, visual_plan=content.get("visual_plan"), platforms=active_platforms)
         content["generated_visuals"] = visuals
-    pre_visual_gate = content.get("pre_visual_gate") if isinstance(content.get("pre_visual_gate"), dict) else {}
     if pre_visual_gate:
         generation = visuals.get("visual_generation") if isinstance(visuals.get("visual_generation"), dict) else {}
         pre_visual_gate["estimated_flux_neurons"] = {

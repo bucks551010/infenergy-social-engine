@@ -912,6 +912,15 @@ def _cloudflare_references(content: dict[str, Any], repo_context: dict[str, Any]
 def _generate_cloudflare_full_creative(content: dict[str, Any], platform: str, visual_plan: dict[str, Any], output_path: str) -> tuple[bool, str, dict[str, Any]]:
     if generation_policy.mode() not in {"FREE_AI_ONLY", "FREE_AI_ALLOWED"}:
         return False, "cloudflare_not_selected_by_cost_mode", {"visual_generation_attempted": False, "generation_status": "failed", "visual_provider": "cloudflare"}
+    authorization = content.get("pre_visual_gate") if isinstance(content.get("pre_visual_gate"), dict) else None
+    candidate_id = str(content.get("candidate_attempt_id") or content.get("post_id") or "")
+    if not (
+        isinstance(authorization, dict)
+        and authorization.get("status") == "PASS"
+        and authorization.get("flux_authorized") is True
+        and str(authorization.get("selected_candidate") or "") == candidate_id
+    ):
+        return False, "VISUAL_NOT_AUTHORIZED_PREVISUAL_GATE", {"visual_generation_attempted": False, "generation_status": "blocked", "visual_provider": "cloudflare", "candidate_id": candidate_id}
     width, height = _cloudflare_dimensions(platform)
     repo_context = _load_visual_repo_context()
     rendered, reason, metadata = cloudflare_visual.generate(
@@ -920,6 +929,8 @@ def _generate_cloudflare_full_creative(content: dict[str, Any], platform: str, v
         width=width,
         height=height,
         references=_cloudflare_references(content, repo_context),
+        authorization=authorization,
+        candidate_id=candidate_id,
     )
     metadata.update({"render_target_platform": platform, "candidate_id": str(content.get("post_id") or ""), "final_post_id": str(content.get("post_id") or "")})
     if rendered:

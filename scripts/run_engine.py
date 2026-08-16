@@ -817,6 +817,17 @@ def _normalize_history_content(content: dict, *, run_started: str) -> dict:
     return normalized
 
 
+def _freeze_publish_artifact(content: dict) -> dict:
+    """Capture the governed candidate so publication never needs regeneration."""
+    artifact = json.loads(json.dumps(content, sort_keys=True, default=str))
+    canonical = json.dumps(artifact, sort_keys=True, separators=(",", ":"))
+    return {
+        "artifact": artifact,
+        "sha256": hashlib.sha256(canonical.encode("utf-8")).hexdigest(),
+        "frozen_at_utc": datetime.now(timezone.utc).isoformat(),
+    }
+
+
 def _visual_strategy_fingerprint(content: dict) -> str:
     strategy = _strategy_lock_for_revision(content)
     visual_plan = content.get("visual_plan") if isinstance(content.get("visual_plan"), dict) else {}
@@ -2467,6 +2478,7 @@ def main() -> None:
         history = generate_posts.load_history()
         run_started = datetime.now(timezone.utc).isoformat()
         platform_records = _shadow_platform_records(content, run_started, effective_channels)
+        frozen_publish_artifact = _freeze_publish_artifact(content) if final_decision["publishable"] else None
         _apply_phase8_budget(runtime_metrics, "total", time.perf_counter() - t_total, total_budget)
         shadow_status = "shadow_completed" if final_decision["publishable"] else "shadow_abstained_governance"
         history["posts"].append({
@@ -2482,6 +2494,7 @@ def main() -> None:
             "generation_attempts": attempts, "dry_run": dry_run, "shadow_mode": True,
             "artifact_visual_qa": content.get("artifact_visual_qa", {}),
             "status": shadow_status, "decision_record": _shadow_decision_record(content),
+            "frozen_publish_artifact": frozen_publish_artifact,
             "channel_reasons": channel_reasons, "phase5_channel_readiness": phase5_readiness,
             "phase6_learning": _build_phase6_learning(content=content, platform_records=platform_records, errors=list(final_decision.get("reasons", [])), status=shadow_status),
             "phase8_runtime": runtime_metrics, "platform_records": platform_records,

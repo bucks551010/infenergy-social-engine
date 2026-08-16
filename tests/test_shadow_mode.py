@@ -66,6 +66,14 @@ def test_shadow_decision_record_persists_creative_cognition():
     assert record["originality_verdict"]["passed"] is True
 
 
+def test_frozen_publish_artifact_is_json_normalized_and_fingerprinted():
+    frozen = run_engine._freeze_publish_artifact({"post_id": "shadow-1", "nested": {"answer": 42}})
+
+    assert frozen["artifact"] == {"nested": {"answer": 42}, "post_id": "shadow-1"}
+    assert len(frozen["sha256"]) == 64
+    assert frozen["frozen_at_utc"]
+
+
 def test_history_audit_redacts_secret_bearing_fields(tmp_path, monkeypatch):
     monkeypatch.setenv("DATA_DIR", str(tmp_path))
     (tmp_path / "post_history.json").write_text(

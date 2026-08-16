@@ -499,6 +499,16 @@ def _engine_a_product_field(excluded_product_ids: set[str]) -> dict:
         recent_microtopics=recent.get("microtopics", []),
         limit=12,
     )
+    attempt_only_exclusions = list(recent.get("attempt_only_exclusions", []) or [])
+    brief_stage_opportunities = opportunity_engine.generate(
+        engine="A",
+        recent_pillars=recent.get("pillars", []),
+        recent_genres=recent.get("genres", []),
+        recent_topics=recent.get("topics", []),
+        recent_microtopics=recent.get("microtopics", []),
+        excluded_concepts=attempt_only_exclusions,
+        limit=12,
+    )
     first_eligible = eligible[0] if eligible else {}
     return {
         "engine": "A",
@@ -507,6 +517,8 @@ def _engine_a_product_field(excluded_product_ids: set[str]) -> dict:
         "eligible_product_count": len(eligible),
         "products_considered": len(eligible),
         "non_ppp_opportunity_count": len(opportunities),
+        "attempt_only_exclusion_count": len(attempt_only_exclusions),
+        "brief_stage_opportunity_count": len(brief_stage_opportunities),
         "selected_product_id": str(first_eligible.get("offering_id") or first_eligible.get("sku") or ""),
         "opportunity_ids": [
             f"{candidate.pillar_id}:{candidate.genre_id}:{candidate.topic_path.topic}"

@@ -120,4 +120,5 @@ def test_engine_a_product_field_excludes_products_without_generating_content(mon
     assert field["eligible_product_count"] == 2
     assert field["products_considered"] > 1
     assert field["non_ppp_opportunity_count"] == 1
+    assert field["brief_stage_opportunity_count"] == 1
     assert field["selected_product_id"] == "PF-150W"

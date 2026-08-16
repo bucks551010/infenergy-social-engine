@@ -1585,6 +1585,8 @@ def run_slot(
     require_product_free: bool = False,
 ) -> None:
     with RUN_LOCK:
+        if not pipeline_override and (engine_override or require_product_free):
+            pipeline_override = "orchestrator"
         LAST_RUN["status"] = "running"
         LAST_RUN["slot"] = slot
         LAST_RUN["started_at_utc"] = _utc_now()

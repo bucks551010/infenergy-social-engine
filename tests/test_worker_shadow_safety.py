@@ -78,6 +78,7 @@ def test_manual_run_scopes_product_exclusion_and_product_free_contract(monkeypat
     env = completed.call_args.kwargs["env"]
     assert env["POST_EXCLUDED_PRODUCT_IDS"] == "PPP-200"
     assert env["POST_REQUIRE_PRODUCT_FREE"] == "true"
+    assert env["POST_PIPELINE_OVERRIDE"] == "orchestrator"
 
 
 def test_non_live_run_forbids_meta_refresh(monkeypatch):

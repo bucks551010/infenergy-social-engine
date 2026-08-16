@@ -695,6 +695,56 @@ def _start_slot_thread(
     return True
 
 
+def promote_frozen_artifact(
+    post_id: str,
+    *,
+    platforms: list[str],
+    live: bool = False,
+    shadow_mode: bool = True,
+) -> None:
+    with RUN_LOCK:
+        LAST_RUN["status"] = "running"
+        LAST_RUN["slot"] = "frozen_promotion"
+        LAST_RUN["started_at_utc"] = _utc_now()
+        LAST_RUN["finished_at_utc"] = None
+        LAST_RUN["error"] = None
+        try:
+            if _external_social_access_allowed(live, shadow_mode):
+                refresh_ok, refresh_reason = _auto_refresh_meta_if_due()
+                if refresh_ok:
+                    print("[META] Token refresh completed before frozen promotion")
+                elif refresh_reason not in ("not_due", "auto_refresh_disabled"):
+                    print(f"[META] Token refresh skipped/failed: {refresh_reason}")
+            result = run_engine.promote_approved_frozen_artifact(
+                post_id,
+                platforms=platforms,
+                dry_run=not live,
+                shadow_mode=shadow_mode,
+            )
+            if not result.get("ok"):
+                raise RuntimeError(" | ".join(str(error) for error in result.get("errors", [])) or "frozen_promotion_failed")
+            LAST_RUN["status"] = "success"
+            print(f"[PROMOTION] {post_id}: {result.get('status')}")
+        except BaseException as exc:
+            LAST_RUN["status"] = "failed"
+            LAST_RUN["error"] = str(exc)
+            print(f"[ERROR] Frozen promotion failed: {exc}")
+            traceback.print_exc()
+        finally:
+            LAST_RUN["finished_at_utc"] = _utc_now()
+
+
+def _start_frozen_promotion_thread(post_id: str, *, platforms: list[str], live: bool, shadow_mode: bool) -> bool:
+    if RUN_LOCK.locked():
+        return False
+    threading.Thread(
+        target=promote_frozen_artifact,
+        kwargs={"post_id": post_id, "platforms": platforms, "live": live, "shadow_mode": shadow_mode},
+        daemon=True,
+    ).start()
+    return True
+
+
 class HealthHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         parsed = urlparse(self.path)
@@ -1364,6 +1414,61 @@ class HealthHandler(BaseHTTPRequestHandler):
             }
             body = json.dumps(payload).encode("utf-8")
             self.send_response(200 if overall_ok else 500)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
+        if parsed.path == "/promote-frozen":
+            token = os.environ.get("MANUAL_RUN_TOKEN", "")
+            params = parse_qs(parsed.query)
+            provided = str(params.get("token", [""])[0]).strip()
+            post_id = str(params.get("post_id", [""])[0]).strip()
+            live = str(params.get("live", ["false"])[0]).lower() in ("1", "true", "yes")
+            shadow_mode = str(params.get("shadow", ["false"])[0]).lower() in ("1", "true", "yes") or not live
+            requested = [
+                platform.strip().lower()
+                for platform in str(params.get("platforms", ["facebook,instagram,linkedin"])[0]).split(",")
+                if platform.strip().lower() in ("facebook", "instagram", "linkedin")
+            ]
+            requested = list(dict.fromkeys(requested))
+            if not token:
+                payload = {"error": "MANUAL_RUN_TOKEN not configured"}
+                status = 403
+            elif provided != token:
+                payload = {"error": "invalid token"}
+                status = 401
+            elif not post_id:
+                payload = {"error": "missing_post_id"}
+                status = 400
+            elif not requested:
+                payload = {"error": "no_supported_platforms_requested"}
+                status = 400
+            else:
+                artifact, errors = run_engine.load_approved_frozen_artifact(post_id)
+                if not artifact:
+                    payload = {"error": "approved_frozen_artifact_unavailable", "post_id": post_id, "blocking_errors": errors}
+                    status = 422
+                else:
+                    started = _start_frozen_promotion_thread(
+                        post_id,
+                        platforms=requested,
+                        live=live,
+                        shadow_mode=shadow_mode,
+                    )
+                    payload = {
+                        "accepted": started,
+                        "post_id": post_id,
+                        "platforms": requested,
+                        "live": live,
+                        "shadow_mode": shadow_mode,
+                        "message": "frozen promotion started" if started else "run already in progress",
+                        "time_utc": _utc_now(),
+                    }
+                    status = 202 if started else 409
+            body = json.dumps(payload).encode("utf-8")
+            self.send_response(status)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()

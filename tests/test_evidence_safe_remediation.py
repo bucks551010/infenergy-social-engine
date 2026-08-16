@@ -64,6 +64,23 @@ def test_preview_attempts_do_not_create_duplicate_reasons_but_live_posts_do():
     assert "duplicate_product_within_window" in anti_repeat.check_duplicates(content, {"posts": [live_post]})["reasons"]
 
 
+def test_duplicate_cta_uses_published_platform_cta_not_internal_default():
+    candidate = {
+        "selected_cta": "Learn more",
+        "platform_posts": {"facebook": {"cta": "See what this product is designed to support."}},
+    }
+    published = {
+        "status": "success",
+        "published_at": "2026-08-16T12:00:00+00:00",
+        "selected_cta": "Learn more",
+        "platform_records": [{"platform": "facebook", "status": "published", "cta": "Save this checklist."}],
+    }
+
+    assert "duplicate_cta_within_window" not in anti_repeat.check_duplicates(candidate, {"posts": [published]})["reasons"]
+    published["platform_records"][0]["cta"] = "See what this product is designed to support."
+    assert "duplicate_cta_within_window" in anti_repeat.check_duplicates(candidate, {"posts": [published]})["reasons"]
+
+
 def test_strict_verified_fact_recovery_skips_engine_a_inference_renderer(tmp_path, monkeypatch):
     monkeypatch.setattr(orchestrator, "_engine_a_decision_insight", lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("strict fact recovery must not infer an outcome")))
 

@@ -109,6 +109,36 @@ def test_external_social_policy_requires_live_non_shadow_mode():
     assert worker._external_social_access_allowed(force_live=True, shadow_mode=False)
 
 
+def test_frozen_promotion_shadow_mode_never_enables_external_access(monkeypatch):
+    promote = Mock(return_value={"ok": True, "status": "shadow_promoted_not_published"})
+    refresh = Mock(return_value=(True, "refreshed"))
+    monkeypatch.setattr(worker.run_engine, "promote_approved_frozen_artifact", promote)
+    monkeypatch.setattr(worker, "_auto_refresh_meta_if_due", refresh)
+
+    worker.promote_frozen_artifact("approved-shadow", platforms=["facebook"], live=False, shadow_mode=True)
+
+    promote.assert_called_once_with(
+        "approved-shadow", platforms=["facebook"], dry_run=True, shadow_mode=True
+    )
+    refresh.assert_not_called()
+    assert worker.LAST_RUN["status"] == "success"
+
+
+def test_frozen_promotion_live_forwards_explicit_live_intent(monkeypatch):
+    promote = Mock(return_value={"ok": True, "status": "promoted"})
+    refresh = Mock(return_value=(False, "not_due"))
+    monkeypatch.setattr(worker.run_engine, "promote_approved_frozen_artifact", promote)
+    monkeypatch.setattr(worker, "_auto_refresh_meta_if_due", refresh)
+
+    worker.promote_frozen_artifact("approved-shadow", platforms=["linkedin"], live=True, shadow_mode=False)
+
+    promote.assert_called_once_with(
+        "approved-shadow", platforms=["linkedin"], dry_run=False, shadow_mode=False
+    )
+    refresh.assert_called_once_with()
+    assert worker.LAST_RUN["status"] == "success"
+
+
 def test_engine_a_product_field_excludes_products_without_generating_content(monkeypatch):
     class Candidate:
         pillar_id = "preparedness"

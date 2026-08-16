@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import sys
+import tempfile
 
 
 _REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -72,6 +73,49 @@ def test_frozen_publish_artifact_is_json_normalized_and_fingerprinted():
     assert frozen["artifact"] == {"nested": {"answer": 42}, "post_id": "shadow-1"}
     assert len(frozen["sha256"]) == 64
     assert frozen["frozen_at_utc"]
+
+
+def test_load_approved_frozen_artifact_requires_intact_publishable_shadow(monkeypatch):
+    artifact = {
+        "post_id": "shadow-approved",
+        "publish_decision": {"publishable": True},
+        "copy": {"evidence_readiness": {"status": "READY"}},
+        "validation_status": "passed",
+        "duplicate_check": {"ok": True},
+    }
+    frozen = run_engine._freeze_publish_artifact(artifact)
+    monkeypatch.setattr(
+        run_engine.generate_posts,
+        "load_history",
+        lambda: {"posts": [{"post_id": "shadow-approved", "status": "shadow_completed", "frozen_publish_artifact": frozen}]},
+    )
+
+    loaded, errors = run_engine.load_approved_frozen_artifact("shadow-approved")
+
+    assert errors == []
+    assert loaded == artifact
+
+
+def test_load_approved_frozen_artifact_rejects_hash_tampering(monkeypatch):
+    artifact = {
+        "post_id": "shadow-tampered",
+        "publish_decision": {"publishable": True},
+        "copy": {"evidence_readiness": {"status": "READY"}},
+        "validation_status": "passed",
+        "duplicate_check": {"ok": True},
+    }
+    frozen = run_engine._freeze_publish_artifact(artifact)
+    frozen["artifact"]["validation_status"] = "failed"
+    monkeypatch.setattr(
+        run_engine.generate_posts,
+        "load_history",
+        lambda: {"posts": [{"post_id": "shadow-tampered", "status": "shadow_completed", "frozen_publish_artifact": frozen}]},
+    )
+
+    loaded, errors = run_engine.load_approved_frozen_artifact("shadow-tampered")
+
+    assert loaded is None
+    assert errors == ["frozen_artifact_hash_mismatch"]
 
 
 def test_history_audit_redacts_secret_bearing_fields(tmp_path, monkeypatch):

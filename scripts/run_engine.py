@@ -835,6 +835,198 @@ def _freeze_publish_artifact(content: dict) -> dict:
     }
 
 
+def load_approved_frozen_artifact(post_id: str) -> tuple[dict | None, list[str]]:
+    """Load a shadow-approved artifact only when its persisted evidence is intact."""
+    target = str(post_id or "").strip()
+    if not target:
+        return None, ["missing_post_id"]
+
+    history = generate_posts.load_history()
+    posts = history.get("posts", []) if isinstance(history.get("posts"), list) else []
+    record = next(
+        (
+            item for item in reversed(posts)
+            if isinstance(item, dict) and str(item.get("post_id") or "") == target
+            and str(item.get("status") or "") == "shadow_completed"
+        ),
+        None,
+    )
+    if not record:
+        return None, ["approved_shadow_not_found"]
+
+    frozen = record.get("frozen_publish_artifact")
+    if not isinstance(frozen, dict) or not isinstance(frozen.get("artifact"), dict):
+        return None, ["frozen_artifact_missing"]
+
+    artifact = frozen["artifact"]
+    canonical = json.dumps(artifact, sort_keys=True, separators=(",", ":"))
+    if str(frozen.get("sha256") or "") != hashlib.sha256(canonical.encode("utf-8")).hexdigest():
+        return None, ["frozen_artifact_hash_mismatch"]
+
+    decision = artifact.get("publish_decision") if isinstance(artifact.get("publish_decision"), dict) else {}
+    evidence = (artifact.get("copy") or {}).get("evidence_readiness") if isinstance(artifact.get("copy"), dict) else {}
+    errors: list[str] = []
+    if not decision.get("publishable"):
+        errors.append("frozen_artifact_not_publishable")
+    if str(evidence.get("status") or "") != "READY":
+        errors.append("frozen_artifact_evidence_not_ready")
+    if str(artifact.get("validation_status") or "") != "passed":
+        errors.append("frozen_artifact_validation_not_passed")
+    if not bool((artifact.get("duplicate_check") or {}).get("ok")):
+        errors.append("frozen_artifact_duplicate_check_failed")
+    if errors:
+        return None, errors
+
+    return artifact, []
+
+
+def promote_approved_frozen_artifact(
+    post_id: str,
+    *,
+    platforms: list[str],
+    dry_run: bool = True,
+    shadow_mode: bool = False,
+) -> dict:
+    """Publish an approved shadow artifact without regenerating any copy or media."""
+    allowed_platforms = ("facebook", "instagram", "linkedin")
+    requested = list(dict.fromkeys(platform for platform in platforms if platform in allowed_platforms))
+    if not requested:
+        return {"ok": False, "errors": ["no_supported_platforms_requested"], "results": {}}
+
+    content, errors = load_approved_frozen_artifact(post_id)
+    if errors or not content:
+        return {"ok": False, "errors": errors, "results": {}}
+
+    effective_channels = {"wordpress": False, **{platform: platform in requested for platform in allowed_platforms}}
+    readiness = _build_phase5_channel_readiness(effective_channels, dry_run=dry_run or shadow_mode)
+    blocking_channels = [
+        platform for platform in requested
+        if str((readiness.get("checks", {}).get(platform) or {}).get("status") or "") == "red"
+    ]
+    if blocking_channels:
+        return {
+            "ok": False,
+            "errors": [f"channel_readiness:{platform}" for platform in blocking_channels],
+            "results": {},
+            "readiness": readiness,
+        }
+
+    revalidated = validate_generated_content(content)
+    duplicate_check = check_duplicates(content, generate_posts.load_history(), windows=load_anti_repeat_windows())
+    content["duplicate_check"] = duplicate_check
+    presentation_errors = _lock_final_captions(content, effective_channels)
+    _ensure_final_artifact_qa(content, effective_channels)
+    visual_errors = _live_visual_gate_errors(content, effective_channels, dry_run or shadow_mode)
+    visual_errors.extend(_strategy_integrity_errors(content))
+    visual_errors.extend(_final_presentation_errors(content, effective_channels))
+    gate_errors = [
+        *list(revalidated.get("errors", [])),
+        *list(duplicate_check.get("reasons", [])),
+        *presentation_errors,
+        *visual_errors,
+    ]
+    if gate_errors:
+        return {
+            "ok": False,
+            "errors": list(dict.fromkeys(gate_errors)),
+            "results": {},
+            "readiness": readiness,
+        }
+
+    if shadow_mode:
+        return {
+            "ok": True,
+            "status": "shadow_promoted_not_published",
+            "errors": [],
+            "results": {platform: {"id": "shadow"} for platform in requested},
+            "readiness": readiness,
+        }
+
+    check_secrets(dry_run=dry_run, channels=effective_channels)
+    destination = str(content.get("destination_url") or os.environ.get("WP_URL", "https://www.infenergypower.com")).strip()
+    campaign = str(os.environ.get("UTM_CAMPAIGN_NAME", "infenergy_engine"))
+    audience = str(content.get("audience_segment", "general")).lower().replace(" ", "_")
+    content_slug = f"frozen_{str(content.get('funnel_stage', 'education')).lower()}"
+    links = {
+        platform: build_utm_url(destination, source=platform, campaign=campaign, content=content_slug, term=audience).get("utm_url", destination)
+        for platform in requested
+    }
+    run_id = datetime.now(timezone.utc).isoformat()
+    results: dict[str, dict] = {}
+    publish_errors: list[str] = []
+    for platform in requested:
+        existing = _successful_publish_receipt(content, platform) if not dry_run else {}
+        if existing:
+            results[platform] = {"id": _receipt_external_id(existing), "reused_receipt": True}
+            continue
+        try:
+            if platform == "facebook":
+                result = publish_facebook.publish(content, links[platform], dry_run=dry_run)
+            elif platform == "instagram":
+                content["tracked_link_instagram"] = links[platform]
+                result = publish_instagram.publish(content, dry_run=dry_run)
+            else:
+                result = publish_linkedin.publish(content, links[platform], dry_run=dry_run)
+            results[platform] = result
+            external_id = str(result.get("id") or "").strip()
+            if not dry_run and external_id and external_id not in {"dry-run", "skipped"}:
+                _persist_publish_receipt(
+                    content,
+                    platform=platform,
+                    external_post_id=external_id,
+                    container_id=str(result.get("container_id") or ""),
+                    run_id=run_id,
+                )
+        except Exception as exc:
+            publish_errors.append(f"{platform}:{type(exc).__name__}:{exc}")
+            results[platform] = {"error": str(exc)}
+
+    confirmed_platforms = [
+        platform for platform, result in results.items()
+        if not result.get("reused_receipt")
+        and str(result.get("id") or "").strip() not in {"", "dry-run", "skipped"}
+    ]
+    if not dry_run and confirmed_platforms:
+        try:
+            history = generate_posts.load_history()
+            posts = history.get("posts", []) if isinstance(history.get("posts"), list) else []
+            record = next(
+                (
+                    item for item in reversed(posts)
+                    if isinstance(item, dict) and str(item.get("post_id") or "") == str(post_id)
+                    and str(item.get("status") or "") == "shadow_completed"
+                ),
+                None,
+            )
+            if not record:
+                raise RuntimeError("approved_shadow_not_found_during_promotion_persistence")
+            promotions = record.setdefault("promotions", [])
+            promotions.append({
+                "run_id": run_id,
+                "promoted_at_utc": datetime.now(timezone.utc).isoformat(),
+                "status": "promoted" if not publish_errors else "partial_error",
+                "platforms": requested,
+                "results": results,
+                "errors": publish_errors,
+            })
+            generate_posts.save_history(history)
+            for platform in confirmed_platforms:
+                _mark_publish_postprocess_complete(content, platform)
+        except Exception as exc:
+            for platform in confirmed_platforms:
+                _mark_publish_postprocess_error(content, platform, exc)
+            publish_errors.append(f"promotion_history_persistence:{type(exc).__name__}:{exc}")
+
+    return {
+        "ok": not publish_errors,
+        "status": "promoted" if not publish_errors else "partial_error",
+        "errors": publish_errors,
+        "results": results,
+        "readiness": readiness,
+        "run_id": run_id,
+    }
+
+
 def _visual_strategy_fingerprint(content: dict) -> str:
     strategy = _strategy_lock_for_revision(content)
     visual_plan = content.get("visual_plan") if isinstance(content.get("visual_plan"), dict) else {}

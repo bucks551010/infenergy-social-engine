@@ -112,6 +112,31 @@ def _has_live_publication_evidence(post: dict[str, Any]) -> bool:
     ) or not status
 
 
+def _rendered_ctas(content: dict[str, Any]) -> set[str]:
+    platform_posts = content.get("platform_posts") if isinstance(content.get("platform_posts"), dict) else {}
+    values = {
+        _normalize_text(str(package.get("cta") or ""))
+        for package in platform_posts.values()
+        if isinstance(package, dict) and str(package.get("cta") or "").strip()
+    }
+    if values:
+        return values
+    selected = _normalize_text(str(content.get("selected_cta") or content.get("cta") or ""))
+    return {selected} if selected else set()
+
+
+def _published_ctas(post: dict[str, Any]) -> set[str]:
+    records = post.get("platform_records") if isinstance(post.get("platform_records"), list) else []
+    values = {
+        _normalize_text(str(record.get("cta") or ""))
+        for record in records
+        if isinstance(record, dict)
+        and str(record.get("status") or "").lower() == "published"
+        and str(record.get("cta") or "").strip()
+    }
+    return values or _rendered_ctas(post)
+
+
 def check_duplicates(content: dict[str, Any], history: dict[str, Any], windows: dict[str, int] | None = None) -> dict[str, Any]:
     cfg = dict(DEFAULT_WINDOWS)
     if windows:
@@ -143,11 +168,17 @@ def check_duplicates(content: dict[str, Any], history: dict[str, Any], windows: 
                 break
 
     # CTA window
-    cta_hash = str(content.get("cta_hash", "") or stable_text_hash(str(content.get("selected_cta", ""))))
-    if cta_hash:
+    candidate_ctas = _rendered_ctas(content)
+    candidate_cta_hash = str(content.get("cta_hash", ""))
+    if candidate_ctas:
         for p in _recent_posts(posts, cfg["cta_days"]):
-            existing = str(p.get("cta_hash", "") or stable_text_hash(str(p.get("selected_cta", ""))))
-            if existing == cta_hash:
+            historical_ctas = _published_ctas(p)
+            legacy_hash_match = (
+                bool(candidate_cta_hash)
+                and candidate_cta_hash == str(p.get("cta_hash", ""))
+                and not (p.get("platform_posts") or p.get("platform_records"))
+            )
+            if candidate_ctas & historical_ctas or legacy_hash_match:
                 reasons.append("duplicate_cta_within_window")
                 break
 

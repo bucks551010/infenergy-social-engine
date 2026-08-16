@@ -222,6 +222,20 @@ def _route_generate_orchestrator(
     strategy_lock = copy_pkg.get("strategy_lock") if isinstance(copy_pkg.get("strategy_lock"), dict) else {}
     role_contract = visual_contract.requirements({"copy": copy_pkg, "strategy_lock": strategy_lock, "anchored_offering": offering, "strategic_brief": brief})
     product_free = role_contract["product_role"] == "NONE"
+    product_name = str(offering.get("name") or "").strip()
+    rendered_copy = " ".join((selected_hook, copy_body, takeaway)).lower()
+    if product_free and product_name and product_name.lower() in rendered_copy:
+        # A product-free strategy cannot emit product-led copy. Preserve the
+        # product identity and require the matching visual contract instead of
+        # silently adapting the contradiction as generic audience content.
+        product_free = False
+        role_contract = {
+            **role_contract,
+            "product_role": "PRIMARY",
+            "product_relevance": "RELEVANT",
+            "product_presence_required": True,
+            "product_fidelity_applicable": True,
+        }
     destination_url = SITE_URL if product_free else (catalog_product or {}).get("product_url") or SITE_URL
     product_for_adaptation = {
         "id": offering.get("offering_id") or offering.get("sku") or "",

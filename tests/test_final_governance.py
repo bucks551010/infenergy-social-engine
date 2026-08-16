@@ -251,6 +251,33 @@ def test_product_free_orchestrator_package_uses_homepage_without_catalog_injecti
     ) == []
 
 
+def test_product_named_copy_cannot_be_adapted_as_product_free(monkeypatch):
+    candidate = {
+        "post_id": "product-led-candidate",
+        "copy": {
+            "hook": "Which published detail matters for the PowerPulse Pro 200?",
+            "body_text": "Review the PowerPulse Pro 200 using its published details.",
+            "takeaway": "Keep the product details visible.",
+            "cta": "Learn more.",
+            "strategy_lock": {"positioning": "product-free audience value", "product_role": "NONE"},
+        },
+        "visual": {},
+        "quality": {"overall": 90},
+        "anchored_offering": {"offering_id": "PPP-200", "name": "PowerPulse Pro 200", "sku": "PPP-200"},
+        "brief": {"audience_segment": "mobile_professional", "topic_path": {"topic": "Preparedness"}},
+        "creative_decision_packet": {},
+    }
+    monkeypatch.setattr(generate_posts, "run_social_intelligence", lambda **_: [candidate])
+    monkeypatch.setattr(generate_posts, "load_products", lambda: [{"id": "PPP-200", "product_url": "https://www.infenergypower.com/products/ppp-200"}])
+
+    package = generate_posts._route_generate_orchestrator(defer_visuals=True)
+
+    assert package["product_id"] == "PPP-200"
+    assert package["product_name"] == "PowerPulse Pro 200"
+    assert package["destination_url"].endswith("/products/ppp-200")
+    assert package["post_components"]["product_role"] == "PRIMARY"
+
+
 def test_incidental_medium_claim_does_not_block_and_verified_central_claim_can_proceed():
     incidental = claim_intelligence.build_ledger("The published output is 200W. Capacity is an important specification.", verified_facts=["200W"], forbidden_claims=[])
     incidental_readiness = claim_governance.assess(incidental, hook="Review the product.", decision_insight={"relationship": ""}, takeaway="Review the details.")

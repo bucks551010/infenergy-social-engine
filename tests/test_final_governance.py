@@ -278,6 +278,41 @@ def test_product_named_copy_cannot_be_adapted_as_product_free(monkeypatch):
     assert package["post_components"]["product_role"] == "PRIMARY"
 
 
+def test_abbreviated_distinctive_product_name_cannot_be_adapted_as_product_free(monkeypatch):
+    candidate = {
+        "post_id": "abbreviated-product-led-candidate",
+        "copy": {
+            "hook": "Is HoneyVolt Slim the right travel backup?",
+            "body_text": "Review HoneyVolt Slim using its published details.",
+            "takeaway": "Keep the product details visible.",
+            "cta": "Learn more.",
+            "strategy_lock": {"positioning": "product-free audience value", "product_role": "NONE"},
+        },
+        "visual": {},
+        "quality": {"overall": 90},
+        "anchored_offering": {
+            "offering_id": "HV-SLIM",
+            "name": "HoneyVolt Slim Power Bank",
+            "sku": "HV-SLIM",
+        },
+        "brief": {"audience_segment": "mobile_professional", "topic_path": {"topic": "Preparedness"}},
+        "creative_decision_packet": {},
+    }
+    monkeypatch.setattr(generate_posts, "run_social_intelligence", lambda **_: [candidate])
+    monkeypatch.setattr(
+        generate_posts,
+        "load_products",
+        lambda: [{"id": "HV-SLIM", "product_url": "https://www.infenergypower.com/products/honeyvolt-slim"}],
+    )
+
+    package = generate_posts._route_generate_orchestrator(defer_visuals=True)
+
+    assert package["product_id"] == "HV-SLIM"
+    assert package["product_name"] == "HoneyVolt Slim Power Bank"
+    assert package["destination_url"].endswith("/products/honeyvolt-slim")
+    assert package["post_components"]["product_role"] == "PRIMARY"
+
+
 def test_incidental_medium_claim_does_not_block_and_verified_central_claim_can_proceed():
     incidental = claim_intelligence.build_ledger("The published output is 200W. Capacity is an important specification.", verified_facts=["200W"], forbidden_claims=[])
     incidental_readiness = claim_governance.assess(incidental, hook="Review the product.", decision_insight={"relationship": ""}, takeaway="Review the details.")

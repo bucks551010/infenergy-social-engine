@@ -224,7 +224,23 @@ def _route_generate_orchestrator(
     product_free = role_contract["product_role"] == "NONE"
     product_name = str(offering.get("name") or "").strip()
     rendered_copy = " ".join((selected_hook, copy_body, takeaway)).lower()
-    if product_free and product_name and product_name.lower() in rendered_copy:
+    product_name_tokens = re.findall(r"[a-z0-9]+", product_name.lower())
+    product_short_name = " ".join(product_name_tokens[:2])
+    generic_product_terms = {
+        "power", "portable", "bank", "station", "charger", "battery", "solar",
+        "energy", "system", "backup", "generator", "light", "fan",
+    }
+    product_short_name_is_distinctive = (
+        len(product_name_tokens) >= 2
+        and any(token not in generic_product_terms for token in product_name_tokens[:2])
+    )
+    product_sku = str(offering.get("sku") or offering.get("offering_id") or "").strip().lower()
+    copy_mentions_product = (
+        (bool(product_name) and product_name.lower() in rendered_copy)
+        or (product_short_name_is_distinctive and product_short_name in rendered_copy)
+        or (bool(product_sku) and product_sku in rendered_copy)
+    )
+    if product_free and copy_mentions_product:
         # A product-free strategy cannot emit product-led copy. Preserve the
         # product identity and require the matching visual contract instead of
         # silently adapting the contradiction as generic audience content.

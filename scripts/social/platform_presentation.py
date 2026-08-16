@@ -251,6 +251,33 @@ def _presentation_priority(paragraph: str, product: str) -> int:
     return 4
 
 
+def _source_thoughts(paragraphs: list[str]) -> list[str]:
+    """Expose sentence-level thoughts only when source paragraphs are dense."""
+    thoughts: list[str] = []
+    for paragraph in paragraphs:
+        sentences = _sentences(paragraph)
+        if len(sentences) < 3:
+            thoughts.append(paragraph)
+        else:
+            thoughts.extend(sentences)
+    return thoughts
+
+
+def _group_supporting_thoughts(thoughts: list[str]) -> list[str]:
+    """Create readable thought groups without shortening or rewriting source copy."""
+    grouped: list[str] = []
+    pending: list[str] = []
+    for thought in thoughts:
+        pending.append(thought)
+        word_count = len(re.findall(r"\b[\w'-]+\b", " ".join(pending)))
+        if len(pending) == 2 or word_count >= 55:
+            grouped.append(" ".join(pending))
+            pending = []
+    if pending:
+        grouped.append(" ".join(pending))
+    return grouped
+
+
 def refine_caption(
     caption: str,
     *,
@@ -264,7 +291,7 @@ def refine_caption(
     product = str(components.get("product_name") or "").strip()
     cta = str(components.get("cta") or "Learn more").strip()
     tags: list[str] = []
-    body: list[str] = []
+    sanitized_parts: list[str] = []
     seen: set[str] = set()
     for source_part in source_parts:
         if _is_hashtag_paragraph(source_part):
@@ -274,26 +301,32 @@ def refine_caption(
         normalized = _normalized_paragraph(sanitized)
         if sanitized and normalized and normalized not in seen:
             seen.add(normalized)
-            body.append(sanitized)
+            sanitized_parts.append(sanitized)
+
+    body = _source_thoughts(sanitized_parts)
 
     approved_specs = [
         str(spec).strip() for spec in (components.get("feature_bullets") or [])
         if _numeric_proof_tokens(str(spec))
     ]
-    if approved_specs and not any(_numeric_proof_tokens(part) for part in body):
-        body.append("Key specs:\n" + "\n".join(f"- {spec}" for spec in approved_specs))
+    spec_block = ""
+    if approved_specs:
+        spec_block = "⚡ Key specs\n" + "\n".join(f"• {spec}" for spec in approved_specs)
 
     cta_parts = [part for part in body if cta and cta.lower() in part.lower()]
     non_cta_parts = [part for part in body if part not in cta_parts]
     if non_cta_parts:
         hook, remaining = non_cta_parts[0], non_cta_parts[1:]
-        ordered = [hook] + sorted(
+        prioritized = sorted(
             remaining,
             key=lambda part: _presentation_priority(part, product),
         )
+        lead = prioritized[:1]
+        supporting = _group_supporting_thoughts(prioritized[1:])
+        ordered = [hook] + lead + ([spec_block] if spec_block else []) + supporting
     else:
-        ordered = []
-    ordered.extend(cta_parts)
+        ordered = [spec_block] if spec_block else []
+    ordered.extend(f"👉 {part}" for part in cta_parts)
     hashtag_line = " ".join(dict.fromkeys(tags))
     refined = "\n\n".join(ordered + ([hashtag_line] if hashtag_line else []))
     optional_start = len(re.findall(r"\b[\w'-]+\b", "\n\n".join(ordered[:3]))) + 1 if len(ordered) > 3 else None
@@ -309,7 +342,7 @@ def refine_caption(
         "hashtag_reason": "preserved from approved source copy",
         "optional_depth_present": len(ordered) > 3,
         "optional_depth_start_word": optional_start,
-        "spec_sales_intelligence": "PASS" if any(_numeric_proof_tokens(part) for part in ordered) else "NOT_APPLICABLE",
+        "spec_sales_intelligence": "PASS" if spec_block or any(_numeric_proof_tokens(part) for part in ordered) else "NOT_APPLICABLE",
         "semantic_layer_evidence": {
             "hook": ordered[0] if ordered else "",
             "product": product,

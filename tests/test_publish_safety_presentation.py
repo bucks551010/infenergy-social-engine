@@ -90,7 +90,7 @@ def test_facebook_presentation_surfaces_approved_specs_without_hiding_them():
     }
     improved, presentation = platform_presentation.format_caption(components, platform="facebook")
 
-    assert "Key specs:" in improved
+    assert "⚡ Key specs" in improved
     assert "154Wh" in improved
     assert "41,600mAh" in improved
     assert "200W" in improved

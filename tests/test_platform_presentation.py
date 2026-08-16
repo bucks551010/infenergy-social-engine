@@ -69,7 +69,9 @@ def test_powerpulse_fixture_front_loads_value_without_losing_sales_depth():
     assert "154Wh" in improved and "41,600mAh" in improved and "200W" in improved and "110V" in improved
     assert _word_depth(improved, "Key specs") < _word_depth(POWERPULSE_ORIGINAL, "Key specs")
     assert "laptops, cameras, drones" in improved
-    assert "Key specs:" in improved
+    assert "⚡ Key specs" in improved
+    assert "• 154Wh and 41,600mAh for stored power" in improved
+    assert "• 200W AC and 110V output for compatible daily devices" in improved
     assert "remote work" in improved.lower()
     assert "drones" in improved.lower()
     assert "outages and off-grid use" in improved
@@ -78,6 +80,32 @@ def test_powerpulse_fixture_front_loads_value_without_losing_sales_depth():
     assert presentation["selected_hashtags"] == ["#PortablePower", "#BackupPower", "#TravelPower", "#Preparedness"]
     assert presentation["optional_depth_present"]
     assert improved.count("Review the verified product details.") == 1
+    assert "👉 Review the verified product details." in improved
+
+
+def test_dense_single_paragraph_becomes_readable_without_losing_approved_sentences():
+    dense = (
+        "Can your current power bank bridge the gap between a drained laptop and a productive workday? "
+        "PowerPulse Pro 200 offers 154Wh and 41,600mAh for compatible professional devices. "
+        "Its 200W AC output and 110V outlet support compatible equipment away from wall outlets. "
+        "Mobile professionals often struggle when standard power banks do not match their laptops. "
+        "The deeper decision is whether the supported job matches the equipment being carried. "
+        "Review the verified product details.\n\n"
+        "#PortablePower #Preparedness"
+    )
+
+    improved, _ = platform_presentation.refine_caption(
+        dense,
+        components=_components(),
+        platform="facebook",
+    )
+
+    for sentence in platform_presentation._sentences(dense.split("\n\n")[0]):
+        assert sentence in improved
+    assert len(improved.split("\n\n")) >= 6
+    assert improved.index("PowerPulse Pro 200") < improved.index("Mobile professionals")
+    assert improved.index("⚡ Key specs") < improved.index("The deeper decision")
+    assert improved.endswith("#PortablePower #Preparedness")
 
 
 def test_presentation_preserves_existing_hashtags_and_semantics_across_platforms():

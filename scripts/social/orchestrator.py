@@ -990,7 +990,11 @@ class SocialIntelligenceOrchestrator:
             )
             beat_content = llm_beats or _assemble_copy(brief=brief, structure_beats=beats)
         decision_insight: dict[str, Any] = {}
-        if engine_name == "A" and not remediation.get("exclude_engine_a_decision_thesis"):
+        if (
+            engine_name == "A"
+            and not strict_verified_fact_recovery
+            and not remediation.get("exclude_engine_a_decision_thesis")
+        ):
             decision_insight = _engine_a_decision_insight(
                 product_narrative,
                 list((bi_offering or {}).get("verified_facts") or verified_facts or []),

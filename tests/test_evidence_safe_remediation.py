@@ -9,6 +9,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 import run_engine
 import publish_facebook
+import anti_repeat
 from social import claim_governance, claim_intelligence, orchestrator, platform_presentation, publish_decision, recovery
 
 
@@ -21,6 +22,46 @@ def _final_decision(readiness: dict) -> dict:
         orchestrator_quality={"overall": 90.0, "critic_findings": []},
         evidence_readiness=readiness,
     )
+
+
+def test_shadow_attempts_do_not_create_duplicate_reasons():
+    content = {
+        "product_id": "PF-150W",
+        "selected_cta": "Learn more",
+        "selected_hook": "Which published detail matters?",
+    }
+    history = {
+        "posts": [
+            {
+                **content,
+                "status": "shadow_abstained_governance",
+                "shadow_mode": True,
+                "published_at": "2026-08-16T12:00:00+00:00",
+            }
+        ]
+    }
+
+    assert anti_repeat.check_duplicates(content, history)["ok"] is True
+
+
+def test_strict_verified_fact_recovery_skips_engine_a_inference_renderer(tmp_path, monkeypatch):
+    monkeypatch.setattr(orchestrator, "_engine_a_decision_insight", lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("strict fact recovery must not infer an outcome")))
+
+    post = orchestrator.SocialIntelligenceOrchestrator(data_dir=str(tmp_path)).create_post(
+        preferred_engine="A",
+        product_id_override="PF-150W",
+        record_memory=False,
+        remediation_context={
+            "recovery_mode": "VERIFIED_FACTS_ONLY_RECOVERY",
+            "verified_fact_opportunity": {
+                "product_id": "PF-150W",
+                "product_name": "PowerFlex",
+                "verified_fact": "Published 150W output",
+            },
+        },
+    )
+
+    assert post.copy["decision_insight"] == {}
 
 
 def test_research_required_original_stays_blocked_and_requests_one_new_supported_angle():

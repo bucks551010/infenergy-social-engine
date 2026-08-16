@@ -100,7 +100,11 @@ def check_duplicates(content: dict[str, Any], history: dict[str, Any], windows: 
     # must not poison future duplicate checks — only compare against posts that were
     # actually published (or attempted live), otherwise a single skip can perpetually
     # block every future run on the same topic/hook/structure.
-    posts = [p for p in posts if not str(p.get("status", "")).startswith("skipped")]
+    posts = [
+        p for p in posts
+        if not str(p.get("status", "")).startswith("skipped")
+        and not bool(p.get("shadow_mode"))
+    ]
 
     reasons: list[str] = []
 

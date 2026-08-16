@@ -829,6 +829,13 @@ class SocialIntelligenceOrchestrator:
             selected_opportunity_id=str((selected_opportunity or {}).get("opportunity_id") or ""),
         )
         _apply_verified_fact_opportunity(brief, remediation)
+        verified_fact_opportunity = remediation.get("verified_fact_opportunity")
+        if isinstance(verified_fact_opportunity, dict):
+            selected_fact = str(verified_fact_opportunity.get("verified_fact") or "").strip()
+            if selected_fact:
+                # A factual recovery may state the selected owned fact, but it
+                # cannot infer performance or operational consequences from it.
+                verified_facts = [selected_fact]
         if competitive_pool:
             brief.opportunity_shortlist = competitive_pool
             brief.rationale.append(f"global_opportunity_competition:selected={selected_opportunity.get('candidate_id', '')}")
@@ -868,6 +875,15 @@ class SocialIntelligenceOrchestrator:
             locked = _audience_value_strategy_lock(brief)
         else:
             locked = _runtime_strategy_lock(brief, lean_context, bi_offering, self.data_dir)
+        if isinstance(verified_fact_opportunity, dict) and selected_fact:
+            locked = {
+                **locked,
+                "topic": str(verified_fact_opportunity.get("product_name") or locked.get("topic") or "Product details"),
+                "angle": brief.angle,
+                "customer_moment": brief.curiosity,
+                "proof": [selected_fact],
+                "claim_limits": "State only the selected verified fact; do not infer runtime, compatibility, safety, performance, or operational outcomes.",
+            }
 
         recovery_context = any(
             remediation.get(key)

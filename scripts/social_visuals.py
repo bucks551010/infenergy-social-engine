@@ -770,7 +770,12 @@ def _generate_gemini_full_creative(content: dict[str, Any], platform: str, visua
         from google import genai  # type: ignore
         from google.genai import types  # type: ignore
 
-        client = genai.Client(api_key=api_key)
+        request_timeout_sec = max(1, int(os.environ.get("GEMINI_REQUEST_TIMEOUT_SEC", "60") or 60))
+        client = genai.Client(
+            api_key=api_key,
+            http_options=types.HttpOptions(timeout=request_timeout_sec * 1000),
+        )
+        metadata["provider_timeout_sec"] = request_timeout_sec
         model_candidates = [
             str(os.environ.get("GEMINI_IMAGE_MODEL", "")).strip(),
             "gemini-2.5-flash-image",

@@ -43,6 +43,35 @@ _SCORE_DIMENSIONS = (
 )
 
 
+_BUSINESS_IDEOLOGY_TERMS = (
+    "portable power", "power station", "backup power", "outage", "emergency",
+    "preparedness", "off-grid", "solar", "runtime", "capacity", "watt-hour",
+    "amp-hour", "inverter", "device compatibility", "cpap", "medical continuity",
+    "travel", "camping", "remote work", "vehicle charging", "e-bike", "commut",
+    "range", "owned power", "grid resilience", "essential device", "product fit",
+)
+
+_ENGINE_FIT_NAMES = {
+    "A": "conversion",
+    "B": "audience_value",
+    "C": "brand",
+}
+
+
+def business_ideology_aligned(topic_path: content_strategy.TopicPath) -> bool:
+    """Require a direct connection to Infenergy's preparedness and mobile-power mission."""
+    text = " ".join(
+        str(value or "")
+        for value in (
+            topic_path.topic,
+            topic_path.subtopic,
+            topic_path.microtopic,
+            topic_path.angle,
+        )
+    ).lower()
+    return any(term in text for term in _BUSINESS_IDEOLOGY_TERMS)
+
+
 def _score_candidate(
     *,
     pillar_id: str,
@@ -125,11 +154,12 @@ def generate(
     recent_g = list(recent_genres)
     recent_m = list(recent_microtopics)
 
-    eligible_p = content_strategy.eligible_pillars(engine=engine, recent_pillars=recent_p)
+    engine_fit = _ENGINE_FIT_NAMES.get(engine.upper(), engine)
+    eligible_p = content_strategy.eligible_pillars(engine=engine_fit, recent_pillars=recent_p)
     if preferred_pillar and preferred_pillar in all_p:
         eligible_p = {preferred_pillar: all_p[preferred_pillar], **eligible_p}
     if not eligible_p:
-        eligible_p = {pid: p for pid, p in all_p.items() if engine in p.get("engine_fit", [])} or all_p
+        eligible_p = {pid: p for pid, p in all_p.items() if engine_fit in p.get("engine_fit", [])}
 
     rot = 0
     for pid, _p in eligible_p.items():
@@ -139,11 +169,16 @@ def generate(
             seasonal_context=seasonal_context,
             rotation_index=rot,
         )
-        tp = content_strategy.pick_topic_path(
-            pillar_id=pid,
-            recent_microtopics=recent_m,
-            rotation_index=rot,
-        )
+        tp = None
+        for topic_rotation in range(rot, rot + 8):
+            candidate_path = content_strategy.pick_topic_path(
+                pillar_id=pid,
+                recent_microtopics=recent_m,
+                rotation_index=topic_rotation,
+            )
+            if candidate_path is not None and business_ideology_aligned(candidate_path):
+                tp = candidate_path
+                break
         if tp is None:
             continue
 

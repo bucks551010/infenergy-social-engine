@@ -337,6 +337,8 @@ def refine_caption(
             continue
         sanitized = _remove_internal_language(source_part)
         normalized = _normalized_paragraph(sanitized)
+        if sanitized.startswith("⚡ Key specs"):
+            continue
         if sanitized and normalized and normalized not in seen and normalized not in opening_keys:
             seen.add(normalized)
             sanitized_parts.append(sanitized)
@@ -560,7 +562,7 @@ def _compact_parts(components: dict[str, Any], platform: str) -> tuple[str, str,
     cta = str(components.get("cta") or "Learn more").strip()
     specs = [str(item).strip() for item in (components.get("feature_bullets") or []) if str(item).strip()]
     context = bridge or situation
-    payoff = f"{product} is supporting proof for that decision: {benefit}." if product and benefit else ""
+    payoff = ""
     return hook, context, payoff, specs
 
 

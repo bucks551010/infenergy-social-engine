@@ -20,7 +20,6 @@ from . import (
     opportunity_engine,
 )
 
-
 @dataclass
 class EngineBrief:
     engine: str  # A | B | C
@@ -109,6 +108,7 @@ def _shared_brief(
     topic_path = best.topic_path
 
     tone = copy_intelligence.tone_for(aud.reader_job, aud.emotional_driver)
+    topic_focus = topic_path.microtopic or topic_path.subtopic or topic_path.topic
 
     return EngineBrief(
         engine=engine,
@@ -118,10 +118,10 @@ def _shared_brief(
         reader_job_config=aud.reader_job_config,
         audience_segment=aud.segment_id,
         audience_segment_config=aud.segment,
-        information_gap=aud.information_gap,
-        curiosity=aud.curiosity,
+        information_gap=f"what {topic_focus} requires in practice",
+        curiosity=f"how {topic_focus} changes the {topic_path.topic.lower()} decision",
         misconception=aud.misconception or "",
-        question=aud.question,
+        question=topic_path.angle,
         emotional_driver=aud.emotional_driver,
         topic_path=topic_path.__dict__ if hasattr(topic_path, "__dict__") else dict(topic_path),
         angle=topic_path.angle,

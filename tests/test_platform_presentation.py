@@ -161,7 +161,9 @@ def test_product_free_caption_is_idempotent_and_never_invents_a_product():
     assert "For you, that means" not in twice
     assert twice.startswith("Why is overnight charging not always the problem people assume?")
     assert twice.count("👉 Save this checklist and compare your current setup.") == 1
+    assert twice.count("⚡ Key specs") <= 1
     assert "this product" not in twice.lower()
+    assert "supporting proof for that decision" not in twice.lower()
     assert "remember:" not in twice.lower()
 
 

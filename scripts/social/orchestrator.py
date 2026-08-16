@@ -230,8 +230,14 @@ def _runtime_strategy_lock(brief: engines.EngineBrief, lean_context: dict[str, A
             data_dir=data_dir,
         ))
     if not red_team["can_lock"]:
-        candidate["angle"] = f"Use verified product facts to assess {benefit}"
-        candidate["hook_promise"] = f"Which verified facts help with {benefit}?"
+        benefit_action = benefit
+        for prefix, replacement in (("keeps ", "keep "), ("supports ", "support "), ("helps ", "help ")):
+            if benefit_action.lower().startswith(prefix):
+                benefit_action = replacement + benefit_action[len(prefix):]
+                break
+        offering_name = str((offering or {}).get("name") or "this product")
+        candidate["angle"] = f"how does {offering_name} help {benefit_action}"
+        candidate["hook_promise"] = f"How does {offering_name} help {benefit_action}?"
         brief.angle = candidate["angle"]
     locked = strategy_lock.lock(candidate, context=candidate)
     locked["strategy_red_team"] = red_team
@@ -392,13 +398,15 @@ def _assemble_copy(*, brief: engines.EngineBrief, structure_beats: list[str]) ->
     reality = brief.angle
     q = brief.question or f"What most people miss about {brief.topic_path.get('topic', 'this')}"
     gap = brief.information_gap or brief.curiosity or brief.angle
+    gap_text = gap.strip().rstrip(".?!")
+    curiosity_text = brief.curiosity.strip().rstrip(".?!")
 
     templates: dict[str, str] = {
         "hook": q if q.endswith("?") else f"{q}?",
-        "answer": f"It starts with {gap[:1].lower() + gap[1:]}.",
-        "explanation": f"Understanding {gap[:1].lower() + gap[1:]} gives the question useful context.",
-        "example": f"Consider {brief.curiosity[:1].lower() + brief.curiosity[1:]}.",
-        "takeaway": "Use that context to examine the assumption instead of repeating it.",
+        "answer": f"Start with {gap_text}.",
+        "explanation": f"Treat {gap_text} as one verified input, then compare it with the devices and job you need to support.",
+        "example": f"The practical context: {curiosity_text}.",
+        "takeaway": "Compare the need with the verified facts before choosing.",
         "problem": misc or f"Most people assume {brief.angle}.",
         "why": f"Because {gap}.",
         "what_happens": f"Which leads to {brief.curiosity}.",
@@ -539,9 +547,28 @@ class SocialIntelligenceOrchestrator:
             brief.audience_segment = locked["audience"]
             brief.angle = locked["angle"]
             brief.topic_path["topic"] = locked["topic"]
+            brief.topic_path["subtopic"] = locked["topic"]
+            brief.topic_path["microtopic"] = locked["angle"]
+            brief.topic_path["angle"] = locked["angle"]
             brief.reader_job = locked["reader_job"]
+            brief.information_gap = str(locked.get("important_capability") or locked.get("benefit") or locked["angle"])
+            brief.curiosity = str(locked.get("human_need") or locked.get("customer_moment") or locked["angle"])
+            brief.question = str(locked.get("hook_promise") or locked["angle"])
+            brief.emotional_driver = str(locked.get("human_outcome") or locked.get("human_value") or brief.emotional_driver)
         else:
             locked = _runtime_strategy_lock(brief, lean_context, bi_offering, self.data_dir)
+
+        brief.audience_segment = locked["audience"]
+        brief.angle = locked["angle"]
+        brief.topic_path["topic"] = locked["topic"]
+        brief.topic_path["subtopic"] = locked["topic"]
+        brief.topic_path["microtopic"] = locked["angle"]
+        brief.topic_path["angle"] = locked["angle"]
+        brief.reader_job = locked["reader_job"]
+        brief.information_gap = str(locked.get("important_capability") or locked.get("benefit") or locked["angle"])
+        brief.curiosity = str(locked.get("human_need") or locked.get("customer_moment") or locked["angle"])
+        brief.question = str(locked.get("hook_promise") or locked["angle"])
+        brief.emotional_driver = str(locked.get("human_outcome") or locked.get("human_value") or brief.emotional_driver)
 
         creative_packet = creative_cognition.decide(
             strategy=locked, platform=platform, recent=recent, data_dir=self.data_dir

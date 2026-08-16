@@ -168,8 +168,6 @@ def pick_topic_path(
 
     candidates = pillar_topics(pillar_id)
     if not candidates:
-        candidates = list(tg.keys())
-    if not candidates:
         return None
 
     topic_id = _rotate(candidates, rotation_index)
@@ -182,9 +180,16 @@ def pick_topic_path(
     micro_pool = [m for m in sub.get("microtopics", []) if m not in banned]
     if not micro_pool:
         micro_pool = list(sub.get("microtopics", []))
-    micro = _rotate(micro_pool, rotation_index) if micro_pool else ""
-
     angle = _rotate(sub.get("angles", []), rotation_index) if sub.get("angles") else ""
+    angle_terms = set(str(angle or "").lower().replace("-", " ").split())
+    scored_microtopics = sorted(
+        micro_pool,
+        key=lambda value: len(angle_terms.intersection(str(value).lower().replace("-", " ").split())),
+        reverse=True,
+    )
+    best_micro = scored_microtopics[0] if scored_microtopics else ""
+    best_overlap = len(angle_terms.intersection(str(best_micro).lower().replace("-", " ").split()))
+    micro = best_micro if best_overlap else (_rotate(micro_pool, rotation_index) if micro_pool else "")
 
     rationale = [
         f"pillar={pillar_id} → topic={topic_id} → subtopic={sub_id}",

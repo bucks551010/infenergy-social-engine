@@ -398,6 +398,12 @@ def test_orchestrator_preserves_approved_strategy_in_copy_and_visual(monkeypatch
     post = orchestrator.SocialIntelligenceOrchestrator().create_post(approved_strategy=locked, record_memory=False)
     assert post.copy["strategy_lock"]["angle"] == post.visual["strategy_lock"]["angle"] == locked["angle"]
     assert post.copy["strategy_lock"]["audience"] == post.visual["strategy_lock"]["audience"] == locked["audience"]
+    assert post.brief["topic_path"]["topic"] == locked["topic"]
+    assert post.brief["topic_path"]["angle"] == locked["angle"]
+    assert post.brief["information_gap"] == locked["important_capability"]
+    assert post.brief["curiosity"] == locked["human_need"]
+    assert post.brief["question"] == locked.get("hook_promise", locked["angle"])
+    assert post.brief["emotional_driver"] == locked["human_outcome"]
     assert "human_connection_review" in post.creative_director
 
 
@@ -406,6 +412,12 @@ def test_orchestrator_derives_runtime_lock_and_final_reviews_without_council(mon
     post = orchestrator.SocialIntelligenceOrchestrator().create_post(record_memory=False)
 
     assert post.copy["strategy_lock"] == post.visual["strategy_lock"]
+    assert post.brief["topic_path"]["angle"] == post.copy["strategy_lock"]["angle"]
+    assert post.brief["information_gap"] == post.copy["strategy_lock"]["important_capability"]
+    assert post.brief["question"] == post.copy["strategy_lock"].get("hook_promise", post.copy["strategy_lock"]["angle"])
+    assert "use verified product facts" not in post.copy["strategy_lock"]["angle"].lower()
+    assert post.copy["strategy_lock"]["hook_promise"].startswith("How does ")
+    assert " support keeps " not in post.copy["strategy_lock"]["hook_promise"].lower()
     assert post.creative_director["independent_human_connection_review"]["verdict"]
     assert post.creative_director["strategy_integrity_review"]["verdict"] == "ALIGNED"
 
@@ -508,7 +520,7 @@ def test_creative_cognition_reaches_platform_expressions_and_publish_decision(tm
     assert legacy["creative_decision_packet"]["meetings"] or legacy["creative_decision_packet"]["ACTION"] == "create"
     assert legacy["creative_decision_packet"]["specialist_verdicts"]["Originality Guardian"]["passed"]
     assert legacy["platform_posts"]["facebook"]["strategy_lock"] == legacy["platform_posts"]["instagram"]["strategy_lock"]
-    assert legacy["platform_posts"]["linkedin"]["platform_selection"]["selected"] is False
+    assert legacy["platform_posts"]["linkedin"]["platform_selection"]["reason"]
     assert decision["decision"] == "publish"
 
 
@@ -730,6 +742,38 @@ def test_pick_topic_path_returns_populated():
     assert tp.angle or tp.microtopic
 
 
+def test_topic_path_pairs_microtopic_with_the_selected_angle():
+    cpap = content_strategy.pick_topic_path(pillar_id="preparedness", rotation_index=2)
+    medication = content_strategy.pick_topic_path(pillar_id="preparedness", rotation_index=5)
+
+    assert cpap is not None and "CPAP" in cpap.microtopic and "CPAP" in cpap.angle
+    assert medication is not None and "medication" in medication.microtopic.lower() and "medication" in medication.angle.lower()
+
+
+def test_topic_path_never_borrows_from_an_unrelated_pillar():
+    assert content_strategy.pick_topic_path(pillar_id="energy_education", rotation_index=0) is None
+
+
+def test_business_ideology_filter_rejects_generic_battery_myths():
+    generic = content_strategy.TopicPath(
+        topic="Batteries",
+        subtopic="charging",
+        microtopic="overnight charging myth",
+        angle="why overnight charging isn't the villain most people think",
+        pillar_id="battery_knowledge",
+    )
+    aligned = content_strategy.TopicPath(
+        topic="Power Stations",
+        subtopic="runtime_math",
+        microtopic="CPAP runtime",
+        angle="CPAP runtime: what to actually plan for",
+        pillar_id="portable_power",
+    )
+
+    assert not opportunity_engine.business_ideology_aligned(generic)
+    assert opportunity_engine.business_ideology_aligned(aligned)
+
+
 def test_obviousness_filter():
     assert content_strategy.is_obvious("charge your phone before a storm")
     assert not content_strategy.is_obvious("Overnight charging is not the villain — here's why")
@@ -750,6 +794,8 @@ def test_opportunity_generate_returns_ranked_candidates():
     assert cands
     scores = [c.total for c in cands]
     assert scores == sorted(scores, reverse=True)
+    assert all(opportunity_engine.business_ideology_aligned(c.topic_path) for c in cands)
+    assert all(c.topic_path.microtopic != "overnight charging myth" for c in cands)
 
 
 # --- copy intelligence ----------------------------------------------------
@@ -1029,6 +1075,8 @@ def test_each_engine_produces_valid_brief(engine):
     assert brief.reader_job
     assert brief.audience_segment
     assert brief.angle or brief.topic_path.get("microtopic")
+    assert brief.topic_path["microtopic"].lower() in brief.information_gap.lower()
+    assert brief.topic_path["microtopic"].lower() in brief.curiosity.lower()
 
 
 # --- visual provider -----------------------------------------------------

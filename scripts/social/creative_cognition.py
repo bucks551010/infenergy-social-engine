@@ -318,7 +318,7 @@ def _copy_concepts(*, strategy: dict[str, Any], grammar: dict[str, Any], recent:
     elif question_angle.lower().startswith(("why ", "how ", "what ", "when ", "where ", "which ", "can ", "does ", "is ")):
         educational_opening = f"{question_angle[:1].upper() + question_angle[1:]}?"
     else:
-        educational_opening = f"What should you understand about {question_angle.lower()}?"
+        educational_opening = f"What should you understand about {question_angle[:1].lower() + question_angle[1:]}?"
     options = [
         {"approach": "human_recognition", "opening": f"When {strategy.get('customer_moment') or 'power is uncertain'}, what matters first?", "structure": "situation -> friction -> possibility", "fit": 0.78},
         {"approach": "educational_insight", "opening": educational_opening, "structure": "observation -> insight -> business connection", "fit": 0.8},

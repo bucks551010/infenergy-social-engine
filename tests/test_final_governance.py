@@ -301,6 +301,12 @@ def test_rejected_evidence_remediation_advances_to_verified_facts_or_next_produc
     assert set(next_context["excluded_product_ids"]) == {"PPP-200", "PF-150W"}
 
 
+def test_unsupported_material_claims_require_evidence_safe_remediation_even_with_duplicates():
+    decision = {"reasons": ["duplicate_product_within_window", "UNSUPPORTED_MATERIAL_CLAIMS"]}
+
+    assert run_engine._retryability_classification(decision, []) == "EVIDENCE_SAFE_REMEDIATION"
+
+
 def test_supported_rewrite_and_abstention_are_available_without_weakening_high_risk_policy():
     rewritten = claim_intelligence.build_ledger("The published output is 200W. Compare that published fact with your device requirement.", verified_facts=["200W"], forbidden_claims=[])
     rewrite_readiness = claim_governance.assess(rewritten, hook="What output is published?", decision_insight={"relationship": ""}, takeaway="Compare the published fact.")

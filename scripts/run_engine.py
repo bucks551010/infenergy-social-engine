@@ -937,6 +937,8 @@ def _retryability_classification(decision: dict, findings: list[str]) -> str:
     reasons = {str(item) for item in decision.get("reasons", []) if str(item)} | {str(item) for item in findings if str(item)}
     if any(reason in _TERMINAL_FINDINGS for reason in reasons):
         return "TERMINAL"
+    if "UNSUPPORTED_MATERIAL_CLAIMS" in reasons:
+        return "EVIDENCE_SAFE_REMEDIATION"
     if any(reason in _RETRYABLE_CONTENT_FINDINGS or reason.startswith(_RETRYABLE_CONTENT_PREFIXES) for reason in reasons):
         return "RETRYABLE_CONTENT"
     return "TERMINAL"

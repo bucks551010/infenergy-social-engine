@@ -157,6 +157,44 @@ def _quality_gated_product_free_opportunity(candidates: list[Any]) -> tuple[Any,
     return secrets.SystemRandom().choice(band), band
 
 
+def _build_engine_brief(
+    engine: Any,
+    *,
+    engine_name: str,
+    preferred_engine: str | None,
+    recent: dict[str, Any],
+    audience_hint: str | None,
+    seasonal_context: str | None,
+    preferred_pillar: str | None,
+    excluded_concepts: list[str],
+    rotation_index: int,
+    selected_opportunity_id: str,
+) -> engines.EngineBrief:
+    """Build a brief without allowing a manual product target to exhaust a viable field."""
+    kwargs = {
+        "recent": recent,
+        "audience_hint": audience_hint,
+        "seasonal_context": seasonal_context,
+        "preferred_pillar": preferred_pillar,
+        "excluded_concepts": excluded_concepts,
+        "rotation_index": rotation_index,
+        "selected_opportunity_id": selected_opportunity_id,
+    }
+    try:
+        return engine.build(**kwargs)
+    except RuntimeError as exc:
+        if (
+            engine_name == "A"
+            and preferred_engine
+            and str(exc) == "no viable opportunities generated"
+            and (audience_hint or preferred_pillar)
+        ):
+            kwargs["audience_hint"] = None
+            kwargs["preferred_pillar"] = None
+            return engine.build(**kwargs)
+        raise
+
+
 def _bi_brand_voice(ctx: dict[str, Any] | None) -> dict[str, Any] | None:
     if not ctx:
         return None
@@ -757,7 +795,10 @@ class SocialIntelligenceOrchestrator:
 
         # 2. Strategic brief
         brief_exclusions = [] if selected_opportunity else excluded_concepts
-        brief = engine.build(
+        brief = _build_engine_brief(
+            engine,
+            engine_name=engine_name,
+            preferred_engine=preferred_engine,
             recent=recent,
             audience_hint=audience_hint,
             seasonal_context=seasonal_context,

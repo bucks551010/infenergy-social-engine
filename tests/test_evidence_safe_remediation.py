@@ -44,6 +44,26 @@ def test_shadow_attempts_do_not_create_duplicate_reasons():
     assert anti_repeat.check_duplicates(content, history)["ok"] is True
 
 
+def test_preview_attempts_do_not_create_duplicate_reasons_but_live_posts_do():
+    content = {
+        "product_id": "PF-150W",
+        "selected_cta": "Learn more",
+        "selected_hook": "Which published detail matters?",
+    }
+    preview = {
+        **content,
+        "anchored_offering": {},
+        "claim_ledger": {},
+        "quality": {},
+        "engagement_metrics": {},
+        "created_at": "2026-08-16T12:00:00+00:00",
+    }
+    live_post = {**content, "status": "success", "published_at": "2026-08-16T12:00:00+00:00"}
+
+    assert anti_repeat.check_duplicates(content, {"posts": [preview]})["ok"] is True
+    assert "duplicate_product_within_window" in anti_repeat.check_duplicates(content, {"posts": [live_post]})["reasons"]
+
+
 def test_strict_verified_fact_recovery_skips_engine_a_inference_renderer(tmp_path, monkeypatch):
     monkeypatch.setattr(orchestrator, "_engine_a_decision_insight", lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("strict fact recovery must not infer an outcome")))
 

@@ -90,21 +90,38 @@ def _opening_sentence(text: str) -> str:
     return parts[0].strip() if parts else cleaned
 
 
+def _has_live_publication_evidence(post: dict[str, Any]) -> bool:
+    if bool(post.get("shadow_mode")) or bool(post.get("dry_run")):
+        return False
+
+    status = str(post.get("status", "")).strip().lower()
+    if status in {"success", "partial_error", "published"}:
+        return True
+
+    is_orchestrator_preview = all(
+        key in post
+        for key in ("anchored_offering", "claim_ledger", "quality", "engagement_metrics", "created_at")
+    )
+    if is_orchestrator_preview:
+        return False
+
+    published_ids = ("fb_id", "ig_id", "li_id", "facebook_post_id", "instagram_media_id", "linkedin_post_id")
+    return any(
+        str(post.get(key, "")).strip().lower() not in {"", "dry-run", "skipped"}
+        for key in published_ids
+    ) or not status
+
+
 def check_duplicates(content: dict[str, Any], history: dict[str, Any], windows: dict[str, int] | None = None) -> dict[str, Any]:
     cfg = dict(DEFAULT_WINDOWS)
     if windows:
         cfg.update(windows)
 
     posts = [p for p in (history.get("posts", []) if isinstance(history, dict) else []) if isinstance(p, dict)]
-    # Never-published attempts (validation/quality/duplicate/channel-readiness skips)
-    # must not poison future duplicate checks — only compare against posts that were
-    # actually published (or attempted live), otherwise a single skip can perpetually
-    # block every future run on the same topic/hook/structure.
-    posts = [
-        p for p in posts
-        if not str(p.get("status", "")).startswith("skipped")
-        and not bool(p.get("shadow_mode"))
-    ]
+    # Preview candidates and shadow/dry-run records are persisted for audit but
+    # were never externally attempted. Only terminal live runs or durable
+    # publication IDs may establish a duplicate window.
+    posts = [p for p in posts if _has_live_publication_evidence(p)]
 
     reasons: list[str] = []
 

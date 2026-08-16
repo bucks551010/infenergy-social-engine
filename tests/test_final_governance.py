@@ -98,6 +98,14 @@ def test_non_evidence_publish_block_does_not_trigger_evidence_recovery():
     assert run_engine._evidence_recovery_required(decision) is False
 
 
+def test_default_decision_realization_budget_is_bounded(monkeypatch):
+    monkeypatch.delenv("CONTENT_DECISION_MAX_REALIZATIONS", raising=False)
+    assert run_engine._decision_realization_budget() == 3
+
+    monkeypatch.setenv("CONTENT_DECISION_MAX_REALIZATIONS", "1")
+    assert run_engine._decision_realization_budget() == 2
+
+
 def _pre_visual_content(*, validation_status="passed", duplicate_ok=True, duplicate_reasons=None, evidence=None, presentation_ready=True):
     caption = "Hook.\n\n- First point\n- Second point\n\nSave this.\n\nhttps://example.com\n\n#PortablePower"
     package = {

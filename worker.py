@@ -7,6 +7,8 @@ import mimetypes
 import threading
 import subprocess
 import traceback
+import uuid
+import math
 from urllib.parse import urlparse, parse_qs
 import schedule
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -634,6 +636,47 @@ def _run_script(script_name: str) -> tuple[bool, str]:
 
 def _utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _process_output_text(value: str | bytes | None) -> str:
+    if isinstance(value, bytes):
+        return value.decode("utf-8", errors="replace")
+    return str(value or "")
+
+
+def _slot_timeout_sec() -> int:
+    requested = int(os.environ.get("RUN_SLOT_TIMEOUT_SEC", "420"))
+    total_budget = float(os.environ.get("PHASE8_BUDGET_TOTAL_SEC", "420"))
+    finalization_grace = int(os.environ.get("RUN_SLOT_FINALIZATION_GRACE_SEC", "60"))
+    return max(requested, math.ceil(total_budget) + max(0, finalization_grace))
+
+
+def _persist_run_timeout_audit(
+    *,
+    slot: str,
+    timeout_sec: int,
+    force_live: bool,
+    shadow_mode: bool,
+) -> None:
+    """Record a bounded child-process timeout without implying publication."""
+    try:
+        history = generate_posts.load_history()
+        posts = history.setdefault("posts", [])
+        posts.append({
+            "post_id": f"timeout-{uuid.uuid4().hex[:12]}",
+            "status": "failed_run_timeout",
+            "slot": slot,
+            "published_at": _utc_now(),
+            "run_started_at_utc": LAST_RUN.get("started_at_utc"),
+            "dry_run": not force_live,
+            "shadow_mode": shadow_mode,
+            "publish_decision": {"decision": "do_not_publish", "publishable": False},
+            "run_timeout": {"timeout_sec": timeout_sec, "source": "worker_subprocess"},
+            "platform_records": [],
+        })
+        generate_posts.save_history(history)
+    except Exception as exc:
+        print(f"[ERROR] Could not persist timeout audit: {exc}")
 
 
 def _auto_bootstrap_visual_repo() -> dict:
@@ -1757,7 +1800,7 @@ def run_slot(
         else:
             print("[META] Token refresh skipped: external social access disabled")
         try:
-            timeout_sec = int(os.environ.get("RUN_SLOT_TIMEOUT_SEC", "420"))
+            timeout_sec = _slot_timeout_sec()
             scripts_dir = os.path.join(os.path.dirname(__file__), "scripts")
             run_engine_path = os.path.join(scripts_dir, "run_engine.py")
             env = os.environ.copy()
@@ -1772,7 +1815,7 @@ def run_slot(
                 check=False,
             )
 
-            output = ((completed.stdout or "") + "\n" + (completed.stderr or "")).strip()
+            output = (_process_output_text(completed.stdout) + "\n" + _process_output_text(completed.stderr)).strip()
             if output:
                 print(output[-4000:])
 
@@ -1781,9 +1824,15 @@ def run_slot(
 
             LAST_RUN["status"] = "success"
         except subprocess.TimeoutExpired as e:
-            partial = ((e.stdout or "") + "\n" + (e.stderr or "")).strip()
+            partial = (_process_output_text(e.stdout) + "\n" + _process_output_text(e.stderr)).strip()
             LAST_RUN["status"] = "failed"
             LAST_RUN["error"] = f"run_timeout_after_{timeout_sec}s"
+            _persist_run_timeout_audit(
+                slot=slot,
+                timeout_sec=timeout_sec,
+                force_live=force_live,
+                shadow_mode=shadow_mode,
+            )
             if partial:
                 print(partial[-4000:])
             print(f"[ERROR] {slot} run timed out after {timeout_sec}s")

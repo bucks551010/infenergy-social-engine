@@ -1401,6 +1401,10 @@ def _shadow_platform_records(content: dict, run_started: str, effective_channels
     return records
 
 
+def _decision_realization_budget() -> int:
+    return max(2, int(os.environ.get("CONTENT_DECISION_MAX_REALIZATIONS", "3")))
+
+
 def _record_no_viable_opportunity_abstention(
     *,
     slot: str,
@@ -2019,7 +2023,7 @@ def main() -> None:
     print("[1/5] Generating content with Gemini...")
     # Explore the retained field cheaply through bounded candidate revisions,
     # then permit one fresh field with the failed premise excluded.
-    decision_budget = max(2, int(os.environ.get("CONTENT_DECISION_MAX_REALIZATIONS", "8")))
+    decision_budget = _decision_realization_budget()
     attempts: list[dict] = []
     windows = load_anti_repeat_windows()
     content = preview_content
@@ -2041,7 +2045,16 @@ def main() -> None:
     remediation_context: dict | None = None
     recovery_story: dict = {"candidate_a": {}, "classification": "", "alternatives_considered": [], "candidate_b_selected": False, "presentation_repairs": []}
     t_generation = time.perf_counter()
+    generation_deadline = t_generation + generation_budget
     for idx in range(decision_budget):
+        if idx > 0 and time.perf_counter() >= generation_deadline:
+            attempts.append({
+                "attempt": idx + 1,
+                "decision": "generation_budget_exhausted",
+                "retryability_classification": "TERMINAL",
+            })
+            content.setdefault("quality_warnings", []).append("generation_budget_exhausted")
+            break
         if idx > 0:
             try:
                 content = generate_posts.generate(

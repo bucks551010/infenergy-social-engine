@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 import sys
 from pathlib import Path
-from subprocess import CompletedProcess
+from subprocess import CompletedProcess, TimeoutExpired
 from unittest.mock import Mock
 
 
@@ -86,6 +86,38 @@ def test_non_live_run_forbids_meta_refresh(monkeypatch):
 
     refresh.assert_not_called()
     assert completed.called
+
+
+def test_timeout_with_byte_output_marks_run_failed_and_persists_audit(monkeypatch):
+    saved = Mock()
+    timeout = TimeoutExpired(["run_engine.py"], 420, output=b"partial stdout", stderr=b"partial stderr")
+
+    monkeypatch.setattr(worker, "_auto_bootstrap_visual_repo", Mock())
+    monkeypatch.setattr(worker.subprocess, "run", Mock(side_effect=timeout))
+    monkeypatch.setattr(worker.generate_posts, "load_history", lambda: {"posts": []})
+    monkeypatch.setattr(worker.generate_posts, "save_history", saved)
+    monkeypatch.setitem(sys.modules, "social.living_intelligence", type("Living", (), {"heartbeat": Mock()}))
+    monkeypatch.setenv("RUN_SLOT_TIMEOUT_SEC", "420")
+    monkeypatch.setenv("SOCIAL_DRY_RUN", "true")
+
+    worker.run_slot("midday", shadow_mode=True)
+
+    assert worker.LAST_RUN["status"] == "failed"
+    assert worker.LAST_RUN["error"] == "run_timeout_after_480s"
+    assert worker.LAST_RUN["finished_at_utc"]
+    saved.assert_called_once()
+    audit = saved.call_args.args[0]["posts"][-1]
+    assert audit["status"] == "failed_run_timeout"
+    assert audit["shadow_mode"] is True
+    assert audit["run_timeout"] == {"timeout_sec": 480, "source": "worker_subprocess"}
+
+
+def test_slot_timeout_reserves_total_budget_finalization_grace(monkeypatch):
+    monkeypatch.setenv("RUN_SLOT_TIMEOUT_SEC", "420")
+    monkeypatch.setenv("PHASE8_BUDGET_TOTAL_SEC", "420")
+    monkeypatch.setenv("RUN_SLOT_FINALIZATION_GRACE_SEC", "60")
+
+    assert worker._slot_timeout_sec() == 480
 
 
 def test_live_facebook_retains_meta_refresh(monkeypatch):

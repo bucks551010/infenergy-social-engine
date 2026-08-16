@@ -210,6 +210,47 @@ def _layered_caption(
     return caption, optional_start
 
 
+_INTERNAL_PUBLIC_COPY_PATTERNS = _PLANNING_INSTRUCTION_PATTERNS + (
+    r"\breader job\b",
+    r"\bdesired response\b",
+    r"\bcontent mode\b",
+    r"\bcommercial intensity\b",
+    r"\bselected fact\b",
+    r"\bevidence ready\b",
+    r"\bremediation\b",
+    r"\bgovernance\b",
+)
+
+
+def _remove_internal_language(paragraph: str) -> str:
+    """Remove only sentence-level planning language from public copy."""
+    kept = [
+        sentence for sentence in _sentences(paragraph)
+        if not any(re.search(pattern, sentence, flags=re.IGNORECASE) for pattern in _INTERNAL_PUBLIC_COPY_PATTERNS)
+    ]
+    return " ".join(kept).strip()
+
+
+def _normalized_paragraph(paragraph: str) -> str:
+    return re.sub(r"\s+", " ", paragraph).strip().lower()
+
+
+def _is_hashtag_paragraph(paragraph: str) -> bool:
+    return bool(re.fullmatch(r"(?:#[A-Za-z0-9_]+\s*)+", paragraph.strip()))
+
+
+def _presentation_priority(paragraph: str, product: str) -> int:
+    lowered = paragraph.lower()
+    numeric_specs = _numeric_proof_tokens(paragraph)
+    if product and product.lower() in lowered:
+        return 1
+    if "key spec" in lowered or len(numeric_specs) >= 2:
+        return 2
+    if numeric_specs:
+        return 3
+    return 4
+
+
 def refine_caption(
     caption: str,
     *,
@@ -218,69 +259,72 @@ def refine_caption(
     product_led: bool = True,
     include_proof: bool = True,
 ) -> tuple[str, dict[str, Any]]:
-    """Prioritize commercial meaning while retaining only additive supporting depth."""
+    """Reorder approved public copy without creating or summarizing its meaning."""
     source_parts = _paragraphs(caption)
-    source_without_tags = [part for part in source_parts if not re.fullmatch(r"(?:#[A-Za-z0-9_]+\s*)+", part)]
     product = str(components.get("product_name") or "").strip()
-    benefit = str(components.get("benefit_fragment") or "").strip().rstrip(".")
-    use_case = str(components.get("use_case_line") or "").strip()
-    hook = str(components.get("logic_hook") or components.get("hook") or "").strip()
-    proof = [str(item).strip() for item in (components.get("feature_bullets") or []) if str(item).strip()]
     cta = str(components.get("cta") or "Learn more").strip()
-    contrast_explained = _is_contrast(hook)
-    covered = {"contrast", "product", "proof", "use_case"} if product_led else {"contrast", "proof", "use_case"}
-    optional_depth = _new_supporting_depth(source_without_tags, product=product, covered=covered, cta=cta)
-    preserved_depth = _preserved_sales_depth(source_without_tags, cta=cta)
-    for detail in preserved_depth:
-        if detail not in optional_depth:
-            optional_depth.append(detail)
-    if product_led and not optional_depth:
-        optional_depth = [
-            "The practical decision is not just how much power is listed. Compare the published capacity, AC access, and supported device fit with the equipment you expect to carry."
-        ]
-    proof_meanings = _sales_meaning(proof, use_case) if include_proof else []
-    tags, categories = _portfolio(components, platform, caption)
-    hashtag_line = " ".join(f"#{tag}" for tag in tags)
-    refined, optional_start = _layered_caption(
-        platform=platform,
-        hook=hook,
-        product=product,
-        benefit=benefit,
-        use_case=use_case,
-        proof_meanings=proof_meanings,
-        optional_depth=optional_depth,
-        cta=cta,
-        hashtags=hashtag_line,
-        product_led=product_led,
-    )
+    tags: list[str] = []
+    body: list[str] = []
+    seen: set[str] = set()
+    for source_part in source_parts:
+        if _is_hashtag_paragraph(source_part):
+            tags.extend(re.findall(r"#[A-Za-z0-9_]+", source_part))
+            continue
+        sanitized = _remove_internal_language(source_part)
+        normalized = _normalized_paragraph(sanitized)
+        if sanitized and normalized and normalized not in seen:
+            seen.add(normalized)
+            body.append(sanitized)
+
+    approved_specs = [
+        str(spec).strip() for spec in (components.get("feature_bullets") or [])
+        if _numeric_proof_tokens(str(spec))
+    ]
+    if approved_specs and not any(_numeric_proof_tokens(part) for part in body):
+        body.append("Key specs:\n" + "\n".join(f"- {spec}" for spec in approved_specs))
+
+    cta_parts = [part for part in body if cta and cta.lower() in part.lower()]
+    non_cta_parts = [part for part in body if part not in cta_parts]
+    if non_cta_parts:
+        hook, remaining = non_cta_parts[0], non_cta_parts[1:]
+        ordered = [hook] + sorted(
+            remaining,
+            key=lambda part: _presentation_priority(part, product),
+        )
+    else:
+        ordered = []
+    ordered.extend(cta_parts)
+    hashtag_line = " ".join(dict.fromkeys(tags))
+    refined = "\n\n".join(ordered + ([hashtag_line] if hashtag_line else []))
+    optional_start = len(re.findall(r"\b[\w'-]+\b", "\n\n".join(ordered[:3]))) + 1 if len(ordered) > 3 else None
     presentation = _above_fold(refined, components, platform)
     presentation.update({
-        "priority_layers": ["scroll_stopper", "product_core_value", "quick_proof", "optional_depth", "action_discovery"],
-        "contrast_explained": contrast_explained,
+        "priority_layers": ["hook", "product_and_proof", "supporting_depth", "action", "discovery"],
+        "contrast_explained": False,
         "contrast_paragraph_count": 0,
-        "selected_hashtags": [f"#{tag}" for tag in tags],
-        "hashtag_categories": categories,
-        "hashtag_target_density": "10-15 useful tags when sufficient relevant evidence exists" if platform in ("facebook", "instagram") else "3-5 selective professional tags",
+        "selected_hashtags": list(dict.fromkeys(tags)),
+        "hashtag_categories": {},
+        "hashtag_target_density": "preserved from approved source copy",
         "hashtag_relevance_score": 1.0 if tags else 0.0,
-        "hashtag_reason": "brand, product, category, verified use-case, and discovery tags only",
-        "optional_depth_present": bool(optional_depth),
+        "hashtag_reason": "preserved from approved source copy",
+        "optional_depth_present": len(ordered) > 3,
         "optional_depth_start_word": optional_start,
-        "spec_sales_intelligence": "PASS" if proof_meanings else "NOT_APPLICABLE",
+        "spec_sales_intelligence": "PASS" if any(_numeric_proof_tokens(part) for part in ordered) else "NOT_APPLICABLE",
         "semantic_layer_evidence": {
-            "hook": hook,
+            "hook": ordered[0] if ordered else "",
             "product": product,
-            "primary_benefit": benefit,
-            "device_use_case": use_case,
-            "selected_proof": proof_meanings,
-            "optional_depth": optional_depth,
+            "primary_benefit": "",
+            "device_use_case": "",
+            "selected_proof": [part for part in ordered if _numeric_proof_tokens(part)],
+            "optional_depth": ordered[1:],
             "cta": cta,
         },
-        "reordered_for_priority": product_led and bool(product),
+        "reordered_for_priority": bool(ordered),
         "platform_expression": {
-            "facebook": "front_loaded_commercial_value_with_optional_depth",
-            "instagram": "visual_first_mobile_scannable_caption",
-            "linkedin": "professional_decision_support_editorial",
-        }.get(platform, "priority_layered"),
+            "facebook": "source_preserving_priority_editorial",
+            "instagram": "source_preserving_priority_editorial",
+            "linkedin": "source_preserving_priority_editorial",
+        }.get(platform, "source_preserving_priority_editorial"),
     })
     return refined, presentation
 
@@ -342,7 +386,8 @@ def render_platform_caption(
     if paragraphs and re.fullmatch(r"(?:#[A-Za-z0-9_]+\s*)+", paragraphs[-1]):
         tags = paragraphs.pop()
     url = str(destination_url or "").strip()
-    if url and url not in "\n".join(paragraphs):
+    paragraphs = [paragraph for paragraph in paragraphs if paragraph.strip() != url]
+    if url:
         paragraphs.append(url)
     if tags:
         paragraphs.append(tags)

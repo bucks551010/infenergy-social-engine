@@ -26,6 +26,8 @@ Key specs: 154Wh, 41,600mAh, 200W. PowerPulse Pro 200 is an essential companion 
 
 Your compact portable power station for travel, photography, remote work, and backup planning.
 
+Invite a practical response. Reader job: encourage purchase intent.
+
 Review the verified product details.
 
 #PortablePower #BackupPower #TravelPower #Preparedness"""
@@ -63,34 +65,55 @@ def test_powerpulse_fixture_front_loads_value_without_losing_sales_depth():
         platform="facebook",
     )
 
-    assert _word_depth(improved, "PowerPulse Pro 200") < _word_depth(POWERPULSE_ORIGINAL, "PowerPulse Pro 200")
-    assert presentation["above_fold_value_complete"]
-    assert presentation["above_fold_use_case"]
-    assert presentation["contrast_paragraph_count"] == 0
-    assert "154Wh" in improved and "200W" in improved
-    assert "laptops, phones, cameras" in improved
+    assert _word_depth(improved, "PowerPulse Pro 200") <= _word_depth(POWERPULSE_ORIGINAL, "PowerPulse Pro 200")
+    assert "154Wh" in improved and "41,600mAh" in improved and "200W" in improved and "110V" in improved
+    assert _word_depth(improved, "Key specs") < _word_depth(POWERPULSE_ORIGINAL, "Key specs")
+    assert "laptops, cameras, drones" in improved
     assert "Key specs:" in improved
-    assert "mobile work" in improved.lower()
+    assert "remote work" in improved.lower()
     assert "drones" in improved.lower()
-    assert len(presentation["selected_hashtags"]) >= 10
+    assert "outages and off-grid use" in improved
+    assert "Invite a practical response" not in improved
+    assert "Reader job" not in improved
+    assert presentation["selected_hashtags"] == ["#PortablePower", "#BackupPower", "#TravelPower", "#Preparedness"]
     assert presentation["optional_depth_present"]
     assert improved.count("Review the verified product details.") == 1
 
 
-def test_hashtag_portfolio_is_richer_for_facebook_and_selective_for_linkedin():
+def test_presentation_preserves_existing_hashtags_and_semantics_across_platforms():
     facebook_caption, facebook = platform_presentation.refine_caption(POWERPULSE_ORIGINAL, components=_components(), platform="facebook")
     instagram_caption, instagram = platform_presentation.refine_caption(POWERPULSE_ORIGINAL, components=_components(), platform="instagram")
     linkedin_caption, linkedin = platform_presentation.refine_caption(POWERPULSE_ORIGINAL, components=_components(), platform="linkedin")
 
-    assert 10 <= len(facebook["selected_hashtags"]) <= 15
-    assert 10 <= len(instagram["selected_hashtags"]) <= 15
-    assert len(linkedin["selected_hashtags"]) <= 5
-    assert len({facebook_caption, instagram_caption, linkedin_caption}) == 3
-    assert instagram["platform_expression"] == "visual_first_mobile_scannable_caption"
-    assert linkedin["platform_expression"] == "professional_decision_support_editorial"
-    assert set(facebook["hashtag_categories"]) == {
-        "brand", "product", "category", "use_case", "audience_situation", "discovery"
+    expected_tags = ["#PortablePower", "#BackupPower", "#TravelPower", "#Preparedness"]
+    assert facebook["selected_hashtags"] == expected_tags
+    assert instagram["selected_hashtags"] == expected_tags
+    assert linkedin["selected_hashtags"] == expected_tags
+    assert facebook_caption == instagram_caption == linkedin_caption
+    assert "standard portable banks fall short" in facebook_caption.lower()
+    assert facebook["platform_expression"] == "source_preserving_priority_editorial"
+
+
+def test_final_render_preserves_content_metadata_and_places_existing_destination_before_tags():
+    posts = generate_posts._build_platform_posts(
+        "powerpulse-preservation",
+        "fixture",
+        "mobile_professional",
+        "CONVERSION",
+        "https://example.com/products/powerpulse",
+        _components(),
+        90.0,
+        caption_overrides={"facebook": {"caption": POWERPULSE_ORIGINAL}},
+    )
+    before = {
+        key: posts["facebook"].get(key)
+        for key in ("product_id", "product_name", "product_role", "destination_url", "utm_url", "campaign_id", "platform")
     }
+    facebook = generate_posts._apply_platform_presentation_priority(posts, _components())["facebook"]
+
+    assert {key: facebook.get(key) for key in before} == before
+    assert facebook["final_caption"].index("Review the verified product details.") < facebook["final_caption"].index("https://example.com/products/powerpulse")
+    assert facebook["final_caption"].index("https://example.com/products/powerpulse") < facebook["final_caption"].index("#PortablePower")
 
 
 def test_instagram_package_persists_reel_caption_hierarchy_without_rendering():
@@ -114,7 +137,7 @@ def test_instagram_package_persists_reel_caption_hierarchy_without_rendering():
         "hook", "product", "primary_benefit", "selected_proof", "human_use", "action"
     ]
     assert instagram["reel_presentation"]["freeze_frame_priority"][0] == "product"
-    assert instagram["presentation"]["above_fold_value_complete"]
+    assert "PowerPulse Pro 200" in "\n\n".join(instagram["caption"].split("\n\n")[:2])
 
 
 def test_final_facebook_caption_is_the_qad_string_with_proof_link_and_paragraphs():
@@ -139,7 +162,7 @@ def test_final_facebook_caption_is_the_qad_string_with_proof_link_and_paragraphs
     assert "154Wh" in facebook["final_caption"]
     assert "200W" in facebook["final_caption"]
     assert "https://example.com/products/powerpulse" in facebook["final_caption"]
-    assert facebook["final_caption"].index("https://") < facebook["final_caption"].index("#InfenergyPower")
+    assert facebook["final_caption"].index("https://") < facebook["final_caption"].index("#PortablePower")
     assert facebook["final_caption_qa"]["status"] == "PRESENTATION_READY"
 
 

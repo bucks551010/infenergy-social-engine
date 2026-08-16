@@ -78,7 +78,7 @@ def test_normalization_accepts_orchestrator_without_legacy_date():
     assert normalized["pillar"] == "portable_power"
 
 
-def test_facebook_presentation_compresses_visual_spec_duplication():
+def test_facebook_presentation_surfaces_approved_specs_without_hiding_them():
     components = {
         "logic_hook": "Can your phone power the gear you need away from an outlet?",
         "situation": "Before a trip, identify the device you cannot afford to lose.",
@@ -88,13 +88,13 @@ def test_facebook_presentation_compresses_visual_spec_duplication():
         "cta": "Compare your setup.",
         "feature_bullets": ["154Wh", "41,600mAh", "200W", "110V"],
     }
-    original = "PowerPulse Pro 200 154Wh 41,600mAh 200W 110V. " * 8 + "#One #Two #Three #Four #Five #Six"
     improved, presentation = platform_presentation.format_caption(components, platform="facebook")
-    before = platform_presentation.evaluate(original, platform="facebook", visual_specs=components["feature_bullets"])
 
-    assert presentation["word_count"] < before["word_count"]
-    assert presentation["hashtag_count"] <= before["hashtag_count"]
-    assert "154Wh" not in improved
+    assert "Key specs:" in improved
+    assert "154Wh" in improved
+    assert "41,600mAh" in improved
+    assert "200W" in improved
+    assert "110V" in improved
     assert presentation["presentation_critic"] == "PASS"
 
 

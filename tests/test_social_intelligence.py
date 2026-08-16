@@ -428,6 +428,7 @@ def test_verified_fact_recovery_copy_stays_inside_the_selected_fact_envelope():
     )
     ledger = claim_intelligence.build_ledger(" ".join(copy.values()), verified_facts=["48,000mAh"])
 
+    assert copy["hook"] == "Which published detail matters when reviewing this product?"
     assert copy["answer"] == "Published specification: 48,000mAh."
     assert "runtime" not in " ".join(copy.values()).lower()
     assert "compatib" not in " ".join(copy.values()).lower()

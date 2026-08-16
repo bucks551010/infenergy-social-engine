@@ -688,7 +688,13 @@ def _successful_publish_receipt(content: dict, platform: str) -> dict:
 
 
 def _receipt_external_id(receipt: dict) -> str:
-    return str(receipt.get("external_post_id") or receipt.get("facebook_post_id") or receipt.get("instagram_media_id") or "").strip()
+    return str(
+        receipt.get("external_post_id")
+        or receipt.get("facebook_post_id")
+        or receipt.get("instagram_media_id")
+        or receipt.get("linkedin_post_id")
+        or ""
+    ).strip()
 
 
 def _persist_publish_receipt(content: dict, *, platform: str, external_post_id: str, run_id: str, container_id: str = "") -> dict:
@@ -702,6 +708,7 @@ def _persist_publish_receipt(content: dict, *, platform: str, external_post_id: 
         "external_post_id": external_post_id,
         "facebook_post_id": external_post_id if platform == "facebook" else "",
         "instagram_media_id": external_post_id if platform == "instagram" else "",
+        "linkedin_post_id": external_post_id if platform == "linkedin" else "",
         "container_id": container_id if platform == "instagram" else "",
         "media_type": str(((content.get("platform_posts") or {}).get("instagram") or {}).get("media_type") or "IMAGE") if platform == "instagram" else "IMAGE",
         "published_at": datetime.now(timezone.utc).isoformat(),
@@ -2737,11 +2744,23 @@ def main() -> None:
     print("[5/5] LinkedIn...")
     t_li = time.perf_counter()
     if effective_channels["linkedin"]:
-        if (not dry_run) and was_recent_channel_success(history, "li", slot, skip_success_hours):
+        existing_receipt = _successful_publish_receipt(content, "linkedin") if not dry_run else {}
+        if existing_receipt:
+            li_result = {"id": _receipt_external_id(existing_receipt), "reused_receipt": True}
+            print(f"[SKIP] LinkedIn already published: {li_result['id']}")
+        elif (not dry_run) and was_recent_channel_success(history, "li", slot, skip_success_hours):
             print("[SKIP] LinkedIn recent successful publish within configured window")
         else:
             try:
                 li_result = publish_linkedin.publish(content, wp_link_li, dry_run=dry_run)
+                linkedin_post_id = str(li_result.get("id") or "").strip()
+                if linkedin_post_id and linkedin_post_id not in {"dry-run", "skipped"}:
+                    _persist_publish_receipt(
+                        content,
+                        platform="linkedin",
+                        external_post_id=linkedin_post_id,
+                        run_id=str(runtime_metrics["started_at_utc"]),
+                    )
             except Exception as e:
                 errors.append(f"LinkedIn: {e}")
                 error_map["linkedin"] = str(e)
@@ -2851,11 +2870,11 @@ def main() -> None:
     history["posts"] = history["posts"][-200:]
     try:
         generate_posts.save_history(history)
-        for platform, result in (("facebook", fb_result), ("instagram", ig_result)):
+        for platform, result in (("facebook", fb_result), ("instagram", ig_result), ("linkedin", li_result)):
             if str(result.get("id") or "").strip() and not dry_run:
                 _mark_publish_postprocess_complete(content, platform)
     except Exception as exc:
-        for platform, result in (("facebook", fb_result), ("instagram", ig_result)):
+        for platform, result in (("facebook", fb_result), ("instagram", ig_result), ("linkedin", li_result)):
             if str(result.get("id") or "").strip() and not dry_run:
                 _mark_publish_postprocess_error(content, platform, exc)
                 raise RuntimeError(f"published_persistence_error:{platform}:{exc}") from exc

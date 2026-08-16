@@ -643,11 +643,12 @@ def _assemble_verified_fact_recovery_copy(
     verified_fact: str,
 ) -> dict[str, str]:
     """Build a fact-scoped recovery candidate without reopening claim generation."""
+    question = "Which published detail matters when reviewing this product?"
     disclosure = f"Published specification: {verified_fact}."
     review_prompt = "Keep that published detail visible when reviewing the product."
     templates = {
-        "hook": brief.question,
-        "question": brief.question,
+        "hook": question,
+        "question": question,
         "answer": disclosure,
         "explanation": disclosure,
         "example": review_prompt,

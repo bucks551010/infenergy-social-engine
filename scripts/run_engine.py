@@ -301,7 +301,7 @@ def _evidence_recovery_required(publish_decision: dict) -> bool:
     if str(publish_decision.get("decision") or "") != "do_not_publish":
         return False
     reasons = {str(reason) for reason in publish_decision.get("reasons", [])}
-    return bool(reasons & {"RESEARCH_REQUIRED", "HIGH_RISK_UNVERIFIED"})
+    return bool(reasons & {"RESEARCH_REQUIRED", "HIGH_RISK_UNVERIFIED", "UNSUPPORTED_MATERIAL_CLAIMS"})
 
 
 def _conversion_learning_fields(content: dict) -> dict:
@@ -933,6 +933,22 @@ def _evidence_safe_remediation_feedback(content: dict) -> list[str]:
         "Express feature to function to practical use to human value without asserting compatibility, runtime, safety, outage performance, or other unverified consequences.",
         "Keep one natural human situation, a useful verified-fact takeaway, and an earned CTA. Abstain if no such angle is available.",
     ]
+
+
+def _next_evidence_safe_context(content: dict, remediation: dict) -> dict:
+    """Advance a rejected evidence remediation without calling the field exhausted."""
+    verified_context = _verified_facts_only_recovery_context(content, remediation)
+    verified_context["excluded_product_ids"] = list(dict.fromkeys([
+        *(str(value) for value in remediation.get("excluded_product_ids", []) if str(value)),
+        *(str(value) for value in verified_context.get("excluded_product_ids", []) if str(value)),
+    ]))
+    if isinstance(verified_context.get("verified_fact_opportunity"), dict):
+        return verified_context
+    return _next_product_recovery_context(
+        content,
+        verified_context,
+        "verified_facts_remediation_not_publishable",
+    )
 
 
 def _enforce_candidate_claim_boundary(content: dict) -> list[str]:
@@ -2018,6 +2034,46 @@ def main() -> None:
             break
 
         verified_facts_recovery = str((remediation_context or {}).get("recovery_mode") or "") == "VERIFIED_FACTS_ONLY_RECOVERY"
+        if research_required and evidence_remediation_used and not verified_facts_recovery and idx + 1 < decision_budget:
+            remediation_context = _next_evidence_safe_context(content, remediation_context or _remediation_context(content, publish_decision, duplicates))
+            verified_fact_opportunity = remediation_context.get("verified_fact_opportunity")
+            if isinstance(verified_fact_opportunity, dict):
+                recovery_story.update({
+                    "classification": "VERIFIED_FACTS_ONLY_RECOVERY",
+                    "candidate_b_selected": True,
+                    "candidate_b_rank": verified_fact_opportunity.get("rank"),
+                    "alternatives_considered": remediation_context.get("verified_fact_opportunities_considered", []),
+                })
+                pending_feedback = [
+                    "Create a new product-centered opportunity from the selected verified fact only.",
+                    "Do not estimate runtime, infer compatibility, performance, safety, superiority, or repeat unsupported consequences.",
+                ]
+                pending_scope = "strategy"
+                prior_generated_visuals = {}
+                locked_strategy = {}
+                locked_product_id = str(content.get("product_id") or "")
+                candidate_identity_reset = True
+                continue
+            if not product_id_override:
+                recovery_story.setdefault("products_retired", []).append({
+                    "product_id": str(content.get("product_id") or ""),
+                    "reason": remediation_context.get("retirement_reason"),
+                })
+                recovery_story["classification"] = "NEXT_ELIGIBLE_PRODUCT"
+                pending_feedback = [
+                    "Select a new eligible product and build a truthful opportunity from its owned verified facts.",
+                    "Do not reuse a retired product or unsupported technical consequences.",
+                ]
+                pending_scope = "strategy"
+                prior_generated_visuals = {}
+                locked_strategy = {}
+                locked_product_id = ""
+                evidence_remediation_used = False
+                research_recovery_used = False
+                research_verified_facts = []
+                candidate_identity_reset = True
+                continue
+
         if verified_facts_recovery and not product_id_override and idx + 1 < decision_budget:
             retirement_reason = "verified_facts_candidate_not_publishable"
             remediation_context = _next_product_recovery_context(content, remediation_context or {}, retirement_reason)

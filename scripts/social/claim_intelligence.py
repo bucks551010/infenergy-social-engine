@@ -68,6 +68,17 @@ class Claim:
 _STAT_RE = re.compile(r"(\d+(?:[.,]\d+)?)\s?(%|hours?|watts?|watt-hours?|wh|w|amps?|amp-hours?|ah|mah|cycles?|degrees?|°[cf]|feet|inches|days?|years?)", re.IGNORECASE)
 _DERIVATION_RE = re.compile(r"\b\d+(?:\.\d+)?\s*(?:x|\*|/|per)\s*\d+(?:\.\d+)?\b|\b0\.\d+\b", re.IGNORECASE)
 _DERIVATION_CONTEXT = ("efficiency", "factor", "convert", "runtime", "estimate", "load", "coverage", "savings", "cost", "compare", "performance", "rate")
+_FACT_ENVELOPE_FILLER = {
+    "a", "an", "and", "as", "at", "by", "for", "from", "in", "is", "its", "of", "on", "or", "the", "this", "to", "with",
+    "available", "describes", "listed", "published", "states",
+}
+_PLAIN_DISCLOSURE_TERMS = _FACT_ENVELOPE_FILLER | {
+    "battery", "capacity", "has", "input", "output", "power", "rating", "specification", "specifications",
+}
+_OUTCOME_TERMS = {
+    "avoids", "bridge", "bridges", "charge", "charged", "charging", "continuity", "delivers", "downtime", "eliminate", "eliminates",
+    "ensure", "ensures", "fit", "handle", "handles", "keep", "keeps", "laptop", "prevents", "protects", "risk", "runs", "sustain", "sustains",
+}
 
 
 def remove_unsupported_numeric_claims(text: str, verified_facts: Iterable[str]) -> tuple[str, list[str]]:
@@ -182,32 +193,47 @@ def extract_claims(text: str) -> list[Claim]:
 
 
 def _fact_matches(claim: Claim, verified_facts: Iterable[str]) -> bool:
-    low = claim.claim_text.lower()
+    claim_tokens = _fact_tokens(claim.claim_text)
     for fact in verified_facts:
         if not fact:
             continue
-        fl = str(fact).lower()
-        tokens = [t for t in re.findall(r"\w+", fl) if len(t) > 3]
-        if tokens and sum(1 for t in tokens if t in low) >= max(1, len(tokens) // 3):
+        fact_tokens = _fact_tokens(str(fact))
+        if claim_tokens and len(claim_tokens & fact_tokens) / len(claim_tokens) >= 0.6:
             return True
     return False
+
+
+def _fact_tokens(text: str) -> set[str]:
+    return {
+        token
+        for token in re.findall(r"[a-z]+", str(text or "").lower())
+        if len(token) > 2 and token not in _FACT_ENVELOPE_FILLER
+    }
 
 
 def _numeric_tokens(text: str) -> set[str]:
     return {f"{match.group(1).replace(',', '').lower()} {match.group(2).lower()}" for match in _STAT_RE.finditer(text)}
 
 
+def _plain_numeric_disclosure(claim: Claim) -> bool:
+    """Allow a specification disclosure, never an outcome inferred from it."""
+    tokens = set(re.findall(r"[a-z]+", _STAT_RE.sub("", claim.claim_text).lower()))
+    return not bool(tokens & _OUTCOME_TERMS)
+
+
 def _claim_provenance(claim: Claim, verified_facts: Iterable[str]) -> tuple[str, str | None]:
     claim_numbers = _numeric_tokens(claim.claim_text)
+    facts = [str(fact or "") for fact in verified_facts if fact]
     if _DERIVATION_RE.search(claim.claim_text) and any(marker in claim.claim_text.lower() for marker in _DERIVATION_CONTEXT):
         return "PROHIBITED_OR_UNSUPPORTED", "derived_claim_has_no_verified_formula"
-    for fact in verified_facts:
-        fact_numbers = _numeric_tokens(str(fact or ""))
-        if claim_numbers and claim_numbers <= fact_numbers:
+    fact_numbers = set().union(*(_numeric_tokens(fact) for fact in facts)) if facts else set()
+    if claim_numbers and claim_numbers <= fact_numbers:
+        if _plain_numeric_disclosure(claim) or _fact_matches(claim, facts):
             return "VERIFIED_PRODUCT_FACT", None
+        return "PROHIBITED_OR_UNSUPPORTED", "numeric_fact_used_for_unsupported_outcome"
     if claim_numbers:
         return "PROHIBITED_OR_UNSUPPORTED", "numeric_claim_not_present_in_verified_facts"
-    if _fact_matches(claim, verified_facts):
+    if _fact_matches(claim, facts):
         return "VERIFIED_PRODUCT_FACT", None
     return "UNVERIFIED_INFERENCE", "claim_not_supported_by_verified_facts"
 

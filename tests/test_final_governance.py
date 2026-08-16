@@ -263,6 +263,44 @@ def test_incidental_medium_claim_does_not_block_and_verified_central_claim_can_p
     assert _decision(verified_readiness)["publishable"] is True
 
 
+def test_final_evidence_rejects_a_verified_spec_used_for_an_unsupported_outcome():
+    content = {
+        "product_metrics": ["150W", "48,000mAh"],
+        "copy": {
+            "hook": "What output is published?",
+            "body_text": (
+                "The published output is 150W. "
+                "That 150W output eliminates the risk of downtime for every laptop."
+            ),
+            "takeaway": "Review the published specification.",
+        },
+    }
+
+    readiness = run_engine._recompute_final_evidence(content)
+
+    assert readiness["ready"] is False
+    assert readiness["status"] in {"HIGH_RISK_UNVERIFIED", "UNSUPPORTED_MATERIAL_CLAIMS"}
+    claims = content["claim_ledger"]["claims"]
+    assert any(claim["rejection_reason"] == "numeric_fact_used_for_unsupported_outcome" for claim in claims)
+    assert run_engine._evidence_recovery_required({"decision": "do_not_publish", "reasons": [readiness["status"]]}) is True
+
+def test_rejected_evidence_remediation_advances_to_verified_facts_or_next_product(monkeypatch):
+    content = {"post_id": "candidate-b", "product_id": "PF-150W", "selection_rotation_index": 2}
+    remediation = {"excluded_product_ids": ["PPP-200"]}
+
+    monkeypatch.setattr(
+        run_engine,
+        "_verified_facts_only_recovery_context",
+        lambda *_: {"recovery_mode": "VERIFIED_FACTS_ONLY_RECOVERY", "verified_fact_opportunity": None},
+    )
+
+    next_context = run_engine._next_evidence_safe_context(content, remediation)
+
+    assert next_context["recovery_mode"] == "NEXT_ELIGIBLE_PRODUCT"
+    assert next_context["retired_products"] == [{"product_id": "PF-150W", "reason": "verified_facts_remediation_not_publishable"}]
+    assert set(next_context["excluded_product_ids"]) == {"PPP-200", "PF-150W"}
+
+
 def test_supported_rewrite_and_abstention_are_available_without_weakening_high_risk_policy():
     rewritten = claim_intelligence.build_ledger("The published output is 200W. Compare that published fact with your device requirement.", verified_facts=["200W"], forbidden_claims=[])
     rewrite_readiness = claim_governance.assess(rewritten, hook="What output is published?", decision_insight={"relationship": ""}, takeaway="Compare the published fact.")

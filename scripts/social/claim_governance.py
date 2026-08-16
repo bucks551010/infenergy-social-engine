@@ -73,6 +73,7 @@ def assess(
     insight = decision_insight if isinstance(decision_insight, dict) else {}
     needs: list[dict[str, Any]] = []
     audited: list[dict[str, Any]] = []
+    unsupported_material: list[dict[str, Any]] = []
     for claim in ledger.claims:
         centrality = _centrality(claim, hook=hook, decision_insight=insight, takeaway=takeaway)
         research_required = claim.provenance == "UNVERIFIED_INFERENCE" and claim.risk == claim_intelligence.MEDIUM_RISK
@@ -85,6 +86,8 @@ def assess(
             "evidence_available": claim.provenance,
         }
         audited.append(record)
+        if claim.provenance == "PROHIBITED_OR_UNSUPPORTED":
+            unsupported_material.append(record)
         if centrality == "CENTRAL" and research_required:
             needs.append({
                 **record,
@@ -98,4 +101,12 @@ def assess(
         return {"ready": False, "status": "HIGH_RISK_UNVERIFIED", "claims": audited, "research_needs": needs}
     if needs:
         return {"ready": False, "status": "RESEARCH_REQUIRED", "claims": audited, "research_needs": needs}
+    if unsupported_material:
+        return {
+            "ready": False,
+            "status": "UNSUPPORTED_MATERIAL_CLAIMS",
+            "claims": audited,
+            "research_needs": needs,
+            "unsupported_material_claims": unsupported_material,
+        }
     return {"ready": True, "status": "READY", "claims": audited, "research_needs": []}

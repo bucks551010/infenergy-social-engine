@@ -209,6 +209,26 @@ def test_product_free_selection_rebuilds_neutral_field_when_context_exhausts_can
     assert calls[1] == {"engine": "B", "limit": 8}
 
 
+def test_product_free_strategy_lock_uses_brief_when_audience_value_metadata_is_absent():
+    brief = SimpleNamespace(
+        audience_value={},
+        audience_segment="preparedness_focused_household",
+        curiosity="What should come first during an outage?",
+        question="How do you make a simple outage plan?",
+        information_gap="how to prioritize household needs",
+        angle="List essential needs before an outage",
+        topic_path={"topic": "Outage planning"},
+        reader_job="PREPARE_ME",
+    )
+
+    locked = orchestrator._audience_value_strategy_lock(brief)
+
+    assert locked["customer_moment"] == "What should come first during an outage?"
+    assert locked["angle"] == "List essential needs before an outage"
+    assert locked["offering"] == "audience-value education"
+    assert locked["proof"] == []
+
+
 def test_orchestrator_bridge_passes_council_strategy_to_generation(monkeypatch):
     approved = {
         "audience": "preparedness household", "customer_moment": "storm outage", "human_need": "confidence",

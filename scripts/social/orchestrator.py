@@ -373,27 +373,33 @@ def _runtime_strategy_lock(brief: engines.EngineBrief, lean_context: dict[str, A
 
 def _audience_value_strategy_lock(brief: engines.EngineBrief) -> dict[str, Any]:
     """Lock a product-free Engine B decision without weakening general review gates."""
-    value = brief.audience_value
+    value = dict(brief.audience_value or {})
+    customer_moment = str(value.get("human_reality") or brief.curiosity or brief.question or "a routine decision").replace("_", " ")
+    takeaway = str(value.get("reader_takeaway") or brief.angle or "use a practical planning step")
+    why_it_matters = str(value.get("why_it_matters") or brief.information_gap or "practical decision support")
+    practical_value = str(value.get("practical_value") or takeaway)
+    reflection_value = str(value.get("reflection_value") or "practical clarity")
+    memory_anchor = str(value.get("desired_memory_anchor") or takeaway)
     candidate = {
         "audience": brief.audience_segment,
-        "customer_moment": value["human_reality"].replace("_", " "),
+        "customer_moment": customer_moment,
         "human_need": "practical clarity",
         "human_value": "useful judgment",
         "topic": brief.topic_path.get("topic", "audience value"),
-        "angle": value["reader_takeaway"],
+        "angle": takeaway,
         "offering": "audience-value education",
         "positioning": "product-free audience value",
-        "non_price_edge": {"kind": "AUDIENCE_VALUE", "reason": value["why_it_matters"]},
+        "non_price_edge": {"kind": "AUDIENCE_VALUE", "reason": why_it_matters},
         "important_capability": "a useful decision framework",
-        "benefit": value["practical_value"],
-        "human_outcome": value["reflection_value"],
+        "benefit": practical_value,
+        "human_outcome": reflection_value,
         "reader_job": brief.reader_job,
         "competitive_context": "not applicable to product-free education",
         "proof": [],
         "claim_limits": "Do not name a product, SKU, link, price, or purchase outcome; state only the audience-value insight.",
         "visual_objective": "make the human decision or routine visible",
         "CTA_strategy": "",
-        "reader_memory": value["desired_memory_anchor"],
+        "reader_memory": memory_anchor,
     }
     return strategy_lock.lock(candidate, context=candidate)
 

@@ -286,6 +286,27 @@ def _group_supporting_thoughts(thoughts: list[str]) -> list[str]:
     return grouped
 
 
+def _sentence(value: str) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    return text if text.endswith((".", "!", "?")) else f"{text}."
+
+
+def _benefit_opening(components: dict[str, Any], *, product_led: bool) -> list[str]:
+    """Present approved customer benefit and human outcome before supporting detail."""
+    product = str(components.get("product_name") or "").strip()
+    benefit = str(components.get("benefit_fragment") or "").strip().rstrip(".")
+    emotional_outcome = str(components.get("emotional_outcome") or "").strip().rstrip(".")
+    opening: list[str] = []
+    if benefit:
+        subject = product if product_led and product else "This solution"
+        opening.append(_sentence(f"✨ {subject} {benefit}"))
+    if emotional_outcome:
+        opening.append(_sentence(f"For you, that means {emotional_outcome}"))
+    return opening[:2]
+
+
 def refine_caption(
     caption: str,
     *,
@@ -323,6 +344,7 @@ def refine_caption(
 
     cta_parts = [part for part in body if cta and cta.lower() in part.lower()]
     non_cta_parts = [part for part in body if part not in cta_parts]
+    benefit_opening = _benefit_opening(components, product_led=product_led)
     if non_cta_parts:
         hook, remaining = non_cta_parts[0], non_cta_parts[1:]
         prioritized = sorted(
@@ -331,9 +353,9 @@ def refine_caption(
         )
         lead = prioritized[:1]
         supporting = _group_supporting_thoughts(prioritized[1:])
-        ordered = [hook] + lead + ([spec_block] if spec_block else []) + supporting
+        ordered = benefit_opening + [hook] + lead + ([spec_block] if spec_block else []) + supporting
     else:
-        ordered = [spec_block] if spec_block else []
+        ordered = benefit_opening + ([spec_block] if spec_block else [])
     ordered.extend(f"👉 {part}" for part in cta_parts)
     portfolio_tags, categories = _portfolio(components, platform, caption)
     selected_tags = list(dict.fromkeys(tags + [f"#{tag}" for tag in portfolio_tags]))[:20]
@@ -342,7 +364,7 @@ def refine_caption(
     optional_start = len(re.findall(r"\b[\w'-]+\b", "\n\n".join(ordered[:3]))) + 1 if len(ordered) > 3 else None
     presentation = _above_fold(refined, components, platform)
     presentation.update({
-        "priority_layers": ["hook", "product_and_proof", "supporting_depth", "action", "discovery"],
+        "priority_layers": ["customer_benefit", "human_outcome", "hook", "product_and_proof", "supporting_depth", "action", "discovery"],
         "contrast_explained": False,
         "contrast_paragraph_count": 0,
         "selected_hashtags": selected_tags,
@@ -354,9 +376,10 @@ def refine_caption(
         "optional_depth_start_word": optional_start,
         "spec_sales_intelligence": "PASS" if spec_block or any(_numeric_proof_tokens(part) for part in ordered) else "NOT_APPLICABLE",
         "semantic_layer_evidence": {
-            "hook": ordered[0] if ordered else "",
+            "hook": hook if non_cta_parts else "",
             "product": product,
-            "primary_benefit": "",
+            "primary_benefit": str(components.get("benefit_fragment") or ""),
+            "human_outcome": str(components.get("emotional_outcome") or ""),
             "device_use_case": "",
             "selected_proof": [part for part in ordered if _numeric_proof_tokens(part)],
             "optional_depth": ordered[1:],

@@ -40,6 +40,7 @@ def _components() -> dict:
         "hook": "Match portable power to the job.",
         "logic_hook": "Traditional power bank or portable backup power: match the job first.",
         "benefit_fragment": "keeps compatible daily devices charged away from outlets",
+        "emotional_outcome": "confidence through better preparation",
         "use_case_line": "Built for laptops, phones, cameras, travel, mobile work, and backup situations.",
         "feature_bullets": [
             "154Wh and 41,600mAh for stored power",
@@ -66,6 +67,11 @@ def test_powerpulse_fixture_front_loads_value_without_losing_sales_depth():
     )
 
     assert _word_depth(improved, "PowerPulse Pro 200") <= _word_depth(POWERPULSE_ORIGINAL, "PowerPulse Pro 200")
+    opening_sentences = platform_presentation._sentences(" ".join(improved.split("\n\n")[:2]))
+    assert opening_sentences == [
+        "✨ PowerPulse Pro 200 keeps compatible daily devices charged away from outlets.",
+        "For you, that means confidence through better preparation.",
+    ]
     assert "154Wh" in improved and "41,600mAh" in improved and "200W" in improved and "110V" in improved
     assert _word_depth(improved, "Key specs") < _word_depth(POWERPULSE_ORIGINAL, "Key specs")
     assert "laptops, cameras, drones" in improved
@@ -112,6 +118,24 @@ def test_dense_single_paragraph_becomes_readable_without_losing_approved_sentenc
     assert hashtag_line.startswith("#PortablePower #Preparedness")
     assert len(hashtag_line.split()) == 20
     assert len(set(hashtag_line.split())) == 20
+
+
+def test_benefit_opening_uses_only_approved_component_meaning():
+    components = _components()
+    improved, presentation = platform_presentation.refine_caption(
+        POWERPULSE_ORIGINAL,
+        components=components,
+        platform="facebook",
+    )
+
+    first_two = platform_presentation._sentences(" ".join(improved.split("\n\n")[:2]))
+    assert components["product_name"] in first_two[0]
+    assert components["benefit_fragment"] in first_two[0]
+    assert components["emotional_outcome"] in first_two[1]
+    assert "powers your laptop all day" not in improved.lower()
+    assert "compatible with every" not in improved.lower()
+    assert presentation["semantic_layer_evidence"]["primary_benefit"] == components["benefit_fragment"]
+    assert presentation["semantic_layer_evidence"]["human_outcome"] == components["emotional_outcome"]
 
 
 def test_presentation_preserves_existing_hashtags_and_semantics_across_platforms():

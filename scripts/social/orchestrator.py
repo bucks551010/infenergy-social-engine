@@ -21,6 +21,7 @@ and image generators are plugged in via the ``VisualProvider`` and
 from __future__ import annotations
 
 import os
+import secrets
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -41,6 +42,7 @@ from . import (
     model_router,
     opportunity_engine,
     quality_intelligence,
+    recovery,
     strategy_lock,
     human_connection_review,
     visual_intelligence,
@@ -137,6 +139,22 @@ _CATEGORY_PILLAR_MAP = {
 
 def _category_to_pillar(category: str) -> str | None:
     return _CATEGORY_PILLAR_MAP.get(str(category or "").strip().lower())
+
+
+def _quality_gated_product_free_opportunity(candidates: list[Any]) -> tuple[Any, list[Any]]:
+    """Choose randomly only after product-free opportunities clear quality gates."""
+    eligible = [
+        candidate for candidate in candidates
+        if float(candidate.scores.get("novelty", 0.0)) >= 0.5
+        and float(candidate.scores.get("usefulness", 0.0)) >= 0.55
+        and float(candidate.scores.get("platform_fit", 0.0)) >= 0.5
+        and float(candidate.scores.get("visual_potential", 0.0)) >= 0.5
+    ]
+    if not eligible:
+        raise RuntimeError("no viable opportunities generated")
+    best_score = max(float(candidate.total) for candidate in eligible)
+    band = [candidate for candidate in eligible if float(candidate.total) >= best_score - 0.08]
+    return secrets.SystemRandom().choice(band), band
 
 
 def _bi_brand_voice(ctx: dict[str, Any] | None) -> dict[str, Any] | None:
@@ -689,11 +707,37 @@ class SocialIntelligenceOrchestrator:
 
         # 1. Cheap global opportunity competition. Only its winning record is
         # allowed to reach strategy, copy, evidence, and visual generation.
+        require_product_free = bool(remediation.get("require_product_free"))
         selected_replacement = remediation.get("replacement_candidate") if isinstance(remediation.get("replacement_candidate"), dict) else None
         competitive_pool: list[dict[str, Any]] = []
         if selected_replacement:
             competitive_pool = list(remediation.get("opportunity_shortlist") or [])
             selected_opportunity = selected_replacement
+        elif require_product_free:
+            product_free_candidates = opportunity_engine.generate(
+                engine="B",
+                recent_pillars=recent.get("pillars", []),
+                recent_genres=recent.get("genres", []),
+                recent_topics=recent.get("topics", []),
+                recent_microtopics=recent.get("microtopics", []),
+                audience_hint=audience_hint,
+                seasonal_context=seasonal_context,
+                preferred_pillar=preferred_pillar,
+                excluded_concepts=excluded_concepts,
+                limit=8,
+            )
+            selected_candidate, quality_band = _quality_gated_product_free_opportunity(product_free_candidates)
+            selected_opportunity = {
+                **recovery.compact_candidate(selected_candidate, 1),
+                "candidate_id": "B:product_free_random_band",
+                "engine": "B",
+                "selection_method": "quality_gated_random_band",
+                "eligible_band_size": len(quality_band),
+            }
+            competitive_pool = [
+                {**recovery.compact_candidate(candidate, rank), "candidate_id": f"B:product_free:{rank}", "engine": "B"}
+                for rank, candidate in enumerate(quality_band, start=1)
+            ]
         elif preferred_engine:
             selected_opportunity = None
         else:
@@ -725,7 +769,6 @@ class SocialIntelligenceOrchestrator:
         if competitive_pool:
             brief.opportunity_shortlist = competitive_pool
             brief.rationale.append(f"global_opportunity_competition:selected={selected_opportunity.get('candidate_id', '')}")
-        require_product_free = bool(remediation.get("require_product_free"))
         audience_value_only = engine_name == "B" and (
             require_product_free or (
                 bool(brief.audience_value)

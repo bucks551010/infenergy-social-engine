@@ -12,6 +12,7 @@ import os
 import shutil
 import sys
 import tempfile
+from types import SimpleNamespace
 
 import pytest
 
@@ -119,6 +120,26 @@ def test_strict_product_free_generation_sets_a_non_product_remediation_contract(
 
     assert captured["preferred_engine"] == "B"
     assert captured["remediation_context"]["require_product_free"] is True
+
+
+def test_product_free_selection_randomizes_only_within_the_quality_band(monkeypatch):
+    def candidate(total, novelty=0.9, usefulness=0.9, platform_fit=0.9, visual_potential=0.9):
+        return SimpleNamespace(total=total, scores={
+            "novelty": novelty,
+            "usefulness": usefulness,
+            "platform_fit": platform_fit,
+            "visual_potential": visual_potential,
+        })
+
+    high_a = candidate(0.92)
+    high_b = candidate(0.86)
+    weak = candidate(0.99, novelty=0.2)
+    monkeypatch.setattr(orchestrator.secrets.SystemRandom, "choice", lambda self, band: band[-1])
+
+    selected, band = orchestrator._quality_gated_product_free_opportunity([high_a, high_b, weak])
+
+    assert band == [high_a, high_b]
+    assert selected is high_b
 
 
 def test_orchestrator_bridge_passes_council_strategy_to_generation(monkeypatch):

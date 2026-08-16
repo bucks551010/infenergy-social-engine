@@ -103,7 +103,7 @@ def test_engine_a_product_field_excludes_products_without_generating_content(mon
         topic_path = type("TopicPath", (), {"topic": "Outages"})()
 
     from business_intelligence import api as bi_api
-    from social import memory_intelligence, opportunity_engine
+    from social import engines, memory_intelligence, opportunity_engine
 
     monkeypatch.setattr(bi_api, "get_business_profile", lambda: {"offerings": [
         {"offering_id": "PPP-200"},
@@ -113,6 +113,7 @@ def test_engine_a_product_field_excludes_products_without_generating_content(mon
     monkeypatch.setattr(worker, "_data_dir", lambda: "data")
     monkeypatch.setattr(memory_intelligence, "recent", lambda *args, **kwargs: {"pillars": [], "genres": [], "topics": [], "microtopics": []})
     monkeypatch.setattr(opportunity_engine, "generate", lambda **kwargs: [Candidate()])
+    monkeypatch.setattr(engines, "get_engine", lambda _name: type("Engine", (), {"build": lambda self, **kwargs: object()})())
 
     field = worker._engine_a_product_field({"PPP-200"})
 
@@ -121,4 +122,5 @@ def test_engine_a_product_field_excludes_products_without_generating_content(mon
     assert field["products_considered"] > 1
     assert field["non_ppp_opportunity_count"] == 1
     assert field["brief_stage_opportunity_count"] == 1
+    assert field["brief_build_status"] == "pass"
     assert field["selected_product_id"] == "PF-150W"

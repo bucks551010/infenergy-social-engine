@@ -483,7 +483,7 @@ def _content_preview(preview_params: dict) -> dict:
 def _engine_a_product_field(excluded_product_ids: set[str]) -> dict:
     """Inspect the autonomous Engine A product field without creating content."""
     from business_intelligence import api as bi_api
-    from social import memory_intelligence, opportunity_engine
+    from social import engines, lean_intelligence, memory_intelligence, opportunity_engine, orchestrator
 
     offerings = bi_api.get_business_profile().get("offerings", []) or []
     eligible = [
@@ -510,6 +510,23 @@ def _engine_a_product_field(excluded_product_ids: set[str]) -> dict:
         limit=12,
     )
     first_eligible = eligible[0] if eligible else {}
+    relationship_context = lean_intelligence.compile_product_social_intelligence(first_eligible).get("relationships") or {}
+    bi_context = orchestrator._load_bi_creative_context(
+        str(first_eligible.get("offering_id") or first_eligible.get("sku") or "")
+    )
+    preferred_pillar = relationship_context.get("pillar_id") or orchestrator._bi_preferred_pillar(bi_context)
+    audience_hint = relationship_context.get("audience_id") or orchestrator._bi_audience_hint(bi_context)
+    try:
+        engines.get_engine("A").build(
+            recent=recent,
+            audience_hint=audience_hint,
+            preferred_pillar=preferred_pillar,
+            excluded_concepts=attempt_only_exclusions,
+            rotation_index=0,
+        )
+        brief_build_status = "pass"
+    except RuntimeError as exc:
+        brief_build_status = str(exc)
     return {
         "engine": "A",
         "catalog_count": len(offerings),
@@ -519,6 +536,7 @@ def _engine_a_product_field(excluded_product_ids: set[str]) -> dict:
         "non_ppp_opportunity_count": len(opportunities),
         "attempt_only_exclusion_count": len(attempt_only_exclusions),
         "brief_stage_opportunity_count": len(brief_stage_opportunities),
+        "brief_build_status": brief_build_status,
         "selected_product_id": str(first_eligible.get("offering_id") or first_eligible.get("sku") or ""),
         "opportunity_ids": [
             f"{candidate.pillar_id}:{candidate.genre_id}:{candidate.topic_path.topic}"

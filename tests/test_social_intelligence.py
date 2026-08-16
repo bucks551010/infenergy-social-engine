@@ -111,6 +111,29 @@ def test_static_product_exclusion_does_not_activate_candidate_recovery(monkeypat
     assert captured["approved_strategy"]["topic"] == "planning"
 
 
+def test_autonomous_engine_a_advances_product_rotation_after_field_exhaustion(monkeypatch):
+    calls = []
+
+    def run_social_intelligence(**kwargs):
+        calls.append(kwargs)
+        if len(calls) == 1:
+            raise RuntimeError("no viable opportunities generated")
+        return []
+
+    monkeypatch.setattr(generate_posts, "run_social_intelligence", run_social_intelligence)
+    monkeypatch.setattr(generate_posts, "_living_strategy_for_generation", lambda: ({}, {}))
+
+    result = generate_posts._route_generate_orchestrator(
+        "morning",
+        preferred_engine="A",
+        remediation_context={"excluded_product_ids": ["PPP-200"]},
+    )
+
+    assert result == {}
+    assert [call["rotation_index"] for call in calls] == [0, 1]
+    assert all(call["remediation_context"]["excluded_product_ids"] == ["PPP-200"] for call in calls)
+
+
 def test_strict_product_free_generation_sets_a_non_product_remediation_contract(monkeypatch):
     captured = {}
     monkeypatch.setenv("POST_REQUIRE_PRODUCT_FREE", "true")

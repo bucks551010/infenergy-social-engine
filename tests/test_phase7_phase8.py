@@ -50,6 +50,26 @@ class PhaseSevenEightTests(unittest.TestCase):
         self.assertFalse(result["passed"])
         self.assertIn("product_url_missing", result["errors"])
 
+    def test_claim_validator_accepts_primary_image_with_distinct_alternates(self) -> None:
+        content = {
+            "product_name": "PowerFlex",
+            "product_metrics": ["200W"],
+            "product_facts": "Published specs include 200W.",
+            "product_url": "https://example.com/powerflex",
+            "product_in_stock": "1",
+            "wp_content": "Uses the verified 200W specification.",
+            "fb_caption": "",
+            "ig_caption": "",
+            "li_text": "",
+            "product_image_url": "https://example.com/primary.jpg",
+            "product_image_candidates": ["https://example.com/alternate.jpg"],
+        }
+
+        result = validate_generated_content(content)
+
+        self.assertTrue(result["passed"])
+        self.assertNotIn("image_candidate_mismatch", result["errors"])
+
     def test_score_content_threshold_logic(self) -> None:
         content = {
             "selected_hook": "Most buyers miss this outage planning mistake?",

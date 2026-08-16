@@ -107,11 +107,6 @@ def validate_generated_content(content: dict[str, Any]) -> ValidationResult:
         if _contains_testimonial_like_claim(text):
             errors.append("testimonial_or_customer_claim_unverified")
 
-        image_url = str(content.get("product_image_url", "") or "")
-        image_candidates = [str(x) for x in (content.get("product_image_candidates", []) or [])]
-        if image_url and image_candidates and image_url not in image_candidates:
-            errors.append("image_candidate_mismatch")
-
     passed = len(errors) == 0
     return ValidationResult(
         {

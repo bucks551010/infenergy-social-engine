@@ -405,6 +405,20 @@ def test_claim_provenance_rejects_unsupported_efficiency_derivation_without_repl
     assert any(item.rejection_reason == "derived_claim_has_no_verified_formula" for item in ledger.claims)
 
 
+def test_numeric_claim_sanitization_preserves_caption_paragraphs():
+    caption = (
+        "The published output is 200W.\n\n"
+        "It runs a 50W fridge for 2.6 hours.\n\n"
+        "Review the verified details.\n\n"
+        "https://example.com"
+    )
+
+    sanitized, removed = claim_intelligence.remove_unsupported_numeric_claims(caption, ["200W"])
+
+    assert sanitized == "The published output is 200W.\n\nReview the verified details.\n\nhttps://example.com"
+    assert removed == ["It runs a 50W fridge for 2.6 hours."]
+
+
 def test_strategy_red_team_generalizes_to_savings_and_comparative_promises_without_evidence():
     verdict = strategy_lock.red_team(
         {"angle": "why this option saves money and outperforms competitors", "hook_promise": "Which option costs less?"},

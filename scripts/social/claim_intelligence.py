@@ -82,21 +82,25 @@ def remove_unsupported_numeric_claims(text: str, verified_facts: Iterable[str]) 
         for fact in verified_facts
         for match in _STAT_RE.finditer(str(fact or ""))
     }
-    kept: list[str] = []
+    kept_paragraphs: list[str] = []
     removed: list[str] = []
-    for sentence in re.split(r"(?<=[.!?])\s+", str(text or "").strip()):
-        tokens = [
-            f"{match.group(1).replace(',', '').lower()} {match.group(2).lower()}"
-            for match in _STAT_RE.finditer(sentence)
-        ]
-        unsupported_derivation = bool(_DERIVATION_RE.search(sentence)) and any(
-            marker in sentence.lower() for marker in _DERIVATION_CONTEXT
-        )
-        if (tokens and any(token not in verified_tokens for token in tokens)) or unsupported_derivation:
-            removed.append(sentence)
-        elif sentence:
-            kept.append(sentence)
-    return " ".join(kept), removed
+    for paragraph in re.split(r"\n\s*\n", str(text or "").strip()):
+        kept_sentences: list[str] = []
+        for sentence in re.split(r"(?<=[.!?])\s+", paragraph.strip()):
+            tokens = [
+                f"{match.group(1).replace(',', '').lower()} {match.group(2).lower()}"
+                for match in _STAT_RE.finditer(sentence)
+            ]
+            unsupported_derivation = bool(_DERIVATION_RE.search(sentence)) and any(
+                marker in sentence.lower() for marker in _DERIVATION_CONTEXT
+            )
+            if (tokens and any(token not in verified_tokens for token in tokens)) or unsupported_derivation:
+                removed.append(sentence)
+            elif sentence:
+                kept_sentences.append(sentence)
+        if kept_sentences:
+            kept_paragraphs.append(" ".join(kept_sentences))
+    return "\n\n".join(kept_paragraphs), removed
 
 
 def _classify_claim_type(text: str) -> str:

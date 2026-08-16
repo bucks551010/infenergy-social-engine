@@ -14,6 +14,18 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import worker
 
 
+def test_deployment_metadata_exposes_only_non_secret_railway_identity(monkeypatch):
+    monkeypatch.setenv("RAILWAY_GIT_COMMIT_SHA", "cef265a")
+    monkeypatch.setenv("RAILWAY_DEPLOYMENT_ID", "deployment-123")
+    monkeypatch.setenv("RAILWAY_ENVIRONMENT_NAME", "production")
+
+    assert worker._deployment_metadata() == {
+        "git_commit_sha": "cef265a",
+        "deployment_id": "deployment-123",
+        "environment": "production",
+    }
+
+
 def _run_slot(monkeypatch, *, force_live: bool, shadow_mode: bool, platforms: str = "facebook"):
     refresh = Mock(return_value=(True, {"ok": True}))
     bootstrap = Mock()

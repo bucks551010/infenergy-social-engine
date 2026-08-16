@@ -42,6 +42,14 @@ def _data_dir() -> str:
     return os.environ.get("DATA_DIR", os.path.join(os.path.dirname(__file__), "data"))
 
 
+def _deployment_metadata() -> dict[str, str]:
+    return {
+        "git_commit_sha": os.environ.get("RAILWAY_GIT_COMMIT_SHA", ""),
+        "deployment_id": os.environ.get("RAILWAY_DEPLOYMENT_ID", ""),
+        "environment": os.environ.get("RAILWAY_ENVIRONMENT_NAME", ""),
+    }
+
+
 def _load_json(path: str, default):
     try:
         with open(path, "r", encoding="utf-8") as f:
@@ -743,6 +751,7 @@ class HealthHandler(BaseHTTPRequestHandler):
                 "last_run": LAST_RUN,
                 "dry_run": os.environ.get("SOCIAL_DRY_RUN", "true"),
                 "shadow_mode": os.environ.get("SOCIAL_SHADOW_MODE", "false"),
+                "deployment": _deployment_metadata(),
                 "recent_quality": _quality_summary(recent_posts),
                 "visual_repo_bootstrap": VISUAL_REPO_BOOTSTRAP,
             }

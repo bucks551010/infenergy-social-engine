@@ -213,7 +213,7 @@ def _route_generate_orchestrator(
         "logic_hook": selected_hook,
         "logic_bridge": copy_body or components["logic_bridge"],
         "proof": "; ".join(str(fact) for fact in (offering.get("verified_facts") or [])[:4]) or components["proof"],
-        "emotional_outcome": takeaway or components["emotional_outcome"],
+        "emotional_outcome": components["emotional_outcome"],
         "on_image_headline": selected_hook or components["on_image_headline"],
         "on_image_subline": takeaway or components["on_image_subline"],
     })

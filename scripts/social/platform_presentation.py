@@ -43,9 +43,14 @@ def _portfolio(components: dict[str, Any], platform: str, source: str) -> tuple[
         "category": ["PortablePower", "BackupPower", "MobilePower", "PowerOnTheGo", "PortableEnergy"],
         "use_case": [],
         "audience_situation": ["Preparedness", "PowerPreparedness"],
-        "discovery": ["StayPowered", "EnergyIndependence", "PowerSolutions", "EverydayPower", "PowerPlanning"],
+        "discovery": ["StayPowered", "EnergyIndependence", "PowerSolutions", "EverydayPower", "PowerPlanning", "PowerKnowledge", "EnergyAwareness"],
     }
     keyword_tags = {
+        "battery": "BatteryEducation",
+        "charging": "ChargingTips",
+        "electrical": "ElectricalBasics",
+        "grid": "PowerGrid",
+        "education": "EnergyLiteracy",
         "phone": "MobileCharging",
         "laptop": "LaptopPower",
         "camera": "CameraGear",
@@ -295,14 +300,16 @@ def _sentence(value: str) -> str:
 
 def _benefit_opening(components: dict[str, Any], *, product_led: bool) -> list[str]:
     """Present approved customer benefit and human outcome before supporting detail."""
+    if not product_led:
+        return []
     product = str(components.get("product_name") or "").strip()
     benefit = str(components.get("benefit_fragment") or "").strip().rstrip(".")
     emotional_outcome = str(components.get("emotional_outcome") or "").strip().rstrip(".")
     opening: list[str] = []
     if benefit:
-        subject = product if product_led and product else "This solution"
-        opening.append(_sentence(f"✨ {subject} {benefit}"))
-    if emotional_outcome:
+        value = f"{product} {benefit}"
+        opening.append(_sentence(f"✨ {value}"))
+    if emotional_outcome and not emotional_outcome.lower().startswith(("remember:", "the takeaway:", "takeaway:")):
         opening.append(_sentence(f"For you, that means {emotional_outcome}"))
     return opening[:2]
 
@@ -319,6 +326,8 @@ def refine_caption(
     source_parts = _paragraphs(caption)
     product = str(components.get("product_name") or "").strip()
     cta = str(components.get("cta") or "Learn more").strip()
+    benefit_opening = _benefit_opening(components, product_led=product_led)
+    opening_keys = {_normalized_paragraph(part) for part in benefit_opening}
     tags: list[str] = []
     sanitized_parts: list[str] = []
     seen: set[str] = set()
@@ -328,7 +337,7 @@ def refine_caption(
             continue
         sanitized = _remove_internal_language(source_part)
         normalized = _normalized_paragraph(sanitized)
-        if sanitized and normalized and normalized not in seen:
+        if sanitized and normalized and normalized not in seen and normalized not in opening_keys:
             seen.add(normalized)
             sanitized_parts.append(sanitized)
 
@@ -344,7 +353,6 @@ def refine_caption(
 
     cta_parts = [part for part in body if cta and cta.lower() in part.lower()]
     non_cta_parts = [part for part in body if part not in cta_parts]
-    benefit_opening = _benefit_opening(components, product_led=product_led)
     if non_cta_parts:
         hook, remaining = non_cta_parts[0], non_cta_parts[1:]
         prioritized = sorted(
@@ -356,7 +364,7 @@ def refine_caption(
         ordered = benefit_opening + [hook] + lead + ([spec_block] if spec_block else []) + supporting
     else:
         ordered = benefit_opening + ([spec_block] if spec_block else [])
-    ordered.extend(f"👉 {part}" for part in cta_parts)
+    ordered.extend(f"👉 {re.sub(r'^(?:👉\s*)+', '', part).strip()}" for part in cta_parts)
     portfolio_tags, categories = _portfolio(components, platform, caption)
     selected_tags = list(dict.fromkeys(tags + [f"#{tag}" for tag in portfolio_tags]))[:20]
     hashtag_line = " ".join(selected_tags)
@@ -548,11 +556,11 @@ def _compact_parts(components: dict[str, Any], platform: str) -> tuple[str, str,
     situation = str(components.get("situation") or "").strip()
     bridge = str(components.get("logic_bridge") or components.get("info") or "").strip()
     benefit = str(components.get("benefit_fragment") or "").strip()
-    product = str(components.get("product_name") or "this product").strip()
+    product = str(components.get("product_name") or "").strip()
     cta = str(components.get("cta") or "Learn more").strip()
     specs = [str(item).strip() for item in (components.get("feature_bullets") or []) if str(item).strip()]
     context = bridge or situation
-    payoff = f"{product} is supporting proof for that decision: {benefit}." if benefit else f"{product} is supporting proof for that decision."
+    payoff = f"{product} is supporting proof for that decision: {benefit}." if product and benefit else ""
     return hook, context, payoff, specs
 
 
@@ -566,7 +574,13 @@ def format_caption(components: dict[str, Any], *, platform: str) -> tuple[str, d
         caption = "\n\n".join(filter(None, [hook, context, "The decision is less about accumulating specs and more about matching the supported job to the equipment you carry.", payoff, cta, "#PortablePower #Resilience #BusinessContinuity"]))
     else:
         caption = "\n\n".join(filter(None, [hook, context, payoff, cta, "#PortablePower #Preparedness #BackupPower"]))
-    caption, priority = refine_caption(caption, components=components, platform=platform, include_proof=False)
+    caption, priority = refine_caption(
+        caption,
+        components=components,
+        platform=platform,
+        product_led=bool(components.get("product_id")),
+        include_proof=False,
+    )
     presentation = evaluate(caption, platform=platform, visual_specs=specs)
     presentation.update({
         **priority,

@@ -395,10 +395,10 @@ def _assemble_copy(*, brief: engines.EngineBrief, structure_beats: list[str]) ->
 
     templates: dict[str, str] = {
         "hook": q if q.endswith("?") else f"{q}?",
-        "answer": f"{brief.angle}.",
-        "explanation": f"The reason is {gap}.",
-        "example": f"For example, in a real scenario: {brief.curiosity}.",
-        "takeaway": f"Remember: {brief.angle}.",
+        "answer": f"It starts with {gap[:1].lower() + gap[1:]}.",
+        "explanation": f"Understanding {gap[:1].lower() + gap[1:]} gives the question useful context.",
+        "example": f"Consider {brief.curiosity[:1].lower() + brief.curiosity[1:]}.",
+        "takeaway": "Use that context to examine the assumption instead of repeating it.",
         "problem": misc or f"Most people assume {brief.angle}.",
         "why": f"Because {gap}.",
         "what_happens": f"Which leads to {brief.curiosity}.",

@@ -138,6 +138,33 @@ def test_benefit_opening_uses_only_approved_component_meaning():
     assert presentation["semantic_layer_evidence"]["human_outcome"] == components["emotional_outcome"]
 
 
+def test_product_free_caption_is_idempotent_and_never_invents_a_product():
+    components = {
+        "product_id": None,
+        "product_name": "",
+        "logic_hook": "Why is overnight charging not always the problem people assume?",
+        "logic_bridge": "Understanding basic electrical terminology helps explain what is happening.",
+        "benefit_fragment": "supports a more reliable preparedness setup",
+        "emotional_outcome": "confidence through better preparation",
+        "feature_bullets": [],
+        "cta": "Save this checklist and compare your current setup.",
+    }
+    once, _ = platform_presentation.format_caption(components, platform="facebook")
+    twice, _ = platform_presentation.refine_caption(
+        once,
+        components=components,
+        platform="facebook",
+        product_led=False,
+    )
+
+    assert "✨" not in twice
+    assert "For you, that means" not in twice
+    assert twice.startswith("Why is overnight charging not always the problem people assume?")
+    assert twice.count("👉 Save this checklist and compare your current setup.") == 1
+    assert "this product" not in twice.lower()
+    assert "remember:" not in twice.lower()
+
+
 def test_presentation_preserves_existing_hashtags_and_semantics_across_platforms():
     facebook_caption, facebook = platform_presentation.refine_caption(POWERPULSE_ORIGINAL, components=_components(), platform="facebook")
     instagram_caption, instagram = platform_presentation.refine_caption(POWERPULSE_ORIGINAL, components=_components(), platform="instagram")

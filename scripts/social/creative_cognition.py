@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from datetime import datetime, timezone
 from dataclasses import dataclass
 from typing import Any
@@ -306,9 +307,21 @@ def _copy_concepts(*, strategy: dict[str, Any], grammar: dict[str, Any], recent:
     """Create compact, genuinely different approaches before writing one winner."""
     angle = str(strategy.get("angle") or "this practical decision")
     benefit = str(strategy.get("benefit") or "a clearer choice")
+    question_angle = angle.rstrip(".?")
+    why_match = re.match(
+        r"why\s+(.+?)\s+(isn't|is not|aren't|are not|doesn't|does not|don't|do not)\s+(.+)",
+        question_angle,
+        flags=re.IGNORECASE,
+    )
+    if why_match:
+        educational_opening = f"Why {why_match.group(2)} {why_match.group(1)} {why_match.group(3)}?"
+    elif question_angle.lower().startswith(("why ", "how ", "what ", "when ", "where ", "which ", "can ", "does ", "is ")):
+        educational_opening = f"{question_angle[:1].upper() + question_angle[1:]}?"
+    else:
+        educational_opening = f"What should you understand about {question_angle.lower()}?"
     options = [
         {"approach": "human_recognition", "opening": f"When {strategy.get('customer_moment') or 'power is uncertain'}, what matters first?", "structure": "situation -> friction -> possibility", "fit": 0.78},
-        {"approach": "educational_insight", "opening": f"The useful question behind {angle.lower()}.", "structure": "observation -> insight -> business connection", "fit": 0.8},
+        {"approach": "educational_insight", "opening": educational_opening, "structure": "observation -> insight -> business connection", "fit": 0.8},
         {"approach": "decision_support", "opening": f"Before choosing, compare the role a power solution needs to play.", "structure": "decision -> options -> tradeoff -> recommendation", "fit": 0.82},
         {"approach": "misconception", "opening": f"More specifications do not automatically make {benefit} clearer.", "structure": "misconception -> truth -> explanation", "fit": 0.75},
     ]

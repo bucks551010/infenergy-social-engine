@@ -160,11 +160,18 @@ def _route_generate_orchestrator(
     social_platform = _social_platform_key(platform)
     council_decision: dict[str, Any] = {}
     remediation_context = kw.get("remediation_context") if isinstance(kw.get("remediation_context"), dict) else {}
-    if not remediation_context and not isinstance(kw.get("approved_strategy"), dict):
+    recovery_context = any(
+        remediation_context.get(key)
+        for key in (
+            "replacement_candidate", "original_candidate_id", "recovery_mode", "candidate_attempt_id",
+            "excluded_concepts", "exclude_engine_a_decision_thesis",
+        )
+    )
+    if not recovery_context and not isinstance(kw.get("approved_strategy"), dict):
         approved_strategy, council_decision = _living_strategy_for_generation()
         if approved_strategy:
             kw["approved_strategy"] = approved_strategy
-    elif remediation_context:
+    elif recovery_context:
         council_decision = {"decision": "strategy_reselected", "source": "evidence_safe_remediation"}
     else:
         council_decision = {"decision": "strategy_selected", "source": "caller_override"}

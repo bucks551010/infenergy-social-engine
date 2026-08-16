@@ -763,7 +763,14 @@ class SocialIntelligenceOrchestrator:
         else:
             locked = _runtime_strategy_lock(brief, lean_context, bi_offering, self.data_dir)
 
-        if remediation and not selected_opportunity:
+        recovery_context = any(
+            remediation.get(key)
+            for key in (
+                "replacement_candidate", "original_candidate_id", "recovery_mode", "candidate_attempt_id",
+                "excluded_concepts", "exclude_engine_a_decision_thesis",
+            )
+        )
+        if recovery_context and not selected_opportunity:
             candidate_text = " ".join(
                 str(value or "")
                 for value in (

@@ -95,6 +95,21 @@ def test_manual_product_exclusion_is_merged_into_every_orchestrator_generation(m
     assert captured["remediation_context"]["excluded_product_ids"] == ["OTHER-1", "PPP-200"]
 
 
+def test_static_product_exclusion_does_not_activate_candidate_recovery(monkeypatch):
+    captured = {}
+    monkeypatch.setattr(generate_posts, "run_social_intelligence", lambda **kwargs: captured.update(kwargs) or [])
+    monkeypatch.setattr(generate_posts, "_living_strategy_for_generation", lambda: ({"topic": "planning", "angle": "prioritize needs"}, {}))
+
+    generate_posts._route_generate_orchestrator(
+        "morning",
+        preferred_engine="A",
+        remediation_context={"excluded_product_ids": ["PPP-200"]},
+    )
+
+    assert captured["remediation_context"]["excluded_product_ids"] == ["PPP-200"]
+    assert captured["approved_strategy"]["topic"] == "planning"
+
+
 def test_strict_product_free_generation_sets_a_non_product_remediation_contract(monkeypatch):
     captured = {}
     monkeypatch.setenv("POST_REQUIRE_PRODUCT_FREE", "true")

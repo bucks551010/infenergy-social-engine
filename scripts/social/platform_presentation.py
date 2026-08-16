@@ -232,6 +232,13 @@ _INTERNAL_PUBLIC_COPY_PATTERNS = _PLANNING_INSTRUCTION_PATTERNS + (
     r"\bevidence ready\b",
     r"\bremediation\b",
     r"\bgovernance\b",
+    r"\bverified input\b",
+    r"\bproduct-fit guidance\b",
+    r"\bfor this topic\b",
+    r"\bthe practical context\b",
+    r"\bfor you, that means\b",
+    r"\bhelp practical product-fit guidance\b",
+    r"\ba practical power decision\b",
 )
 
 
@@ -304,13 +311,13 @@ def _benefit_opening(components: dict[str, Any], *, product_led: bool) -> list[s
         return []
     product = str(components.get("product_name") or "").strip()
     benefit = str(components.get("benefit_fragment") or "").strip().rstrip(".")
-    emotional_outcome = str(components.get("emotional_outcome") or "").strip().rstrip(".")
+    after_state = str(components.get("after_state") or components.get("emotional_outcome") or "").strip().rstrip(".")
     opening: list[str] = []
     if benefit:
         value = f"{product} {benefit}"
         opening.append(_sentence(f"✨ {value}"))
-    if emotional_outcome and not emotional_outcome.lower().startswith(("remember:", "the takeaway:", "takeaway:")):
-        opening.append(_sentence(f"For you, that means {emotional_outcome}"))
+    if after_state and not after_state.lower().startswith(("remember:", "the takeaway:", "takeaway:")):
+        opening.append(_sentence(after_state))
     return opening[:2]
 
 
@@ -452,7 +459,7 @@ def _word_position(text: str, phrase: str) -> int | None:
 
 def _internal_instruction_leaks(text: str, planning_instructions: list[str] | None = None) -> list[str]:
     lowered = text.lower()
-    leaks = [pattern for pattern in _PLANNING_INSTRUCTION_PATTERNS if re.search(pattern, lowered)]
+    leaks = [pattern for pattern in _INTERNAL_PUBLIC_COPY_PATTERNS if re.search(pattern, lowered)]
     for instruction in planning_instructions or []:
         normalized = str(instruction or "").strip().lower()
         if normalized and len(normalized) >= 8 and normalized in lowered:
@@ -587,7 +594,7 @@ def format_caption(components: dict[str, Any], *, platform: str) -> tuple[str, d
     supporting_depth: list[str] = []
     seen_depth = {_normalized_paragraph(value) for value in (hook, context) if value}
     benefit = _normalized_paragraph(str(components.get("benefit_fragment") or ""))
-    for key in ("situation", "info", "use_case_line", "product_connection", "proof"):
+    for key in ("situation", "transformation", "why_it_matters", "info", "use_case_line", "product_connection", "proof"):
         value = str(components.get(key) or "").strip()
         normalized = _normalized_paragraph(value)
         if key == "proof" and not any(

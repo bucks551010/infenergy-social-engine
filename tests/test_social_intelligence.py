@@ -599,6 +599,42 @@ def test_campaign_state_changes_next_creative_concept(tmp_path):
     assert campaign["campaign_guidance"]["next_content_priority"] == "campaign_sequence"
 
 
+def test_customer_hooks_are_grammatical_and_customer_centered():
+    packet = creative_cognition.decide(
+        strategy={
+            "audience": "traveler",
+            "customer_moment": "before a trip",
+            "human_need": "stay charged",
+            "angle": "choose the right charging backup",
+            "benefit": "keeps compatible daily devices charged away from outlets",
+            "reader_job": "HELP_ME_CHOOSE",
+            "visual_objective": "show the decision",
+            "proof": [],
+        },
+        platform="facebook_feed",
+        recent={},
+    )
+    openings = [item["opening"] for item in packet["copy_concepts"]]
+
+    assert "Before a trip, what matters most?" in openings
+    assert all("When before" not in opening for opening in openings)
+    assert all("make keeps" not in opening for opening in openings)
+
+
+def test_all_in_one_charger_profile_expresses_customer_transformation():
+    profile = generate_posts._product_copy_profile({
+        "name": "PowerCharge Pro",
+        "categories": ["Emergency Power", "Travel Power"],
+        "metrics": ["10,000mAh", "20W"],
+        "fact_snippet": "5-in-1 wall charger, wireless charger, and power bank with built-in cables and a phone stand.",
+    })
+
+    assert profile["role"] == "all-in-one daily charging hub"
+    assert "built into one compact device" in profile["after_state"]
+    assert "replaces several loose accessories" in profile["transformation"]
+    assert "less time untangling" in profile["why_it_matters"]
+
+
 def test_platform_interpretation_changes_outbound_payload_fields():
     components = {"product_name": "Power Station", "product_id": "p1", "topic": "Power planning", "hook": "Start here", "logic_hook": "Start here", "situation": "An outage can interrupt plans.", "logic_bridge": "Map essentials first.", "benefit_fragment": "supports clear decisions", "detail_summary": "Verified output details", "use_case_line": "For home readiness", "proof": "Verified product fact", "emotional_outcome": "more confidence", "cta": "Learn more", "feature_bullets": ["Portable power"]}
     interpretations = {"facebook": {"hook_posture": "conversation-starter", "cta_expression": "invite a practical response", "format": "community_story", "visual_composition": "human-context"}, "instagram": {"hook_posture": "visual-first takeaway", "cta_expression": "save this reference", "format": "carousel_or_reel", "visual_composition": "one memorable focal hierarchy"}, "linkedin": {"hook_posture": "professional implication", "cta_expression": "consider the operational context", "format": "professional_brief", "visual_composition": "editorial decision-support hierarchy"}}

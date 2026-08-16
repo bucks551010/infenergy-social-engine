@@ -2708,10 +2708,17 @@ def _product_copy_profile(product: dict | None) -> dict[str, str]:
     power_station_evidence = any(token in name_low for token in ("power station", "generator", "inverter")) or any(
         token in categories for token in ("power station", "generator")
     ) or any(token in fact_low for token in ("home backup powerhouse", "solar generator", "pure sine wave inverter"))
+    integrated_charger_evidence = any(
+        token in fact_low
+        for token in ("built-in cable", "built in cable", "wireless charger", "wall charger", "5-in-1", "all-in-one charging")
+    )
 
     profile = {
         "role": "preparedness product",
         "benefit": "supports a more reliable preparedness setup",
+        "after_state": "You can move through the day with the right backup already matched to the job instead of improvising after power becomes a problem.",
+        "transformation": "The change is practical: your preparedness gear has a defined role, a known place, and a reason to be there.",
+        "why_it_matters": "That gives you a plan you can act on instead of another product you hope will be useful.",
         "fit_line": f"helps buyers compare real needs against {primary_metric}",
         "proof_intro": "Every recommendation here is checked against the published product specs",
         "offer_line": f"The {name or 'product'} is built for buyers who want a practical preparedness tool matched to a real use case.",
@@ -2722,15 +2729,33 @@ def _product_copy_profile(product: dict | None) -> dict[str, str]:
         profile.update({
             "role": "foldable solar charging panel",
             "benefit": "adds off-grid charging support for compatible power stations and devices",
+            "after_state": "You can plan charging around available sunlight instead of treating the nearest wall outlet as the only way to restore compatible gear.",
+            "transformation": "That turns portable solar from a vague backup idea into a repeatable charging option for travel, outages, and off-grid use.",
+            "why_it_matters": "Your power plan can keep working beyond the energy already stored in a battery when the published wattage and compatibility fit the setup.",
             "fit_line": f"helps recharge compatible gear when sunlight is available, using specs like {primary_metric}",
             "proof_intro": "Checked against the published wattage, output, and charging compatibility details",
             "offer_line": f"The {name or 'product'} is for buyers who need portable solar charging support, not vague emergency promises.",
             "category_pain": "Many buyers assume any solar panel will recharge their gear the way they need, then discover the output or compatibility is wrong.",
         })
+    elif integrated_charger_evidence:
+        profile.update({
+            "role": "all-in-one daily charging hub",
+            "benefit": "combines portable charging and built-in connection options in one device",
+            "after_state": "You can leave the spare cable bundle and separate wall adapter behind because the charging tools you use most are already built into one compact device.",
+            "transformation": "Travel, commuting, and daily carry become simpler when one charging hub replaces several loose accessories in your bag.",
+            "why_it_matters": "You spend less time untangling, searching, and swapping charging gear and more time using the devices that keep your day moving.",
+            "fit_line": f"helps reduce charging clutter while providing portable backup using details like {primary_metric}",
+            "proof_intro": "Checked against the published battery, built-in cable, wireless charging, and wall-charging details",
+            "offer_line": f"The {name or 'product'} is for people who want fewer charging accessories without giving up daily backup power.",
+            "category_pain": "Daily charging gets frustrating when every device requires another cable, adapter, or loose accessory to remember.",
+        })
     elif "fan" not in name_low and (any(token in name_low for token in ("power bank", "powerbank", "charger")) or any(token in categories for token in ("power bank", "power banks", "phone power bank", "phone power banks", "charger", "chargers"))):
         profile.update({
             "role": "portable charging backup",
             "benefit": "keeps phones, tablets, and small daily devices charged when wall power is not available",
+            "after_state": "You can leave home knowing compatible daily devices have a backup plan in your bag instead of searching for an outlet when the battery warning appears.",
+            "transformation": "Daily travel, commuting, and mobile work become easier when charging backup is close enough to use and matched to what you actually carry.",
+            "why_it_matters": "You stay connected to the calls, directions, messages, and work that depend on those devices without carrying the wrong kind of backup.",
             "fit_line": f"supports everyday charging backup using details like {primary_metric}",
             "proof_intro": "Checked against the published battery, port, and charging specs",
             "offer_line": f"The {name or 'product'} is for buyers who need daily carry charging backup that is easy to keep close.",
@@ -2740,6 +2765,9 @@ def _product_copy_profile(product: dict | None) -> dict[str, str]:
         profile.update({
             "role": "vehicle emergency jump starter",
             "benefit": "supports roadside readiness and emergency vehicle starts",
+            "after_state": "You can face a dead vehicle battery with a tool already in the car instead of beginning the problem by searching for another driver.",
+            "transformation": "Roadside readiness becomes something you carry with you rather than something you hope arrives after the battery fails.",
+            "why_it_matters": "That can turn an unexpected stop into a problem you are equipped to address with the published starting capability.",
             "fit_line": f"adds vehicle-ready emergency support using specs like {primary_metric}",
             "proof_intro": "Checked against the published starting, battery, and output specs",
             "offer_line": f"The {name or 'product'} is for drivers who want roadside readiness without guessing what will work when the battery dies.",
@@ -2749,6 +2777,9 @@ def _product_copy_profile(product: dict | None) -> dict[str, str]:
         profile.update({
             "role": "portable water filtration backup",
             "benefit": "adds clean-water support to emergency and travel kits",
+            "after_state": "You can carry a defined water-backup option instead of discovering too late that your preparedness kit only covered power and food.",
+            "transformation": "Travel and emergency planning become more complete when clean-water support is portable and ready to deploy.",
+            "why_it_matters": "Water is a basic operating need, so the backup plan must be practical to carry and use where the need occurs.",
             "fit_line": f"supports water-prep planning using details like {primary_metric}",
             "proof_intro": "Checked against the published filtration and capacity specs",
             "offer_line": f"The {name or 'product'} is for buyers who want a water-backup plan that is practical to carry and easy to deploy.",
@@ -2758,6 +2789,9 @@ def _product_copy_profile(product: dict | None) -> dict[str, str]:
         profile.update({
             "role": "portable airflow and charging support",
             "benefit": "adds comfort and small-device support during outages, camping, and travel",
+            "after_state": "You can keep air moving and compatible small devices supported when heat, travel, or an outage removes the comfort of a powered room.",
+            "transformation": "Your camping or outage setup becomes more livable because airflow and charging support are already part of the kit.",
+            "why_it_matters": "Comfort and communication become harder to manage when there is no airflow and no charging plan.",
             "fit_line": f"supports comfort and charging backup using specs like {primary_metric}",
             "proof_intro": "Checked against the published runtime and charging specs",
             "offer_line": f"The {name or 'product'} is for buyers who want portable airflow support that earns space in a real preparedness kit.",
@@ -2767,6 +2801,9 @@ def _product_copy_profile(product: dict | None) -> dict[str, str]:
         profile.update({
             "role": "backup power station",
             "benefit": "supports must-run devices during outages and off-grid use",
+            "after_state": "You can keep compatible priority devices available away from wall power instead of organizing the day around the next outlet.",
+            "transformation": "Travel, remote work, and outage planning become more controlled when stored power, output, and the devices you carry are matched before you need them.",
+            "why_it_matters": "The value is not owning more capacity; it is knowing the backup can support the compatible equipment you decided must stay available.",
             "fit_line": f"helps buyers match loads and runtime needs using specs like {primary_metric}",
             "proof_intro": "Checked against the published output, battery, runtime, and charging specs",
             "offer_line": f"The {name or 'product'} is for buyers who want real backup power capacity matched to real outage needs.",
@@ -3650,9 +3687,9 @@ def _build_post_components(
     proof = f"Real specs to compare: {m1} and {m2}."
 
     situation = profile["category_pain"]
-    info = f"The stronger path is to compare the real job against published specs like {m1} and {m2}."
+    info = f"Match the devices you need to support with published capacity and output details such as {m1} and {m2}."
     why = profile["benefit"]
-    product_connection = f"For this topic, {product_name} {profile['fit_line']}."
+    product_connection = f"{product_name} {profile['fit_line']}."
     proof = f"{profile['proof_intro']}."
 
     if isinstance(product_intelligence, dict) and product_intelligence:
@@ -3691,6 +3728,9 @@ def _build_post_components(
         "info": info,
         "why": why,
         "benefit_fragment": benefit_fragment,
+        "after_state": profile["after_state"],
+        "transformation": profile["transformation"],
+        "why_it_matters": profile["why_it_matters"],
         "product_connection": product_connection,
         "proof": proof,
         "feature_bullets": feature_bullets,
@@ -3703,7 +3743,7 @@ def _build_post_components(
         "logical_emotional_strategy": strategy,
         "logic_hook": str(strategy.get("logic_hook") or selected_hook),
         "logic_bridge": str(strategy.get("logic_bridge") or info),
-        "emotional_outcome": str(strategy.get("emotional_outcome") or "confidence through better preparation"),
+        "emotional_outcome": str(strategy.get("emotional_outcome") or profile["after_state"]),
         "on_image_headline": str(strategy.get("on_image_headline") or selected_hook),
         "on_image_subline": str(strategy.get("on_image_subline") or m1),
     }

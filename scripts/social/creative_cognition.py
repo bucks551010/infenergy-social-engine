@@ -319,11 +319,20 @@ def _copy_concepts(*, strategy: dict[str, Any], grammar: dict[str, Any], recent:
         educational_opening = f"{question_angle[:1].upper() + question_angle[1:]}?"
     else:
         educational_opening = f"What should you understand about {question_angle[:1].lower() + question_angle[1:]}?"
+    customer_moment = str(strategy.get("customer_moment") or "power is uncertain").strip().rstrip(".?!")
+    if customer_moment.lower().startswith(("before ", "after ", "during ", "when ", "while ")):
+        human_opening = f"{customer_moment[:1].upper() + customer_moment[1:]}, what matters most?"
+    else:
+        human_opening = f"When {customer_moment}, what matters most?"
+    misconception_opening = (
+        "A longer specification list does not automatically show whether a product "
+        f"{benefit.rstrip('.?!')}."
+    )
     options = [
-        {"approach": "human_recognition", "opening": f"When {strategy.get('customer_moment') or 'power is uncertain'}, what matters first?", "structure": "situation -> friction -> possibility", "fit": 0.78},
+        {"approach": "human_recognition", "opening": human_opening, "structure": "situation -> friction -> possibility", "fit": 0.78},
         {"approach": "educational_insight", "opening": educational_opening, "structure": "observation -> insight -> business connection", "fit": 0.8},
         {"approach": "decision_support", "opening": f"Before choosing, compare the role a power solution needs to play.", "structure": "decision -> options -> tradeoff -> recommendation", "fit": 0.82},
-        {"approach": "misconception", "opening": f"More specifications do not automatically make {benefit} clearer.", "structure": "misconception -> truth -> explanation", "fit": 0.75},
+        {"approach": "misconception", "opening": misconception_opening, "structure": "misconception -> truth -> explanation", "fit": 0.75},
     ]
     used = " ".join(map(str, recent.get("hooks", []))).lower()
     for item in options:

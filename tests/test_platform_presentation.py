@@ -41,6 +41,9 @@ def _components() -> dict:
         "logic_hook": "Traditional power bank or portable backup power: match the job first.",
         "benefit_fragment": "keeps compatible daily devices charged away from outlets",
         "emotional_outcome": "confidence through better preparation",
+        "after_state": "You can keep compatible priority devices available away from wall power instead of organizing the day around the next outlet.",
+        "transformation": "Travel, remote work, and outage planning become more controlled when stored power, output, and the devices carried are matched in advance.",
+        "why_it_matters": "The value is knowing the backup fits the compatible equipment that must stay available.",
         "situation": "A weak power bank can fail when its capacity and ports do not match the devices carried.",
         "info": "Compare the real job against the published capacity and output before choosing.",
         "use_case_line": "Built for laptops, phones, cameras, travel, mobile work, and backup situations.",
@@ -74,7 +77,7 @@ def test_powerpulse_fixture_front_loads_value_without_losing_sales_depth():
     opening_sentences = platform_presentation._sentences(" ".join(improved.split("\n\n")[:2]))
     assert opening_sentences == [
         "✨ PowerPulse Pro 200 keeps compatible daily devices charged away from outlets.",
-        "For you, that means confidence through better preparation.",
+        "You can keep compatible priority devices available away from wall power instead of organizing the day around the next outlet.",
     ]
     assert "154Wh" in improved and "41,600mAh" in improved and "200W" in improved and "110V" in improved
     assert _word_depth(improved, "Key specs") < _word_depth(POWERPULSE_ORIGINAL, "Key specs")
@@ -135,7 +138,7 @@ def test_benefit_opening_uses_only_approved_component_meaning():
     first_two = platform_presentation._sentences(" ".join(improved.split("\n\n")[:2]))
     assert components["product_name"] in first_two[0]
     assert components["benefit_fragment"] in first_two[0]
-    assert components["emotional_outcome"] in first_two[1]
+    assert components["after_state"] in first_two[1]
     assert "powers your laptop all day" not in improved.lower()
     assert "compatible with every" not in improved.lower()
     assert presentation["semantic_layer_evidence"]["primary_benefit"] == components["benefit_fragment"]
@@ -149,9 +152,9 @@ def test_format_caption_keeps_benefit_opening_and_restores_approved_depth():
 
     assert first_two == [
         "✨ PowerPulse Pro 200 keeps compatible daily devices charged away from outlets.",
-        "For you, that means confidence through better preparation.",
+        "You can keep compatible priority devices available away from wall power instead of organizing the day around the next outlet.",
     ]
-    for key in ("situation", "info", "use_case_line", "product_connection", "proof"):
+    for key in ("situation", "transformation", "why_it_matters", "info", "use_case_line", "product_connection", "proof"):
         assert components[key] in improved
     assert improved.index("⚡ Key specs") < improved.index(components["use_case_line"])
 
@@ -304,6 +307,25 @@ def test_final_caption_qa_rejects_unresolved_planning_language():
         platform="facebook",
         components=_components(),
         planning_instructions=["invite a practical response"],
+    )
+
+    assert verdict["status"] == "REVISE_PRESENTATION"
+    assert "internal_instruction_leak" in verdict["reasons"]
+
+
+def test_final_caption_qa_rejects_internal_sales_process_language():
+    caption = (
+        "Meet PowerPulse Pro 200.\n\n"
+        "Treat 154Wh as one verified input.\n\n"
+        "For this topic, compare product-fit guidance.\n\n"
+        "For you, that means confidence through better preparation.\n\n"
+        "How does this help practical product-fit guidance?\n\n"
+        "The practical context: a practical power decision."
+    )
+    verdict = platform_presentation.final_caption_qa(
+        caption,
+        platform="facebook",
+        components=_components(),
     )
 
     assert verdict["status"] == "REVISE_PRESENTATION"

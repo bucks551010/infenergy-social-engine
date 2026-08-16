@@ -403,10 +403,10 @@ def _assemble_copy(*, brief: engines.EngineBrief, structure_beats: list[str]) ->
 
     templates: dict[str, str] = {
         "hook": q if q.endswith("?") else f"{q}?",
-        "answer": f"Start with {gap_text}.",
-        "explanation": f"Treat {gap_text} as one verified input, then compare it with the devices and job you need to support.",
-        "example": f"The practical context: {curiosity_text}.",
-        "takeaway": "Compare the need with the verified facts before choosing.",
+        "answer": f"The published starting point is {gap_text}.",
+        "explanation": f"Use {gap_text} to compare the product with the devices and job you need to support.",
+        "example": f"Why this matters: {curiosity_text}.",
+        "takeaway": "Choose the setup that fits the devices you rely on and the way you actually move through the day.",
         "problem": misc or f"Most people assume {brief.angle}.",
         "why": f"Because {gap}.",
         "what_happens": f"Which leads to {brief.curiosity}.",

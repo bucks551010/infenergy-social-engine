@@ -1,3 +1,4 @@
+import json
 import os
 import time
 import requests
@@ -86,6 +87,50 @@ def _post_with_retry(url: str, data: dict, timeout: int = 30) -> requests.Respon
     return last if last is not None else requests.Response()
 
 
+def _publish_feed_with_photo(
+    *,
+    page_id: str,
+    token: str,
+    message: str,
+    image_path: str = "",
+    image_url: str = "",
+) -> dict:
+    upload_data = {
+        "published": "false",
+        "access_token": token,
+    }
+    if image_path:
+        with open(image_path, "rb") as image_file:
+            upload = requests.post(
+                f"{GRAPH_BASE}/{page_id}/photos",
+                data=upload_data,
+                files={"source": (os.path.basename(image_path), image_file, "image/png")},
+                timeout=60,
+            )
+    else:
+        upload = requests.post(
+            f"{GRAPH_BASE}/{page_id}/photos",
+            data={**upload_data, "url": image_url},
+            timeout=60,
+        )
+    _raise_with_body(upload)
+    media_id = str(upload.json().get("id") or "").strip()
+    if not media_id:
+        raise RuntimeError("facebook_unpublished_photo_missing_id")
+
+    feed = _post_with_retry(
+        f"{GRAPH_BASE}/{page_id}/feed",
+        {
+            "message": message,
+            "attached_media": json.dumps([{"media_fbid": media_id}]),
+            "access_token": token,
+        },
+        timeout=30,
+    )
+    _raise_with_body(feed)
+    return feed.json()
+
+
 def publish(content: dict, wp_link: str, dry_run: bool = False) -> dict:
     facebook_package = (content.get("platform_posts") or {}).get("facebook") or {}
     message = str(facebook_package.get("final_caption") or content["fb_caption"])
@@ -105,27 +150,18 @@ def publish(content: dict, wp_link: str, dry_run: bool = False) -> dict:
     token = _resolve_page_access_token(_required_env("META_PAGE_ACCESS_TOKEN"), page_id)
 
     if image_path and os.path.exists(image_path):
-        with open(image_path, "rb") as f:
-            resp = requests.post(
-                f"{GRAPH_BASE}/{page_id}/photos",
-                data={
-                    "caption": message,
-                    "published": "true",
-                    "access_token": token,
-                },
-                files={"source": (os.path.basename(image_path), f, "image/png")},
-                timeout=60,
-            )
+        data = _publish_feed_with_photo(
+            page_id=page_id,
+            token=token,
+            message=message,
+            image_path=image_path,
+        )
     elif image_url.startswith("http"):
-        resp = requests.post(
-            f"{GRAPH_BASE}/{page_id}/photos",
-            data={
-                "caption": message,
-                "published": "true",
-                "url": image_url,
-                "access_token": token,
-            },
-            timeout=60,
+        data = _publish_feed_with_photo(
+            page_id=page_id,
+            token=token,
+            message=message,
+            image_url=image_url,
         )
     else:
         if require_image:
@@ -140,8 +176,8 @@ def publish(content: dict, wp_link: str, dry_run: bool = False) -> dict:
             },
             timeout=30,
         )
-    _raise_with_body(resp)
-    data = resp.json()
+        _raise_with_body(resp)
+        data = resp.json()
     print(f"[Facebook] Posted: {data['id']}")
     return {"id": data["id"]}
 

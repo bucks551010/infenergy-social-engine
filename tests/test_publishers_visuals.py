@@ -88,15 +88,15 @@ class PublisherVisualTests(unittest.TestCase):
             author = publish_linkedin._resolve_author_urn()
         self.assertEqual(author, "urn:li:organization:12345")
 
-    def test_facebook_uses_photo_endpoint_when_visual_exists(self) -> None:
+    def test_facebook_attaches_generated_photo_to_feed_post(self) -> None:
         with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
             tmp.write(b"fakepng")
             image_path = tmp.name
         try:
-            response = Mock()
-            response.ok = True
-            response.json.return_value = {"id": "photo_123"}
-            response.raise_for_status.return_value = None
+            upload_response = Mock(ok=True)
+            upload_response.json.return_value = {"id": "photo_123"}
+            feed_response = Mock(ok=True)
+            feed_response.json.return_value = {"id": "page123_feed_456"}
 
             with patch.dict(
                 os.environ,
@@ -108,7 +108,7 @@ class PublisherVisualTests(unittest.TestCase):
             ), patch.object(publish_facebook, "_resolve_page_access_token", return_value="page_token"), patch.object(
                 publish_facebook.requests,
                 "post",
-                return_value=response,
+                side_effect=[upload_response, feed_response],
             ) as mock_post:
                 result = publish_facebook.publish(
                     {
@@ -119,19 +119,23 @@ class PublisherVisualTests(unittest.TestCase):
                     dry_run=False,
                 )
 
-            self.assertEqual(result["id"], "photo_123")
-            self.assertIn("/photos", mock_post.call_args.args[0])
+            self.assertEqual(result["id"], "page123_feed_456")
+            self.assertEqual(mock_post.call_count, 2)
+            self.assertIn("/photos", mock_post.call_args_list[0].args[0])
+            self.assertEqual(mock_post.call_args_list[0].kwargs["data"]["published"], "false")
+            self.assertIn("/feed", mock_post.call_args_list[1].args[0])
+            self.assertIn('"media_fbid": "photo_123"', mock_post.call_args_list[1].kwargs["data"]["attached_media"])
         finally:
             try:
                 os.remove(image_path)
             except OSError:
                 pass
 
-    def test_facebook_uses_photo_endpoint_with_product_image_url(self) -> None:
-        response = Mock()
-        response.ok = True
-        response.json.return_value = {"id": "photo_url_123"}
-        response.raise_for_status.return_value = None
+    def test_facebook_attaches_hosted_photo_to_feed_post(self) -> None:
+        upload_response = Mock(ok=True)
+        upload_response.json.return_value = {"id": "photo_url_123"}
+        feed_response = Mock(ok=True)
+        feed_response.json.return_value = {"id": "page123_feed_789"}
 
         with patch.dict(
             os.environ,
@@ -144,7 +148,7 @@ class PublisherVisualTests(unittest.TestCase):
         ), patch.object(publish_facebook, "_resolve_page_access_token", return_value="page_token"), patch.object(
             publish_facebook.requests,
             "post",
-            return_value=response,
+            side_effect=[upload_response, feed_response],
         ) as mock_post:
             result = publish_facebook.publish(
                 {
@@ -155,8 +159,13 @@ class PublisherVisualTests(unittest.TestCase):
                 dry_run=False,
             )
 
-        self.assertEqual(result["id"], "photo_url_123")
-        self.assertIn("/photos", mock_post.call_args.args[0])
+        self.assertEqual(result["id"], "page123_feed_789")
+        self.assertEqual(mock_post.call_count, 2)
+        self.assertIn("/photos", mock_post.call_args_list[0].args[0])
+        self.assertEqual(mock_post.call_args_list[0].kwargs["data"]["published"], "false")
+        self.assertEqual(mock_post.call_args_list[0].kwargs["data"]["url"], "https://example.com/product.png")
+        self.assertIn("/feed", mock_post.call_args_list[1].args[0])
+        self.assertIn('"media_fbid": "photo_url_123"', mock_post.call_args_list[1].kwargs["data"]["attached_media"])
 
     def test_facebook_raises_when_image_required_but_missing(self) -> None:
         with patch.dict(

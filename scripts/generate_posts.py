@@ -208,7 +208,15 @@ def _route_generate_orchestrator(
     takeaway = str(copy_pkg.get("takeaway") or copy_pkg.get("memory_anchor") or "").strip()
     selected_hook = str(copy_pkg.get("hook") or "").strip()
     selected_cta = str(copy_pkg.get("cta") or "Learn more").strip()
-    funnel_stage = _normalize_funnel_stage_override(funnel_stage_override) or "EDUCATION"
+    funnel_stage = _normalize_funnel_stage_override(funnel_stage_override)
+    if not funnel_stage:
+        funnel_stage = stage_for_slot(
+            slot,
+            history=load_history(),
+            funnel_config=load_funnel_config(),
+            schedule=load_channel_schedule(),
+            now_utc=datetime.now(timezone.utc),
+        ) if slot else "EDUCATION"
     from social import visual_contract
 
     strategy_lock = copy_pkg.get("strategy_lock") if isinstance(copy_pkg.get("strategy_lock"), dict) else {}

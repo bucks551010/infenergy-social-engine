@@ -83,6 +83,21 @@ def test_research_recovery_returns_structured_failure_without_upgrading_claim(mo
     assert outcome["failure"] == "NO_RELEVANT_SOURCE"
 
 
+def test_final_evidence_recomputation_clears_stale_research_requirement():
+    content = _research_blocked_content()
+    content["copy"].update({
+        "hook": "Start by listing the devices that matter most.",
+        "body_text": "A written priority list makes an outage plan easier to review.",
+        "takeaway": "Keep the list where your household can find it.",
+    })
+
+    readiness = run_engine._recompute_final_evidence(content)
+
+    assert readiness["status"] == "READY"
+    assert content["copy"]["evidence_readiness"] == readiness
+    assert content["claim_ledger"]["summary"]["total"] == 0
+
+
 def test_research_recovery_rejects_matched_unverified_public_evidence(monkeypatch, tmp_path):
     content = _research_blocked_content()
     monkeypatch.setenv("DATA_DIR", str(tmp_path))

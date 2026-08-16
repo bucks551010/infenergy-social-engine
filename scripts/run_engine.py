@@ -18,7 +18,7 @@ import publish_linkedin
 from score_content import score_content
 from social.publish_decision import decide as decide_publication
 from social.claim_intelligence import remove_unsupported_numeric_claims
-from social import strategy_lock as strategy_lock_intelligence
+from social import claim_governance, claim_intelligence, strategy_lock as strategy_lock_intelligence
 from social import memory_intelligence
 from social import creative_intelligence
 from social import platform_presentation, recovery
@@ -485,6 +485,46 @@ def _research_recovery(content: dict) -> dict:
     state["research_evidence"] = [*cached, *accepted][-100:]
     living_intelligence.save(data_dir, state)
     return {"status": "RESOLVED", "source": "public_research", "task": task.as_dict(), "evidence": accepted, "verified_facts": [claim]}
+
+
+def _recompute_final_evidence(content: dict) -> dict:
+    """Reassess the final candidate copy instead of retaining a draft ledger."""
+    copy = content.get("copy") if isinstance(content.get("copy"), dict) else {}
+    offering = content.get("anchored_offering") if isinstance(content.get("anchored_offering"), dict) else {}
+    brief = content.get("strategic_brief") if isinstance(content.get("strategic_brief"), dict) else {}
+    verified_facts = list(dict.fromkeys(
+        str(fact) for fact in (
+            list(content.get("product_metrics") or [])
+            + list(offering.get("verified_facts") or [])
+            + list(brief.get("verified_facts") or [])
+        ) if str(fact).strip()
+    ))
+    hook = str(copy.get("hook") or content.get("selected_hook") or "").strip()
+    body = str(copy.get("body_text") or "").strip()
+    takeaway = str(copy.get("takeaway") or copy.get("memory_anchor") or "").strip()
+    decision_insight = copy.get("decision_insight") if isinstance(copy.get("decision_insight"), dict) else {}
+    ledger = claim_intelligence.build_ledger(
+        " ".join(value for value in (hook, body, takeaway) if value),
+        verified_facts=verified_facts,
+        forbidden_claims=offering.get("forbidden_claims") or [],
+        source_concepts={
+            str(decision_insight.get("relationship") or ""): "decision_relationship",
+            str(decision_insight.get("decision_consequence") or ""): "decision_consequence",
+            hook: "hook_payoff",
+            takeaway: "takeaway",
+        },
+    )
+    readiness = claim_governance.assess(
+        ledger,
+        hook=hook,
+        decision_insight=decision_insight,
+        takeaway=takeaway,
+    )
+    content["claim_ledger"] = ledger.as_dict()
+    copy["evidence_readiness"] = readiness
+    content["copy"] = copy
+    content["evidence_readiness"] = readiness
+    return readiness
 
 
 def _semantic_difference(original: dict, replacement: dict) -> tuple[bool, str]:
@@ -1797,6 +1837,10 @@ def main() -> None:
         candidate_realization_count = candidate_realizations[candidate_key]
 
         # Conversion Logic Engine rule (spec section 23): below 80 CQS, automatically
+        # Revisions can remove the material claim that caused an earlier block.
+        # Always govern the copy that would actually be published.
+        _recompute_final_evidence(content)
+
         # attempt improvement before publishing rather than accepting a "warning"-only gate.
         cqs_total = float((content.get("conversion_quality_score") or {}).get("total", 100) or 100)
         publish_decision = decide_publication(

@@ -480,6 +480,38 @@ def _content_preview(preview_params: dict) -> dict:
     return content
 
 
+def _engine_a_product_field(excluded_product_ids: set[str]) -> dict:
+    """Inspect the autonomous Engine A product field without creating content."""
+    from business_intelligence import api as bi_api
+    from social import memory_intelligence, opportunity_engine
+
+    offerings = bi_api.get_business_profile().get("offerings", []) or []
+    eligible = [
+        offering for offering in offerings
+        if str(offering.get("offering_id") or offering.get("sku") or "") not in excluded_product_ids
+    ]
+    recent = memory_intelligence.recent(_data_dir(), limit=20)
+    opportunities = opportunity_engine.generate(
+        engine="A",
+        recent_pillars=recent.get("pillars", []),
+        recent_genres=recent.get("genres", []),
+        recent_topics=recent.get("topics", []),
+        recent_microtopics=recent.get("microtopics", []),
+        limit=12,
+    )
+    first_eligible = eligible[0] if eligible else {}
+    return {
+        "engine": "A",
+        "catalog_count": len(offerings),
+        "excluded_count": len(offerings) - len(eligible),
+        "eligible_product_count": len(eligible),
+        "products_considered": len(eligible),
+        "non_ppp_opportunity_count": len(opportunities),
+        "selected_product_id": str(first_eligible.get("offering_id") or first_eligible.get("sku") or ""),
+        "opportunity_ids": [candidate.candidate_id for candidate in opportunities],
+    }
+
+
 def _schedule_preview(days: int = 7) -> list[dict]:
     history = _load_json(os.path.join(_data_dir(), "post_history.json"), {"posts": []})
     schedule = load_channel_schedule()
@@ -876,6 +908,33 @@ class HealthHandler(BaseHTTPRequestHandler):
                 "status": "ok",
                 "time_utc": _utc_now(),
                 "preview": _content_preview(preview_params),
+            }
+            body = json.dumps(payload).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
+        if parsed.path == "/engine-a-product-field":
+            params = parse_qs(parsed.query)
+            authorized, status_code, error_payload = _authorized(params)
+            if not authorized:
+                body = json.dumps(error_payload).encode("utf-8")
+                self.send_response(status_code)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+                return
+            excluded = {
+                value.strip() for value in params.get("excluded_products", [""])[0].split(",") if value.strip()
+            }
+            payload = {
+                "status": "ok",
+                "time_utc": _utc_now(),
+                "field": _engine_a_product_field(excluded),
             }
             body = json.dumps(payload).encode("utf-8")
             self.send_response(200)

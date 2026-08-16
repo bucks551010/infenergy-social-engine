@@ -269,7 +269,7 @@ def _source_thoughts(paragraphs: list[str]) -> list[str]:
     thoughts: list[str] = []
     for paragraph in paragraphs:
         sentences = _sentences(paragraph)
-        if len(sentences) < 3:
+        if len(sentences) < 3 and not any("👉" in sentence for sentence in sentences):
             thoughts.append(paragraph)
         else:
             thoughts.extend(sentences)
@@ -344,6 +344,14 @@ def refine_caption(
             sanitized_parts.append(sanitized)
 
     body = _source_thoughts(sanitized_parts)
+    normalized_cta = _normalized_paragraph(cta)
+    body = [
+        part for part in body
+        if not (
+            "👉" in part
+            and _normalized_paragraph(re.sub(r"^(?:\s*👉\s*)+", "", part)) != normalized_cta
+        )
+    ]
 
     approved_specs = [
         str(spec).strip() for spec in (components.get("feature_bullets") or [])
@@ -353,7 +361,11 @@ def refine_caption(
     if approved_specs:
         spec_block = "⚡ Key specs\n" + "\n".join(f"• {spec}" for spec in approved_specs)
 
-    cta_parts = [part for part in body if cta and cta.lower() in part.lower()]
+    cta_parts = [
+        part for part in body
+        if normalized_cta
+        and _normalized_paragraph(re.sub(r"^(?:\s*👉\s*)+", "", part)) == normalized_cta
+    ]
     non_cta_parts = [part for part in body if part not in cta_parts]
     if non_cta_parts:
         hook, remaining = non_cta_parts[0], non_cta_parts[1:]
@@ -366,11 +378,13 @@ def refine_caption(
         ordered = benefit_opening + [hook] + lead + ([spec_block] if spec_block else []) + supporting
     else:
         ordered = benefit_opening + ([spec_block] if spec_block else [])
-    ordered.extend(f"👉 {re.sub(r'^(?:👉\s*)+', '', part).strip()}" for part in cta_parts)
+    ordered.extend(f"👉 {re.sub(r'^(?:\s*👉\s*)+', '', part).strip()}" for part in cta_parts)
     portfolio_tags, categories = _portfolio(components, platform, caption)
     selected_tags = list(dict.fromkeys(tags + [f"#{tag}" for tag in portfolio_tags]))[:20]
     hashtag_line = " ".join(selected_tags)
     refined = "\n\n".join(ordered + ([hashtag_line] if hashtag_line else []))
+    refined = re.sub(r"(?m)^\s+(👉)", r"\1", refined)
+    refined = re.sub(r"(?<!\n)\n👉", "\n\n👉", refined)
     optional_start = len(re.findall(r"\b[\w'-]+\b", "\n\n".join(ordered[:3]))) + 1 if len(ordered) > 3 else None
     presentation = _above_fold(refined, components, platform)
     presentation.update({
@@ -570,12 +584,26 @@ def format_caption(components: dict[str, Any], *, platform: str) -> tuple[str, d
     """Use one proof in copy; let a spec-carrying visual carry the rest."""
     hook, context, payoff, specs = _compact_parts(components, platform)
     cta = str(components.get("cta") or "Learn more").strip()
+    supporting_depth: list[str] = []
+    seen_depth = {_normalized_paragraph(value) for value in (hook, context) if value}
+    benefit = _normalized_paragraph(str(components.get("benefit_fragment") or ""))
+    for key in ("situation", "info", "use_case_line", "product_connection", "proof"):
+        value = str(components.get(key) or "").strip()
+        normalized = _normalized_paragraph(value)
+        if key == "proof" and not any(
+            marker in normalized
+            for marker in ("checked", "verified", "published", "compare", "supports", "because", "shows")
+        ):
+            continue
+        if value and normalized and normalized not in seen_depth and normalized != benefit:
+            seen_depth.add(normalized)
+            supporting_depth.append(value)
     if platform == "instagram":
-        caption = "\n\n".join(filter(None, [hook, context, payoff, cta, "#PortablePower #Preparedness #TravelPower"]))
+        caption = "\n\n".join(filter(None, [hook, context, payoff, *supporting_depth, cta, "#PortablePower #Preparedness #TravelPower"]))
     elif platform == "linkedin":
-        caption = "\n\n".join(filter(None, [hook, context, "The decision is less about accumulating specs and more about matching the supported job to the equipment you carry.", payoff, cta, "#PortablePower #Resilience #BusinessContinuity"]))
+        caption = "\n\n".join(filter(None, [hook, context, *supporting_depth, "The decision is less about accumulating specs and more about matching the supported job to the equipment you carry.", payoff, cta, "#PortablePower #Resilience #BusinessContinuity"]))
     else:
-        caption = "\n\n".join(filter(None, [hook, context, payoff, cta, "#PortablePower #Preparedness #BackupPower"]))
+        caption = "\n\n".join(filter(None, [hook, context, payoff, *supporting_depth, cta, "#PortablePower #Preparedness #BackupPower"]))
     caption, priority = refine_caption(
         caption,
         components=components,

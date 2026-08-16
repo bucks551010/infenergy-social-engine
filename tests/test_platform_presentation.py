@@ -41,7 +41,11 @@ def _components() -> dict:
         "logic_hook": "Traditional power bank or portable backup power: match the job first.",
         "benefit_fragment": "keeps compatible daily devices charged away from outlets",
         "emotional_outcome": "confidence through better preparation",
+        "situation": "A weak power bank can fail when its capacity and ports do not match the devices carried.",
+        "info": "Compare the real job against the published capacity and output before choosing.",
         "use_case_line": "Built for laptops, phones, cameras, travel, mobile work, and backup situations.",
+        "product_connection": "PowerPulse Pro 200 supports everyday charging backup using verified product details.",
+        "proof": "Checked against the published battery, port, and charging specifications.",
         "feature_bullets": [
             "154Wh and 41,600mAh for stored power",
             "200W AC and 110V output for compatible daily devices",
@@ -138,6 +142,20 @@ def test_benefit_opening_uses_only_approved_component_meaning():
     assert presentation["semantic_layer_evidence"]["human_outcome"] == components["emotional_outcome"]
 
 
+def test_format_caption_keeps_benefit_opening_and_restores_approved_depth():
+    components = _components()
+    improved, _ = platform_presentation.format_caption(components, platform="facebook")
+    first_two = platform_presentation._sentences(" ".join(improved.split("\n\n")[:2]))
+
+    assert first_two == [
+        "✨ PowerPulse Pro 200 keeps compatible daily devices charged away from outlets.",
+        "For you, that means confidence through better preparation.",
+    ]
+    for key in ("situation", "info", "use_case_line", "product_connection", "proof"):
+        assert components[key] in improved
+    assert improved.index("⚡ Key specs") < improved.index(components["use_case_line"])
+
+
 def test_product_free_caption_is_idempotent_and_never_invents_a_product():
     components = {
         "product_id": None,
@@ -165,6 +183,26 @@ def test_product_free_caption_is_idempotent_and_never_invents_a_product():
     assert "this product" not in twice.lower()
     assert "supporting proof for that decision" not in twice.lower()
     assert "remember:" not in twice.lower()
+
+
+def test_final_presentation_keeps_only_the_current_approved_cta():
+    components = _components()
+    caption = (
+        "Match portable power to the job.\n\n"
+        "👉 Keep it ready in your travel bag.\n\n"
+        "👉 Review the verified product details.\n\n"
+        "#PortablePower"
+    )
+
+    improved, _ = platform_presentation.refine_caption(
+        caption,
+        components=components,
+        platform="facebook",
+    )
+
+    assert "Keep it ready in your travel bag" not in improved
+    assert improved.count("👉 Review the verified product details.") == 1
+    assert "\n\n👉 Review the verified product details." in improved
 
 
 def test_presentation_preserves_existing_hashtags_and_semantics_across_platforms():

@@ -121,3 +121,40 @@ def select_replacement(
         considered.append({"rank": str(rank), "result": "selected", "reason": "highest_ranked_viable"})
         return candidate, considered
     return None, considered
+
+
+def verified_fact_opportunities(
+    *,
+    product_id: str,
+    product_name: str,
+    verified_facts: list[str],
+    limit: int = 3,
+) -> list[dict[str, Any]]:
+    """Build a small no-model field whose thesis is limited to owned facts."""
+    opportunities: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for fact in verified_facts:
+        normalized = " ".join(str(fact or "").split())
+        key = normalized.lower()
+        if len(normalized) < 8 or key in seen:
+            continue
+        seen.add(key)
+        rank = len(opportunities) + 1
+        opportunities.append({
+            "rank": rank,
+            "candidate_id": f"verified-fact:{product_id}:{rank}",
+            "product_id": product_id,
+            "product_name": product_name,
+            "verified_fact": normalized,
+            "question": f"Which published detail matters when comparing {product_name}?",
+            "angle": f"{product_name} lists {normalized}. Keep that published detail visible when reviewing the product.",
+            "human_reality": "comparing published product details",
+            "reader_job": "SAVE_ME_TIME",
+            "decision_thesis": f"Published product detail: {normalized}",
+            "content_mode": "VERIFIED_FACT_PRODUCT_EDUCATION",
+            "claim_burden_level": 0,
+            "opportunity_score": round(0.92 - ((rank - 1) * 0.03), 2),
+        })
+        if len(opportunities) >= limit:
+            break
+    return opportunities

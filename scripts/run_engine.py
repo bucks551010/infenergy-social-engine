@@ -366,6 +366,47 @@ def _remediation_context(content: dict, decision: dict, duplicates: dict) -> dic
     return {"original_candidate_id": str(content.get("post_id") or ""), "original_candidate_attempt_id": candidate_attempt_id, "original_concept": concept, "blocked_opportunity_fingerprint": blocked_fingerprint, "original_claim_ledger": content.get("claim_ledger") or {}, "original_evidence_readiness": readiness, "original_centrality_summary": {"central_unresolved": [str(claim.get("claim") or "") for claim in claims if isinstance(claim, dict) and claim.get("centrality") == "CENTRAL" and claim.get("research_status") == "RESEARCH_REQUIRED"], "status": str(readiness.get("status") or "")}, "remediation_reason": "central_evidence_block_requires_new_opportunity", "blocked_content_mode": blocked_content_mode, "fallback_type": "CONTENT_MODE_SHIFT" if replacement else "NO_VIABLE_LOW_CLAIM_MODE", "excluded_concepts": [value for value in concept.values() if value], "excluded_product_ids": excluded_product_ids, "exclude_engine_a_decision_thesis": True, "selection_rotation_index": int(content.get("selection_rotation_index") or 0) + 1, "candidate_attempt_id": f"{content.get('post_id')}:candidate-2", "original_governance": decision, "opportunity_shortlist": shortlist, "replacement_candidate": replacement, "alternatives_considered": alternatives_considered}
 
 
+def _verified_facts_only_recovery_context(content: dict, remediation: dict) -> dict:
+    """Create a same-product alternative only from facts the owner has already verified."""
+    offering = content.get("anchored_offering") if isinstance(content.get("anchored_offering"), dict) else {}
+    brief = content.get("strategic_brief") if isinstance(content.get("strategic_brief"), dict) else {}
+    facts = list(dict.fromkeys(
+        str(fact).strip()
+        for fact in [
+            *(content.get("product_metrics") or []),
+            *(offering.get("verified_facts") or []),
+            *(brief.get("verified_facts") or []),
+        ]
+        if str(fact).strip()
+    ))
+    field = recovery.verified_fact_opportunities(
+        product_id=str(content.get("product_id") or ""),
+        product_name=str(content.get("product_name") or content.get("product_id") or "the product"),
+        verified_facts=facts,
+    )
+    original = remediation.get("original_concept") if isinstance(remediation.get("original_concept"), dict) else _remediation_concept(content)
+    considered: list[dict[str, str]] = []
+    selected: dict | None = None
+    for opportunity in field:
+        materially_different, reason = _semantic_difference(original, opportunity)
+        considered.append({"candidate_id": str(opportunity.get("candidate_id") or ""), "result": "selected" if materially_different else "skipped", "reason": reason})
+        if materially_different:
+            selected = opportunity
+            break
+    return {
+        **remediation,
+        "recovery_mode": "VERIFIED_FACTS_ONLY_RECOVERY",
+        "fallback_type": "VERIFIED_FACTS_ONLY" if selected else "NO_VIABLE_VERIFIED_FACT_OPPORTUNITY",
+        "verified_fact_opportunities": field,
+        "verified_fact_opportunities_considered": considered,
+        "verified_fact_opportunity": selected,
+        "excluded_concepts": [],
+        "replacement_candidate": None,
+        "exclude_engine_a_decision_thesis": True,
+        "candidate_attempt_id": f"{content.get('post_id')}:verified-facts-only",
+    }
+
+
 def _quality_recovery_context(content: dict, decision: dict, duplicates: dict) -> dict:
     """Retire a weak premise after its bounded copy work and continue the retained bench."""
     context = _remediation_context(content, decision, duplicates)
@@ -2078,6 +2119,30 @@ def main() -> None:
                 remediation_context = _remediation_context(content, publish_decision, duplicates)
                 replacement_candidate = remediation_context.get("replacement_candidate")
                 if not isinstance(replacement_candidate, dict):
+                    verified_facts_context = _verified_facts_only_recovery_context(content, remediation_context)
+                    verified_fact_opportunity = verified_facts_context.get("verified_fact_opportunity")
+                    if isinstance(verified_fact_opportunity, dict):
+                        remediation_context = verified_facts_context
+                        recovery_story.update({
+                            "candidate_a": _candidate_audit(content),
+                            "candidate_a_rank": 1,
+                            "candidate_a_blockers": list(dict.fromkeys(failure_reasons)),
+                            "classification": "VERIFIED_FACTS_ONLY_RECOVERY",
+                            "candidate_b_selected": True,
+                            "candidate_b_rank": verified_fact_opportunity.get("rank"),
+                            "alternatives_considered": verified_facts_context.get("verified_fact_opportunities_considered", []),
+                        })
+                        pending_feedback = [
+                            "Create a new product-centered opportunity from the selected verified fact only.",
+                            "Do not estimate runtime, infer compatibility, performance, safety, superiority, or repeat the blocked premise.",
+                            "Use the published fact for a concrete, humanly relevant product-detail comparison without adding unsupported consequences.",
+                        ]
+                        pending_scope = "strategy"
+                        prior_generated_visuals = {}
+                        locked_strategy = {}
+                        locked_product_id = str(content.get("product_id") or "")
+                        candidate_identity_reset = True
+                        continue
                     recovery_story.update({
                         "candidate_a": _candidate_audit(content),
                         "candidate_a_rank": 1,

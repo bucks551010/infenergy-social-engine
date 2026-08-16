@@ -172,6 +172,30 @@ def test_remediation_context_clears_candidate_a_state_and_advances_selection():
     assert "Check output before reserve." in remediation["excluded_concepts"]
 
 
+def test_verified_facts_only_recovery_uses_same_product_without_reusing_blocked_premise():
+    content = {
+        "post_id": "candidate-a",
+        "product_id": "PF-150W",
+        "product_name": "PowerFlex 150W Portable Laptop Charger",
+        "product_metrics": ["Published 150W output", "Published 177.6Wh stored energy"],
+        "copy": {
+            "hook": "What does mAh actually mean?",
+            "takeaway": "Check output and connection before reserve.",
+            "strategy_lock": {"angle": "Check output before reserve.", "customer_moment": "before a trip"},
+            "decision_insight": {"relationship": "Output and connection determine support before stored capacity."},
+        },
+    }
+    remediation = run_engine._remediation_context(content, {"decision": "do_not_publish"}, {"ok": True})
+
+    recovered = run_engine._verified_facts_only_recovery_context(content, remediation)
+
+    assert recovered["recovery_mode"] == "VERIFIED_FACTS_ONLY_RECOVERY"
+    assert recovered["verified_fact_opportunity"]["product_id"] == "PF-150W"
+    assert recovered["verified_fact_opportunity"]["verified_fact"] == "Published 150W output"
+    assert recovered["verified_fact_opportunities_considered"][0]["result"] == "selected"
+    assert recovered["excluded_concepts"] == []
+
+
 def test_replacement_selector_rejects_powerpulse_before_trip_fit_reserve_paraphrase():
     blocked = {
         "product_id": "PPP-200", "question": "Can I trust airport outlets?", "angle": "Establish fit before reserve.",

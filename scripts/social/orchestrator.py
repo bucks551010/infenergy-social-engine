@@ -114,6 +114,28 @@ def _bi_verified_facts(ctx: dict[str, Any] | None) -> list[str]:
     return list(ctx.get("verified_facts", []))
 
 
+def _apply_verified_fact_opportunity(brief: engines.EngineBrief, remediation: dict[str, Any]) -> None:
+    opportunity = remediation.get("verified_fact_opportunity")
+    if not isinstance(opportunity, dict):
+        return
+    fact = str(opportunity.get("verified_fact") or "").strip()
+    if not fact:
+        return
+    brief.question = str(opportunity.get("question") or brief.question)
+    brief.angle = str(opportunity.get("angle") or brief.angle)
+    brief.curiosity = str(opportunity.get("human_reality") or brief.curiosity)
+    brief.reader_job = str(opportunity.get("reader_job") or brief.reader_job)
+    brief.topic_path = {
+        **brief.topic_path,
+        "topic": str(opportunity.get("product_name") or brief.topic_path.get("topic") or "Product details"),
+        "microtopic": fact,
+        "angle": brief.angle,
+    }
+    brief.opportunity_score = float(opportunity.get("opportunity_score") or brief.opportunity_score)
+    brief.opportunity_shortlist = list(remediation.get("verified_fact_opportunities") or [opportunity])
+    brief.rationale.append("verified_facts_only_recovery")
+
+
 def _bi_forbidden_claims(ctx: dict[str, Any] | None) -> list[str]:
     if not ctx:
         return []
@@ -807,6 +829,7 @@ class SocialIntelligenceOrchestrator:
             rotation_index=rotation_index,
             selected_opportunity_id=str((selected_opportunity or {}).get("opportunity_id") or ""),
         )
+        _apply_verified_fact_opportunity(brief, remediation)
         if competitive_pool:
             brief.opportunity_shortlist = competitive_pool
             brief.rationale.append(f"global_opportunity_competition:selected={selected_opportunity.get('candidate_id', '')}")

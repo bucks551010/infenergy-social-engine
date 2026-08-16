@@ -159,10 +159,26 @@ def test_product_free_selection_randomizes_only_within_the_quality_band(monkeypa
     weak = candidate(0.99, novelty=0.2)
     monkeypatch.setattr(orchestrator.secrets.SystemRandom, "choice", lambda self, band: band[-1])
 
-    selected, band = orchestrator._quality_gated_product_free_opportunity([high_a, high_b, weak])
+    selected, band, fallback_used = orchestrator._quality_gated_product_free_opportunity([high_a, high_b, weak])
 
     assert band == [high_a, high_b]
     assert selected is high_b
+    assert fallback_used is False
+
+
+def test_product_free_selection_uses_best_safe_engine_b_candidate_when_quality_band_is_empty():
+    candidate = SimpleNamespace(total=0.62, scores={
+        "novelty": 0.4,
+        "usefulness": 0.9,
+        "platform_fit": 0.7,
+        "visual_potential": 0.85,
+    })
+
+    selected, band, fallback_used = orchestrator._quality_gated_product_free_opportunity([candidate])
+
+    assert selected is candidate
+    assert band == [candidate]
+    assert fallback_used is True
 
 
 def test_orchestrator_bridge_passes_council_strategy_to_generation(monkeypatch):

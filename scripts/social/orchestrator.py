@@ -163,8 +163,8 @@ def _category_to_pillar(category: str) -> str | None:
     return _CATEGORY_PILLAR_MAP.get(str(category or "").strip().lower())
 
 
-def _quality_gated_product_free_opportunity(candidates: list[Any]) -> tuple[Any, list[Any]]:
-    """Choose randomly only after product-free opportunities clear quality gates."""
+def _quality_gated_product_free_opportunity(candidates: list[Any]) -> tuple[Any, list[Any], bool]:
+    """Choose a product-free opportunity, retaining a governed fallback field."""
     eligible = [
         candidate for candidate in candidates
         if float(candidate.scores.get("novelty", 0.0)) >= 0.5
@@ -173,10 +173,13 @@ def _quality_gated_product_free_opportunity(candidates: list[Any]) -> tuple[Any,
         and float(candidate.scores.get("visual_potential", 0.0)) >= 0.5
     ]
     if not eligible:
-        raise RuntimeError("no viable opportunities generated")
+        if not candidates:
+            raise RuntimeError("no viable opportunities generated")
+        best = max(candidates, key=lambda candidate: float(candidate.total))
+        return best, [best], True
     best_score = max(float(candidate.total) for candidate in eligible)
     band = [candidate for candidate in eligible if float(candidate.total) >= best_score - 0.08]
-    return secrets.SystemRandom().choice(band), band
+    return secrets.SystemRandom().choice(band), band, False
 
 
 def _build_engine_brief(
@@ -812,12 +815,12 @@ class SocialIntelligenceOrchestrator:
                 excluded_concepts=excluded_concepts,
                 limit=8,
             )
-            selected_candidate, quality_band = _quality_gated_product_free_opportunity(product_free_candidates)
+            selected_candidate, quality_band, quality_fallback_used = _quality_gated_product_free_opportunity(product_free_candidates)
             selected_opportunity = {
                 **recovery.compact_candidate(selected_candidate, 1),
-                "candidate_id": "B:product_free_random_band",
+                "candidate_id": "B:product_free_fallback" if quality_fallback_used else "B:product_free_random_band",
                 "engine": "B",
-                "selection_method": "quality_gated_random_band",
+                "selection_method": "quality_gated_fallback" if quality_fallback_used else "quality_gated_random_band",
                 "eligible_band_size": len(quality_band),
             }
             competitive_pool = [

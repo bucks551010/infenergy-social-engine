@@ -40,17 +40,26 @@ def _portfolio(components: dict[str, Any], platform: str, source: str) -> tuple[
     categories: dict[str, list[str]] = {
         "brand": ["InfenergyPower"],
         "product": [product] if product else [],
-        "category": ["PortablePower", "BackupPower"],
+        "category": ["PortablePower", "BackupPower", "MobilePower", "PowerOnTheGo", "PortableEnergy"],
         "use_case": [],
-        "audience_situation": ["Preparedness"],
-        "discovery": ["StayPowered"],
+        "audience_situation": ["Preparedness", "PowerPreparedness"],
+        "discovery": ["StayPowered", "EnergyIndependence", "PowerSolutions", "EverydayPower", "PowerPlanning"],
     }
     keyword_tags = {
+        "phone": "MobileCharging",
         "laptop": "LaptopPower",
         "camera": "CameraGear",
+        "drone": "DronePower",
         "travel": "TravelPower",
         "mobile work": "MobileWork",
+        "mobile office": "MobileOffice",
+        "remote work": "RemoteWork",
+        "professional": "ProfessionalGear",
+        "power bank": "PowerBank",
+        "wall outlet": "AwayFromTheOutlet",
+        "daily devices": "DeviceCharging",
         "outage": "PowerOutage",
+        "off-grid": "OffGridPower",
         "emergency": "EmergencyPreparedness",
         "adventure": "AdventureReady",
     }
@@ -59,15 +68,14 @@ def _portfolio(components: dict[str, Any], platform: str, source: str) -> tuple[
             categories["use_case"].append(tag)
 
     if platform == "linkedin":
-        categories["discovery"] = ["Resilience"]
+        categories["discovery"].append("Resilience")
 
     tags: list[str] = []
     for values in categories.values():
         for value in values:
             if value and value not in tags:
                 tags.append(value)
-    limit = 5 if platform == "linkedin" else 15
-    return tags[:limit], categories
+    return tags[:20], categories
 
 
 def _above_fold(caption: str, components: dict[str, Any], platform: str) -> dict[str, Any]:
@@ -327,7 +335,9 @@ def refine_caption(
     else:
         ordered = [spec_block] if spec_block else []
     ordered.extend(f"👉 {part}" for part in cta_parts)
-    hashtag_line = " ".join(dict.fromkeys(tags))
+    portfolio_tags, categories = _portfolio(components, platform, caption)
+    selected_tags = list(dict.fromkeys(tags + [f"#{tag}" for tag in portfolio_tags]))[:20]
+    hashtag_line = " ".join(selected_tags)
     refined = "\n\n".join(ordered + ([hashtag_line] if hashtag_line else []))
     optional_start = len(re.findall(r"\b[\w'-]+\b", "\n\n".join(ordered[:3]))) + 1 if len(ordered) > 3 else None
     presentation = _above_fold(refined, components, platform)
@@ -335,11 +345,11 @@ def refine_caption(
         "priority_layers": ["hook", "product_and_proof", "supporting_depth", "action", "discovery"],
         "contrast_explained": False,
         "contrast_paragraph_count": 0,
-        "selected_hashtags": list(dict.fromkeys(tags)),
-        "hashtag_categories": {},
-        "hashtag_target_density": "preserved from approved source copy",
-        "hashtag_relevance_score": 1.0 if tags else 0.0,
-        "hashtag_reason": "preserved from approved source copy",
+        "selected_hashtags": selected_tags,
+        "hashtag_categories": categories,
+        "hashtag_target_density": "20 grounded tags",
+        "hashtag_relevance_score": 1.0 if selected_tags else 0.0,
+        "hashtag_reason": "existing tags plus brand, product, category, and stated copy context",
         "optional_depth_present": len(ordered) > 3,
         "optional_depth_start_word": optional_start,
         "spec_sales_intelligence": "PASS" if spec_block or any(_numeric_proof_tokens(part) for part in ordered) else "NOT_APPLICABLE",

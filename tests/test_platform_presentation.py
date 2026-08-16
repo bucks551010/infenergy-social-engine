@@ -77,7 +77,10 @@ def test_powerpulse_fixture_front_loads_value_without_losing_sales_depth():
     assert "outages and off-grid use" in improved
     assert "Invite a practical response" not in improved
     assert "Reader job" not in improved
-    assert presentation["selected_hashtags"] == ["#PortablePower", "#BackupPower", "#TravelPower", "#Preparedness"]
+    assert len(presentation["selected_hashtags"]) == 20
+    assert "#TravelPower" in presentation["selected_hashtags"]
+    assert "#MobileOffice" in presentation["selected_hashtags"]
+    assert "#RemoteWork" in presentation["selected_hashtags"]
     assert presentation["optional_depth_present"]
     assert improved.count("Review the verified product details.") == 1
     assert "👉 Review the verified product details." in improved
@@ -105,7 +108,10 @@ def test_dense_single_paragraph_becomes_readable_without_losing_approved_sentenc
     assert len(improved.split("\n\n")) >= 6
     assert improved.index("PowerPulse Pro 200") < improved.index("Mobile professionals")
     assert improved.index("⚡ Key specs") < improved.index("The deeper decision")
-    assert improved.endswith("#PortablePower #Preparedness")
+    hashtag_line = improved.split("\n\n")[-1]
+    assert hashtag_line.startswith("#PortablePower #Preparedness")
+    assert len(hashtag_line.split()) == 20
+    assert len(set(hashtag_line.split())) == 20
 
 
 def test_presentation_preserves_existing_hashtags_and_semantics_across_platforms():
@@ -113,11 +119,17 @@ def test_presentation_preserves_existing_hashtags_and_semantics_across_platforms
     instagram_caption, instagram = platform_presentation.refine_caption(POWERPULSE_ORIGINAL, components=_components(), platform="instagram")
     linkedin_caption, linkedin = platform_presentation.refine_caption(POWERPULSE_ORIGINAL, components=_components(), platform="linkedin")
 
-    expected_tags = ["#PortablePower", "#BackupPower", "#TravelPower", "#Preparedness"]
-    assert facebook["selected_hashtags"] == expected_tags
-    assert instagram["selected_hashtags"] == expected_tags
-    assert linkedin["selected_hashtags"] == expected_tags
-    assert facebook_caption == instagram_caption == linkedin_caption
+    original_tags = {"#PortablePower", "#BackupPower", "#TravelPower", "#Preparedness"}
+    assert original_tags.issubset(facebook["selected_hashtags"])
+    assert original_tags.issubset(instagram["selected_hashtags"])
+    assert original_tags.issubset(linkedin["selected_hashtags"])
+    assert len(facebook["selected_hashtags"]) == 20
+    assert len(instagram["selected_hashtags"]) == 20
+    assert len(linkedin["selected_hashtags"]) == 20
+    assert len(set(facebook["selected_hashtags"])) == 20
+    assert "#MobileOffice" in facebook_caption
+    assert "#TravelPower" in instagram_caption
+    assert "#RemoteWork" in linkedin_caption
     assert "standard portable banks fall short" in facebook_caption.lower()
     assert facebook["platform_expression"] == "source_preserving_priority_editorial"
 

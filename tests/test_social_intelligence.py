@@ -843,6 +843,36 @@ def test_manual_engine_a_retries_neutral_field_after_product_target_exhaustion()
     assert calls[1]["excluded_concepts"] == ["prior attempt"]
 
 
+def test_autonomous_engine_a_retries_neutral_field_after_product_target_exhaustion():
+    calls = []
+
+    class Engine:
+        def build(self, **kwargs):
+            calls.append(kwargs)
+            if kwargs["audience_hint"]:
+                raise RuntimeError("no viable opportunities generated")
+            return "brief"
+
+    result = orchestrator._build_engine_brief(
+        Engine(),
+        engine_name="A",
+        preferred_engine=None,
+        recent={},
+        audience_hint="household",
+        seasonal_context=None,
+        preferred_pillar="portable_power",
+        excluded_concepts=["prior attempt"],
+        rotation_index=0,
+        selected_opportunity_id="",
+    )
+
+    assert result == "brief"
+    assert len(calls) == 2
+    assert calls[1]["audience_hint"] is None
+    assert calls[1]["preferred_pillar"] is None
+    assert calls[1]["excluded_concepts"] == ["prior attempt"]
+
+
 # --- copy intelligence ----------------------------------------------------
 
 

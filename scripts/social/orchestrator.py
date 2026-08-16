@@ -207,7 +207,6 @@ def _build_engine_brief(
     except RuntimeError as exc:
         if (
             engine_name == "A"
-            and preferred_engine
             and str(exc) == "no viable opportunities generated"
             and (audience_hint or preferred_pillar)
         ):

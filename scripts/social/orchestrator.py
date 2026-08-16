@@ -836,8 +836,12 @@ class SocialIntelligenceOrchestrator:
                 rotation_index=rotation_index,
             )
             if not competitive_pool:
-                raise RuntimeError("no viable opportunities generated")
-            selected_opportunity = competitive_pool[0]
+                # Scheduled default runs must still try the neutral product
+                # field before declaring the campaign exhausted.
+                preferred_engine = "A"
+                selected_opportunity = None
+            else:
+                selected_opportunity = competitive_pool[0]
         engine_name = str((selected_opportunity or {}).get("engine") or preferred_engine or _pick_engine(rotation_index)).upper()
         engine = engines.get_engine(engine_name)
 

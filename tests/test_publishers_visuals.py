@@ -23,7 +23,7 @@ from generate_posts import (  # noqa: E402
     _model_caption_overrides,
     _product_copy_profile,
 )
-from run_engine import _build_phase5_channel_readiness, _live_visual_gate_errors  # noqa: E402
+from run_engine import _apply_strategy_platform_selection, _build_phase5_channel_readiness, _live_visual_gate_errors  # noqa: E402
 from social import visual_contract  # noqa: E402
 from social_visuals import (  # noqa: E402
     _build_gemini_image_prompt,
@@ -54,6 +54,20 @@ class PublisherVisualTests(unittest.TestCase):
         self.assertEqual(readiness["checks"]["linkedin"]["status"], "green")
         mock_headers.assert_called_once_with()
         self.assertEqual(mock_get.call_args.kwargs["headers"]["LinkedIn-Version"], "202401")
+
+    def test_manual_platform_override_retains_linkedin_when_strategy_skips_it(self) -> None:
+        channels = {"facebook": True, "instagram": True, "linkedin": True}
+        reasons = {}
+
+        _apply_strategy_platform_selection(
+            channels,
+            reasons,
+            {"linkedin": {"selected": False}},
+            ["facebook", "instagram", "linkedin"],
+        )
+
+        self.assertTrue(channels["linkedin"])
+        self.assertNotIn("linkedin", reasons)
 
     def test_normalize_brand_text(self) -> None:
         text = "INF Energy Power helps INF Energy customers. #InfEnergyPower"

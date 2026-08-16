@@ -185,6 +185,20 @@ def _refresh_linkedin_access_token_if_configured() -> tuple[bool, str]:
         return False, f"refresh_exception:{e}"
 
 
+def _apply_strategy_platform_selection(
+    effective_channels: dict[str, bool],
+    channel_reasons: dict[str, str],
+    platform_selection: dict,
+    manual_platforms: list[str],
+) -> None:
+    manual = {str(platform).strip().lower() for platform in manual_platforms}
+    for platform in ("facebook", "instagram", "linkedin"):
+        selection = platform_selection.get(platform) if isinstance(platform_selection.get(platform), dict) else {}
+        if effective_channels.get(platform) and selection.get("selected") is False and platform not in manual:
+            effective_channels[platform] = False
+            channel_reasons[platform] = "strategy_platform_not_appropriate"
+
+
 def _build_phase5_channel_readiness(effective_channels: dict[str, bool], dry_run: bool) -> dict:
     checks: dict[str, dict] = {}
 
@@ -1678,11 +1692,7 @@ def main() -> None:
         channel_reasons[name] = reason
 
     platform_selection = preview_content.get("platform_selection") if isinstance(preview_content.get("platform_selection"), dict) else {}
-    for platform in ("facebook", "instagram", "linkedin"):
-        selection = platform_selection.get(platform) if isinstance(platform_selection.get(platform), dict) else {}
-        if effective_channels.get(platform) and selection.get("selected") is False:
-            effective_channels[platform] = False
-            channel_reasons[platform] = "strategy_platform_not_appropriate"
+    _apply_strategy_platform_selection(effective_channels, channel_reasons, platform_selection, manual_platforms)
 
     phase5_readiness = _build_phase5_channel_readiness(effective_channels, dry_run)
     for platform in phase5_readiness.get("blocking_channels", []):

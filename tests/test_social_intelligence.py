@@ -181,6 +181,34 @@ def test_product_free_selection_uses_best_safe_engine_b_candidate_when_quality_b
     assert fallback_used is True
 
 
+def test_product_free_selection_rebuilds_neutral_field_when_context_exhausts_candidates(monkeypatch):
+    candidate = SimpleNamespace(total=0.8, scores={
+        "novelty": 0.9,
+        "usefulness": 0.9,
+        "platform_fit": 0.7,
+        "visual_potential": 0.85,
+    })
+    calls = []
+
+    def generate(**kwargs):
+        calls.append(kwargs)
+        return [] if len(calls) == 1 else [candidate]
+
+    monkeypatch.setattr(orchestrator.opportunity_engine, "generate", generate)
+
+    candidates, neutral_field_rebuilt = orchestrator._product_free_opportunity_candidates(
+        recent={"topics": ["Batteries"]},
+        audience_hint="mobile_professional",
+        seasonal_context="storm season",
+        preferred_pillar="portable_power",
+        excluded_concepts=["Batteries"],
+    )
+
+    assert candidates == [candidate]
+    assert neutral_field_rebuilt is True
+    assert calls[1] == {"engine": "B", "limit": 8}
+
+
 def test_orchestrator_bridge_passes_council_strategy_to_generation(monkeypatch):
     approved = {
         "audience": "preparedness household", "customer_moment": "storm outage", "human_need": "confidence",

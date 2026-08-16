@@ -182,6 +182,32 @@ def _quality_gated_product_free_opportunity(candidates: list[Any]) -> tuple[Any,
     return secrets.SystemRandom().choice(band), band, False
 
 
+def _product_free_opportunity_candidates(
+    *,
+    recent: dict[str, Any],
+    audience_hint: str | None,
+    seasonal_context: str | None,
+    preferred_pillar: str | None,
+    excluded_concepts: list[str],
+) -> tuple[list[Any], bool]:
+    """Rebuild a neutral Engine B field when attempt exclusions exhaust it."""
+    candidates = opportunity_engine.generate(
+        engine="B",
+        recent_pillars=recent.get("pillars", []),
+        recent_genres=recent.get("genres", []),
+        recent_topics=recent.get("topics", []),
+        recent_microtopics=recent.get("microtopics", []),
+        audience_hint=audience_hint,
+        seasonal_context=seasonal_context,
+        preferred_pillar=preferred_pillar,
+        excluded_concepts=excluded_concepts,
+        limit=8,
+    )
+    if candidates:
+        return candidates, False
+    return opportunity_engine.generate(engine="B", limit=8), True
+
+
 def _build_engine_brief(
     engine: Any,
     *,
@@ -803,24 +829,19 @@ class SocialIntelligenceOrchestrator:
             competitive_pool = list(remediation.get("opportunity_shortlist") or [])
             selected_opportunity = selected_replacement
         elif require_product_free:
-            product_free_candidates = opportunity_engine.generate(
-                engine="B",
-                recent_pillars=recent.get("pillars", []),
-                recent_genres=recent.get("genres", []),
-                recent_topics=recent.get("topics", []),
-                recent_microtopics=recent.get("microtopics", []),
+            product_free_candidates, neutral_field_rebuilt = _product_free_opportunity_candidates(
+                recent=recent,
                 audience_hint=audience_hint,
                 seasonal_context=seasonal_context,
                 preferred_pillar=preferred_pillar,
                 excluded_concepts=excluded_concepts,
-                limit=8,
             )
             selected_candidate, quality_band, quality_fallback_used = _quality_gated_product_free_opportunity(product_free_candidates)
             selected_opportunity = {
                 **recovery.compact_candidate(selected_candidate, 1),
-                "candidate_id": "B:product_free_fallback" if quality_fallback_used else "B:product_free_random_band",
+                "candidate_id": "B:product_free_neutral_field" if neutral_field_rebuilt else ("B:product_free_fallback" if quality_fallback_used else "B:product_free_random_band"),
                 "engine": "B",
-                "selection_method": "quality_gated_fallback" if quality_fallback_used else "quality_gated_random_band",
+                "selection_method": "neutral_field_rebuild" if neutral_field_rebuilt else ("quality_gated_fallback" if quality_fallback_used else "quality_gated_random_band"),
                 "eligible_band_size": len(quality_band),
             }
             competitive_pool = [

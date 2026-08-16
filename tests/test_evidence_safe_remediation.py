@@ -148,6 +148,22 @@ def test_remediation_attempt_is_bounded_and_research_findings_stay_terminal_afte
     assert "RESEARCH_REQUIRED" not in run_engine._evidence_safe_remediation_feedback({"product_id": "PPP-200"})[-1]
 
 
+def test_duplicate_product_recovery_retires_the_blocked_product_for_next_opportunity():
+    content = {"post_id": "candidate-a", "product_id": "PCP-5IN1", "selection_rotation_index": 1}
+
+    recovery = run_engine._next_product_recovery_context(
+        content,
+        {"excluded_product_ids": ["PPP-200"]},
+        "duplicate_product_within_window",
+    )
+
+    assert recovery["recovery_mode"] == "NEXT_ELIGIBLE_PRODUCT"
+    assert recovery["excluded_product_ids"] == ["PPP-200", "PCP-5IN1"]
+    assert recovery["retired_products"] == [
+        {"product_id": "PCP-5IN1", "reason": "duplicate_product_within_window"}
+    ]
+
+
 def test_paraphrase_of_blocked_concept_is_not_a_remediation():
     original = {"question": "Can I trust airport outlets?", "angle": "Establish fit before reserve.", "decision_thesis": "Output and connection determine support before stored capacity.", "payoff": "Compare output before reserve.", "human_reality": "before a trip"}
     paraphrase = {"question": "Will this airport outlet support my gear?", "angle": "Check compatibility before battery reserve.", "decision_thesis": "Output and connection decide support before capacity.", "payoff": "Compare available output before stored reserve.", "human_reality": "airport travel"}

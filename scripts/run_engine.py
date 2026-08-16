@@ -2258,6 +2258,35 @@ def main() -> None:
         if publish_decision["publishable"]:
             break
 
+        if (
+            "duplicate_product_within_window" in duplicates.get("reasons", [])
+            and not product_id_override
+            and idx + 1 < decision_budget
+        ):
+            remediation_context = _next_product_recovery_context(
+                content,
+                remediation_context or {},
+                "duplicate_product_within_window",
+            )
+            recovery_story.setdefault("products_retired", []).append({
+                "product_id": str(content.get("product_id") or ""),
+                "reason": "duplicate_product_within_window",
+            })
+            recovery_story["classification"] = "NEXT_ELIGIBLE_PRODUCT"
+            pending_feedback = [
+                "Select a new eligible product with a materially different, verified-facts-only opportunity.",
+                "Do not reuse the duplicate product, its blocked premise, or unsupported technical consequences.",
+            ]
+            pending_scope = "strategy"
+            prior_generated_visuals = {}
+            locked_strategy = {}
+            locked_product_id = ""
+            evidence_remediation_used = False
+            research_recovery_used = False
+            research_verified_facts = []
+            candidate_identity_reset = True
+            continue
+
         verified_facts_recovery = str((remediation_context or {}).get("recovery_mode") or "") == "VERIFIED_FACTS_ONLY_RECOVERY"
         if research_required and evidence_remediation_used and not verified_facts_recovery and idx + 1 < decision_budget:
             remediation_context = _next_evidence_safe_context(content, remediation_context or _remediation_context(content, publish_decision, duplicates))

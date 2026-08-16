@@ -636,6 +636,32 @@ def _assemble_copy(*, brief: engines.EngineBrief, structure_beats: list[str]) ->
     return {b: templates.get(b, "") for b in structure_beats}
 
 
+def _assemble_verified_fact_recovery_copy(
+    *,
+    brief: engines.EngineBrief,
+    structure_beats: list[str],
+    verified_fact: str,
+) -> dict[str, str]:
+    """Build a fact-scoped recovery candidate without reopening claim generation."""
+    disclosure = f"Published specification: {verified_fact}."
+    review_prompt = "Keep that published detail visible when reviewing the product."
+    templates = {
+        "hook": brief.question,
+        "question": brief.question,
+        "answer": disclosure,
+        "explanation": disclosure,
+        "example": review_prompt,
+        "takeaway": review_prompt,
+        "lesson": review_prompt,
+        "application": review_prompt,
+        "what_to_do": review_prompt,
+        "implication": review_prompt,
+        "why": disclosure,
+        "what_happens": review_prompt,
+    }
+    return {beat: str(templates.get(beat, review_prompt)).strip() for beat in structure_beats}
+
+
 # --- Pipeline result -------------------------------------------------------
 
 
@@ -943,12 +969,21 @@ class SocialIntelligenceOrchestrator:
         # template assembly as the network-free fallback (§15 Copy Architect).
         beats = copy_intelligence.structure_for(brief.genre)
         revision_objectives = _revision_objectives(revision_feedback, locked)
-        llm_beats = _llm_copy_beats(
-            brief, beats, bi_ctx, bi_offering,
-            creative_packet["SELECTED_ANSWER"]["copy_logic"],
-            revision_objectives,
-        )
-        beat_content = llm_beats or _assemble_copy(brief=brief, structure_beats=beats)
+        strict_verified_fact_recovery = isinstance(verified_fact_opportunity, dict) and bool(selected_fact)
+        if strict_verified_fact_recovery:
+            beat_content = _assemble_verified_fact_recovery_copy(
+                brief=brief,
+                structure_beats=beats,
+                verified_fact=selected_fact,
+            )
+            llm_beats = None
+        else:
+            llm_beats = _llm_copy_beats(
+                brief, beats, bi_ctx, bi_offering,
+                creative_packet["SELECTED_ANSWER"]["copy_logic"],
+                revision_objectives,
+            )
+            beat_content = llm_beats or _assemble_copy(brief=brief, structure_beats=beats)
         decision_insight: dict[str, Any] = {}
         if engine_name == "A" and not remediation.get("exclude_engine_a_decision_thesis"):
             decision_insight = _engine_a_decision_insight(
@@ -970,7 +1005,7 @@ class SocialIntelligenceOrchestrator:
         copy_fallback_reason = None if llm_beats else model_router.last_error()
         hook_text = beat_content.get("hook") or beat_content.get("question") or beat_content.get("problem") or ""
         selected_hook = creative_packet.get("selected_copy_concept", {}).get("opening", "")
-        if selected_hook and not llm_beats:
+        if selected_hook and not llm_beats and not strict_verified_fact_recovery:
             hook_text = selected_hook
             beat_content["hook"] = selected_hook
         body_text = " ".join(v for k, v in beat_content.items() if k != "hook" and v)

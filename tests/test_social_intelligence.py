@@ -419,6 +419,21 @@ def test_numeric_claim_sanitization_preserves_caption_paragraphs():
     assert removed == ["It runs a 50W fridge for 2.6 hours."]
 
 
+def test_verified_fact_recovery_copy_stays_inside_the_selected_fact_envelope():
+    brief = engines.get_engine("A").build(rotation_index=0)
+    copy = orchestrator._assemble_verified_fact_recovery_copy(
+        brief=brief,
+        structure_beats=["hook", "answer", "takeaway"],
+        verified_fact="48,000mAh",
+    )
+    ledger = claim_intelligence.build_ledger(" ".join(copy.values()), verified_facts=["48,000mAh"])
+
+    assert copy["answer"] == "Published specification: 48,000mAh."
+    assert "runtime" not in " ".join(copy.values()).lower()
+    assert "compatib" not in " ".join(copy.values()).lower()
+    assert all(claim.provenance == "VERIFIED_PRODUCT_FACT" for claim in ledger.claims)
+
+
 def test_strategy_red_team_generalizes_to_savings_and_comparative_promises_without_evidence():
     verdict = strategy_lock.red_team(
         {"angle": "why this option saves money and outperforms competitors", "hook_promise": "Which option costs less?"},

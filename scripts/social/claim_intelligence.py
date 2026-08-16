@@ -45,7 +45,6 @@ class Claim:
     verification_status: str = "unverified"
     provenance: str = "UNVERIFIED_INFERENCE"
     rejection_reason: str | None = None
-    source_concept_ids: tuple[str, ...] = ()
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -58,7 +57,6 @@ class Claim:
             "verification_status": self.verification_status,
             "provenance": self.provenance,
             "rejection_reason": self.rejection_reason,
-            "source_concept_ids": list(self.source_concept_ids),
         }
 
 
@@ -68,17 +66,6 @@ class Claim:
 _STAT_RE = re.compile(r"(\d+(?:[.,]\d+)?)\s?(%|hours?|watts?|watt-hours?|wh|w|amps?|amp-hours?|ah|mah|cycles?|degrees?|°[cf]|feet|inches|days?|years?)", re.IGNORECASE)
 _DERIVATION_RE = re.compile(r"\b\d+(?:\.\d+)?\s*(?:x|\*|/|per)\s*\d+(?:\.\d+)?\b|\b0\.\d+\b", re.IGNORECASE)
 _DERIVATION_CONTEXT = ("efficiency", "factor", "convert", "runtime", "estimate", "load", "coverage", "savings", "cost", "compare", "performance", "rate")
-_FACT_ENVELOPE_FILLER = {
-    "a", "an", "and", "as", "at", "by", "for", "from", "in", "is", "its", "of", "on", "or", "the", "this", "to", "with",
-    "available", "describes", "listed", "published", "states",
-}
-_PLAIN_DISCLOSURE_TERMS = _FACT_ENVELOPE_FILLER | {
-    "battery", "capacity", "has", "input", "output", "power", "rating", "specification", "specifications",
-}
-_OUTCOME_TERMS = {
-    "avoids", "bridge", "bridges", "charge", "charged", "charging", "continuity", "delivers", "downtime", "eliminate", "eliminates",
-    "ensure", "ensures", "fit", "handle", "handles", "keep", "keeps", "laptop", "prevents", "protects", "risk", "runs", "sustain", "sustains",
-}
 
 
 def remove_unsupported_numeric_claims(text: str, verified_facts: Iterable[str]) -> tuple[str, list[str]]:
@@ -93,25 +80,21 @@ def remove_unsupported_numeric_claims(text: str, verified_facts: Iterable[str]) 
         for fact in verified_facts
         for match in _STAT_RE.finditer(str(fact or ""))
     }
-    kept_paragraphs: list[str] = []
+    kept: list[str] = []
     removed: list[str] = []
-    for paragraph in re.split(r"\n\s*\n", str(text or "").strip()):
-        kept_sentences: list[str] = []
-        for sentence in re.split(r"(?<=[.!?])\s+", paragraph.strip()):
-            tokens = [
-                f"{match.group(1).replace(',', '').lower()} {match.group(2).lower()}"
-                for match in _STAT_RE.finditer(sentence)
-            ]
-            unsupported_derivation = bool(_DERIVATION_RE.search(sentence)) and any(
-                marker in sentence.lower() for marker in _DERIVATION_CONTEXT
-            )
-            if (tokens and any(token not in verified_tokens for token in tokens)) or unsupported_derivation:
-                removed.append(sentence)
-            elif sentence:
-                kept_sentences.append(sentence)
-        if kept_sentences:
-            kept_paragraphs.append(" ".join(kept_sentences))
-    return "\n\n".join(kept_paragraphs), removed
+    for sentence in re.split(r"(?<=[.!?])\s+", str(text or "").strip()):
+        tokens = [
+            f"{match.group(1).replace(',', '').lower()} {match.group(2).lower()}"
+            for match in _STAT_RE.finditer(sentence)
+        ]
+        unsupported_derivation = bool(_DERIVATION_RE.search(sentence)) and any(
+            marker in sentence.lower() for marker in _DERIVATION_CONTEXT
+        )
+        if (tokens and any(token not in verified_tokens for token in tokens)) or unsupported_derivation:
+            removed.append(sentence)
+        elif sentence:
+            kept.append(sentence)
+    return " ".join(kept), removed
 
 
 def _classify_claim_type(text: str) -> str:
@@ -165,14 +148,8 @@ def extract_claims(text: str) -> list[Claim]:
         s = s.strip()
         if not s:
             continue
-        low = s.lower()
-        if (
-            not _STAT_RE.search(s)
-            and low.startswith(("start with", "then check", "check the", "use the", "compare the"))
-        ):
-            continue
         has_stat = bool(_STAT_RE.search(s))
-        has_domain = any(d in low for d in HIGH_RISK_DOMAINS + MEDIUM_RISK_MARKERS)
+        has_domain = any(d in s.lower() for d in HIGH_RISK_DOMAINS + MEDIUM_RISK_MARKERS)
         if not (has_stat or has_domain):
             continue
         ctype = _classify_claim_type(s)
@@ -193,47 +170,32 @@ def extract_claims(text: str) -> list[Claim]:
 
 
 def _fact_matches(claim: Claim, verified_facts: Iterable[str]) -> bool:
-    claim_tokens = _fact_tokens(claim.claim_text)
+    low = claim.claim_text.lower()
     for fact in verified_facts:
         if not fact:
             continue
-        fact_tokens = _fact_tokens(str(fact))
-        if claim_tokens and len(claim_tokens & fact_tokens) / len(claim_tokens) >= 0.6:
+        fl = str(fact).lower()
+        tokens = [t for t in re.findall(r"\w+", fl) if len(t) > 3]
+        if tokens and sum(1 for t in tokens if t in low) >= max(1, len(tokens) // 3):
             return True
     return False
-
-
-def _fact_tokens(text: str) -> set[str]:
-    return {
-        token
-        for token in re.findall(r"[a-z]+", str(text or "").lower())
-        if len(token) > 2 and token not in _FACT_ENVELOPE_FILLER
-    }
 
 
 def _numeric_tokens(text: str) -> set[str]:
     return {f"{match.group(1).replace(',', '').lower()} {match.group(2).lower()}" for match in _STAT_RE.finditer(text)}
 
 
-def _plain_numeric_disclosure(claim: Claim) -> bool:
-    """Allow a specification disclosure, never an outcome inferred from it."""
-    tokens = set(re.findall(r"[a-z]+", _STAT_RE.sub("", claim.claim_text).lower()))
-    return not bool(tokens & _OUTCOME_TERMS)
-
-
 def _claim_provenance(claim: Claim, verified_facts: Iterable[str]) -> tuple[str, str | None]:
     claim_numbers = _numeric_tokens(claim.claim_text)
-    facts = [str(fact or "") for fact in verified_facts if fact]
     if _DERIVATION_RE.search(claim.claim_text) and any(marker in claim.claim_text.lower() for marker in _DERIVATION_CONTEXT):
         return "PROHIBITED_OR_UNSUPPORTED", "derived_claim_has_no_verified_formula"
-    fact_numbers = set().union(*(_numeric_tokens(fact) for fact in facts)) if facts else set()
-    if claim_numbers and claim_numbers <= fact_numbers:
-        if _plain_numeric_disclosure(claim) or _fact_matches(claim, facts):
+    for fact in verified_facts:
+        fact_numbers = _numeric_tokens(str(fact or ""))
+        if claim_numbers and claim_numbers <= fact_numbers:
             return "VERIFIED_PRODUCT_FACT", None
-        return "PROHIBITED_OR_UNSUPPORTED", "numeric_fact_used_for_unsupported_outcome"
     if claim_numbers:
         return "PROHIBITED_OR_UNSUPPORTED", "numeric_claim_not_present_in_verified_facts"
-    if _fact_matches(claim, facts):
+    if _fact_matches(claim, verified_facts):
         return "VERIFIED_PRODUCT_FACT", None
     return "UNVERIFIED_INFERENCE", "claim_not_supported_by_verified_facts"
 
@@ -266,15 +228,9 @@ def build_ledger(
     *,
     verified_facts: Iterable[str] = (),
     forbidden_claims: Iterable[str] = (),
-    source_concepts: dict[str, str] | None = None,
 ) -> ClaimLedger:
     ledger = ClaimLedger()
     for c in extract_claims(text):
-        c.source_concept_ids = tuple(
-            concept_id
-            for source_text, concept_id in (source_concepts or {}).items()
-            if source_text and (c.claim_text in source_text or source_text in c.claim_text)
-        )
         provenance, rejection_reason = _claim_provenance(c, verified_facts)
         c.provenance = provenance
         c.rejection_reason = rejection_reason

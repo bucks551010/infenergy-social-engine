@@ -9,7 +9,6 @@ sys.path.insert(0, os.path.join(_REPO, "scripts"))
 
 import run_engine  # noqa: E402
 from score_content import score_content  # noqa: E402
-import worker  # noqa: E402
 
 
 def test_shadow_records_never_report_published():
@@ -19,11 +18,10 @@ def test_shadow_records_never_report_published():
         {"wordpress": True, "facebook": True, "instagram": True, "linkedin": True},
     )
 
-    assert {record["platform"] for record in records} == {"facebook", "instagram", "linkedin", "wordpress"}
+    assert len(records) == 3
+    assert "wordpress" not in {record["platform"] for record in records}
     assert {record["status"] for record in records} == {"shadow_not_published"}
     assert {record["error"] for record in records} == {"shadow_mode_no_external_publication"}
-    wordpress = next(record for record in records if record["platform"] == "wordpress")
-    assert wordpress["platform_post_id"] == "skipped"
 
 
 def test_material_integrity_drift_is_a_runtime_publish_error():
@@ -64,85 +62,6 @@ def test_shadow_decision_record_persists_creative_cognition():
     assert record["creative_concept"] == "decision-support"
     assert record["copy_approach"] == "educational_insight"
     assert record["originality_verdict"]["passed"] is True
-
-
-def test_frozen_publish_artifact_is_json_normalized_and_fingerprinted():
-    frozen = run_engine._freeze_publish_artifact({"post_id": "shadow-1", "nested": {"answer": 42}})
-
-    assert frozen["artifact"] == {"nested": {"answer": 42}, "post_id": "shadow-1"}
-    assert len(frozen["sha256"]) == 64
-    assert frozen["frozen_at_utc"]
-
-
-def test_load_approved_frozen_artifact_requires_intact_publishable_shadow(monkeypatch):
-    artifact = {
-        "post_id": "shadow-approved",
-        "publish_decision": {"publishable": True},
-        "copy": {"evidence_readiness": {"status": "READY"}},
-        "validation_status": "passed",
-        "duplicate_check": {"ok": True},
-    }
-    frozen = run_engine._freeze_publish_artifact(artifact)
-    monkeypatch.setattr(
-        run_engine.generate_posts,
-        "load_history",
-        lambda: {"posts": [{"post_id": "shadow-approved", "status": "shadow_completed", "frozen_publish_artifact": frozen}]},
-    )
-
-    loaded, errors = run_engine.load_approved_frozen_artifact("shadow-approved")
-
-    assert errors == []
-    assert loaded == artifact
-
-
-def test_load_approved_frozen_artifact_rejects_hash_tampering(monkeypatch):
-    artifact = {
-        "post_id": "shadow-tampered",
-        "publish_decision": {"publishable": True},
-        "copy": {"evidence_readiness": {"status": "READY"}},
-        "validation_status": "passed",
-        "duplicate_check": {"ok": True},
-    }
-    frozen = run_engine._freeze_publish_artifact(artifact)
-    frozen["artifact"]["validation_status"] = "failed"
-    monkeypatch.setattr(
-        run_engine.generate_posts,
-        "load_history",
-        lambda: {"posts": [{"post_id": "shadow-tampered", "status": "shadow_completed", "frozen_publish_artifact": frozen}]},
-    )
-
-    loaded, errors = run_engine.load_approved_frozen_artifact("shadow-tampered")
-
-    assert loaded is None
-    assert errors == ["frozen_artifact_hash_mismatch"]
-
-
-def test_history_audit_redacts_secret_bearing_fields(tmp_path, monkeypatch):
-    monkeypatch.setenv("DATA_DIR", str(tmp_path))
-    (tmp_path / "post_history.json").write_text(
-        '{"posts":[{"post_id":"audit-1","publish_decision":{"decision":"do_not_publish"},"api_token":"hidden","nested":{"password":"hidden","caption":"safe"}}]}',
-        encoding="utf-8",
-    )
-
-    audit = worker._history_audit("audit-1")
-
-    assert audit["post_id"] == "audit-1"
-    assert audit["publish_decision"]["decision"] == "do_not_publish"
-    assert "api_token" not in audit
-    assert "password" not in audit["nested"]
-    assert audit["nested"]["caption"] == "safe"
-
-
-def test_generation_diagnostics_persists_final_memory_and_remediation():
-    content = {
-        "final_memory": {"final_outcome": "abstain", "memory_anchor": "Keep it factual."},
-        "evidence_remediation": {"status": "ABSTAINED_NO_VIABLE_REPLACEMENT"},
-    }
-
-    diagnostics = run_engine._generation_diagnostics(content)
-
-    assert diagnostics["final_memory"]["final_outcome"] == "abstain"
-    assert diagnostics["evidence_remediation"]["status"] == "ABSTAINED_NO_VIABLE_REPLACEMENT"
 
 
 def test_single_platform_scores_ignore_missing_other_social_channels():

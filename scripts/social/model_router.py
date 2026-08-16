@@ -12,6 +12,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Any
 
+
 DEFAULT_MODEL_ROUTES: dict[str, str] = {
     # The fast route remains entirely deployment-configurable. The earlier
     # gemini-2.5-flash default returned 404 for this deployment, so use the
@@ -83,9 +84,9 @@ def generate_json(task: str, prompt: str, *, system_instruction: str = "") -> di
     Returns ``None`` when GEMINI_API_KEY is unset, the SDK is unavailable,
     or the call/parse fails for any reason.
     """
-    global _LAST_ERROR
     api_key = os.environ.get("GEMINI_API_KEY", "").strip()
     if not api_key:
+        global _LAST_ERROR
         _LAST_ERROR = "GEMINI_API_KEY not set"
         return None
     try:

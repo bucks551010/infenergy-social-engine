@@ -23,12 +23,11 @@ def decide(
     conversion_quality_score: float = 100.0,
     orchestrator_quality: dict[str, Any] | None = None,
     visual_errors: list[str] | None = None,
-    evidence_readiness: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Return the only publish decision consumed by the runtime."""
     legacy_total = float(legacy_score.get("total") or 0)
     critic_total = (orchestrator_quality or {}).get("overall")
-    critic_total = round(float(critic_total), 1) if critic_total is not None else None
+    critic_total = float(critic_total) if critic_total is not None else None
     reasons: list[str] = []
 
     if not validation.get("passed", False):
@@ -37,8 +36,6 @@ def decide(
         reasons.extend(str(reason) for reason in duplicates.get("reasons", []))
     if visual_errors:
         reasons.extend(visual_errors)
-    if evidence_readiness and not evidence_readiness.get("ready", False):
-        reasons.append(str(evidence_readiness.get("status") or "evidence_not_ready"))
     critic_findings = [
         str(reason) for reason in (orchestrator_quality or {}).get("critic_findings", (orchestrator_quality or {}).get("reasons", []))
         if str(reason)
@@ -74,5 +71,4 @@ def decide(
         "conversion_quality_score": float(conversion_quality_score),
         "reasons": reasons,
         "platform_results": legacy_score.get("platform_results", {}),
-        "evidence_readiness": evidence_readiness or {"ready": True, "status": "NOT_ASSESSED"},
     }

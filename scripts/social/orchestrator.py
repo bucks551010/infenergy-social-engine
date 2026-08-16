@@ -21,17 +21,14 @@ and image generators are plugged in via the ``VisualProvider`` and
 from __future__ import annotations
 
 import os
-import secrets
 import time
 import uuid
 from dataclasses import dataclass, field
 from typing import Any
 
 from . import (
-    audience_value,
     carousel_director,
     claim_intelligence,
-    claim_governance,
     copy_intelligence,
     creative_cognition,
     creative_intelligence,
@@ -40,9 +37,7 @@ from . import (
     lean_intelligence,
     memory_intelligence,
     model_router,
-    opportunity_engine,
     quality_intelligence,
-    recovery,
     strategy_lock,
     human_connection_review,
     visual_intelligence,
@@ -114,28 +109,6 @@ def _bi_verified_facts(ctx: dict[str, Any] | None) -> list[str]:
     return list(ctx.get("verified_facts", []))
 
 
-def _apply_verified_fact_opportunity(brief: engines.EngineBrief, remediation: dict[str, Any]) -> None:
-    opportunity = remediation.get("verified_fact_opportunity")
-    if not isinstance(opportunity, dict):
-        return
-    fact = str(opportunity.get("verified_fact") or "").strip()
-    if not fact:
-        return
-    brief.question = str(opportunity.get("question") or brief.question)
-    brief.angle = str(opportunity.get("angle") or brief.angle)
-    brief.curiosity = str(opportunity.get("human_reality") or brief.curiosity)
-    brief.reader_job = str(opportunity.get("reader_job") or brief.reader_job)
-    brief.topic_path = {
-        **brief.topic_path,
-        "topic": str(opportunity.get("product_name") or brief.topic_path.get("topic") or "Product details"),
-        "microtopic": fact,
-        "angle": brief.angle,
-    }
-    brief.opportunity_score = float(opportunity.get("opportunity_score") or brief.opportunity_score)
-    brief.opportunity_shortlist = list(remediation.get("verified_fact_opportunities") or [opportunity])
-    brief.rationale.append("verified_facts_only_recovery")
-
-
 def _bi_forbidden_claims(ctx: dict[str, Any] | None) -> list[str]:
     if not ctx:
         return []
@@ -163,88 +136,6 @@ def _category_to_pillar(category: str) -> str | None:
     return _CATEGORY_PILLAR_MAP.get(str(category or "").strip().lower())
 
 
-def _quality_gated_product_free_opportunity(candidates: list[Any]) -> tuple[Any, list[Any], bool]:
-    """Choose a product-free opportunity, retaining a governed fallback field."""
-    eligible = [
-        candidate for candidate in candidates
-        if float(candidate.scores.get("novelty", 0.0)) >= 0.5
-        and float(candidate.scores.get("usefulness", 0.0)) >= 0.55
-        and float(candidate.scores.get("platform_fit", 0.0)) >= 0.5
-        and float(candidate.scores.get("visual_potential", 0.0)) >= 0.5
-    ]
-    if not eligible:
-        if not candidates:
-            raise RuntimeError("no viable opportunities generated")
-        best = max(candidates, key=lambda candidate: float(candidate.total))
-        return best, [best], True
-    best_score = max(float(candidate.total) for candidate in eligible)
-    band = [candidate for candidate in eligible if float(candidate.total) >= best_score - 0.08]
-    return secrets.SystemRandom().choice(band), band, False
-
-
-def _product_free_opportunity_candidates(
-    *,
-    recent: dict[str, Any],
-    audience_hint: str | None,
-    seasonal_context: str | None,
-    preferred_pillar: str | None,
-    excluded_concepts: list[str],
-) -> tuple[list[Any], bool]:
-    """Rebuild a neutral Engine B field when attempt exclusions exhaust it."""
-    candidates = opportunity_engine.generate(
-        engine="B",
-        recent_pillars=recent.get("pillars", []),
-        recent_genres=recent.get("genres", []),
-        recent_topics=recent.get("topics", []),
-        recent_microtopics=recent.get("microtopics", []),
-        audience_hint=audience_hint,
-        seasonal_context=seasonal_context,
-        preferred_pillar=preferred_pillar,
-        excluded_concepts=excluded_concepts,
-        limit=8,
-    )
-    if candidates:
-        return candidates, False
-    return opportunity_engine.generate(engine="B", limit=8), True
-
-
-def _build_engine_brief(
-    engine: Any,
-    *,
-    engine_name: str,
-    preferred_engine: str | None,
-    recent: dict[str, Any],
-    audience_hint: str | None,
-    seasonal_context: str | None,
-    preferred_pillar: str | None,
-    excluded_concepts: list[str],
-    rotation_index: int,
-    selected_opportunity_id: str,
-) -> engines.EngineBrief:
-    """Build a brief without allowing a manual product target to exhaust a viable field."""
-    kwargs = {
-        "recent": recent,
-        "audience_hint": audience_hint,
-        "seasonal_context": seasonal_context,
-        "preferred_pillar": preferred_pillar,
-        "excluded_concepts": excluded_concepts,
-        "rotation_index": rotation_index,
-        "selected_opportunity_id": selected_opportunity_id,
-    }
-    try:
-        return engine.build(**kwargs)
-    except RuntimeError as exc:
-        if (
-            engine_name == "A"
-            and str(exc) == "no viable opportunities generated"
-            and (audience_hint or preferred_pillar)
-        ):
-            kwargs["audience_hint"] = None
-            kwargs["preferred_pillar"] = None
-            return engine.build(**kwargs)
-        raise
-
-
 def _bi_brand_voice(ctx: dict[str, Any] | None) -> dict[str, Any] | None:
     if not ctx:
         return None
@@ -267,23 +158,6 @@ def _bi_pick_offering(rotation_index: int) -> dict[str, Any] | None:
         return offerings[rotation_index % len(offerings)]
     except Exception:
         return None
-
-def _bi_pick_eligible_offering(rotation_index: int, excluded_product_ids: set[str]) -> dict[str, Any] | None:
-    if not excluded_product_ids:
-        return _bi_pick_offering(rotation_index)
-    if not _bi_enabled():
-        return None
-    try:
-        from business_intelligence import api as bi_api
-        offerings = bi_api.get_business_profile().get("offerings", []) or []
-        for offset in range(len(offerings)):
-            candidate = offerings[(rotation_index + offset) % len(offerings)]
-            candidate_id = str(candidate.get("offering_id") or candidate.get("sku") or "")
-            if candidate_id and candidate_id not in excluded_product_ids:
-                return candidate
-    except Exception:
-        return None
-    return None
 
 
 def _bi_get_offering(product_id: str) -> dict[str, Any] | None:
@@ -369,39 +243,6 @@ def _runtime_strategy_lock(brief: engines.EngineBrief, lean_context: dict[str, A
         "action": "angle_redirected_before_lock" if not red_team["can_lock"] else "locked_without_change",
     })
     return locked
-
-
-def _audience_value_strategy_lock(brief: engines.EngineBrief) -> dict[str, Any]:
-    """Lock a product-free Engine B decision without weakening general review gates."""
-    value = dict(brief.audience_value or {})
-    customer_moment = str(value.get("human_reality") or brief.curiosity or brief.question or "a routine decision").replace("_", " ")
-    takeaway = str(value.get("reader_takeaway") or brief.angle or "use a practical planning step")
-    why_it_matters = str(value.get("why_it_matters") or brief.information_gap or "practical decision support")
-    practical_value = str(value.get("practical_value") or takeaway)
-    reflection_value = str(value.get("reflection_value") or "practical clarity")
-    memory_anchor = str(value.get("desired_memory_anchor") or takeaway)
-    candidate = {
-        "audience": brief.audience_segment,
-        "customer_moment": customer_moment,
-        "human_need": "practical clarity",
-        "human_value": "useful judgment",
-        "topic": brief.topic_path.get("topic", "audience value"),
-        "angle": takeaway,
-        "offering": "audience-value education",
-        "positioning": "product-free audience value",
-        "non_price_edge": {"kind": "AUDIENCE_VALUE", "reason": why_it_matters},
-        "important_capability": "a useful decision framework",
-        "benefit": practical_value,
-        "human_outcome": reflection_value,
-        "reader_job": brief.reader_job,
-        "competitive_context": "not applicable to product-free education",
-        "proof": [],
-        "claim_limits": "Do not name a product, SKU, link, price, or purchase outcome; state only the audience-value insight.",
-        "visual_objective": "make the human decision or routine visible",
-        "CTA_strategy": "",
-        "reader_memory": memory_anchor,
-    }
-    return strategy_lock.lock(candidate, context=candidate)
 
 
 # --- Engine rotation --------------------------------------------------------
@@ -519,77 +360,6 @@ def _revision_objectives(feedback: list[str] | None, strategy: dict[str, Any]) -
     return objectives
 
 
-def _engine_a_decision_insight(narrative: dict[str, Any], verified_facts: list[str]) -> dict[str, Any]:
-    """Derive the decision relationship that a fit demonstration must explain."""
-    facts = [str(fact).strip() for fact in verified_facts if str(fact).strip()]
-    capacity = next((fact for fact in facts if "wh" in fact.lower()), "")
-    output = next((fact for fact in facts if "w" in fact.lower() and "wh" not in fact.lower()), "")
-    access = next((fact for fact in facts if "v" in fact.lower()), "")
-    fact_roles = [
-        {"fact": output, "decision_role": "available_output", "human_relevance": "compare it with the device requirement"},
-        {"fact": access, "decision_role": "connection_access", "human_relevance": "confirm the needed connection is available"},
-        {"fact": capacity, "decision_role": "stored_reserve", "human_relevance": "estimate reserve only after fit is established"},
-    ]
-    return {
-        "decision_question": str(narrative.get("product_entry_question") or "").strip(),
-        "structure": "DEPENDENCY" if output and access and capacity else "BOUNDARY_CHECK",
-        "criterion_a": "the device's actual requirement and needed connection",
-        "criterion_b": "the stored-energy reserve",
-        "relationship": "available output and connection determine whether the device can be supported in the first place; stored capacity describes reserve after that compatibility check",
-        "why_relationship_matters": "a larger stored-energy number cannot establish fit when the required output or connection is unknown",
-        "decision_consequence": "compare the device requirement with the published output and access first, then judge whether the published reserve suits the work period",
-        "practical_check": "find the device requirement and connection, then compare both with the published product details",
-        "verified_product_evidence": [item for item in fact_roles if item["fact"]],
-        "limitation_or_boundary": "the product facts do not establish fit until the reader checks the actual device requirement",
-        "human_application": str(narrative.get("human_reality") or "the current situation").strip(),
-        "memory_anchor": "Establish fit before estimating reserve.",
-    }
-
-
-def _render_engine_a_decision_beats(
-    beat_content: dict[str, str],
-    narrative: dict[str, Any],
-    insight: dict[str, Any],
-) -> dict[str, str]:
-    """Render the discovered decision structure without turning product facts into compatibility claims."""
-    question = str(insight.get("decision_question") or "").strip()
-    product = str(narrative.get("product_name") or "this offering").strip()
-    evidence = [item for item in insight.get("verified_product_evidence", []) if isinstance(item, dict) and item.get("fact")]
-    evidence_text = " ".join(
-        f"Its published {item['fact']} describes {item['decision_role'].replace('_', ' ')}."
-        for item in evidence
-    )
-    result = dict(beat_content)
-    result["hook"] = question or str(result.get("hook") or "")
-    result["answer"] = (
-        f"{insight['relationship'].capitalize()}. {insight['why_relationship_matters'].capitalize()}."
-    )
-    result["explanation"] = (
-        f"For {insight['human_application']}, {insight['decision_consequence']}."
-    )
-    result["example"] = (
-        f"{product} is a fit example, not an automatic answer. {evidence_text} "
-        f"{insight['limitation_or_boundary'].capitalize()}."
-    )
-    result["takeaway"] = str(insight["memory_anchor"])
-    return result
-
-
-def _engine_a_product_expression_beats(
-    beat_content: dict[str, str],
-    narrative: dict[str, Any],
-    verified_facts: list[str],
-) -> dict[str, str]:
-    """Make an Engine A fit demonstration teach a portable decision relationship."""
-    if narrative.get("role") not in {"FIT_DEMONSTRATION", "DECISION_SUPPORT"} or narrative.get("narrative_hijack"):
-        return beat_content
-    return _render_engine_a_decision_beats(
-        beat_content,
-        narrative,
-        _engine_a_decision_insight(narrative, verified_facts),
-    )
-
-
 def _llm_concept_stems(brief: engines.EngineBrief, anchor: str) -> list[str] | None:
     """Ask Gemini for creative-concept stems (Master Build §30 / §15 Art Director)."""
     prompt = (
@@ -617,30 +387,6 @@ def _assemble_copy(*, brief: engines.EngineBrief, structure_beats: list[str]) ->
     replace it with richer language, but the shape/beats/anchor are
     already defined so the LLM's job is bounded (§99 auditability).
     """
-    audience_value = brief.audience_value
-    if audience_value and not audience_value.get("abstain"):
-        question = str(audience_value.get("reader_question") or brief.question).strip()
-        explanation = str(audience_value.get("why_it_matters") or brief.curiosity).strip()
-        practical = str(audience_value.get("practical_value") or brief.angle).strip()
-        takeaway = str(audience_value.get("reader_takeaway") or brief.angle).strip()
-        value_templates = {
-            "hook": question,
-            "question": question,
-            "answer": explanation,
-            "explanation": explanation,
-            "example": str(audience_value.get("reflection_value") or "").strip(),
-            "takeaway": takeaway,
-            "lesson": takeaway,
-            "application": practical,
-            "what_to_do": practical,
-            "implication": str(audience_value.get("reflection_value") or takeaway).strip(),
-            "why": explanation,
-            "what_happens": str(audience_value.get("reflection_value") or "").strip(),
-            "scenario": question,
-            "consequence": explanation,
-        }
-        return {beat: value_templates.get(beat, takeaway) for beat in structure_beats}
-
     curiosity = brief.curiosity or brief.information_gap or brief.angle
     misc = brief.misconception or ""
     reality = brief.angle
@@ -669,33 +415,6 @@ def _assemble_copy(*, brief: engines.EngineBrief, structure_beats: list[str]) ->
     }
     # Return only beats the caller asked for
     return {b: templates.get(b, "") for b in structure_beats}
-
-
-def _assemble_verified_fact_recovery_copy(
-    *,
-    brief: engines.EngineBrief,
-    structure_beats: list[str],
-    verified_fact: str,
-) -> dict[str, str]:
-    """Build a fact-scoped recovery candidate without reopening claim generation."""
-    question = "Which published detail matters when reviewing this product?"
-    disclosure = f"Published specification: {verified_fact}."
-    review_prompt = "Keep that published detail visible when reviewing the product."
-    templates = {
-        "hook": question,
-        "question": question,
-        "answer": disclosure,
-        "explanation": disclosure,
-        "example": review_prompt,
-        "takeaway": review_prompt,
-        "lesson": review_prompt,
-        "application": review_prompt,
-        "what_to_do": review_prompt,
-        "implication": review_prompt,
-        "why": disclosure,
-        "what_happens": review_prompt,
-    }
-    return {beat: str(templates.get(beat, review_prompt)).strip() for beat in structure_beats}
 
 
 # --- Pipeline result -------------------------------------------------------
@@ -771,36 +490,13 @@ class SocialIntelligenceOrchestrator:
         product_id_override: str = "",
         approved_strategy: dict[str, Any] | None = None,
         revision_feedback: list[str] | None = None,
-        remediation_context: dict[str, Any] | None = None,
     ) -> PostPackage:
         # 0. Recent state → recency-aware decisions
         recent = memory_intelligence.recent(self.data_dir, limit=20)
-        living_state: dict[str, Any] | None = None
-        try:
-            from . import living_intelligence
-            living_data_dir = self.data_dir or memory_intelligence._default_data_dir()
-            living_state = living_intelligence.load(living_data_dir)
-            campaign_meeting = living_intelligence.campaign_runtime_decision(
-                living_state.get("campaign_state", {}),
-                audience_signals=list(recent.get("audience_signals", [])),
-                open_threads=list(recent.get("continuity_threads", [])),
-                performance_lessons=list(recent.get("performance_lessons", [])),
-                product_pressure=bool(recent.get("commercial_pressure", [])),
-            )
-            recent = living_intelligence.campaign_decision_input(recent, campaign_meeting)
-        except Exception:
-            recent["campaign_state"] = {}
-            living_state = None
 
         # 0b. Optional BI Foundation hydration — only when the caller
         # didn't already specify a value and the flag is on.
-        remediation = dict(remediation_context or {})
-        excluded_product_ids = {str(value) for value in remediation.get("excluded_product_ids", []) if str(value)}
-        excluded_concepts = list(dict.fromkeys([
-            *(str(value) for value in remediation.get("excluded_concepts", []) if str(value)),
-            *(str(value) for value in recent.get("attempt_only_exclusions", []) if str(value)),
-        ]))
-        bi_offering = _bi_get_offering(product_id_override) if product_id_override else _bi_pick_eligible_offering(rotation_index, excluded_product_ids)
+        bi_offering = _bi_get_offering(product_id_override) if product_id_override else _bi_pick_offering(rotation_index)
         bi_ctx = _load_bi_creative_context(
             str((bi_offering or {}).get("offering_id") or (bi_offering or {}).get("sku") or "")
         )
@@ -810,8 +506,6 @@ class SocialIntelligenceOrchestrator:
                 bi_offering = forced_offering
                 if not preferred_pillar:
                     preferred_pillar = _category_to_pillar(forced_offering.get("category", ""))
-        if bi_offering:
-            recent["product_context"] = list(bi_offering.get("verified_facts") or []) + [str(bi_offering.get("name") or "")]
         lean_context = lean_intelligence.compile_product_social_intelligence(bi_offering)
         relationship_context = lean_context.get("relationships") or {}
         if bi_ctx:
@@ -826,104 +520,18 @@ class SocialIntelligenceOrchestrator:
                 else:
                     verified_facts = _bi_verified_facts(bi_ctx)
 
-        # 1. Cheap global opportunity competition. Only its winning record is
-        # allowed to reach strategy, copy, evidence, and visual generation.
-        require_product_free = bool(remediation.get("require_product_free"))
-        selected_replacement = remediation.get("replacement_candidate") if isinstance(remediation.get("replacement_candidate"), dict) else None
-        competitive_pool: list[dict[str, Any]] = []
-        if selected_replacement:
-            competitive_pool = list(remediation.get("opportunity_shortlist") or [])
-            selected_opportunity = selected_replacement
-        elif require_product_free:
-            product_free_candidates, neutral_field_rebuilt = _product_free_opportunity_candidates(
-                recent=recent,
-                audience_hint=audience_hint,
-                seasonal_context=seasonal_context,
-                preferred_pillar=preferred_pillar,
-                excluded_concepts=excluded_concepts,
-            )
-            selected_candidate, quality_band, quality_fallback_used = _quality_gated_product_free_opportunity(product_free_candidates)
-            selected_opportunity = {
-                **recovery.compact_candidate(selected_candidate, 1),
-                "candidate_id": "B:product_free_neutral_field" if neutral_field_rebuilt else ("B:product_free_fallback" if quality_fallback_used else "B:product_free_random_band"),
-                "engine": "B",
-                "selection_method": "neutral_field_rebuild" if neutral_field_rebuilt else ("quality_gated_fallback" if quality_fallback_used else "quality_gated_random_band"),
-                "eligible_band_size": len(quality_band),
-            }
-            competitive_pool = [
-                {**recovery.compact_candidate(candidate, rank), "candidate_id": f"B:product_free:{rank}", "engine": "B"}
-                for rank, candidate in enumerate(quality_band, start=1)
-            ]
-        elif preferred_engine:
-            selected_opportunity = None
-        else:
-            competitive_pool = engines.build_competitive_pool(
-                recent=recent,
-                audience_hint=audience_hint,
-                seasonal_context=seasonal_context,
-                preferred_pillar=preferred_pillar,
-                excluded_concepts=excluded_concepts,
-                rotation_index=rotation_index,
-            )
-            if not competitive_pool:
-                # Scheduled default runs must still try the neutral product
-                # field before declaring the campaign exhausted.
-                preferred_engine = "A"
-                selected_opportunity = None
-            else:
-                selected_opportunity = competitive_pool[0]
-        engine_name = str((selected_opportunity or {}).get("engine") or preferred_engine or _pick_engine(rotation_index)).upper()
+        # 1. Engine
+        engine_name = (preferred_engine or _pick_engine(rotation_index)).upper()
         engine = engines.get_engine(engine_name)
 
         # 2. Strategic brief
-        brief_exclusions = [] if selected_opportunity else excluded_concepts
-        brief = _build_engine_brief(
-            engine,
-            engine_name=engine_name,
-            preferred_engine=preferred_engine,
+        brief = engine.build(
             recent=recent,
             audience_hint=audience_hint,
             seasonal_context=seasonal_context,
             preferred_pillar=preferred_pillar,
-            excluded_concepts=brief_exclusions,
             rotation_index=rotation_index,
-            selected_opportunity_id=str((selected_opportunity or {}).get("opportunity_id") or ""),
         )
-        _apply_verified_fact_opportunity(brief, remediation)
-        verified_fact_opportunity = remediation.get("verified_fact_opportunity")
-        if isinstance(verified_fact_opportunity, dict):
-            selected_fact = str(verified_fact_opportunity.get("verified_fact") or "").strip()
-            if selected_fact:
-                # A factual recovery may state the selected owned fact, but it
-                # cannot infer performance or operational consequences from it.
-                verified_facts = [selected_fact]
-        if competitive_pool:
-            brief.opportunity_shortlist = competitive_pool
-            brief.rationale.append(f"global_opportunity_competition:selected={selected_opportunity.get('candidate_id', '')}")
-        audience_value_only = engine_name == "B" and (
-            require_product_free or (
-                bool(brief.audience_value)
-                and not brief.audience_value.get("abstain")
-                and not brief.audience_value.get("product_needed")
-            )
-        )
-        anchored_offering_metadata = bi_offering
-        product_narrative: dict[str, Any] = {}
-        if engine_name == "B" and brief.audience_value and brief.audience_value.get("product_needed"):
-            try:
-                product_narrative = living_intelligence.product_narrative_decision(
-                    recent.get("campaign_state", {}), brief.audience_value,
-                    verified_facts=list((bi_offering or {}).get("verified_facts") or recent.get("product_context", [])),
-                    product_name=str((bi_offering or {}).get("name") or ""),
-                )
-                brief.audience_value["product_narrative"] = product_narrative
-            except Exception:
-                product_narrative = {}
-        if audience_value_only:
-            # The BI context may inform upstream audience selection, but cannot
-            # reintroduce a product into an explicitly product-free decision.
-            bi_offering = None
-            verified_facts = []
         # A Council-approved strategy is the parent object for both production
         # branches. The engine may supply structure, never a replacement angle.
         if approved_strategy:
@@ -932,52 +540,8 @@ class SocialIntelligenceOrchestrator:
             brief.angle = locked["angle"]
             brief.topic_path["topic"] = locked["topic"]
             brief.reader_job = locked["reader_job"]
-        elif audience_value_only:
-            locked = _audience_value_strategy_lock(brief)
         else:
             locked = _runtime_strategy_lock(brief, lean_context, bi_offering, self.data_dir)
-        if isinstance(verified_fact_opportunity, dict) and selected_fact:
-            locked = {
-                **locked,
-                "topic": str(verified_fact_opportunity.get("product_name") or locked.get("topic") or "Product details"),
-                "angle": brief.angle,
-                "customer_moment": brief.curiosity,
-                "proof": [selected_fact],
-                "claim_limits": "State only the selected verified fact; do not infer runtime, compatibility, safety, performance, or operational outcomes.",
-            }
-
-        recovery_context = any(
-            remediation.get(key)
-            for key in (
-                "replacement_candidate", "original_candidate_id", "recovery_mode", "candidate_attempt_id",
-                "excluded_concepts", "exclude_engine_a_decision_thesis",
-            )
-        )
-        if recovery_context and not selected_opportunity:
-            candidate_text = " ".join(
-                str(value or "")
-                for value in (
-                    brief.question,
-                    brief.angle,
-                    brief.curiosity,
-                    locked.get("customer_moment"),
-                    locked.get("human_need"),
-                )
-            )
-            if opportunity_engine.text_is_excluded(candidate_text, excluded_concepts):
-                raise RuntimeError("no viable opportunities generated")
-
-        if engine_name == "A" and bi_offering:
-            product_narrative = living_intelligence.product_expression_for_engine_a(
-                campaign=recent.get("campaign_state", {}),
-                reader_job=brief.reader_job,
-                question=brief.question or brief.hook,
-                human_reality=str(locked.get("customer_moment") or ""),
-                practical_value=str(brief.information_gap or brief.angle),
-                takeaway=str(brief.angle),
-                verified_facts=list(bi_offering.get("verified_facts") or []),
-                product_name=str(bi_offering.get("name") or ""),
-            )
 
         creative_packet = creative_cognition.decide(
             strategy=locked, platform=platform, recent=recent, data_dir=self.data_dir
@@ -994,46 +558,17 @@ class SocialIntelligenceOrchestrator:
             "candidates": concept_candidates,
             "winner": selected_concept,
         }
-        if brief.audience_value and not brief.audience_value.get("abstain"):
-            creative_packet["audience_value_platform_expressions"] = {
-                platform_name: audience_value.platform_expression(brief.audience_value, platform_name)
-                for platform_name in ("facebook", "instagram_static", "instagram_reel", "linkedin")
-            }
 
         # 3. Copy assembly — real Gemini copy when available, deterministic
         # template assembly as the network-free fallback (§15 Copy Architect).
         beats = copy_intelligence.structure_for(brief.genre)
         revision_objectives = _revision_objectives(revision_feedback, locked)
-        strict_verified_fact_recovery = isinstance(verified_fact_opportunity, dict) and bool(selected_fact)
-        if strict_verified_fact_recovery:
-            beat_content = _assemble_verified_fact_recovery_copy(
-                brief=brief,
-                structure_beats=beats,
-                verified_fact=selected_fact,
-            )
-            llm_beats = None
-        else:
-            llm_beats = _llm_copy_beats(
-                brief, beats, bi_ctx, bi_offering,
-                creative_packet["SELECTED_ANSWER"]["copy_logic"],
-                revision_objectives,
-            )
-            beat_content = llm_beats or _assemble_copy(brief=brief, structure_beats=beats)
-        decision_insight: dict[str, Any] = {}
-        if (
-            engine_name == "A"
-            and not strict_verified_fact_recovery
-            and not remediation.get("exclude_engine_a_decision_thesis")
-        ):
-            decision_insight = _engine_a_decision_insight(
-                product_narrative,
-                list((bi_offering or {}).get("verified_facts") or verified_facts or []),
-            )
-            beat_content = _render_engine_a_decision_beats(
-                beat_content,
-                product_narrative,
-                decision_insight,
-            )
+        llm_beats = _llm_copy_beats(
+            brief, beats, bi_ctx, bi_offering,
+            creative_packet["SELECTED_ANSWER"]["copy_logic"],
+            revision_objectives,
+        )
+        beat_content = llm_beats or _assemble_copy(brief=brief, structure_beats=beats)
         removed_numeric_claims: list[str] = []
         claim_verified_facts = list((bi_offering or {}).get("verified_facts") or []) or _bi_verified_facts(bi_ctx)
         for beat, value in list(beat_content.items()):
@@ -1044,7 +579,7 @@ class SocialIntelligenceOrchestrator:
         copy_fallback_reason = None if llm_beats else model_router.last_error()
         hook_text = beat_content.get("hook") or beat_content.get("question") or beat_content.get("problem") or ""
         selected_hook = creative_packet.get("selected_copy_concept", {}).get("opening", "")
-        if selected_hook and not llm_beats and not strict_verified_fact_recovery:
+        if selected_hook and not llm_beats:
             hook_text = selected_hook
             beat_content["hook"] = selected_hook
         body_text = " ".join(v for k, v in beat_content.items() if k != "hook" and v)
@@ -1054,7 +589,7 @@ class SocialIntelligenceOrchestrator:
         brief.body_beats = beat_content
         brief.takeaway = takeaway
         brief.memory_anchor = anchor
-        selected_cta = "" if audience_value_only else str(product_narrative.get("cta_class") or (locked or {}).get("CTA_strategy") or _DEFAULT_CTA_BY_JOB.get(brief.reader_job, "Learn more"))
+        selected_cta = (locked or {}).get("CTA_strategy") or _DEFAULT_CTA_BY_JOB.get(brief.reader_job, "Learn more")
 
         # 4. Visual direction
         necessity = visual_intelligence.visual_necessity_score(
@@ -1138,32 +673,13 @@ class SocialIntelligenceOrchestrator:
             carousel_pkg["problems"] = problems
 
         # 7. Claim ledger
-        source_concepts = {
-            str(decision_insight.get("relationship") or ""): "decision_relationship",
-            str(decision_insight.get("decision_consequence") or ""): "decision_consequence",
-            hook_text: "hook_payoff",
-            takeaway: "takeaway",
-            anchor: "memory_anchor",
-        }
         ledger = claim_intelligence.build_ledger(
             hook_text + " " + body_text,
             verified_facts=verified_facts or [],
             forbidden_claims=_bi_forbidden_claims(bi_ctx),
-            source_concepts=source_concepts,
-        )
-        evidence_readiness = claim_governance.assess(
-            ledger,
-            hook=hook_text,
-            decision_insight=decision_insight,
-            takeaway=takeaway,
         )
 
         # 8. Quality gate
-        response_contract = quality_intelligence.expected_response_contract(
-            reader_job=brief.reader_job,
-            cta_class=selected_cta,
-            content_role=str(product_narrative.get("role") or ""),
-        )
         q = quality_intelligence.score(
             hook=hook_text,
             body=body_text,
@@ -1178,7 +694,6 @@ class SocialIntelligenceOrchestrator:
             caption_visual_relationship=alloc.relationship,
             engine=engine_name,
             brand_voice=_bi_brand_voice(bi_ctx),
-            response_contract=response_contract,
         )
         cd = quality_intelligence.creative_director_test(
             strategy_reason=f"engine={engine_name} pillar={brief.pillar.get('id')} genre={brief.genre.get('id')}",
@@ -1243,11 +758,6 @@ class SocialIntelligenceOrchestrator:
                 "revision_objectives": revision_objectives,
                 "removed_unsupported_numeric_claims": removed_numeric_claims,
                 "strategy_lock": locked,
-                "product_narrative": product_narrative,
-                "decision_insight": decision_insight,
-                "response_contract": response_contract,
-                "evidence_readiness": evidence_readiness,
-                "remediation_context": remediation,
             },
             visual={
                 "semantic_role": semantic_role,
@@ -1288,11 +798,9 @@ class SocialIntelligenceOrchestrator:
             },
             provider_result=provider_result.as_dict(),
             business_context=bi_ctx,
-            anchored_offering=anchored_offering_metadata,
+            anchored_offering=bi_offering,
             creative_decision_packet=creative_packet,
         )
-        if remediation:
-            package.copy["remediation_context"] = remediation
         if locked:
             package.creative_director["creative_decision_review"] = {
                 "verdict": "PASS" if creative_packet["ACTION"] == "create" else "DO_NOT_PUBLISH",
@@ -1342,44 +850,11 @@ class SocialIntelligenceOrchestrator:
                     "emotional_framing": creative_packet["benefit_translation"]["HUMAN_MEANING"],
                     "customer_moment": locked.get("customer_moment", ""),
                     "reader_job": locked.get("reader_job", ""),
-                    "audience_value_form": brief.audience_value.get("content_form", ""),
-                    "human_reality": brief.audience_value.get("human_reality", ""),
-                    "reader_question": brief.audience_value.get("reader_question", ""),
-                    "reader_takeaway": brief.audience_value.get("reader_takeaway", ""),
-                    "why_it_matters": brief.audience_value.get("why_it_matters", ""),
-                    "desired_memory_anchor": brief.audience_value.get("desired_memory_anchor", ""),
-                    "practical_value": brief.audience_value.get("practical_value", ""),
-                    "reflection_value": brief.audience_value.get("reflection_value", ""),
-                    "share_save_value": brief.audience_value.get("share_save_value", ""),
-                    "audience_value_product_needed": brief.audience_value.get("product_needed", False),
-                    "audience_value_cta_class": brief.audience_value.get("cta_class", ""),
-                    "question_answered": brief.audience_value.get("reader_question", ""),
-                    "question_created": brief.audience_value.get("unresolved_question", ""),
-                    "unresolved_thread": brief.audience_value.get("unresolved_question", ""),
-                    "continuity_thread": brief.audience_value.get("continuity_thread", {}),
-                    "thread_action": brief.audience_value.get("thread_action", "NONE"),
-                    "assumption_challenged": brief.audience_value.get("reflection_value", ""),
-                    "campaign_effect": brief.audience_value.get("campaign_effect", "NO_CAMPAIGN"),
-                    "campaign_state": recent.get("campaign_state", {}),
-                    "audience_state_change": (brief.audience_value.get("idea") or {}).get("audience_state", ""),
-                    "product_relevance_change": brief.audience_value.get("product_relevance", "NOT_RELEVANT"),
-                    "product_narrative": brief.audience_value.get("product_narrative", {}),
-                    "performance_lesson": (brief.audience_value.get("idea") or {}).get("why_now", ""),
-                    "performance_lesson_applied": brief.audience_value.get("performance_lesson_applied", ""),
-                    "commercial_pressure": "product_present" if bool(bi_offering) else "",
                     "hook_family": creative_packet.get("hook_selection", {}).get("family", ""),
                     "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
                 },
                 data_dir=self.data_dir,
             )
-            if living_state is not None and brief.audience_value:
-                try:
-                    living_state["campaign_state"] = living_intelligence.apply_campaign_post(
-                        recent.get("campaign_state", {}), brief.audience_value
-                    )
-                    living_intelligence.save(self.data_dir or memory_intelligence._default_data_dir(), living_state)
-                except Exception:
-                    pass
             memory_intelligence.append_visual_record(
                 {
                     "post_id": post_id,
@@ -1427,12 +902,7 @@ class SocialIntelligenceOrchestrator:
     # --- Batch --------------------------------------------------------------
 
     def create_batch(self, *, count: int, platform: str = "instagram_feed", **kw: Any) -> list[PostPackage]:
-        rotation_index = int(kw.pop("rotation_index", 0) or 0)
         out: list[PostPackage] = []
         for i in range(count):
-            current_rotation = rotation_index + i
-            batch_kw = dict(kw)
-            if count > 1:
-                batch_kw.setdefault("preferred_engine", _pick_engine(current_rotation))
-            out.append(self.create_post(rotation_index=current_rotation, platform=platform, **batch_kw))
+            out.append(self.create_post(rotation_index=i, platform=platform, **kw))
         return out

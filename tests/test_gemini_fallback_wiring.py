@@ -53,8 +53,6 @@ class _FakeClient:
 
 def test_generate_json_with_gemini_retries_within_same_model(monkeypatch):
     monkeypatch.setenv("GEMINI_API_KEY", "test-key")
-    monkeypatch.setenv("GENERATION_COST_MODE", "PAID_AI_ALLOWED")
-    monkeypatch.setenv("PAID_GENERATION_AUTHORIZED", "true")
     flaky = _FlakyModels(fail_times=1, success_payload={"fb_caption": "hello"})
     monkeypatch.setattr(generate_posts.genai, "Client", lambda api_key: _FakeClient(flaky))
 
@@ -67,8 +65,6 @@ def test_generate_json_with_gemini_retries_within_same_model(monkeypatch):
 
 def test_generate_json_with_gemini_returns_none_and_logs_after_exhausting_all_attempts(monkeypatch, capsys):
     monkeypatch.setenv("GEMINI_API_KEY", "test-key")
-    monkeypatch.setenv("GENERATION_COST_MODE", "PAID_AI_ALLOWED")
-    monkeypatch.setenv("PAID_GENERATION_AUTHORIZED", "true")
     always_fail = _AlwaysFailModels()
     monkeypatch.setattr(generate_posts.genai, "Client", lambda api_key: _FakeClient(always_fail))
 

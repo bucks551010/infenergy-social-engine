@@ -18,10 +18,9 @@ import publish_linkedin
 from score_content import score_content
 from social.publish_decision import decide as decide_publication
 from social.claim_intelligence import remove_unsupported_numeric_claims
-from social import claim_governance, claim_intelligence, strategy_lock as strategy_lock_intelligence
+from social import strategy_lock as strategy_lock_intelligence
 from social import memory_intelligence
 from social import creative_intelligence
-from social import platform_presentation, recovery
 from social_visuals import review_rendered_visual
 from validate_product_claims import validate_generated_content
 from anti_repeat import check_duplicates, load_anti_repeat_windows
@@ -185,20 +184,6 @@ def _refresh_linkedin_access_token_if_configured() -> tuple[bool, str]:
         return False, f"refresh_exception:{e}"
 
 
-def _apply_strategy_platform_selection(
-    effective_channels: dict[str, bool],
-    channel_reasons: dict[str, str],
-    platform_selection: dict,
-    manual_platforms: list[str],
-) -> None:
-    manual = {str(platform).strip().lower() for platform in manual_platforms}
-    for platform in ("facebook", "instagram", "linkedin"):
-        selection = platform_selection.get(platform) if isinstance(platform_selection.get(platform), dict) else {}
-        if effective_channels.get(platform) and selection.get("selected") is False and platform not in manual:
-            effective_channels[platform] = False
-            channel_reasons[platform] = "strategy_platform_not_appropriate"
-
-
 def _build_phase5_channel_readiness(effective_channels: dict[str, bool], dry_run: bool) -> dict:
     checks: dict[str, dict] = {}
 
@@ -272,7 +257,7 @@ def _build_phase5_channel_readiness(effective_channels: dict[str, bool], dry_run
             try:
                 resp = requests.get(
                     "https://api.linkedin.com/v2/userinfo",
-                    headers=publish_linkedin._headers(),
+                    headers={"Authorization": f"Bearer {token}", "LinkedIn-Version": datetime.now(timezone.utc).strftime("%Y%m")},
                     timeout=15,
                 )
                 if resp.ok:
@@ -296,14 +281,6 @@ def _build_phase5_channel_readiness(effective_channels: dict[str, bool], dry_run
     }
 
 
-def _evidence_recovery_required(publish_decision: dict) -> bool:
-    """Identify claim-readiness blocks that need bounded recovery before abstaining."""
-    if str(publish_decision.get("decision") or "") != "do_not_publish":
-        return False
-    reasons = {str(reason) for reason in publish_decision.get("reasons", [])}
-    return bool(reasons & {"RESEARCH_REQUIRED", "HIGH_RISK_UNVERIFIED", "UNSUPPORTED_MATERIAL_CLAIMS"})
-
-
 def _conversion_learning_fields(content: dict) -> dict:
     """Shared history-record fields that feed the Phase E performance memory loop.
 
@@ -321,325 +298,10 @@ def _conversion_learning_fields(content: dict) -> dict:
     }
 
 
-def _remediation_concept(content: dict) -> dict:
-    copy = content.get("copy") if isinstance(content.get("copy"), dict) else {}
-    insight = copy.get("decision_insight") if isinstance(copy.get("decision_insight"), dict) else {}
-    return {"question": str(content.get("selected_hook") or copy.get("hook") or ""), "angle": str((copy.get("strategy_lock") or {}).get("angle") or ""), "decision_thesis": str(insight.get("relationship") or ""), "payoff": str(insight.get("decision_consequence") or copy.get("takeaway") or ""), "human_reality": str((copy.get("strategy_lock") or {}).get("customer_moment") or "")}
-
-
-def _remediation_context(content: dict, decision: dict, duplicates: dict) -> dict:
-    concept = _remediation_concept(content)
-    brief = content.get("strategic_brief") if isinstance(content.get("strategic_brief"), dict) else {}
-    shortlist = brief.get("opportunity_shortlist") if isinstance(brief.get("opportunity_shortlist"), list) else []
-    readiness = ((content.get("copy") or {}).get("evidence_readiness") or content.get("evidence_readiness") or {})
-    claims = (readiness.get("claims") or []) if isinstance(readiness, dict) else []
-    candidate_attempt_id = str(content.get("candidate_attempt_id") or f"{content.get('post_id')}:candidate-1")
-    blocked_fingerprint = recovery.opportunity_fingerprint({
-        "product_id": content.get("product_id"),
-        "question": concept["question"],
-        "angle": concept["angle"],
-        "human_reality": concept["human_reality"],
-        "decision_thesis": concept["decision_thesis"],
-        "reader_job": (content.get("copy") or {}).get("strategy_lock", {}).get("reader_job") or content.get("reader_job"),
-        "product_role": (content.get("copy") or {}).get("strategy_lock", {}).get("product_role"),
-        "evidence_dependency": "CENTRAL_RESEARCH_REQUIRED" if any(isinstance(claim, dict) and claim.get("centrality") == "CENTRAL" and claim.get("research_status") == "RESEARCH_REQUIRED" for claim in claims) else "",
-    })
-    strategy = (content.get("copy") or {}).get("strategy_lock") or {}
-    blocked_content_mode = "PRODUCT_FIT" if content.get("product_id") else "AUDIENCE_VALUE" if "product-free" in str(strategy.get("positioning") or "").lower() else "DECISION_SUPPORT"
-    central_research_block = any(
-        isinstance(claim, dict)
-        and claim.get("centrality") == "CENTRAL"
-        and claim.get("research_status") == "RESEARCH_REQUIRED"
-        for claim in claims
-    )
-    excluded_product_ids = [str(content.get("product_id"))] if not duplicates.get("ok", True) and content.get("product_id") else []
-    replacement, alternatives_considered = recovery.select_replacement(
-        shortlist,
-        excluded_product_ids=set(excluded_product_ids),
-        excluded_concepts=set(value for value in concept.values() if value),
-        blocked_human_realities={concept["human_reality"]} if concept.get("human_reality") else set(),
-        blocked_fingerprint=blocked_fingerprint,
-        max_claim_burden_level=1 if central_research_block else None,
-        required_content_mode_change=central_research_block,
-        blocked_content_mode=blocked_content_mode,
-    )
-    return {"original_candidate_id": str(content.get("post_id") or ""), "original_candidate_attempt_id": candidate_attempt_id, "original_concept": concept, "blocked_opportunity_fingerprint": blocked_fingerprint, "original_claim_ledger": content.get("claim_ledger") or {}, "original_evidence_readiness": readiness, "original_centrality_summary": {"central_unresolved": [str(claim.get("claim") or "") for claim in claims if isinstance(claim, dict) and claim.get("centrality") == "CENTRAL" and claim.get("research_status") == "RESEARCH_REQUIRED"], "status": str(readiness.get("status") or "")}, "remediation_reason": "central_evidence_block_requires_new_opportunity", "blocked_content_mode": blocked_content_mode, "fallback_type": "CONTENT_MODE_SHIFT" if replacement else "NO_VIABLE_LOW_CLAIM_MODE", "excluded_concepts": [value for value in concept.values() if value], "excluded_product_ids": excluded_product_ids, "exclude_engine_a_decision_thesis": True, "selection_rotation_index": int(content.get("selection_rotation_index") or 0) + 1, "candidate_attempt_id": f"{content.get('post_id')}:candidate-2", "original_governance": decision, "opportunity_shortlist": shortlist, "replacement_candidate": replacement, "alternatives_considered": alternatives_considered}
-
-
-def _verified_facts_only_recovery_context(content: dict, remediation: dict) -> dict:
-    """Create a same-product alternative only from facts the owner has already verified."""
-    offering = content.get("anchored_offering") if isinstance(content.get("anchored_offering"), dict) else {}
-    brief = content.get("strategic_brief") if isinstance(content.get("strategic_brief"), dict) else {}
-    facts = list(dict.fromkeys(
-        str(fact).strip()
-        for fact in [
-            *(content.get("product_metrics") or []),
-            *(offering.get("verified_facts") or []),
-            *(brief.get("verified_facts") or []),
-        ]
-        if str(fact).strip()
-    ))
-    field = recovery.verified_fact_opportunities(
-        product_id=str(content.get("product_id") or ""),
-        product_name=str(content.get("product_name") or content.get("product_id") or "the product"),
-        verified_facts=facts,
-    )
-    original = remediation.get("original_concept") if isinstance(remediation.get("original_concept"), dict) else _remediation_concept(content)
-    considered: list[dict[str, str]] = []
-    selected: dict | None = None
-    for opportunity in field:
-        materially_different, reason = _semantic_difference(original, opportunity)
-        considered.append({"candidate_id": str(opportunity.get("candidate_id") or ""), "result": "selected" if materially_different else "skipped", "reason": reason})
-        if materially_different:
-            selected = opportunity
-            break
-    return {
-        **remediation,
-        "recovery_mode": "VERIFIED_FACTS_ONLY_RECOVERY",
-        "fallback_type": "VERIFIED_FACTS_ONLY" if selected else "NO_VIABLE_VERIFIED_FACT_OPPORTUNITY",
-        "verified_fact_opportunities": field,
-        "verified_fact_opportunities_considered": considered,
-        "verified_fact_opportunity": selected,
-        "excluded_concepts": [],
-        "replacement_candidate": None,
-        "exclude_engine_a_decision_thesis": True,
-        "candidate_attempt_id": f"{content.get('post_id')}:verified-facts-only",
-    }
-
-
-def _next_product_recovery_context(content: dict, remediation: dict, reason: str) -> dict:
-    """Retire one product for this decision while keeping campaign exclusions intact."""
-    product_id = str(content.get("product_id") or "").strip()
-    retired = list(remediation.get("retired_products") or [])
-    if product_id:
-        retired.append({"product_id": product_id, "reason": reason})
-    excluded_product_ids = list(dict.fromkeys([
-        *(str(value) for value in remediation.get("excluded_product_ids", []) if str(value)),
-        *(str(item.get("product_id") or "") for item in retired if isinstance(item, dict)),
-    ]))
-    return {
-        "recovery_mode": "NEXT_ELIGIBLE_PRODUCT",
-        "retired_products": retired,
-        "excluded_product_ids": excluded_product_ids,
-        "selection_rotation_index": int(remediation.get("selection_rotation_index") or content.get("selection_rotation_index") or 0) + 1,
-        "candidate_attempt_id": f"{content.get('post_id')}:next-product",
-        "retirement_reason": reason,
-    }
-
-
-def _quality_recovery_context(content: dict, decision: dict, duplicates: dict) -> dict:
-    """Retire a weak premise after its bounded copy work and continue the retained bench."""
-    context = _remediation_context(content, decision, duplicates)
-    context["remediation_reason"] = "candidate_quality_below_threshold_requires_new_opportunity"
-    context["fallback_type"] = "CANDIDATE_SHIFT" if context.get("replacement_candidate") else "NO_VIABLE_CANDIDATE_SHIFT"
-    context["exclude_engine_a_decision_thesis"] = False
-    return context
-
-
-def _field_replenishment_context(content: dict, quality_context: dict, critic_feedback: list[str]) -> dict:
-    """Keep the failed premise out of one bounded fresh opportunity field."""
-    concept = _remediation_concept(content)
-    strategy = (content.get("copy") or {}).get("strategy_lock") or {}
-    readiness = ((content.get("copy") or {}).get("evidence_readiness") or content.get("evidence_readiness") or {})
-    claims = readiness.get("claims") if isinstance(readiness, dict) and isinstance(readiness.get("claims"), list) else []
-    search_exclusion = " | ".join(
-        str(concept[key]) for key in ("question", "angle", "human_reality") if concept.get(key)
-    )
-    context = {
-        **quality_context,
-        "recovery_mode": "FIELD_REPLENISHMENT",
-        "remediation_reason": "retained_field_exhausted_after_quality_rejections",
-        "retained_field_exclusions": list(quality_context.get("excluded_concepts", [])),
-        "excluded_concepts": [search_exclusion] if search_exclusion else [],
-        "blocked_human_realities": [concept["human_reality"]] if concept.get("human_reality") else [],
-        "blocked_content_modes": [str(quality_context.get("blocked_content_mode") or "")] if quality_context.get("blocked_content_mode") else [],
-        "blocked_reader_jobs": [str(strategy.get("reader_job") or content.get("reader_job") or "")] if strategy.get("reader_job") or content.get("reader_job") else [],
-        "failed_claim_dependencies": [str(claim.get("claim") or "") for claim in claims if isinstance(claim, dict) and claim.get("centrality") == "CENTRAL"],
-        "quality_failure_reasons": list(dict.fromkeys(critic_feedback)),
-        "selection_rotation_index": int(content.get("selection_rotation_index") or 0) + 1,
-        "candidate_attempt_id": f"{content.get('post_id')}:replenished-field",
-    }
-    context.pop("replacement_candidate", None)
-    context.pop("opportunity_shortlist", None)
-    return context
-
-
-def _logical_candidate_key(content: dict) -> str:
-    """Identify a strategic opportunity across regenerated copy artifacts."""
-    brief = content.get("strategic_brief") if isinstance(content.get("strategic_brief"), dict) else {}
-    strategy = (content.get("copy") or {}).get("strategy_lock") or {}
-    identity = {
-        "engine": brief.get("engine"),
-        "pillar": brief.get("pillar_id"),
-        "genre": brief.get("genre_id"),
-        "question": brief.get("question") or content.get("selected_hook") or (content.get("copy") or {}).get("hook"),
-        "angle": brief.get("angle") or strategy.get("angle"),
-        "reader_job": brief.get("reader_job") or strategy.get("reader_job") or content.get("reader_job"),
-        "product_id": content.get("product_id"),
-    }
-    return _stable_hash(json.dumps(identity, sort_keys=True, ensure_ascii=True)) or str(content.get("candidate_attempt_id") or content.get("post_id") or "")
-
-
-def _research_recovery(content: dict) -> dict:
-    """Resolve one central evidence gap through the existing bounded research stack."""
-    from social import living_intelligence, public_research, research_router
-
-    copy = content.get("copy") if isinstance(content.get("copy"), dict) else {}
-    readiness = copy.get("evidence_readiness") if isinstance(copy.get("evidence_readiness"), dict) else {}
-    need = next((item for item in readiness.get("research_needs", []) if isinstance(item, dict)), None)
-    if not need:
-        return {"status": "NOT_WORTH_RESEARCHING", "reason": "no_central_gap"}
-
-    claim = str(need.get("claim_to_verify") or need.get("claim") or "").strip()
-    claim_type = str(need.get("claim_type") or "general_informational")
-    verified_product_fact = str(need.get("evidence_available") or "").upper() == "VERIFIED_PRODUCT_FACT"
-    strategy = copy.get("strategy_lock") if isinstance(copy.get("strategy_lock"), dict) else {}
-    entity = str(content.get("product_name") or content.get("topic") or strategy.get("topic") or "Infenergy Power").strip()
-    question = str(need.get("research_question") or f"What authoritative evidence supports: {claim}").strip()
-    task = research_router.route(
-        question=question,
-        why_needed=str(need.get("why_needed") or "The claim is central to the public message."),
-        entity=entity,
-        decision_affected="social_claim_verification",
-        freshness_requirement="current",
-    )
-    data_dir = os.environ.get("DATA_DIR", os.path.join(os.path.dirname(__file__), "..", "data"))
-    state = living_intelligence.load(data_dir)
-    cached = state.get("research_evidence") if isinstance(state.get("research_evidence"), list) else []
-    reusable = next(
-        (
-            item for item in cached
-            if isinstance(item, dict)
-            and str(item.get("claim") or "") == claim
-            and research_router.is_fresh(item, task)
-            and public_research.validate_claim_authority(
-                claim=claim,
-                claim_type=claim_type,
-                evidence=item,
-                verified_product_fact=verified_product_fact,
-            ).get("accepted")
-            and float(public_research.validate_claim_authority(
-                claim=claim,
-                claim_type=claim_type,
-                evidence=item,
-                verified_product_fact=verified_product_fact,
-            ).get("support_confidence") or 0) >= 0.75
-        ),
-        None,
-    )
-    if reusable:
-        return {"status": "RESOLVED", "source": "evidence_memory", "task": task.as_dict(), "evidence": [reusable], "verified_facts": [claim]}
-
-    results = public_research.research(task=task)
-    accepted: list[dict] = []
-    claim_tokens = {token for token in claim.lower().split() if len(token.strip(".,;:?!")) > 3}
-    for result in results:
-        if not isinstance(result, dict) or result.get("failure"):
-            continue
-        extract = " ".join(str(value) for value in result.get("extract", []))
-        extract_tokens = {token.strip(".,;:?!").lower() for token in extract.split() if len(token.strip(".,;:?!")) > 3}
-        authority = public_research.validate_claim_authority(
-            claim=claim,
-            claim_type=claim_type,
-            evidence=result,
-            verified_product_fact=verified_product_fact,
-        )
-        if authority["accepted"] and float(authority["support_confidence"] or 0) >= 0.75 and len(claim_tokens & extract_tokens) >= 2:
-            accepted.append({
-                **result,
-                **authority,
-                "claim": claim,
-                "candidate_id": str(content.get("candidate_attempt_id") or content.get("post_id") or ""),
-                "status": "RESOLVED",
-                "verification_requirement": "central_claim_authoritative_match",
-            })
-    if not accepted:
-        failure = next((str(item.get("failure")) for item in results if isinstance(item, dict) and item.get("failure")), "CLAIM_NOT_SUPPORTED")
-        return {"status": "INSUFFICIENT_EVIDENCE", "failure": failure, "task": task.as_dict(), "sources": results}
-
-    state["research_evidence"] = [*cached, *accepted][-100:]
-    living_intelligence.save(data_dir, state)
-    return {"status": "RESOLVED", "source": "public_research", "task": task.as_dict(), "evidence": accepted, "verified_facts": [claim]}
-
-
-def _recompute_final_evidence(content: dict) -> dict:
-    """Reassess the final candidate copy instead of retaining a draft ledger."""
-    copy = content.get("copy") if isinstance(content.get("copy"), dict) else {}
-    offering = content.get("anchored_offering") if isinstance(content.get("anchored_offering"), dict) else {}
-    brief = content.get("strategic_brief") if isinstance(content.get("strategic_brief"), dict) else {}
-    verified_facts = list(dict.fromkeys(
-        str(fact) for fact in (
-            list(content.get("product_metrics") or [])
-            + list(offering.get("verified_facts") or [])
-            + list(brief.get("verified_facts") or [])
-        ) if str(fact).strip()
-    ))
-    hook = str(copy.get("hook") or content.get("selected_hook") or "").strip()
-    body = str(copy.get("body_text") or "").strip()
-    takeaway = str(copy.get("takeaway") or copy.get("memory_anchor") or "").strip()
-    decision_insight = copy.get("decision_insight") if isinstance(copy.get("decision_insight"), dict) else {}
-    ledger = claim_intelligence.build_ledger(
-        " ".join(value for value in (hook, body, takeaway) if value),
-        verified_facts=verified_facts,
-        forbidden_claims=offering.get("forbidden_claims") or [],
-        source_concepts={
-            str(decision_insight.get("relationship") or ""): "decision_relationship",
-            str(decision_insight.get("decision_consequence") or ""): "decision_consequence",
-            hook: "hook_payoff",
-            takeaway: "takeaway",
-        },
-    )
-    readiness = claim_governance.assess(
-        ledger,
-        hook=hook,
-        decision_insight=decision_insight,
-        takeaway=takeaway,
-    )
-    content["claim_ledger"] = ledger.as_dict()
-    copy["evidence_readiness"] = readiness
-    content["copy"] = copy
-    content["evidence_readiness"] = readiness
-    return readiness
-
-
-def _semantic_difference(original: dict, replacement: dict) -> tuple[bool, str]:
-    changed = [key for key in original if original.get(key) != replacement.get(key)]
-    if not changed:
-        return False, "replacement_repeats_original_concept"
-    aliases = {"access": "connection", "compatible": "fit", "compatibility": "fit", "device": "fit", "outlet": "airport", "outlets": "airport", "travel": "trip", "battery": "reserve", "capacity": "reserve", "stored": "reserve", "support": "fit"}
-    tokens = lambda values: {aliases.get(word.strip(".,;:?!"), word.strip(".,;:?!")) for value in values.values() for word in str(value).lower().split() if len(word.strip(".,;:?!")) > 3}
-    before, after = tokens(original), tokens(replacement)
-    if len(before & after) / max(1, min(len(before), len(after))) >= 0.35:
-        return False, "replacement_semantically_overlaps_blocked_concept"
-    return True, "replacement_changes_" + "_and_".join(changed)
-
-
-def _finalize_evidence_remediation(content: dict, remediation_context: dict) -> None:
-    remediation = content.get("evidence_remediation") if isinstance(content.get("evidence_remediation"), dict) else {}
-    if remediation.get("status") == "ABSTAINED_NO_VIABLE_REPLACEMENT":
-        return
-    replacement = _remediation_concept(content)
-    materially_different, reason = _semantic_difference(remediation_context["original_concept"], replacement)
-    readiness = ((content.get("copy") or {}).get("evidence_readiness") or content.get("evidence_readiness") or {})
-    content["evidence_remediation"] = {**remediation_context, "status": "REMEDIATION_CANDIDATE", "attempt_limit": 1, "replacement_candidate_id": str(content.get("post_id") or ""), "replacement_candidate_attempt_id": str(content.get("candidate_attempt_id") or ""), "replacement_concept": replacement, "semantic_difference_reason": reason, "replacement_evidence_readiness": readiness, "visual_reuse_allowed": False}
-    if not materially_different:
-        content["validation_status"] = "failed"
-        content["validation_errors"] = list(content.get("validation_errors", [])) + ["remediation_reused_blocked_concept"]
-
-
-def _final_memory_record(content: dict, final_outcome: str) -> dict:
-    copy = content.get("copy") if isinstance(content.get("copy"), dict) else {}
-    remediation = content.get("evidence_remediation") if isinstance(content.get("evidence_remediation"), dict) else {}
-    return {"human_reality": (copy.get("strategy_lock") or {}).get("customer_moment", ""), "value_idea": (copy.get("strategy_lock") or {}).get("angle", ""), "question": copy.get("hook") or content.get("selected_hook", ""), "takeaway": copy.get("takeaway", ""), "memory_anchor": copy.get("memory_anchor", ""), "response_contract": copy.get("response_contract", {}), "evidence_outcome": (copy.get("evidence_readiness") or {}).get("status", ""), "remediation_used": bool(remediation), "original_blocked_concept": remediation.get("original_concept", {}), "final_concept": _remediation_concept(content), "final_outcome": final_outcome}
-
-
 def _generation_diagnostics(content: dict) -> dict:
     """Persist the evidence required to explain a rejected or published run."""
     return {
         "copy": content.get("copy", {}),
-        "candidate_attempt_id": content.get("candidate_attempt_id", ""),
-        "selection_rotation_index": content.get("selection_rotation_index"),
-        "fb_caption": content.get("fb_caption", ""),
         "orchestrator_quality": content.get("orchestrator_quality", {}),
         "claim_ledger": content.get("claim_ledger", {}),
         "creative_director": content.get("creative_director", {}),
@@ -649,8 +311,6 @@ def _generation_diagnostics(content: dict) -> dict:
         "platform_posts": content.get("platform_posts", {}),
         "creative_decision_packet": content.get("creative_decision_packet", {}),
         "publish_decision": content.get("publish_decision", {}),
-        "evidence_remediation": content.get("evidence_remediation", {}),
-        "final_memory": content.get("final_memory", {}),
     }
 
 
@@ -688,13 +348,7 @@ def _successful_publish_receipt(content: dict, platform: str) -> dict:
 
 
 def _receipt_external_id(receipt: dict) -> str:
-    return str(
-        receipt.get("external_post_id")
-        or receipt.get("facebook_post_id")
-        or receipt.get("instagram_media_id")
-        or receipt.get("linkedin_post_id")
-        or ""
-    ).strip()
+    return str(receipt.get("external_post_id") or receipt.get("facebook_post_id") or receipt.get("instagram_media_id") or "").strip()
 
 
 def _persist_publish_receipt(content: dict, *, platform: str, external_post_id: str, run_id: str, container_id: str = "") -> dict:
@@ -708,7 +362,6 @@ def _persist_publish_receipt(content: dict, *, platform: str, external_post_id: 
         "external_post_id": external_post_id,
         "facebook_post_id": external_post_id if platform == "facebook" else "",
         "instagram_media_id": external_post_id if platform == "instagram" else "",
-        "linkedin_post_id": external_post_id if platform == "linkedin" else "",
         "container_id": container_id if platform == "instagram" else "",
         "media_type": str(((content.get("platform_posts") or {}).get("instagram") or {}).get("media_type") or "IMAGE") if platform == "instagram" else "IMAGE",
         "published_at": datetime.now(timezone.utc).isoformat(),
@@ -824,209 +477,6 @@ def _normalize_history_content(content: dict, *, run_started: str) -> dict:
     return normalized
 
 
-def _freeze_publish_artifact(content: dict) -> dict:
-    """Capture the governed candidate so publication never needs regeneration."""
-    artifact = json.loads(json.dumps(content, sort_keys=True, default=str))
-    canonical = json.dumps(artifact, sort_keys=True, separators=(",", ":"))
-    return {
-        "artifact": artifact,
-        "sha256": hashlib.sha256(canonical.encode("utf-8")).hexdigest(),
-        "frozen_at_utc": datetime.now(timezone.utc).isoformat(),
-    }
-
-
-def load_approved_frozen_artifact(post_id: str) -> tuple[dict | None, list[str]]:
-    """Load a shadow-approved artifact only when its persisted evidence is intact."""
-    target = str(post_id or "").strip()
-    if not target:
-        return None, ["missing_post_id"]
-
-    history = generate_posts.load_history()
-    posts = history.get("posts", []) if isinstance(history.get("posts"), list) else []
-    record = next(
-        (
-            item for item in reversed(posts)
-            if isinstance(item, dict) and str(item.get("post_id") or "") == target
-            and str(item.get("status") or "") == "shadow_completed"
-        ),
-        None,
-    )
-    if not record:
-        return None, ["approved_shadow_not_found"]
-
-    frozen = record.get("frozen_publish_artifact")
-    if not isinstance(frozen, dict) or not isinstance(frozen.get("artifact"), dict):
-        return None, ["frozen_artifact_missing"]
-
-    artifact = frozen["artifact"]
-    canonical = json.dumps(artifact, sort_keys=True, separators=(",", ":"))
-    if str(frozen.get("sha256") or "") != hashlib.sha256(canonical.encode("utf-8")).hexdigest():
-        return None, ["frozen_artifact_hash_mismatch"]
-
-    decision = artifact.get("publish_decision") if isinstance(artifact.get("publish_decision"), dict) else {}
-    evidence = (artifact.get("copy") or {}).get("evidence_readiness") if isinstance(artifact.get("copy"), dict) else {}
-    errors: list[str] = []
-    if not decision.get("publishable"):
-        errors.append("frozen_artifact_not_publishable")
-    if str(evidence.get("status") or "") != "READY":
-        errors.append("frozen_artifact_evidence_not_ready")
-    if str(artifact.get("validation_status") or "") != "passed":
-        errors.append("frozen_artifact_validation_not_passed")
-    if not bool((artifact.get("duplicate_check") or {}).get("ok")):
-        errors.append("frozen_artifact_duplicate_check_failed")
-    if errors:
-        return None, errors
-
-    return artifact, []
-
-
-def promote_approved_frozen_artifact(
-    post_id: str,
-    *,
-    platforms: list[str],
-    dry_run: bool = True,
-    shadow_mode: bool = False,
-) -> dict:
-    """Publish an approved shadow artifact without regenerating any copy or media."""
-    allowed_platforms = ("facebook", "instagram", "linkedin")
-    requested = list(dict.fromkeys(platform for platform in platforms if platform in allowed_platforms))
-    if not requested:
-        return {"ok": False, "errors": ["no_supported_platforms_requested"], "results": {}}
-
-    content, errors = load_approved_frozen_artifact(post_id)
-    if errors or not content:
-        return {"ok": False, "errors": errors, "results": {}}
-
-    effective_channels = {"wordpress": False, **{platform: platform in requested for platform in allowed_platforms}}
-    readiness = _build_phase5_channel_readiness(effective_channels, dry_run=dry_run or shadow_mode)
-    blocking_channels = [
-        platform for platform in requested
-        if str((readiness.get("checks", {}).get(platform) or {}).get("status") or "") == "red"
-    ]
-    if blocking_channels:
-        return {
-            "ok": False,
-            "errors": [f"channel_readiness:{platform}" for platform in blocking_channels],
-            "results": {},
-            "readiness": readiness,
-        }
-
-    revalidated = validate_generated_content(content)
-    duplicate_check = check_duplicates(content, generate_posts.load_history(), windows=load_anti_repeat_windows())
-    content["duplicate_check"] = duplicate_check
-    presentation_errors = _lock_final_captions(content, effective_channels)
-    _ensure_final_artifact_qa(content, effective_channels)
-    visual_errors = _live_visual_gate_errors(content, effective_channels, dry_run or shadow_mode)
-    visual_errors.extend(_strategy_integrity_errors(content))
-    visual_errors.extend(_final_presentation_errors(content, effective_channels))
-    gate_errors = [
-        *list(revalidated.get("errors", [])),
-        *list(duplicate_check.get("reasons", [])),
-        *presentation_errors,
-        *visual_errors,
-    ]
-    if gate_errors:
-        return {
-            "ok": False,
-            "errors": list(dict.fromkeys(gate_errors)),
-            "results": {},
-            "readiness": readiness,
-        }
-
-    if shadow_mode:
-        return {
-            "ok": True,
-            "status": "shadow_promoted_not_published",
-            "errors": [],
-            "results": {platform: {"id": "shadow"} for platform in requested},
-            "readiness": readiness,
-        }
-
-    check_secrets(dry_run=dry_run, channels=effective_channels)
-    destination = str(content.get("destination_url") or os.environ.get("WP_URL", "https://www.infenergypower.com")).strip()
-    campaign = str(os.environ.get("UTM_CAMPAIGN_NAME", "infenergy_engine"))
-    audience = str(content.get("audience_segment", "general")).lower().replace(" ", "_")
-    content_slug = f"frozen_{str(content.get('funnel_stage', 'education')).lower()}"
-    links = {
-        platform: build_utm_url(destination, source=platform, campaign=campaign, content=content_slug, term=audience).get("utm_url", destination)
-        for platform in requested
-    }
-    run_id = datetime.now(timezone.utc).isoformat()
-    results: dict[str, dict] = {}
-    publish_errors: list[str] = []
-    for platform in requested:
-        existing = _successful_publish_receipt(content, platform) if not dry_run else {}
-        if existing:
-            results[platform] = {"id": _receipt_external_id(existing), "reused_receipt": True}
-            continue
-        try:
-            if platform == "facebook":
-                result = publish_facebook.publish(content, links[platform], dry_run=dry_run)
-            elif platform == "instagram":
-                content["tracked_link_instagram"] = links[platform]
-                result = publish_instagram.publish(content, dry_run=dry_run)
-            else:
-                result = publish_linkedin.publish(content, links[platform], dry_run=dry_run)
-            results[platform] = result
-            external_id = str(result.get("id") or "").strip()
-            if not dry_run and external_id and external_id not in {"dry-run", "skipped"}:
-                _persist_publish_receipt(
-                    content,
-                    platform=platform,
-                    external_post_id=external_id,
-                    container_id=str(result.get("container_id") or ""),
-                    run_id=run_id,
-                )
-        except Exception as exc:
-            publish_errors.append(f"{platform}:{type(exc).__name__}:{exc}")
-            results[platform] = {"error": str(exc)}
-
-    confirmed_platforms = [
-        platform for platform, result in results.items()
-        if not result.get("reused_receipt")
-        and str(result.get("id") or "").strip() not in {"", "dry-run", "skipped"}
-    ]
-    if not dry_run and confirmed_platforms:
-        try:
-            history = generate_posts.load_history()
-            posts = history.get("posts", []) if isinstance(history.get("posts"), list) else []
-            record = next(
-                (
-                    item for item in reversed(posts)
-                    if isinstance(item, dict) and str(item.get("post_id") or "") == str(post_id)
-                    and str(item.get("status") or "") == "shadow_completed"
-                ),
-                None,
-            )
-            if not record:
-                raise RuntimeError("approved_shadow_not_found_during_promotion_persistence")
-            promotions = record.setdefault("promotions", [])
-            promotions.append({
-                "run_id": run_id,
-                "promoted_at_utc": datetime.now(timezone.utc).isoformat(),
-                "status": "promoted" if not publish_errors else "partial_error",
-                "platforms": requested,
-                "results": results,
-                "errors": publish_errors,
-            })
-            generate_posts.save_history(history)
-            for platform in confirmed_platforms:
-                _mark_publish_postprocess_complete(content, platform)
-        except Exception as exc:
-            for platform in confirmed_platforms:
-                _mark_publish_postprocess_error(content, platform, exc)
-            publish_errors.append(f"promotion_history_persistence:{type(exc).__name__}:{exc}")
-
-    return {
-        "ok": not publish_errors,
-        "status": "promoted" if not publish_errors else "partial_error",
-        "errors": publish_errors,
-        "results": results,
-        "readiness": readiness,
-        "run_id": run_id,
-    }
-
-
 def _visual_strategy_fingerprint(content: dict) -> str:
     strategy = _strategy_lock_for_revision(content)
     visual_plan = content.get("visual_plan") if isinstance(content.get("visual_plan"), dict) else {}
@@ -1129,38 +579,9 @@ def _retryability_classification(decision: dict, findings: list[str]) -> str:
     reasons = {str(item) for item in decision.get("reasons", []) if str(item)} | {str(item) for item in findings if str(item)}
     if any(reason in _TERMINAL_FINDINGS for reason in reasons):
         return "TERMINAL"
-    if "UNSUPPORTED_MATERIAL_CLAIMS" in reasons:
-        return "EVIDENCE_SAFE_REMEDIATION"
     if any(reason in _RETRYABLE_CONTENT_FINDINGS or reason.startswith(_RETRYABLE_CONTENT_PREFIXES) for reason in reasons):
         return "RETRYABLE_CONTENT"
     return "TERMINAL"
-
-
-def _evidence_safe_remediation_feedback(content: dict) -> list[str]:
-    """Request one new, verified-facts-first candidate after research governance blocks a claim."""
-    product = str(content.get("product_name") or content.get("product_id") or "the product")
-    return [
-        "The prior candidate is blocked by central unsupported reasoning. Do not restate, soften, or remove metadata from that claim.",
-        f"Choose a materially new, single-situation angle for {product} using only verified product facts already supplied to the generator.",
-        "Express feature to function to practical use to human value without asserting compatibility, runtime, safety, outage performance, or other unverified consequences.",
-        "Keep one natural human situation, a useful verified-fact takeaway, and an earned CTA. Abstain if no such angle is available.",
-    ]
-
-
-def _next_evidence_safe_context(content: dict, remediation: dict) -> dict:
-    """Advance a rejected evidence remediation without calling the field exhausted."""
-    verified_context = _verified_facts_only_recovery_context(content, remediation)
-    verified_context["excluded_product_ids"] = list(dict.fromkeys([
-        *(str(value) for value in remediation.get("excluded_product_ids", []) if str(value)),
-        *(str(value) for value in verified_context.get("excluded_product_ids", []) if str(value)),
-    ]))
-    if isinstance(verified_context.get("verified_fact_opportunity"), dict):
-        return verified_context
-    return _next_product_recovery_context(
-        content,
-        verified_context,
-        "verified_facts_remediation_not_publishable",
-    )
 
 
 def _enforce_candidate_claim_boundary(content: dict) -> list[str]:
@@ -1176,11 +597,10 @@ def _enforce_candidate_claim_boundary(content: dict) -> list[str]:
         if not isinstance(value, str) or not value.strip():
             return
         sanitized, corrections = remove_unsupported_numeric_claims(value, verified_facts)
-        if corrections:
-            mapping[key] = sanitized
-            removed.extend(corrections)
+        mapping[key] = sanitized
+        removed.extend(corrections)
 
-    for field in ("wp_content", "selected_hook"):
+    for field in ("wp_content", "fb_caption", "ig_caption", "li_text", "selected_hook"):
         sanitize(content, field)
     copy = content.get("copy")
     if isinstance(copy, dict):
@@ -1198,66 +618,7 @@ def _enforce_candidate_claim_boundary(content: dict) -> list[str]:
         for post in posts.values():
             if isinstance(post, dict):
                 sanitize(post, "caption")
-                if isinstance(post.get("final_caption"), str):
-                    sanitize(post, "final_caption")
-        fields = {"facebook": "fb_caption", "instagram": "ig_caption", "linkedin": "li_text"}
-        for platform, flat in fields.items():
-            post = posts.get(platform) if isinstance(posts.get(platform), dict) else {}
-            if not isinstance(post.get("final_caption") or post.get("caption"), str):
-                sanitize(content, flat)
-        for platform, flat in fields.items():
-            post = posts.get(platform) if isinstance(posts.get(platform), dict) else {}
-            caption = str(post.get("final_caption") or post.get("caption") or content.get(flat) or "").strip()
-            if caption:
-                post["caption"] = caption
-                post["final_caption"] = caption
-                content[flat] = caption
-    else:
-        for flat in ("fb_caption", "ig_caption", "li_text"):
-            sanitize(content, flat)
     return list(dict.fromkeys(removed))
-
-
-def _lock_final_captions(content: dict, active_channels: dict[str, bool] | None = None) -> list[str]:
-    """Freeze the one public string after the last text mutation."""
-    from social import platform_presentation
-
-    components = content.get("post_components") if isinstance(content.get("post_components"), dict) else {}
-    posts = content.get("platform_posts") if isinstance(content.get("platform_posts"), dict) else {}
-    flat_fields = {"facebook": "fb_caption", "instagram": "ig_caption", "linkedin": "li_text"}
-    active_channels = active_channels or {platform: True for platform in flat_fields}
-    errors: list[str] = []
-    locks: dict[str, str] = {}
-    for platform, flat_field in flat_fields.items():
-        package = posts.get(platform) if isinstance(posts.get(platform), dict) else {}
-        caption = str(package.get("final_caption") or package.get("caption") or content.get(flat_field) or "").strip()
-        if not caption:
-            if active_channels.get(platform):
-                errors.append(f"{platform}_final_caption_missing")
-            continue
-        if not components and not isinstance(package.get("final_caption_qa"), dict):
-            package["caption"] = caption
-            package["final_caption"] = caption
-            package["final_caption_lock"] = caption
-            content[flat_field] = caption
-            locks[platform] = caption
-            continue
-        qa = platform_presentation.final_caption_qa(
-            caption,
-            platform=platform,
-            components=components,
-            planning_instructions=list(package.get("planning_instructions") or []),
-        )
-        package["caption"] = caption
-        package["final_caption"] = caption
-        package["final_caption_qa"] = qa
-        package["final_caption_lock"] = caption
-        content[flat_field] = caption
-        locks[platform] = caption
-        if active_channels.get(platform) and qa.get("status") != "PRESENTATION_READY":
-            errors.append(f"{platform}_final_presentation_not_ready")
-    content["final_caption_locks"] = locks
-    return errors
 
 
 def _revision_scope(content: dict) -> str:
@@ -1399,62 +760,6 @@ def _shadow_platform_records(content: dict, run_started: str, effective_channels
         record["status"] = "shadow_not_published"
         record["error"] = "shadow_mode_no_external_publication"
     return records
-
-
-def _decision_realization_budget() -> int:
-    return max(2, int(os.environ.get("CONTENT_DECISION_MAX_REALIZATIONS", "3")))
-
-
-def _record_no_viable_opportunity_abstention(
-    *,
-    slot: str,
-    dry_run: bool,
-    shadow_mode: bool,
-    runtime_metrics: dict,
-    total_started: float,
-) -> None:
-    """Record a normal terminal decision when freshness leaves no eligible opportunity."""
-    run_started = str(runtime_metrics.get("started_at_utc") or datetime.now(timezone.utc).isoformat())
-    _apply_phase8_budget(
-        runtime_metrics,
-        "total",
-        time.perf_counter() - total_started,
-        float(os.environ.get("PHASE8_BUDGET_TOTAL_SEC", "420")),
-    )
-    history = generate_posts.load_history()
-    history.setdefault("posts", []).append({
-        "post_id": f"abstain-{_stable_hash(run_started + slot)[:12]}",
-        "platform_post_id": None,
-        "platform": "multi",
-        "published_at": run_started,
-        "run_started_at_utc": run_started,
-        "slot": slot,
-        "error": "no_viable_opportunities",
-        "status": "abstained_no_viable_opportunity",
-        "dry_run": dry_run,
-        "shadow_mode": shadow_mode,
-        "platform_records": [],
-        "generation_attempts": [],
-        "final_memory": {
-            "final_outcome": "abstain",
-            "reason": "no_viable_opportunities",
-        },
-        "phase8_runtime": runtime_metrics,
-    })
-    history["posts"] = history["posts"][-200:]
-    generate_posts.save_history(history)
-    print("[ABSTAIN] No viable opportunities remain after freshness filtering.")
-
-
-def _mark_no_viable_replacement_abstention(content: dict) -> None:
-    """Keep the original candidate auditable when its one replacement cannot be selected."""
-    content["validation_status"] = "failed"
-    content["validation_errors"] = list(content.get("validation_errors", [])) + ["no_viable_replacement_opportunity"]
-    remediation = content.get("evidence_remediation")
-    if isinstance(remediation, dict):
-        remediation["status"] = "ABSTAINED_NO_VIABLE_REPLACEMENT"
-        remediation["replacement_candidate_id"] = ""
-        remediation["semantic_difference_reason"] = "no_viable_replacement_opportunity"
 
 
 def _build_phase6_learning(
@@ -1612,14 +917,12 @@ def _live_visual_gate_errors(content: dict, effective_channels: dict[str, bool],
     if not requested:
         return []
 
-    from social import visual_contract
-
     visuals = content.get("generated_visuals") if isinstance(content.get("generated_visuals"), dict) else {}
     render_engines = visuals.get("render_engines") if isinstance(visuals.get("render_engines"), dict) else {}
     overlays = visuals.get("product_overlay_applied") if isinstance(visuals.get("product_overlay_applied"), dict) else {}
-    contract = visual_contract.requirements(content)
-    require_ai_visual = contract["ai_visual_required"] and os.environ.get("LIVE_REQUIRE_AI_VISUAL", "true").strip().lower() in {"1", "true", "yes", "on"}
-    require_product = contract["product_reference_required"] and os.environ.get("LIVE_REQUIRE_PRODUCT_VISUAL", "true").strip().lower() in {"1", "true", "yes", "on"}
+    require_gemini = os.environ.get("LIVE_REQUIRE_GEMINI_VISUAL", "true").strip().lower() in {"1", "true", "yes", "on"}
+    has_anchored_product = bool(str(content.get("product_id") or "").strip())
+    require_product = has_anchored_product and os.environ.get("LIVE_REQUIRE_PRODUCT_VISUAL", "true").strip().lower() in {"1", "true", "yes", "on"}
 
     errors: list[str] = []
     if require_product and str(visuals.get("product_specific_source_present", "false")).lower() != "true":
@@ -1627,9 +930,9 @@ def _live_visual_gate_errors(content: dict, effective_channels: dict[str, bool],
     for platform in requested:
         if not str(visuals.get(platform, "")).strip():
             errors.append(f"{platform}_visual_missing")
-        if require_ai_visual and str(render_engines.get(platform, "")) != "gemini":
-            errors.append(f"{platform}_visual_not_ai_generated")
-        if contract["product_overlay_required"] and overlays.get(platform) is not True:
+        if require_gemini and str(render_engines.get(platform, "")) != "gemini":
+            errors.append(f"{platform}_visual_not_gemini")
+        if require_product and overlays.get(platform) is not True:
             errors.append(f"{platform}_product_overlay_missing")
     instagram_post = ((content.get("platform_posts") or {}).get("instagram") or {})
     if effective_channels.get("instagram") and str(instagram_post.get("media_type") or "").upper() == "REEL":
@@ -1657,35 +960,6 @@ def _final_presentation_errors(content: dict, effective_channels: dict[str, bool
     return errors
 
 
-def _repair_final_presentations(content: dict, effective_channels: dict[str, bool]) -> list[str]:
-    """Repair public rendering only; strategy, claims, product role, and visuals stay locked."""
-    components = content.get("post_components") if isinstance(content.get("post_components"), dict) else {}
-    packages = content.get("platform_posts") if isinstance(content.get("platform_posts"), dict) else {}
-    repaired: list[str] = []
-    for platform in ("facebook", "instagram", "linkedin"):
-        if not effective_channels.get(platform):
-            continue
-        package = packages.get(platform) if isinstance(packages.get(platform), dict) else {}
-        qa = package.get("final_caption_qa") if isinstance(package.get("final_caption_qa"), dict) else {}
-        if qa.get("status") == "PRESENTATION_READY":
-            continue
-        caption, presentation = platform_presentation.format_caption(components, platform=platform)
-        final_caption = platform_presentation.render_platform_caption(
-            caption,
-            destination_url=str(content.get("destination_url") or ""),
-            platform=platform,
-        )
-        package["caption"] = final_caption
-        package["final_caption"] = final_caption
-        package["presentation"] = presentation
-        packages[platform] = package
-        repaired.append(platform)
-    if repaired:
-        content["platform_posts"] = packages
-        _lock_final_captions(content, effective_channels)
-    return repaired
-
-
 def _artifact_visual_errors_by_platform(content: dict, effective_channels: dict[str, bool]) -> dict[str, list[str]]:
     """Return saved-artifact QA failures for active social channels only."""
     visuals = content.get("generated_visuals") if isinstance(content.get("generated_visuals"), dict) else {}
@@ -1705,58 +979,10 @@ def _ensure_final_artifact_qa(content: dict, effective_channels: dict[str, bool]
     """Inspect the actual generated artifact before either governance or shadow stop."""
     if not any(effective_channels.get(platform) for platform in ("facebook", "instagram", "linkedin")):
         return {}
-    pre_visual_gate = content.get("pre_visual_gate") if isinstance(content.get("pre_visual_gate"), dict) else {}
-    candidate_id = str(content.get("candidate_attempt_id") or content.get("post_id") or "")
     visuals = content.get("generated_visuals") if isinstance(content.get("generated_visuals"), dict) else {}
-    active_platforms = [platform for platform in ("facebook", "instagram", "linkedin") if effective_channels.get(platform)]
-    existing_reviews = visuals.get("artifact_reviews") if isinstance(visuals.get("artifact_reviews"), dict) else {}
-    has_required_artifacts = bool(visuals) and all(
-        str(
-            visuals.get(platform)
-            or (existing_reviews.get(platform) if isinstance(existing_reviews.get(platform), dict) else {}).get("artifact_path")
-            or ""
-        ).strip()
-        for platform in active_platforms
-    )
-    if not has_required_artifacts:
-        if not (
-            pre_visual_gate.get("status") == "PASS"
-            and pre_visual_gate.get("flux_authorized") is True
-            and str(pre_visual_gate.get("selected_candidate") or "") == candidate_id
-        ):
-            return {}
-        visuals = generate_posts.generate_visuals(content, visual_plan=content.get("visual_plan"), platforms=active_platforms)
+    if not visuals:
+        visuals = generate_posts.generate_visuals(content, visual_plan=content.get("visual_plan"))
         content["generated_visuals"] = visuals
-    if pre_visual_gate:
-        generation = visuals.get("visual_generation") if isinstance(visuals.get("visual_generation"), dict) else {}
-        pre_visual_gate["estimated_flux_neurons"] = {
-            platform: metadata.get("estimated_neurons")
-            for platform, metadata in generation.items()
-            if isinstance(metadata, dict) and metadata.get("estimated_neurons") is not None
-        }
-        pre_visual_gate["image_calls"] = sum(
-            1 for metadata in generation.values()
-            if isinstance(metadata, dict) and metadata.get("visual_generation_attempted")
-        )
-        content["pre_visual_gate"] = pre_visual_gate
-    if content.get("reel_render_deferred") and visuals.get("instagram"):
-        from social import reels
-
-        reel_plan = content.get("reel_plan") if isinstance(content.get("reel_plan"), dict) else {}
-        reel_gate = reels.validate_reel_plan(reel_plan)
-        content["reel_pre_render_gate"] = reel_gate
-        if reel_gate.get("status") == "REEL_READY":
-            reel_artifacts = reels.render_reel(reel_plan, source_image=str(visuals["instagram"]))
-            reel_artifacts["technical_qa"] = reels.technical_qa(reel_artifacts, reel_plan)
-            reel_artifacts["freeze_qa"] = reels.freeze_qa(reel_artifacts, reel_plan)
-            reel_artifacts["final_frame_qa"] = reels.final_frame_qa(reel_artifacts)
-            reel_artifacts["cover_qa"] = reels.cover_qa(reel_artifacts)
-            reel_artifacts["motion_qa"] = reels.motion_qa(reel_plan)
-            content["instagram_reel"] = reel_artifacts
-            platform_posts = content.get("platform_posts") if isinstance(content.get("platform_posts"), dict) else {}
-            if isinstance(platform_posts.get("instagram"), dict):
-                platform_posts["instagram"]["reel"] = reel_artifacts
-            content["reel_render_deferred"] = False
     reviews = visuals.get("artifact_reviews") if isinstance(visuals.get("artifact_reviews"), dict) else {}
     for platform in ("facebook", "instagram", "linkedin"):
         if effective_channels.get(platform):
@@ -1766,60 +992,6 @@ def _ensure_final_artifact_qa(content: dict, effective_channels: dict[str, bool]
     visuals["artifact_reviews"] = reviews
     content["artifact_visual_qa"] = reviews
     return reviews
-
-
-def _pre_visual_gate(content: dict, effective_channels: dict[str, bool], scoring: dict) -> dict:
-    """Use existing non-visual governance as the authorization boundary for costly image inference."""
-    social_channels = ("facebook", "instagram", "linkedin")
-    deferred_artifact_errors = {
-        f"{platform}_{requirement}"
-        for platform in social_channels
-        for requirement in ("visual_missing", "visual_not_ai_generated", "product_overlay_missing")
-    }
-    validation_errors = [str(error) for error in content.get("validation_errors", [])]
-    nonvisual_validation_errors = [
-        error for error in validation_errors if error not in deferred_artifact_errors
-    ]
-    only_deferred_artifact_errors = bool(validation_errors) and not nonvisual_validation_errors
-    validation_ok = content.get("validation_status") == "passed" or only_deferred_artifact_errors
-    duplicates = content.get("duplicate_check") if isinstance(content.get("duplicate_check"), dict) else {}
-    duplicate_ok = bool(duplicates.get("ok", True))
-    strategy_errors = _strategy_integrity_errors(content)
-    presentation_errors = _final_presentation_errors(content, effective_channels)
-    evidence = ((content.get("copy") or {}).get("evidence_readiness") or content.get("evidence_readiness") or {})
-    evidence_status = str(evidence.get("status") or "READY") if isinstance(evidence, dict) else "READY"
-    claims_ready = evidence_status not in {"RESEARCH_REQUIRED", "HIGH_RISK_UNVERIFIED"}
-    evidence_ready = evidence_status == "READY"
-    decision = content.get("publish_decision") if isinstance(content.get("publish_decision"), dict) else {}
-    if not decision or only_deferred_artifact_errors:
-        decision = decide_publication(
-            legacy_score=scoring,
-            validation={"passed": validation_ok and not strategy_errors and not presentation_errors, "errors": nonvisual_validation_errors + strategy_errors + presentation_errors},
-            duplicates=duplicates,
-            conversion_quality_score=float((content.get("conversion_quality_score") or {}).get("total", 100) or 100),
-            orchestrator_quality=content.get("orchestrator_quality"),
-            visual_errors=[],
-            evidence_readiness=evidence,
-        )
-    active_social_channels = any(effective_channels.get(platform) for platform in social_channels)
-    passed = bool(active_social_channels and validation_ok and duplicate_ok and claims_ready and evidence_ready and not strategy_errors and not presentation_errors and decision.get("publishable"))
-    reasons = list(dict.fromkeys(list(decision.get("reasons", [])) + strategy_errors + presentation_errors))
-    return {
-        "status": "PASS" if passed else "FAIL",
-        "strategy_ready": not strategy_errors,
-        "copy_ready": validation_ok,
-        "claims_ready": claims_ready,
-        "evidence_ready": evidence_ready,
-        "freshness_ready": duplicate_ok,
-        "duplicate_ready": duplicate_ok,
-        "campaign_ready": active_social_channels,
-        "platform_text_ready": not presentation_errors,
-        "selected_candidate": str(content.get("candidate_attempt_id") or content.get("post_id") or ""),
-        "estimated_flux_neurons": {},
-        "flux_authorized": passed,
-        "image_calls": 0,
-        "reasons": reasons,
-    }
 
 
 def _record_material_strategy_lessons(content: dict, strategy: dict) -> list[dict]:
@@ -1853,6 +1025,7 @@ def _build_platform_history_records(
     error_map: dict[str, str],
     skip_reason_map: dict[str, str] | None = None,
     channel_reasons: dict[str, str] | None = None,
+    include_wordpress_audit: bool = False,
 ) -> list[dict]:
     destination_url = str(content.get("destination_url") or "")
     campaign_id = str(content.get("campaign_id") or "")
@@ -1869,7 +1042,8 @@ def _build_platform_history_records(
     platform_posts = content.get("platform_posts", {}) if isinstance(content.get("platform_posts"), dict) else {}
 
     records: list[dict] = []
-    for platform in ("facebook", "instagram", "linkedin", "wordpress"):
+    platforms = ("facebook", "instagram", "linkedin", "wordpress") if include_wordpress_audit else ("facebook", "instagram", "linkedin")
+    for platform in platforms:
         platform_entry = platform_posts.get(platform, {}) if isinstance(platform_posts.get(platform), dict) else {}
         platform_post_id = str(ids.get(platform, "") or "")
         utm_url = tracked_links.get(platform) if platform in tracked_links else None
@@ -1942,24 +1116,12 @@ def main() -> None:
     # Compute a stage first so schedule rules can enforce stage eligibility.
     generate_posts.ensure_runtime_data()
     t_preview = time.perf_counter()
-    try:
-        preview_content = generate_posts.generate(
-            slot,
-            funnel_stage_override=funnel_stage_override,
-            product_id_override=product_id_override,
-            pipeline_override=pipeline_override,
-        )
-    except RuntimeError as exc:
-        if str(exc) != "no viable opportunities generated":
-            raise
-        _record_no_viable_opportunity_abstention(
-            slot=slot,
-            dry_run=dry_run,
-            shadow_mode=shadow_mode,
-            runtime_metrics=runtime_metrics,
-            total_started=t_total,
-        )
-        return
+    preview_content = generate_posts.generate(
+        slot,
+        funnel_stage_override=funnel_stage_override,
+        product_id_override=product_id_override,
+        pipeline_override=pipeline_override,
+    )
     _apply_phase8_budget(runtime_metrics, "preview_generation", time.perf_counter() - t_preview, generation_budget)
     funnel_stage = str(preview_content.get("funnel_stage", "EDUCATION"))
 
@@ -1985,7 +1147,11 @@ def main() -> None:
         channel_reasons[name] = reason
 
     platform_selection = preview_content.get("platform_selection") if isinstance(preview_content.get("platform_selection"), dict) else {}
-    _apply_strategy_platform_selection(effective_channels, channel_reasons, platform_selection, manual_platforms)
+    for platform in ("facebook", "instagram", "linkedin"):
+        selection = platform_selection.get(platform) if isinstance(platform_selection.get(platform), dict) else {}
+        if effective_channels.get(platform) and selection.get("selected") is False:
+            effective_channels[platform] = False
+            channel_reasons[platform] = "strategy_platform_not_appropriate"
 
     phase5_readiness = _build_phase5_channel_readiness(effective_channels, dry_run)
     for platform in phase5_readiness.get("blocking_channels", []):
@@ -2021,9 +1187,7 @@ def main() -> None:
     print(f"Phase5 readiness: {json.dumps(phase5_readiness, ensure_ascii=True)}\n")
 
     print("[1/5] Generating content with Gemini...")
-    # Explore the retained field cheaply through bounded candidate revisions,
-    # then permit one fresh field with the failed premise excluded.
-    decision_budget = _decision_realization_budget()
+    # Phase 8: up to three generation attempts with score/validation gating.
     attempts: list[dict] = []
     windows = load_anti_repeat_windows()
     content = preview_content
@@ -2034,60 +1198,23 @@ def main() -> None:
     prior_generated_visuals: dict = {}
     previous_decision: str | None = None
     previous_current_findings: list[str] = []
-    evidence_remediation_used = False
-    research_recovery_used = False
-    research_verified_facts: list[str] = []
-    field_replenished = False
-    candidate_realizations: dict[str, int] = {}
-    active_candidate_key = ""
-    candidate_identity_reset = True
-    original_research_block: dict | None = None
-    remediation_context: dict | None = None
-    recovery_story: dict = {"candidate_a": {}, "classification": "", "alternatives_considered": [], "candidate_b_selected": False, "presentation_repairs": []}
     t_generation = time.perf_counter()
-    generation_deadline = t_generation + generation_budget
-    for idx in range(decision_budget):
-        if idx > 0 and time.perf_counter() >= generation_deadline:
-            attempts.append({
-                "attempt": idx + 1,
-                "decision": "generation_budget_exhausted",
-                "retryability_classification": "TERMINAL",
-            })
-            content.setdefault("quality_warnings", []).append("generation_budget_exhausted")
-            break
+    for idx in range(3):
         if idx > 0:
-            try:
-                content = generate_posts.generate(
-                    slot,
-                    funnel_stage_override=funnel_stage_override,
-                    product_id_override=locked_product_id,
-                    pipeline_override=pipeline_override,
-                    approved_strategy=locked_strategy or None,
-                    revision_feedback=pending_feedback,
-                    remediation_context=remediation_context,
-                    verified_facts_override=research_verified_facts or None,
-                )
-            except RuntimeError as exc:
-                if str(exc) != "no viable opportunities generated":
-                    raise
-                _mark_no_viable_replacement_abstention(content)
-                break
-            if evidence_remediation_used and remediation_context:
-                content["evidence_remediation"] = {**remediation_context, "status": "REMEDIATION_CANDIDATE", "attempt_limit": 1}
-                content["recovery_story"] = recovery_story
+            content = generate_posts.generate(
+                slot,
+                funnel_stage_override=funnel_stage_override,
+                product_id_override=locked_product_id,
+                pipeline_override=pipeline_override,
+                approved_strategy=locked_strategy or None,
+                revision_feedback=pending_feedback,
+            )
             if pending_scope == "copy" and _can_carry_forward_visuals(prior_generated_visuals, content, effective_channels):
                 content["generated_visuals"] = prior_generated_visuals
                 content["revision_reused_components"] = ["generated_visuals"]
 
         claim_corrections = _enforce_candidate_claim_boundary(content)
-        caption_lock_errors = _lock_final_captions(content, effective_channels)
         validation = validate_generated_content(content)
-        if caption_lock_errors:
-            validation = {
-                "passed": False,
-                "errors": list(validation.get("errors", [])) + caption_lock_errors,
-                "warnings": list(validation.get("warnings", [])),
-            }
         hard_block = str(os.environ.get("ORCHESTRATION_HARD_BLOCK", "false")).strip().lower() in {"1", "true", "yes", "on"}
         if content.get("orchestration_blocked"):
             if hard_block:
@@ -2141,18 +1268,8 @@ def main() -> None:
         generated_visuals["source_visual_candidate_id"] = str(generated_visuals.get("source_visual_candidate_id") or content.get("post_id") or "")
         generated_visuals["strategy_fingerprint"] = _visual_strategy_fingerprint(content)
         content["generated_visuals"] = generated_visuals
-        if candidate_identity_reset or not active_candidate_key:
-            active_candidate_key = _logical_candidate_key(content) or f"realization-{idx + 1}"
-            candidate_identity_reset = False
-        candidate_key = active_candidate_key
-        candidate_realizations[candidate_key] = candidate_realizations.get(candidate_key, 0) + 1
-        candidate_realization_count = candidate_realizations[candidate_key]
 
         # Conversion Logic Engine rule (spec section 23): below 80 CQS, automatically
-        # Revisions can remove the material claim that caused an earlier block.
-        # Always govern the copy that would actually be published.
-        _recompute_final_evidence(content)
-
         # attempt improvement before publishing rather than accepting a "warning"-only gate.
         cqs_total = float((content.get("conversion_quality_score") or {}).get("total", 100) or 100)
         publish_decision = decide_publication(
@@ -2161,7 +1278,6 @@ def main() -> None:
             duplicates=duplicates,
             conversion_quality_score=cqs_total,
             orchestrator_quality=content.get("orchestrator_quality"),
-            evidence_readiness=((content.get("copy") or {}).get("evidence_readiness") or content.get("evidence_readiness")),
         )
         content["publish_decision"] = publish_decision
         current_strategy = _strategy_lock_for_revision(content)
@@ -2175,48 +1291,13 @@ def main() -> None:
         historical_feedback = list(pending_feedback)
         issue_closure = _issue_closure(historical_feedback, critic_feedback)
         retryability = _retryability_classification(publish_decision, critic_feedback)
-        research_required = _evidence_recovery_required(publish_decision)
-        research_outcome: dict = {}
-        if research_required and not research_recovery_used:
-            research_recovery_used = True
-            research_outcome = _research_recovery(content)
-            content["research_recovery"] = research_outcome
-            if research_outcome.get("status") == "RESOLVED":
-                research_verified_facts = list(research_outcome.get("verified_facts") or [])
-                pending_feedback = [
-                    "Use the newly verified evidence precisely; do not add claims beyond its stated scope.",
-                    "Keep the existing human reality, reader value, and strategy intact.",
-                ]
-                pending_scope = "copy"
-                original_research_block = _candidate_audit(content)
-                attempts.append({
-                    "attempt": f"{idx + 1}:research",
-                    "decision": "research_resolved_continue_same_candidate",
-                    "research_recovery": research_outcome,
-                })
-                continue
-            original_research_block = _candidate_audit(content)
-            retryability = "EVIDENCE_SAFE_REMEDIATION"
-        elif research_required and not evidence_remediation_used:
-            original_research_block = _candidate_audit(content)
-            retryability = "EVIDENCE_SAFE_REMEDIATION"
-        failure_reasons = list(validation.get("errors", [])) + list(duplicates.get("reasons", [])) + list(publish_decision.get("reasons", []))
-        recovery_classification = recovery.classify_failure(failure_reasons)
-        strategic_replacement_needed = any(
-            marker in str(reason).lower()
-            for reason in failure_reasons
-            for marker in ("duplicate", "research_required", "high_risk_unverified", "unsupported", "semantic", "stale", "campaign_conflict")
-        )
-        if idx == 0 and strategic_replacement_needed and not evidence_remediation_used:
-            original_research_block = _candidate_audit(content)
-            retryability = "EVIDENCE_SAFE_REMEDIATION"
         diagnosis = _cognitive_diagnosis(
             content,
             strategy=current_strategy or locked_strategy,
             removed_claims=claim_corrections,
             findings=critic_feedback,
         )
-        diagnosis["metacognition"]["attempt_budget_remaining"] = decision_budget - idx - 1
+        diagnosis["metacognition"]["attempt_budget_remaining"] = 2 - idx
 
         attempts.append(
             {
@@ -2242,11 +1323,6 @@ def main() -> None:
                 "strategy_lock": locked_strategy,
                 "visual_generation": generated_visuals.get("visual_generation", {}),
                 "candidate": _candidate_audit(content),
-                "evidence_remediation": {
-                    "used": evidence_remediation_used,
-                    "original_research_block": original_research_block,
-                },
-                "recovery_classification": recovery_classification,
             }
         )
 
@@ -2256,149 +1332,6 @@ def main() -> None:
         content["creative_concept_escalation"] = metacognitive_review
 
         if publish_decision["publishable"]:
-            break
-
-        if (
-            "duplicate_product_within_window" in duplicates.get("reasons", [])
-            and not product_id_override
-            and idx + 1 < decision_budget
-        ):
-            remediation_context = _next_product_recovery_context(
-                content,
-                remediation_context or {},
-                "duplicate_product_within_window",
-            )
-            recovery_story.setdefault("products_retired", []).append({
-                "product_id": str(content.get("product_id") or ""),
-                "reason": "duplicate_product_within_window",
-            })
-            recovery_story["classification"] = "NEXT_ELIGIBLE_PRODUCT"
-            pending_feedback = [
-                "Select a new eligible product with a materially different, verified-facts-only opportunity.",
-                "Do not reuse the duplicate product, its blocked premise, or unsupported technical consequences.",
-            ]
-            pending_scope = "strategy"
-            prior_generated_visuals = {}
-            locked_strategy = {}
-            locked_product_id = ""
-            evidence_remediation_used = False
-            research_recovery_used = False
-            research_verified_facts = []
-            candidate_identity_reset = True
-            continue
-
-        verified_facts_recovery = str((remediation_context or {}).get("recovery_mode") or "") == "VERIFIED_FACTS_ONLY_RECOVERY"
-        if research_required and evidence_remediation_used and not verified_facts_recovery and idx + 1 < decision_budget:
-            remediation_context = _next_evidence_safe_context(content, remediation_context or _remediation_context(content, publish_decision, duplicates))
-            verified_fact_opportunity = remediation_context.get("verified_fact_opportunity")
-            if isinstance(verified_fact_opportunity, dict):
-                recovery_story.update({
-                    "classification": "VERIFIED_FACTS_ONLY_RECOVERY",
-                    "candidate_b_selected": True,
-                    "candidate_b_rank": verified_fact_opportunity.get("rank"),
-                    "alternatives_considered": remediation_context.get("verified_fact_opportunities_considered", []),
-                })
-                pending_feedback = [
-                    "Create a new product-centered opportunity from the selected verified fact only.",
-                    "Do not estimate runtime, infer compatibility, performance, safety, superiority, or repeat unsupported consequences.",
-                ]
-                pending_scope = "strategy"
-                prior_generated_visuals = {}
-                locked_strategy = {}
-                locked_product_id = str(content.get("product_id") or "")
-                candidate_identity_reset = True
-                continue
-            if not product_id_override:
-                recovery_story.setdefault("products_retired", []).append({
-                    "product_id": str(content.get("product_id") or ""),
-                    "reason": remediation_context.get("retirement_reason"),
-                })
-                recovery_story["classification"] = "NEXT_ELIGIBLE_PRODUCT"
-                pending_feedback = [
-                    "Select a new eligible product and build a truthful opportunity from its owned verified facts.",
-                    "Do not reuse a retired product or unsupported technical consequences.",
-                ]
-                pending_scope = "strategy"
-                prior_generated_visuals = {}
-                locked_strategy = {}
-                locked_product_id = ""
-                evidence_remediation_used = False
-                research_recovery_used = False
-                research_verified_facts = []
-                candidate_identity_reset = True
-                continue
-
-        if verified_facts_recovery and not product_id_override and idx + 1 < decision_budget:
-            retirement_reason = "verified_facts_candidate_not_publishable"
-            remediation_context = _next_product_recovery_context(content, remediation_context or {}, retirement_reason)
-            recovery_story.setdefault("products_retired", []).append({
-                "product_id": str(content.get("product_id") or ""),
-                "reason": retirement_reason,
-            })
-            recovery_story["classification"] = "NEXT_ELIGIBLE_PRODUCT"
-            pending_feedback = [
-                "Select a new eligible product and build a truthful, product-centered opportunity from its owned verified facts.",
-                "Do not reuse a retired product, its failed premise, or unsupported technical consequences.",
-            ]
-            pending_scope = "strategy"
-            prior_generated_visuals = {}
-            locked_strategy = {}
-            locked_product_id = ""
-            evidence_remediation_used = False
-            research_recovery_used = False
-            research_verified_facts = []
-            candidate_identity_reset = True
-            continue
-
-        quality_candidate_shift_needed = (
-            candidate_realization_count >= 2
-            and idx + 1 < decision_budget
-            and not evidence_remediation_used
-            and validation.get("passed")
-            and duplicates.get("ok")
-            and str(((content.get("copy") or {}).get("evidence_readiness") or {}).get("status") or "READY") == "READY"
-            and len([finding for finding in critic_feedback if finding in {
-                "hook-payoff mismatch", "novelty_angle_weak", "specificity_weak", "intent_response_value_weak",
-            }]) >= 2
-        )
-        if quality_candidate_shift_needed:
-            remediation_context = _quality_recovery_context(content, publish_decision, duplicates)
-            replacement_candidate = remediation_context.get("replacement_candidate")
-            if isinstance(replacement_candidate, dict):
-                recovery_story.update({
-                    "candidate_a": _candidate_audit(content),
-                    "candidate_a_rank": 1,
-                    "candidate_a_blockers": list(dict.fromkeys(critic_feedback)),
-                    "classification": "QUALITY_CANDIDATE_SHIFT",
-                    "candidate_b_selected": True,
-                    "candidate_b_rank": replacement_candidate.get("rank"),
-                    "alternatives_considered": remediation_context.get("alternatives_considered", []),
-                })
-                pending_feedback = [
-                    "Select a materially different opportunity that improves novelty, specificity, and reader response value.",
-                    "Preserve existing claim, evidence, freshness, and governance requirements.",
-                ]
-                pending_scope = "strategy"
-                prior_generated_visuals = {}
-                locked_strategy = {}
-                locked_product_id = ""
-                candidate_identity_reset = True
-                continue
-            if not field_replenished:
-                remediation_context = _field_replenishment_context(content, remediation_context, critic_feedback)
-                recovery_story["field_replenished"] = True
-                pending_feedback = [
-                    "Explore a materially different human reality, content mode, and reader payoff from the retired premise.",
-                    "Preserve existing evidence, freshness, and governance requirements.",
-                ]
-                pending_scope = "strategy"
-                prior_generated_visuals = {}
-                locked_strategy = {}
-                locked_product_id = ""
-                field_replenished = True
-                candidate_identity_reset = True
-                continue
-            recovery_story["candidate_field_exhausted"] = True
             break
 
         # Manual live override path: if operator explicitly requests allow_all, swap to a known-safe
@@ -2445,7 +1378,6 @@ def main() -> None:
                 duplicates=duplicates,
                 conversion_quality_score=cqs_total,
                 orchestrator_quality=content.get("orchestrator_quality"),
-                evidence_readiness=((content.get("copy") or {}).get("evidence_readiness") or content.get("evidence_readiness")),
             )
             content["publish_decision"] = publish_decision
             attempts.append(
@@ -2462,106 +1394,14 @@ def main() -> None:
             if publish_decision["publishable"]:
                 break
 
-        # Each selected candidate receives one bounded critic-directed revision.
-        if candidate_realization_count == 1 and not evidence_remediation_used and (
+        # A critic-directed revision is bounded to three candidates total.
+        if idx < 2 and scoring.get("decision") != "reject" and (
             publish_decision["decision"] in {"revise", "regenerate"}
-            or (publish_decision["decision"] == "do_not_publish" and retryability in {"RETRYABLE_CONTENT", "EVIDENCE_SAFE_REMEDIATION"})
+            or (publish_decision["decision"] == "do_not_publish" and retryability == "RETRYABLE_CONTENT")
         ):
-            if retryability == "EVIDENCE_SAFE_REMEDIATION":
-                evidence_remediation_used = True
-                remediation_context = _remediation_context(content, publish_decision, duplicates)
-                replacement_candidate = remediation_context.get("replacement_candidate")
-                if not isinstance(replacement_candidate, dict):
-                    verified_facts_context = _verified_facts_only_recovery_context(content, remediation_context)
-                    verified_fact_opportunity = verified_facts_context.get("verified_fact_opportunity")
-                    if isinstance(verified_fact_opportunity, dict):
-                        remediation_context = verified_facts_context
-                        recovery_story.update({
-                            "candidate_a": _candidate_audit(content),
-                            "candidate_a_rank": 1,
-                            "candidate_a_blockers": list(dict.fromkeys(failure_reasons)),
-                            "classification": "VERIFIED_FACTS_ONLY_RECOVERY",
-                            "candidate_b_selected": True,
-                            "candidate_b_rank": verified_fact_opportunity.get("rank"),
-                            "alternatives_considered": verified_facts_context.get("verified_fact_opportunities_considered", []),
-                        })
-                        pending_feedback = [
-                            "Create a new product-centered opportunity from the selected verified fact only.",
-                            "Do not estimate runtime, infer compatibility, performance, safety, superiority, or repeat the blocked premise.",
-                            "Use the published fact for a concrete, humanly relevant product-detail comparison without adding unsupported consequences.",
-                        ]
-                        pending_scope = "strategy"
-                        prior_generated_visuals = {}
-                        locked_strategy = {}
-                        locked_product_id = str(content.get("product_id") or "")
-                        candidate_identity_reset = True
-                        continue
-                    if not product_id_override and idx + 1 < decision_budget:
-                        remediation_context = _next_product_recovery_context(
-                            content,
-                            verified_facts_context,
-                            "no_viable_verified_fact_opportunity",
-                        )
-                        recovery_story.setdefault("products_retired", []).append({
-                            "product_id": str(content.get("product_id") or ""),
-                            "reason": "no_viable_verified_fact_opportunity",
-                        })
-                        recovery_story["classification"] = "NEXT_ELIGIBLE_PRODUCT"
-                        pending_feedback = [
-                            "Select a new eligible product and build a truthful, product-centered opportunity from its owned verified facts.",
-                            "Do not reuse a retired product, its failed premise, or unsupported technical consequences.",
-                        ]
-                        pending_scope = "strategy"
-                        prior_generated_visuals = {}
-                        locked_strategy = {}
-                        locked_product_id = ""
-                        evidence_remediation_used = False
-                        research_recovery_used = False
-                        research_verified_facts = []
-                        candidate_identity_reset = True
-                        continue
-                    recovery_story.update({
-                        "candidate_a": _candidate_audit(content),
-                        "candidate_a_rank": 1,
-                        "candidate_a_blockers": list(dict.fromkeys(failure_reasons)),
-                        "classification": recovery_classification,
-                        "candidate_b_selected": False,
-                        "alternatives_considered": remediation_context.get("alternatives_considered", []),
-                    })
-                    content["evidence_remediation"] = {
-                        "status": "ABSTAINED_NO_VIABLE_REPLACEMENT",
-                        "attempt_limit": 1,
-                        **remediation_context,
-                    }
-                    break
-                remediation_context["recovery_mode"] = "STRATEGIC_REPLACEMENT"
-                recovery_story.update({
-                    "candidate_a": _candidate_audit(content),
-                    "candidate_a_rank": 1,
-                    "candidate_a_blockers": list(dict.fromkeys(failure_reasons)),
-                    "classification": recovery_classification,
-                    "candidate_b_selected": True,
-                    "candidate_b_rank": replacement_candidate.get("rank"),
-                    "alternatives_considered": remediation_context.get("alternatives_considered", []),
-                })
-                pending_feedback = _evidence_safe_remediation_feedback(content) if research_required else [
-                    "Select a materially different opportunity. Preserve all claim, evidence, freshness, and governance requirements.",
-                ]
-                pending_scope = "strategy"
-                prior_generated_visuals = {}
-                content["evidence_remediation"] = {
-                    "status": "ORIGINAL_BLOCKED",
-                    "attempt_limit": 1,
-                    **remediation_context,
-                }
-                locked_strategy = {}
-                locked_product_id = ""
-                candidate_identity_reset = True
-            else:
-                pending_feedback = critic_feedback or ["Improve the candidate so it meets the existing critic threshold."]
-                pending_scope = diagnosis["repair_scope"] if diagnosis["repair_scope"] != "angle_and_hook_promise" else "strategy"
-                prior_generated_visuals = dict(content.get("generated_visuals") or {})
-            if retryability != "EVIDENCE_SAFE_REMEDIATION" and diagnosis["metacognition"]["action"] == "RECONSIDER_ANGLE" and locked_strategy:
+            pending_feedback = critic_feedback or ["Improve the candidate so it meets the existing critic threshold."]
+            pending_scope = diagnosis["repair_scope"] if diagnosis["repair_scope"] != "angle_and_hook_promise" else "strategy"
+            if diagnosis["metacognition"]["action"] == "RECONSIDER_ANGLE" and locked_strategy:
                 new_angle, new_hook = _safe_reconsidered_angle(locked_strategy)
                 locked_strategy = strategy_lock_intelligence.reconsider_angle(
                     locked_strategy,
@@ -2574,6 +1414,8 @@ def main() -> None:
                     "Use the reopened verified-facts angle. Do not restore removed runtime, efficiency, or appliance compatibility claims.",
                 ]))
                 prior_generated_visuals = {}
+            else:
+                prior_generated_visuals = dict(content.get("generated_visuals") or {})
             previous_decision = str(publish_decision["decision"])
             previous_current_findings = list(critic_feedback)
             continue
@@ -2581,27 +1423,14 @@ def main() -> None:
         if publish_decision["decision"] == "do_not_publish":
             break
 
-        # The governed decision is authoritative for recovery; legacy scoring
-        # identifies weak copy but must not terminate viable search territory.
-        if idx + 1 >= decision_budget:
+        # Otherwise stop on final attempt or hard rejection.
+        if idx == 2 or scoring.get("decision") == "reject":
             break
     _apply_phase8_budget(runtime_metrics, "generation", time.perf_counter() - t_generation, generation_budget)
 
     final_validation_ok = content.get("validation_status") == "passed"
-    if evidence_remediation_used and remediation_context:
-        _finalize_evidence_remediation(content, remediation_context)
-        final_validation_ok = content.get("validation_status") == "passed"
     final_score = float(content.get("quality_score") or 0)
     duplicate_ok = bool(content.get("duplicate_check", {}).get("ok", True))
-    initial_presentation_errors = _final_presentation_errors(content, effective_channels)
-    if final_validation_ok and duplicate_ok and initial_presentation_errors:
-        repaired = _repair_final_presentations(content, effective_channels)
-        if repaired:
-            revalidated = validate_generated_content(content)
-            content["validation_status"] = "passed" if revalidated.get("passed") else "failed"
-            content["validation_errors"] = list(revalidated.get("errors", []))
-            final_validation_ok = bool(revalidated.get("passed"))
-            recovery_story["presentation_repairs"] = repaired
     _ensure_final_artifact_qa(content, effective_channels)
     artifact_errors = _artifact_visual_errors_by_platform(content, effective_channels)
     for platform, issues in artifact_errors.items():
@@ -2630,13 +1459,8 @@ def main() -> None:
         conversion_quality_score=final_cqs_total,
         orchestrator_quality=content.get("orchestrator_quality"),
         visual_errors=visual_gate_errors,
-        evidence_readiness=((content.get("copy") or {}).get("evidence_readiness") or content.get("evidence_readiness")),
     )
     content["publish_decision"] = final_decision
-    content["recovery_story"] = recovery_story
-    if evidence_remediation_used and isinstance(content.get("evidence_remediation"), dict):
-        content["evidence_remediation"]["final_outcome"] = final_decision.get("decision")
-    content["final_memory"] = _final_memory_record(content, str(final_decision.get("decision") or ""))
     if not final_decision["publishable"] and not shadow_mode:
         print("[SKIP] Content did not pass validation/quality thresholds; recording skipped run")
         history = generate_posts.load_history()
@@ -2721,9 +1545,7 @@ def main() -> None:
         history = generate_posts.load_history()
         run_started = datetime.now(timezone.utc).isoformat()
         platform_records = _shadow_platform_records(content, run_started, effective_channels)
-        frozen_publish_artifact = _freeze_publish_artifact(content) if final_decision["publishable"] else None
         _apply_phase8_budget(runtime_metrics, "total", time.perf_counter() - t_total, total_budget)
-        shadow_status = "shadow_completed" if final_decision["publishable"] else "shadow_abstained_governance"
         history["posts"].append({
             "post_id": content.get("post_id", ""), "platform": "multi", "published_at": run_started,
             "date": content.get("date"), "slot": slot, "run_started_at_utc": run_started,
@@ -2736,10 +1558,9 @@ def main() -> None:
             "duplicate_reasons": content.get("duplicate_check", {}).get("reasons", []),
             "generation_attempts": attempts, "dry_run": dry_run, "shadow_mode": True,
             "artifact_visual_qa": content.get("artifact_visual_qa", {}),
-            "status": shadow_status, "decision_record": _shadow_decision_record(content),
-            "frozen_publish_artifact": frozen_publish_artifact,
+            "status": "shadow_completed", "decision_record": _shadow_decision_record(content),
             "channel_reasons": channel_reasons, "phase5_channel_readiness": phase5_readiness,
-            "phase6_learning": _build_phase6_learning(content=content, platform_records=platform_records, errors=list(final_decision.get("reasons", [])), status=shadow_status),
+            "phase6_learning": _build_phase6_learning(content=content, platform_records=platform_records, errors=[], status="shadow_completed"),
             "phase8_runtime": runtime_metrics, "platform_records": platform_records,
             "wp_id": "shadow", "fb_id": "shadow", "ig_id": "shadow", "li_id": "shadow",
         })
@@ -2797,6 +1618,7 @@ def main() -> None:
             error_map={},
             skip_reason_map={},
             channel_reasons=channel_reasons,
+            include_wordpress_audit=True,
         )
         history["posts"].append({
             "post_id": content.get("post_id", ""),
@@ -2812,7 +1634,7 @@ def main() -> None:
             "destination_url": content.get("destination_url") or None,
             "utm_url": None,
             "error": None,
-            "date": content.get("date"),
+            "date": content["date"],
             "slot": slot,
             "run_started_at_utc": run_started,
             "topic": content["topic"],
@@ -2980,23 +1802,11 @@ def main() -> None:
     print("[5/5] LinkedIn...")
     t_li = time.perf_counter()
     if effective_channels["linkedin"]:
-        existing_receipt = _successful_publish_receipt(content, "linkedin") if not dry_run else {}
-        if existing_receipt:
-            li_result = {"id": _receipt_external_id(existing_receipt), "reused_receipt": True}
-            print(f"[SKIP] LinkedIn already published: {li_result['id']}")
-        elif (not dry_run) and was_recent_channel_success(history, "li", slot, skip_success_hours):
+        if (not dry_run) and was_recent_channel_success(history, "li", slot, skip_success_hours):
             print("[SKIP] LinkedIn recent successful publish within configured window")
         else:
             try:
                 li_result = publish_linkedin.publish(content, wp_link_li, dry_run=dry_run)
-                linkedin_post_id = str(li_result.get("id") or "").strip()
-                if linkedin_post_id and linkedin_post_id not in {"dry-run", "skipped"}:
-                    _persist_publish_receipt(
-                        content,
-                        platform="linkedin",
-                        external_post_id=linkedin_post_id,
-                        run_id=str(runtime_metrics["started_at_utc"]),
-                    )
             except Exception as e:
                 errors.append(f"LinkedIn: {e}")
                 error_map["linkedin"] = str(e)
@@ -3053,7 +1863,7 @@ def main() -> None:
         "utm_url": None,
         "status": "success",
         "error": " | ".join(errors) if errors else None,
-        "date": content.get("date"),
+        "date": content["date"],
         "slot": slot,
         "run_started_at_utc": run_started,
         "topic": content["topic"],
@@ -3106,11 +1916,11 @@ def main() -> None:
     history["posts"] = history["posts"][-200:]
     try:
         generate_posts.save_history(history)
-        for platform, result in (("facebook", fb_result), ("instagram", ig_result), ("linkedin", li_result)):
+        for platform, result in (("facebook", fb_result), ("instagram", ig_result)):
             if str(result.get("id") or "").strip() and not dry_run:
                 _mark_publish_postprocess_complete(content, platform)
     except Exception as exc:
-        for platform, result in (("facebook", fb_result), ("instagram", ig_result), ("linkedin", li_result)):
+        for platform, result in (("facebook", fb_result), ("instagram", ig_result)):
             if str(result.get("id") or "").strip() and not dry_run:
                 _mark_publish_postprocess_error(content, platform, exc)
                 raise RuntimeError(f"published_persistence_error:{platform}:{exc}") from exc

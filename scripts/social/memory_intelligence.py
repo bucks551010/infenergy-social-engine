@@ -106,7 +106,10 @@ def append_strategy_lesson(lesson: dict[str, Any], *, data_dir: str | None = Non
     normalized = dict(lesson)
     normalized.setdefault("lesson_id", hashlib.sha256(json.dumps(lesson, sort_keys=True, default=str).encode("utf-8")).hexdigest()[:16])
     normalized.setdefault("created_at", datetime.now(timezone.utc).isoformat())
-    normalized.setdefault("scope", "conditional_strategy_evidence")
+    normalized.setdefault("scope", {
+        "product_id": str(lesson["product_id"]),
+        "condition": str(lesson["condition"]),
+    })
     normalized.setdefault("future_applicability", "matching product and evidence condition only")
     normalized.setdefault("confidence", 0.9)
     normalized.setdefault("revalidation", "reconsider when matching verified evidence becomes available")
@@ -190,26 +193,6 @@ def _recent_field(records: list[dict[str, Any]], field: str, limit: int) -> list
     return out
 
 
-def _attempt_only_exclusions(data_dir: str | None, limit: int) -> list[str]:
-    """Return recent evidence-blocked concepts without treating them as exposure."""
-    try:
-        with open(post_history_path(data_dir), "r", encoding="utf-8") as handle:
-            records = json.load(handle).get("posts", [])
-    except (OSError, json.JSONDecodeError, AttributeError):
-        return []
-    exclusions: list[str] = []
-    for record in reversed(records if isinstance(records, list) else []):
-        remediation = record.get("evidence_remediation") if isinstance(record, dict) else None
-        readiness = (remediation or {}).get("original_evidence_readiness") if isinstance(remediation, dict) else None
-        concept = (remediation or {}).get("original_concept") if isinstance(remediation, dict) else None
-        if not isinstance(readiness, dict) or readiness.get("status") != "RESEARCH_REQUIRED" or not isinstance(concept, dict):
-            continue
-        exclusions.extend(str(value) for value in concept.values() if str(value).strip())
-        if len(exclusions) >= limit:
-            break
-    return exclusions[:limit]
-
-
 def recent(data_dir: str | None = None, *, limit: int = 20) -> dict[str, list[Any]]:
     cdata = _load(content_memory_path(data_dir))
     vdata = _load(visual_memory_path(data_dir))
@@ -226,22 +209,6 @@ def recent(data_dir: str | None = None, *, limit: int = 20) -> dict[str, list[An
         "emotional_framings": _recent_field(cdata["records"], "emotional_framing", limit),
         "customer_moments": _recent_field(cdata["records"], "customer_moment", limit),
         "reader_jobs": _recent_field(cdata["records"], "reader_job", limit),
-        "audience_value_forms": _recent_field(cdata["records"], "audience_value_form", limit),
-        "reader_questions": _recent_field(cdata["records"], "reader_question", limit),
-        "reader_takeaways": _recent_field(cdata["records"], "reader_takeaway", limit),
-        "audience_value_cta_classes": _recent_field(cdata["records"], "audience_value_cta_class", limit),
-        "human_realities": _recent_field(cdata["records"], "human_reality", limit),
-        "unresolved_threads": _recent_field(cdata["records"], "unresolved_thread", limit),
-        "continuity_threads": _recent_field(cdata["records"], "continuity_thread", limit),
-        "questions_answered": _recent_field(cdata["records"], "question_answered", limit),
-        "questions_created": _recent_field(cdata["records"], "question_created", limit),
-        "assumptions_challenged": _recent_field(cdata["records"], "assumption_challenged", limit),
-        "practical_values": _recent_field(cdata["records"], "practical_value", limit),
-        "performance_lessons": _recent_field(cdata["records"], "performance_lesson", limit),
-        "performance_lessons_applied": _recent_field(cdata["records"], "performance_lesson_applied", limit),
-        "campaign_states": _recent_field(cdata["records"], "campaign_state", limit),
-        "product_narratives": _recent_field(cdata["records"], "product_narrative", limit),
-        "commercial_pressure": _recent_field(cdata["records"], "commercial_pressure", limit),
         "visual_signatures": _recent_field(vdata["records"], "visual_signature", limit),
         "visual_formats": _recent_field(vdata["records"], "visual_format", limit),
         "layout_grammars": _recent_field(vdata["records"], "layout_grammar", limit),
@@ -252,7 +219,6 @@ def recent(data_dir: str | None = None, *, limit: int = 20) -> dict[str, list[An
         "headline_placements": _recent_field(vdata["records"], "headline_placement", limit),
         "art_direction_families": _recent_field(vdata["records"], "art_direction_family", limit),
         "visual_concepts": _recent_field(vdata["records"], "visual_concept", limit),
-        "attempt_only_exclusions": _attempt_only_exclusions(data_dir, limit),
     }
 
 

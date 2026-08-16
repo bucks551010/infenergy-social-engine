@@ -12,7 +12,6 @@ import os
 import shutil
 import sys
 import tempfile
-from types import SimpleNamespace
 
 import pytest
 
@@ -80,153 +79,6 @@ def test_normal_generation_defaults_to_the_orchestrator(monkeypatch):
     monkeypatch.delenv("POST_PIPELINE_OVERRIDE", raising=False)
 
     assert generate_posts._pipeline_mode() == "orchestrator"
-
-
-def test_manual_product_exclusion_is_merged_into_every_orchestrator_generation(monkeypatch):
-    captured = {}
-    monkeypatch.setenv("POST_EXCLUDED_PRODUCT_IDS", "PPP-200")
-    monkeypatch.setattr(generate_posts, "_route_generate_orchestrator", lambda *args, **kwargs: captured.update(kwargs) or {})
-
-    generate_posts.generate(
-        "morning",
-        pipeline_override="orchestrator",
-        remediation_context={"excluded_product_ids": ["OTHER-1"]},
-    )
-
-    assert captured["remediation_context"]["excluded_product_ids"] == ["OTHER-1", "PPP-200"]
-
-
-def test_static_product_exclusion_does_not_activate_candidate_recovery(monkeypatch):
-    captured = {}
-    monkeypatch.setattr(generate_posts, "run_social_intelligence", lambda **kwargs: captured.update(kwargs) or [])
-    monkeypatch.setattr(generate_posts, "_living_strategy_for_generation", lambda: ({"topic": "planning", "angle": "prioritize needs"}, {}))
-
-    generate_posts._route_generate_orchestrator(
-        "morning",
-        preferred_engine="A",
-        remediation_context={"excluded_product_ids": ["PPP-200"]},
-    )
-
-    assert captured["remediation_context"]["excluded_product_ids"] == ["PPP-200"]
-    assert captured["approved_strategy"]["topic"] == "planning"
-
-
-def test_engine_a_neutral_field_does_not_restore_product_education_filter(monkeypatch):
-    captured = {}
-
-    monkeypatch.setattr(
-        engines,
-        "_shared_brief",
-        lambda engine, **kwargs: captured.update({"engine": engine, **kwargs}) or "brief",
-    )
-
-    result = engines.ConversionEngine().build(
-        recent={},
-        audience_hint=None,
-        seasonal_context=None,
-        preferred_pillar=None,
-        excluded_concepts=[],
-        rotation_index=0,
-    )
-
-    assert result == "brief"
-    assert captured["engine"] == "A"
-    assert captured["preferred_pillar"] is None
-
-
-def test_strict_product_free_generation_sets_a_non_product_remediation_contract(monkeypatch):
-    captured = {}
-    monkeypatch.setenv("POST_REQUIRE_PRODUCT_FREE", "true")
-    monkeypatch.setattr(generate_posts, "_route_generate_orchestrator", lambda *args, **kwargs: captured.update(kwargs) or {})
-
-    generate_posts.generate("morning", pipeline_override="orchestrator")
-
-    assert captured["preferred_engine"] == "B"
-    assert captured["remediation_context"]["require_product_free"] is True
-
-
-def test_product_free_selection_randomizes_only_within_the_quality_band(monkeypatch):
-    def candidate(total, novelty=0.9, usefulness=0.9, platform_fit=0.9, visual_potential=0.9):
-        return SimpleNamespace(total=total, scores={
-            "novelty": novelty,
-            "usefulness": usefulness,
-            "platform_fit": platform_fit,
-            "visual_potential": visual_potential,
-        })
-
-    high_a = candidate(0.92)
-    high_b = candidate(0.86)
-    weak = candidate(0.99, novelty=0.2)
-    monkeypatch.setattr(orchestrator.secrets.SystemRandom, "choice", lambda self, band: band[-1])
-
-    selected, band, fallback_used = orchestrator._quality_gated_product_free_opportunity([high_a, high_b, weak])
-
-    assert band == [high_a, high_b]
-    assert selected is high_b
-    assert fallback_used is False
-
-
-def test_product_free_selection_uses_best_safe_engine_b_candidate_when_quality_band_is_empty():
-    candidate = SimpleNamespace(total=0.62, scores={
-        "novelty": 0.4,
-        "usefulness": 0.9,
-        "platform_fit": 0.7,
-        "visual_potential": 0.85,
-    })
-
-    selected, band, fallback_used = orchestrator._quality_gated_product_free_opportunity([candidate])
-
-    assert selected is candidate
-    assert band == [candidate]
-    assert fallback_used is True
-
-
-def test_product_free_selection_rebuilds_neutral_field_when_context_exhausts_candidates(monkeypatch):
-    candidate = SimpleNamespace(total=0.8, scores={
-        "novelty": 0.9,
-        "usefulness": 0.9,
-        "platform_fit": 0.7,
-        "visual_potential": 0.85,
-    })
-    calls = []
-
-    def generate(**kwargs):
-        calls.append(kwargs)
-        return [] if len(calls) == 1 else [candidate]
-
-    monkeypatch.setattr(orchestrator.opportunity_engine, "generate", generate)
-
-    candidates, neutral_field_rebuilt = orchestrator._product_free_opportunity_candidates(
-        recent={"topics": ["Batteries"]},
-        audience_hint="mobile_professional",
-        seasonal_context="storm season",
-        preferred_pillar="portable_power",
-        excluded_concepts=["Batteries"],
-    )
-
-    assert candidates == [candidate]
-    assert neutral_field_rebuilt is True
-    assert calls[1] == {"engine": "B", "limit": 8}
-
-
-def test_product_free_strategy_lock_uses_brief_when_audience_value_metadata_is_absent():
-    brief = SimpleNamespace(
-        audience_value={},
-        audience_segment="preparedness_focused_household",
-        curiosity="What should come first during an outage?",
-        question="How do you make a simple outage plan?",
-        information_gap="how to prioritize household needs",
-        angle="List essential needs before an outage",
-        topic_path={"topic": "Outage planning"},
-        reader_job="PREPARE_ME",
-    )
-
-    locked = orchestrator._audience_value_strategy_lock(brief)
-
-    assert locked["customer_moment"] == "What should come first during an outage?"
-    assert locked["angle"] == "List essential needs before an outage"
-    assert locked["offering"] == "audience-value education"
-    assert locked["proof"] == []
 
 
 def test_orchestrator_bridge_passes_council_strategy_to_generation(monkeypatch):
@@ -469,36 +321,6 @@ def test_claim_provenance_rejects_unsupported_efficiency_derivation_without_repl
     assert any(item.rejection_reason == "derived_claim_has_no_verified_formula" for item in ledger.claims)
 
 
-def test_numeric_claim_sanitization_preserves_caption_paragraphs():
-    caption = (
-        "The published output is 200W.\n\n"
-        "It runs a 50W fridge for 2.6 hours.\n\n"
-        "Review the verified details.\n\n"
-        "https://example.com"
-    )
-
-    sanitized, removed = claim_intelligence.remove_unsupported_numeric_claims(caption, ["200W"])
-
-    assert sanitized == "The published output is 200W.\n\nReview the verified details.\n\nhttps://example.com"
-    assert removed == ["It runs a 50W fridge for 2.6 hours."]
-
-
-def test_verified_fact_recovery_copy_stays_inside_the_selected_fact_envelope():
-    brief = engines.get_engine("A").build(rotation_index=0)
-    copy = orchestrator._assemble_verified_fact_recovery_copy(
-        brief=brief,
-        structure_beats=["hook", "answer", "takeaway"],
-        verified_fact="48,000mAh",
-    )
-    ledger = claim_intelligence.build_ledger(" ".join(copy.values()), verified_facts=["48,000mAh"])
-
-    assert copy["hook"] == "Which published detail matters when reviewing this product?"
-    assert copy["answer"] == "Published specification: 48,000mAh."
-    assert "runtime" not in " ".join(copy.values()).lower()
-    assert "compatib" not in " ".join(copy.values()).lower()
-    assert all(claim.provenance == "VERIFIED_PRODUCT_FACT" for claim in ledger.claims)
-
-
 def test_strategy_red_team_generalizes_to_savings_and_comparative_promises_without_evidence():
     verdict = strategy_lock.red_team(
         {"angle": "why this option saves money and outperforms competitors", "hook_promise": "Which option costs less?"},
@@ -566,7 +388,7 @@ def test_scoped_strategy_lessons_are_evidence_bound_not_global(tmp_path):
     assert stored[0]["condition"] == lesson["condition"]
     assert stored[0]["lesson_id"]
     assert stored[0]["created_at"]
-    assert stored[0]["scope"] == "conditional_strategy_evidence"
+    assert stored[0]["scope"]["product_id"] == "PPP-200"
     assert memory_intelligence.strategy_lessons(product_id="OTHER", condition="runtime_angle_without_verified_inputs", data_dir=str(tmp_path)) == []
 
 
@@ -928,66 +750,6 @@ def test_opportunity_generate_returns_ranked_candidates():
     assert cands
     scores = [c.total for c in cands]
     assert scores == sorted(scores, reverse=True)
-
-
-def test_manual_engine_a_retries_neutral_field_after_product_target_exhaustion():
-    calls = []
-
-    class Engine:
-        def build(self, **kwargs):
-            calls.append(kwargs)
-            if kwargs["preferred_pillar"]:
-                raise RuntimeError("no viable opportunities generated")
-            return "brief"
-
-    result = orchestrator._build_engine_brief(
-        Engine(),
-        engine_name="A",
-        preferred_engine="A",
-        recent={},
-        audience_hint="household",
-        seasonal_context=None,
-        preferred_pillar="portable_power",
-        excluded_concepts=["prior attempt"],
-        rotation_index=0,
-        selected_opportunity_id="",
-    )
-
-    assert result == "brief"
-    assert len(calls) == 2
-    assert calls[1]["audience_hint"] is None
-    assert calls[1]["preferred_pillar"] is None
-    assert calls[1]["excluded_concepts"] == ["prior attempt"]
-
-
-def test_autonomous_engine_a_retries_neutral_field_after_product_target_exhaustion():
-    calls = []
-
-    class Engine:
-        def build(self, **kwargs):
-            calls.append(kwargs)
-            if kwargs["audience_hint"]:
-                raise RuntimeError("no viable opportunities generated")
-            return "brief"
-
-    result = orchestrator._build_engine_brief(
-        Engine(),
-        engine_name="A",
-        preferred_engine=None,
-        recent={},
-        audience_hint="household",
-        seasonal_context=None,
-        preferred_pillar="portable_power",
-        excluded_concepts=["prior attempt"],
-        rotation_index=0,
-        selected_opportunity_id="",
-    )
-
-    assert result == "brief"
-    assert len(calls) == 2
-    assert calls[1]["audience_hint"] is None
-    assert calls[1]["preferred_pillar"] is None
-    assert calls[1]["excluded_concepts"] == ["prior attempt"]
 
 
 # --- copy intelligence ----------------------------------------------------

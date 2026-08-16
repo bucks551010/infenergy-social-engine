@@ -89,10 +89,6 @@ def _post_with_retry(url: str, data: dict, timeout: int = 30) -> requests.Respon
 def publish(content: dict, wp_link: str, dry_run: bool = False) -> dict:
     facebook_package = (content.get("platform_posts") or {}).get("facebook") or {}
     message = str(facebook_package.get("final_caption") or content["fb_caption"])
-    qa_caption = str(((facebook_package.get("final_caption_qa") or {}).get("metrics") or {}).get("final_caption") or "")
-    locked_caption = str(facebook_package.get("final_caption_lock") or "")
-    if (qa_caption and qa_caption != message) or (locked_caption and locked_caption != message):
-        raise RuntimeError("facebook_final_caption_authority_mismatch")
     if not facebook_package.get("final_caption") and wp_link and wp_link not in message:
         message = f"{message}\n\n{wp_link}"
     image_path = str((content.get("generated_visuals") or {}).get("facebook", "")).strip()

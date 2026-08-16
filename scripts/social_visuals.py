@@ -770,12 +770,7 @@ def _generate_gemini_full_creative(content: dict[str, Any], platform: str, visua
         from google import genai  # type: ignore
         from google.genai import types  # type: ignore
 
-        request_timeout_sec = max(1, int(os.environ.get("GEMINI_REQUEST_TIMEOUT_SEC", "60") or 60))
-        client = genai.Client(
-            api_key=api_key,
-            http_options=types.HttpOptions(timeout=request_timeout_sec * 1000),
-        )
-        metadata["provider_timeout_sec"] = request_timeout_sec
+        client = genai.Client(api_key=api_key)
         model_candidates = [
             str(os.environ.get("GEMINI_IMAGE_MODEL", "")).strip(),
             "gemini-2.5-flash-image",
@@ -855,98 +850,6 @@ def _generate_gemini_full_creative(content: dict[str, Any], platform: str, visua
         return completed(False, summary, model=next(reversed(reasons_by_model), ""), retry_count=1)
     except Exception as e:
         return completed(False, f"setup_exception:{type(e).__name__}:{str(e)[:160]}")
-
-
-def _build_cloudflare_image_prompt(content: dict[str, Any], platform: str, visual_plan: dict[str, Any]) -> str:
-    """Compile approved strategy into an art-directed, text-free image brief."""
-    from social import visual_contract
-
-    strategy = content.get("strategy_lock") if isinstance(content.get("strategy_lock"), dict) else {}
-    contract = visual_contract.requirements(content, visual_plan)
-    layout = _safe_json_dict(content.get("layout_grammar") or visual_plan.get("layout_grammar"))
-    platform_key = platform.split("_", 1)[0]
-    interpretation = _safe_json_dict((content.get("platform_interpretations") or visual_plan.get("platform_interpretations") or {}).get(platform_key))
-    product_id = str(content.get("product_id") or "").strip()
-    product_name = normalize_brand_text(str(content.get("product_name") or "")).strip()
-    product_direction = (
-        f"An approved reference image of {product_name} is attached. Preserve its exact shape, ports, screen, buttons, panels, colors, markings, logo, and proportions. Do not invent or replace it. "
-        if contract["product_fidelity_applicable"] and product_id else
-        "No product is relevant. Do not show generators, batteries, power stations, solar panels, packages, or shopping cues. "
-    )
-    return (
-        "Create one premium, art-directed, editorial lifestyle photograph for Infenergy Power. "
-        f"Platform={platform}; native format={interpretation.get('format') or _platform_visual_spec(platform)['aspect_ratio']}. "
-        f"Reader job={strategy.get('reader_job') or content.get('reader_job') or ''}. "
-        f"Human reality={strategy.get('customer_moment') or content.get('human_reality') or ''}. "
-        f"One big idea={strategy.get('angle') or content.get('educational_lesson') or content.get('selected_hook') or ''}. "
-        f"Product role={strategy.get('product_role') or layout.get('product_role') or 'not relevant'}. "
-        f"Commercial intensity={strategy.get('commercial_intensity') or content.get('commercial_intensity') or 'none'}. "
-        f"Creative thesis={visual_plan.get('visual_thesis') or visual_plan.get('visual_message') or content.get('selected_hook') or ''}. "
-        f"Visual story={visual_plan.get('gemini_image_prompt') or visual_plan.get('scene_prompt') or visual_plan.get('composition') or ''}. "
-        f"Composition={layout.get('alignment') or visual_plan.get('composition') or 'clear focal point and layered depth'}. "
-        f"Mood={visual_plan.get('mood') or 'human, contemporary, restrained, premium'}. "
-        "Use believable human proportions, physical materials, natural architectural perspective, coherent lighting, atmospheric depth, and quiet visual sophistication. "
-        f"{product_direction}"
-        "Do not include text, typography, logos unless required by the attached real product reference, price tags, CTA bars, dashboards, icons, cards, infographics, numbered steps, template layouts, generic stock smiles, emergency panic, disaster imagery, neon glow, science-fiction effects, distorted hands, duplicated objects, or a synthetic AI-poster appearance. "
-        "This must look like a world-class contemporary campaign photograph, not a social-media template."
-    )
-
-
-def _cloudflare_dimensions(platform: str) -> tuple[int, int]:
-    target_width, target_height = _platform_visual_spec(platform)["target"]
-    if target_width == target_height:
-        return 1024, 1024
-    if target_width > target_height:
-        return 1280, max(1024, round(1280 * target_height / target_width))
-    return max(1024, round(1280 * target_width / target_height)), 1280
-
-
-def _cloudflare_references(content: dict[str, Any], repo_context: dict[str, Any]) -> list[bytes]:
-    from social import visual_contract
-
-    references: list[bytes] = []
-    repo_refs = repo_context.get("references", []) if isinstance(repo_context, dict) else []
-    for reference in repo_refs[:3] if isinstance(repo_refs, list) else []:
-        source = str(reference.get("reference_url") or "").strip() if isinstance(reference, dict) else ""
-        raw, _ = _read_image_bytes_any(source)
-        if raw:
-            references.append(raw)
-    if visual_contract.requirements(content)["product_fidelity_applicable"] and str(content.get("product_id") or "").strip():
-        raw, _ = _read_image_bytes_any(_resolve_product_source(content, repo_context=repo_context))
-        if raw:
-            references.append(raw)
-    return references[:cloudflare_visual.MAX_REFERENCES]
-
-
-def _generate_cloudflare_full_creative(content: dict[str, Any], platform: str, visual_plan: dict[str, Any], output_path: str) -> tuple[bool, str, dict[str, Any]]:
-    if generation_policy.mode() not in {"FREE_AI_ONLY", "FREE_AI_ALLOWED"}:
-        return False, "cloudflare_not_selected_by_cost_mode", {"visual_generation_attempted": False, "generation_status": "failed", "visual_provider": "cloudflare"}
-    authorization = content.get("pre_visual_gate") if isinstance(content.get("pre_visual_gate"), dict) else None
-    candidate_id = str(content.get("candidate_attempt_id") or content.get("post_id") or "")
-    if not (
-        isinstance(authorization, dict)
-        and authorization.get("status") == "PASS"
-        and authorization.get("flux_authorized") is True
-        and str(authorization.get("selected_candidate") or "") == candidate_id
-    ):
-        return False, "VISUAL_NOT_AUTHORIZED_PREVISUAL_GATE", {"visual_generation_attempted": False, "generation_status": "blocked", "visual_provider": "cloudflare", "candidate_id": candidate_id}
-    width, height = _cloudflare_dimensions(platform)
-    repo_context = _load_visual_repo_context()
-    rendered, reason, metadata = cloudflare_visual.generate(
-        prompt=_build_cloudflare_image_prompt(content, platform, visual_plan),
-        output_path=output_path,
-        width=width,
-        height=height,
-        references=_cloudflare_references(content, repo_context),
-        authorization=authorization,
-        candidate_id=candidate_id,
-    )
-    metadata.update({"render_target_platform": platform, "candidate_id": str(content.get("post_id") or ""), "final_post_id": str(content.get("post_id") or "")})
-    if rendered:
-        metadata["artifact_review"] = review_rendered_visual(output_path, platform, allow_native_size=True)
-        if metadata["artifact_review"]["verdict"] != "PASS":
-            return False, "artifact_qa_failed", metadata
-    return rendered, reason, metadata
 
 
 def _metric_chips(content: dict[str, Any], limit: int = 2) -> list[str]:
@@ -1039,7 +942,7 @@ def _select_visual_template(visual_plan: dict[str, Any], platform: str) -> str:
     return "premium_product_focus" if platform in ("facebook", "instagram") else "power_shot"
 
 
-def review_rendered_visual(path: str, platform: str, *, allow_native_size: bool = False) -> dict[str, Any]:
+def review_rendered_visual(path: str, platform: str) -> dict[str, Any]:
     """Inspect the saved PNG so publication is gated on a real artifact, not only its plan."""
     issues: list[str] = []
     dimensions: list[int] | None = None
@@ -1058,9 +961,7 @@ def review_rendered_visual(path: str, platform: str, *, allow_native_size: bool 
             with image_module.open(path) as image:
                 image.load()
                 dimensions = list(image.size)
-                ratio_matches = abs((image.width / max(1, image.height)) - (expected_size[0] / expected_size[1])) <= 0.02
-                native_size_allowed = allow_native_size and ratio_matches and min(image.size) >= 1024
-                if image.size != expected_size and not native_size_allowed:
+                if image.size != expected_size:
                     issues.append("rendered_dimensions_mismatch")
                 if image.convert("RGB").getbbox() is None:
                     issues.append("rendered_asset_blank")
@@ -1079,7 +980,7 @@ def review_rendered_visual(path: str, platform: str, *, allow_native_size: bool 
     }
 
 
-def generate_visuals(content: dict[str, Any], visual_plan: dict[str, Any] | None = None, platforms: list[str] | None = None) -> dict[str, Any]:
+def generate_visuals(content: dict[str, Any], visual_plan: dict[str, Any] | None = None) -> dict[str, Any]:
     post_id = str(content.get("post_id") or "preview")
     visuals: dict[str, Any] = {}
     plan = _safe_json_dict(visual_plan)
@@ -1101,14 +1002,12 @@ def generate_visuals(content: dict[str, Any], visual_plan: dict[str, Any] | None
     )
 
     os.makedirs(VISUAL_DIR, exist_ok=True)
-    scheduled_platforms = [item.strip().lower() for item in os.environ.get("POST_PLATFORMS", "").split(",") if item.strip()]
-    requested_platforms = [platform for platform in (platforms or content.get("eligible_platforms") or scheduled_platforms or ("facebook", "instagram", "linkedin")) if platform in {"facebook", "instagram", "linkedin"}]
-    for platform in requested_platforms:
+    for platform in ("facebook", "instagram", "linkedin"):
         file_name = f"{post_id}_{platform}.png"
         file_path = os.path.join(VISUAL_DIR, file_name)
 
-        # Gemini generates the final creative directly; Pillow only normalizes
-        # and validates the artifact for downstream publication.
+        # Gemini generates the entire finished creative directly. There is no HTML
+        # preview and no local PIL fallback: if Gemini fails, the platform gets no visual.
         rendered, reason, metadata = _generate_gemini_full_creative(content, platform, plan, file_path)
         visual_generation[platform] = metadata
         if rendered:

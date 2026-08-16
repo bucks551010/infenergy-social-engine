@@ -34,17 +34,6 @@ def test_receipt_survives_later_history_failure_and_prevents_duplicate_publish()
     assert loaded["postprocess_status"] == "published_persistence_error"
 
 
-def test_linkedin_receipt_is_a_durable_duplicate_barrier():
-    with tempfile.TemporaryDirectory() as data_dir, patch.dict(os.environ, {"DATA_DIR": data_dir}, clear=False):
-        receipt = run_engine._persist_publish_receipt(
-            _content(), platform="linkedin", external_post_id="urn:li:share:123", run_id="run-1"
-        )
-        loaded = run_engine._successful_publish_receipt(_content(), "linkedin")
-
-    assert receipt["linkedin_post_id"] == "urn:li:share:123"
-    assert run_engine._receipt_external_id(loaded) == "urn:li:share:123"
-
-
 def test_reconcile_receipt_creates_honest_recovery_row():
     with tempfile.TemporaryDirectory() as data_dir:
         with patch.dict(os.environ, {"DATA_DIR": data_dir}, clear=False), patch.object(run_engine.generate_posts, "DATA_DIR", data_dir), patch.object(run_engine.generate_posts, "BASE_DATA_DIR", data_dir):

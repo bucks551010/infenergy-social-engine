@@ -55,10 +55,8 @@ class PhaseElevenTwelveTests(unittest.TestCase):
             tracked_links=links,
             error_map={},
         )
-        self.assertEqual({row["platform"] for row in rows}, {"facebook", "instagram", "linkedin", "wordpress"})
-        wordpress = next(row for row in rows if row["platform"] == "wordpress")
-        self.assertEqual(wordpress["platform_post_id"], "skipped")
-        self.assertEqual(wordpress["status"], "skipped")
+        self.assertEqual(len(rows), 3)
+        self.assertNotIn("wordpress", {row["platform"] for row in rows})
         expected = {
             "post_id",
             "platform_post_id",

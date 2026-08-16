@@ -7,8 +7,6 @@ import mimetypes
 import threading
 import subprocess
 import traceback
-import uuid
-import math
 from urllib.parse import urlparse, parse_qs
 import schedule
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -42,14 +40,6 @@ VISUAL_REPO_BOOTSTRAP = {
 
 def _data_dir() -> str:
     return os.environ.get("DATA_DIR", os.path.join(os.path.dirname(__file__), "data"))
-
-
-def _deployment_metadata() -> dict[str, str]:
-    return {
-        "git_commit_sha": os.environ.get("RAILWAY_GIT_COMMIT_SHA", ""),
-        "deployment_id": os.environ.get("RAILWAY_DEPLOYMENT_ID", ""),
-        "environment": os.environ.get("RAILWAY_ENVIRONMENT_NAME", ""),
-    }
 
 
 def _load_json(path: str, default):
@@ -286,10 +276,6 @@ def _auto_refresh_meta_if_due() -> tuple[bool, str]:
     return ok, payload.get("error", "refresh_failed") if not ok else "refreshed"
 
 
-def _external_social_access_allowed(force_live: bool, shadow_mode: bool) -> bool:
-    return bool(force_live) and not bool(shadow_mode)
-
-
 def _load_history(limit: int = 20) -> list[dict]:
     history_path = os.path.join(_data_dir(), "post_history.json")
     history = _load_json(history_path, {"posts": []})
@@ -297,34 +283,6 @@ def _load_history(limit: int = 20) -> list[dict]:
     if not isinstance(posts, list):
         return []
     return posts[-limit:]
-
-
-_AUDIT_SECRET_KEY_PARTS = ("token", "secret", "password", "authorization", "api_key", "credential")
-
-
-def _public_audit(value):
-    """Expose persisted run evidence while excluding credential-bearing fields."""
-    if isinstance(value, dict):
-        return {
-            str(key): _public_audit(item)
-            for key, item in value.items()
-            if not any(part in str(key).lower() for part in _AUDIT_SECRET_KEY_PARTS)
-        }
-    if isinstance(value, list):
-        return [_public_audit(item) for item in value]
-    return value
-
-
-def _history_audit(post_id: str) -> dict | None:
-    target = str(post_id or "").strip()
-    if not target:
-        return None
-    history = _load_json(os.path.join(_data_dir(), "post_history.json"), {"posts": []})
-    posts = history.get("posts", []) if isinstance(history, dict) else []
-    for post in reversed(posts):
-        if isinstance(post, dict) and str(post.get("post_id") or "") == target:
-            return _public_audit(post)
-    return None
 
 
 def _latest_file(pattern: str) -> str:
@@ -490,76 +448,6 @@ def _content_preview(preview_params: dict) -> dict:
     return content
 
 
-def _engine_a_product_field(excluded_product_ids: set[str]) -> dict:
-    """Inspect the autonomous Engine A product field without creating content."""
-    from business_intelligence import api as bi_api
-    from social import engines, lean_intelligence, memory_intelligence, opportunity_engine, orchestrator
-
-    offerings = bi_api.get_business_profile().get("offerings", []) or []
-    eligible = [
-        offering for offering in offerings
-        if str(offering.get("offering_id") or offering.get("sku") or "") not in excluded_product_ids
-    ]
-    recent = memory_intelligence.recent(_data_dir(), limit=20)
-    opportunities = opportunity_engine.generate(
-        engine="A",
-        recent_pillars=recent.get("pillars", []),
-        recent_genres=recent.get("genres", []),
-        recent_topics=recent.get("topics", []),
-        recent_microtopics=recent.get("microtopics", []),
-        limit=12,
-    )
-    attempt_only_exclusions = list(recent.get("attempt_only_exclusions", []) or [])
-    brief_stage_opportunities = opportunity_engine.generate(
-        engine="A",
-        recent_pillars=recent.get("pillars", []),
-        recent_genres=recent.get("genres", []),
-        recent_topics=recent.get("topics", []),
-        recent_microtopics=recent.get("microtopics", []),
-        excluded_concepts=attempt_only_exclusions,
-        limit=12,
-    )
-    first_eligible = eligible[0] if eligible else {}
-    relationship_context = lean_intelligence.compile_product_social_intelligence(first_eligible).get("relationships") or {}
-    bi_context = orchestrator._load_bi_creative_context(
-        str(first_eligible.get("offering_id") or first_eligible.get("sku") or "")
-    )
-    preferred_pillar = relationship_context.get("pillar_id") or orchestrator._bi_preferred_pillar(bi_context)
-    audience_hint = relationship_context.get("audience_id") or orchestrator._bi_audience_hint(bi_context)
-    try:
-        orchestrator._build_engine_brief(
-            engines.get_engine("A"),
-            engine_name="A",
-            preferred_engine="A",
-            recent=recent,
-            audience_hint=audience_hint,
-            seasonal_context=None,
-            preferred_pillar=preferred_pillar,
-            excluded_concepts=attempt_only_exclusions,
-            rotation_index=0,
-            selected_opportunity_id="",
-        )
-        brief_build_status = "pass"
-    except RuntimeError as exc:
-        brief_build_status = str(exc)
-    return {
-        "engine": "A",
-        "catalog_count": len(offerings),
-        "excluded_count": len(offerings) - len(eligible),
-        "eligible_product_count": len(eligible),
-        "products_considered": len(eligible),
-        "non_ppp_opportunity_count": len(opportunities),
-        "attempt_only_exclusion_count": len(attempt_only_exclusions),
-        "brief_stage_opportunity_count": len(brief_stage_opportunities),
-        "brief_build_status": brief_build_status,
-        "selected_product_id": str(first_eligible.get("offering_id") or first_eligible.get("sku") or ""),
-        "opportunity_ids": [
-            f"{candidate.pillar_id}:{candidate.genre_id}:{candidate.topic_path.topic}"
-            for candidate in opportunities
-        ],
-    }
-
-
 def _schedule_preview(days: int = 7) -> list[dict]:
     history = _load_json(os.path.join(_data_dir(), "post_history.json"), {"posts": []})
     schedule = load_channel_schedule()
@@ -638,47 +526,6 @@ def _utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def _process_output_text(value: str | bytes | None) -> str:
-    if isinstance(value, bytes):
-        return value.decode("utf-8", errors="replace")
-    return str(value or "")
-
-
-def _slot_timeout_sec() -> int:
-    requested = int(os.environ.get("RUN_SLOT_TIMEOUT_SEC", "420"))
-    total_budget = float(os.environ.get("PHASE8_BUDGET_TOTAL_SEC", "420"))
-    finalization_grace = int(os.environ.get("RUN_SLOT_FINALIZATION_GRACE_SEC", "60"))
-    return max(requested, math.ceil(total_budget) + max(0, finalization_grace))
-
-
-def _persist_run_timeout_audit(
-    *,
-    slot: str,
-    timeout_sec: int,
-    force_live: bool,
-    shadow_mode: bool,
-) -> None:
-    """Record a bounded child-process timeout without implying publication."""
-    try:
-        history = generate_posts.load_history()
-        posts = history.setdefault("posts", [])
-        posts.append({
-            "post_id": f"timeout-{uuid.uuid4().hex[:12]}",
-            "status": "failed_run_timeout",
-            "slot": slot,
-            "published_at": _utc_now(),
-            "run_started_at_utc": LAST_RUN.get("started_at_utc"),
-            "dry_run": not force_live,
-            "shadow_mode": shadow_mode,
-            "publish_decision": {"decision": "do_not_publish", "publishable": False},
-            "run_timeout": {"timeout_sec": timeout_sec, "source": "worker_subprocess"},
-            "platform_records": [],
-        })
-        generate_posts.save_history(history)
-    except Exception as exc:
-        print(f"[ERROR] Could not persist timeout audit: {exc}")
-
-
 def _auto_bootstrap_visual_repo() -> dict:
     global VISUAL_REPO_BOOTSTRAP
     try:
@@ -709,9 +556,6 @@ def _start_slot_thread(
     product_id_override: str = "",
     funnel_stage_override: str = "",
     pipeline_override: str = "",
-    engine_override: str = "",
-    excluded_product_ids: str = "",
-    require_product_free: bool = False,
 ) -> bool:
     if RUN_LOCK.locked():
         return False
@@ -728,63 +572,10 @@ def _start_slot_thread(
             "product_id_override": product_id_override,
             "funnel_stage_override": funnel_stage_override,
             "pipeline_override": pipeline_override,
-            "engine_override": engine_override,
-            "excluded_product_ids": excluded_product_ids,
-            "require_product_free": require_product_free,
         },
         daemon=True,
     )
     thread.start()
-    return True
-
-
-def promote_frozen_artifact(
-    post_id: str,
-    *,
-    platforms: list[str],
-    live: bool = False,
-    shadow_mode: bool = True,
-) -> None:
-    with RUN_LOCK:
-        LAST_RUN["status"] = "running"
-        LAST_RUN["slot"] = "frozen_promotion"
-        LAST_RUN["started_at_utc"] = _utc_now()
-        LAST_RUN["finished_at_utc"] = None
-        LAST_RUN["error"] = None
-        try:
-            if _external_social_access_allowed(live, shadow_mode):
-                refresh_ok, refresh_reason = _auto_refresh_meta_if_due()
-                if refresh_ok:
-                    print("[META] Token refresh completed before frozen promotion")
-                elif refresh_reason not in ("not_due", "auto_refresh_disabled"):
-                    print(f"[META] Token refresh skipped/failed: {refresh_reason}")
-            result = run_engine.promote_approved_frozen_artifact(
-                post_id,
-                platforms=platforms,
-                dry_run=not live,
-                shadow_mode=shadow_mode,
-            )
-            if not result.get("ok"):
-                raise RuntimeError(" | ".join(str(error) for error in result.get("errors", [])) or "frozen_promotion_failed")
-            LAST_RUN["status"] = "success"
-            print(f"[PROMOTION] {post_id}: {result.get('status')}")
-        except BaseException as exc:
-            LAST_RUN["status"] = "failed"
-            LAST_RUN["error"] = str(exc)
-            print(f"[ERROR] Frozen promotion failed: {exc}")
-            traceback.print_exc()
-        finally:
-            LAST_RUN["finished_at_utc"] = _utc_now()
-
-
-def _start_frozen_promotion_thread(post_id: str, *, platforms: list[str], live: bool, shadow_mode: bool) -> bool:
-    if RUN_LOCK.locked():
-        return False
-    threading.Thread(
-        target=promote_frozen_artifact,
-        kwargs={"post_id": post_id, "platforms": platforms, "live": live, "shadow_mode": shadow_mode},
-        daemon=True,
-    ).start()
     return True
 
 
@@ -849,7 +640,6 @@ class HealthHandler(BaseHTTPRequestHandler):
                 "last_run": LAST_RUN,
                 "dry_run": os.environ.get("SOCIAL_DRY_RUN", "true"),
                 "shadow_mode": os.environ.get("SOCIAL_SHADOW_MODE", "false"),
-                "deployment": _deployment_metadata(),
                 "recent_quality": _quality_summary(recent_posts),
                 "visual_repo_bootstrap": VISUAL_REPO_BOOTSTRAP,
             }
@@ -977,21 +767,6 @@ class HealthHandler(BaseHTTPRequestHandler):
             self.wfile.write(body)
             return
 
-        if parsed.path.startswith("/history/"):
-            post_id = parsed.path.removeprefix("/history/").strip()
-            audit = _history_audit(post_id)
-            if audit is None:
-                body = json.dumps({"status": "not_found", "post_id": post_id}).encode("utf-8")
-                self.send_response(404)
-            else:
-                body = json.dumps({"status": "ok", "time_utc": _utc_now(), "audit": audit}, default=str).encode("utf-8")
-                self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
-            return
-
         if parsed.path == "/campaign":
             plan = _load_latest_campaign_plan()
             payload = {
@@ -1048,33 +823,6 @@ class HealthHandler(BaseHTTPRequestHandler):
                 "status": "ok",
                 "time_utc": _utc_now(),
                 "preview": _content_preview(preview_params),
-            }
-            body = json.dumps(payload).encode("utf-8")
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
-            return
-
-        if parsed.path == "/engine-a-product-field":
-            params = parse_qs(parsed.query)
-            authorized, status_code, error_payload = _authorized(params)
-            if not authorized:
-                body = json.dumps(error_payload).encode("utf-8")
-                self.send_response(status_code)
-                self.send_header("Content-Type", "application/json")
-                self.send_header("Content-Length", str(len(body)))
-                self.end_headers()
-                self.wfile.write(body)
-                return
-            excluded = {
-                value.strip() for value in params.get("excluded_products", [""])[0].split(",") if value.strip()
-            }
-            payload = {
-                "status": "ok",
-                "time_utc": _utc_now(),
-                "field": _engine_a_product_field(excluded),
             }
             body = json.dumps(payload).encode("utf-8")
             self.send_response(200)
@@ -1463,61 +1211,6 @@ class HealthHandler(BaseHTTPRequestHandler):
             self.wfile.write(body)
             return
 
-        if parsed.path == "/promote-frozen":
-            token = os.environ.get("MANUAL_RUN_TOKEN", "")
-            params = parse_qs(parsed.query)
-            provided = str(params.get("token", [""])[0]).strip()
-            post_id = str(params.get("post_id", [""])[0]).strip()
-            live = str(params.get("live", ["false"])[0]).lower() in ("1", "true", "yes")
-            shadow_mode = str(params.get("shadow", ["false"])[0]).lower() in ("1", "true", "yes") or not live
-            requested = [
-                platform.strip().lower()
-                for platform in str(params.get("platforms", ["facebook,instagram,linkedin"])[0]).split(",")
-                if platform.strip().lower() in ("facebook", "instagram", "linkedin")
-            ]
-            requested = list(dict.fromkeys(requested))
-            if not token:
-                payload = {"error": "MANUAL_RUN_TOKEN not configured"}
-                status = 403
-            elif provided != token:
-                payload = {"error": "invalid token"}
-                status = 401
-            elif not post_id:
-                payload = {"error": "missing_post_id"}
-                status = 400
-            elif not requested:
-                payload = {"error": "no_supported_platforms_requested"}
-                status = 400
-            else:
-                artifact, errors = run_engine.load_approved_frozen_artifact(post_id)
-                if not artifact:
-                    payload = {"error": "approved_frozen_artifact_unavailable", "post_id": post_id, "blocking_errors": errors}
-                    status = 422
-                else:
-                    started = _start_frozen_promotion_thread(
-                        post_id,
-                        platforms=requested,
-                        live=live,
-                        shadow_mode=shadow_mode,
-                    )
-                    payload = {
-                        "accepted": started,
-                        "post_id": post_id,
-                        "platforms": requested,
-                        "live": live,
-                        "shadow_mode": shadow_mode,
-                        "message": "frozen promotion started" if started else "run already in progress",
-                        "time_utc": _utc_now(),
-                    }
-                    status = 202 if started else 409
-            body = json.dumps(payload).encode("utf-8")
-            self.send_response(status)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
-            return
-
         if parsed.path == "/run-now":
             token = os.environ.get("MANUAL_RUN_TOKEN", "")
             params = parse_qs(parsed.query)
@@ -1531,11 +1224,6 @@ class HealthHandler(BaseHTTPRequestHandler):
             product_id_override = params.get("product_id", [""])[0].strip()
             funnel_stage_override = params.get("funnel_stage", [""])[0].strip().upper()
             pipeline_override = params.get("pipeline", [""])[0].strip().lower()
-            engine_override = params.get("engine", [""])[0].strip().lower()
-            excluded_product_ids = ",".join(dict.fromkeys(
-                value.strip() for value in params.get("excluded_products", [""])[0].split(",") if value.strip()
-            ))
-            require_product_free = params.get("product_free", ["false"])[0].lower() in ("1", "true", "yes")
             if duplicate_mode and duplicate_mode not in ("strict", "exact_only", "allow_all"):
                 duplicate_mode = ""
             if readiness_block_override and readiness_block_override not in ("true", "false", "1", "0", "yes", "no"):
@@ -1546,12 +1234,6 @@ class HealthHandler(BaseHTTPRequestHandler):
                 pipeline_override = "best_of"
             if pipeline_override and pipeline_override not in ("legacy", "orchestrator", "best_of"):
                 pipeline_override = ""
-            if engine_override in ("product", "product_centered", "engine_a"):
-                engine_override = "product"
-            elif engine_override not in ("a", "b", "c"):
-                engine_override = ""
-            if require_product_free:
-                engine_override = "b"
             if slot not in ("morning", "midday", "evening"):
                 slot = "morning"
 
@@ -1582,9 +1264,6 @@ class HealthHandler(BaseHTTPRequestHandler):
                 product_id_override=product_id_override,
                 funnel_stage_override=funnel_stage_override,
                 pipeline_override=pipeline_override,
-                engine_override=engine_override,
-                excluded_product_ids=excluded_product_ids,
-                require_product_free=require_product_free,
                 shadow_mode=shadow_mode,
             )
             payload = {
@@ -1598,9 +1277,6 @@ class HealthHandler(BaseHTTPRequestHandler):
                 "product_id": product_id_override or "auto",
                 "funnel_stage": funnel_stage_override or "auto",
                 "pipeline": pipeline_override or "env_default",
-                "engine": engine_override or "auto",
-                "excluded_products": bool(excluded_product_ids),
-                "product_free": require_product_free,
                 "message": "run started" if started else "run already in progress",
                 "time_utc": _utc_now(),
             }
@@ -1733,13 +1409,8 @@ def run_slot(
     product_id_override: str = "",
     funnel_stage_override: str = "",
     pipeline_override: str = "",
-    engine_override: str = "",
-    excluded_product_ids: str = "",
-    require_product_free: bool = False,
 ) -> None:
     with RUN_LOCK:
-        if not pipeline_override and (engine_override or require_product_free):
-            pipeline_override = "orchestrator"
         LAST_RUN["status"] = "running"
         LAST_RUN["slot"] = slot
         LAST_RUN["started_at_utc"] = _utc_now()
@@ -1761,9 +1432,6 @@ def run_slot(
         previous_product_override = os.environ.get("POST_PRODUCT_ID_OVERRIDE", "")
         previous_funnel_stage_override = os.environ.get("POST_FUNNEL_STAGE_OVERRIDE", "")
         previous_pipeline_override = os.environ.get("POST_PIPELINE_OVERRIDE", "")
-        previous_engine_override = os.environ.get("POST_ENGINE_OVERRIDE", "")
-        previous_excluded_product_ids = os.environ.get("POST_EXCLUDED_PRODUCT_IDS", "")
-        previous_require_product_free = os.environ.get("POST_REQUIRE_PRODUCT_FREE", "")
         previous_shadow_mode = os.environ.get("SOCIAL_SHADOW_MODE", "")
         os.environ["POST_SLOT"] = slot
         os.environ["POST_PLATFORMS"] = platforms_override
@@ -1777,12 +1445,6 @@ def run_slot(
             os.environ["POST_FUNNEL_STAGE_OVERRIDE"] = funnel_stage_override
         if pipeline_override:
             os.environ["POST_PIPELINE_OVERRIDE"] = pipeline_override
-        if engine_override:
-            os.environ["POST_ENGINE_OVERRIDE"] = engine_override
-        if excluded_product_ids:
-            os.environ["POST_EXCLUDED_PRODUCT_IDS"] = excluded_product_ids
-        if require_product_free:
-            os.environ["POST_REQUIRE_PRODUCT_FREE"] = "true"
         if force_live:
             os.environ["SOCIAL_DRY_RUN"] = "false"
         if shadow_mode:
@@ -1790,17 +1452,13 @@ def run_slot(
 
         _auto_bootstrap_visual_repo()
 
-        external_social_access_allowed = _external_social_access_allowed(force_live, shadow_mode)
-        if external_social_access_allowed:
-            refresh_ok, refresh_reason = _auto_refresh_meta_if_due()
-            if refresh_ok:
-                print("[META] Token refresh completed before run")
-            elif refresh_reason not in ("not_due", "auto_refresh_disabled"):
-                print(f"[META] Token refresh skipped/failed: {refresh_reason}")
-        else:
-            print("[META] Token refresh skipped: external social access disabled")
+        refresh_ok, refresh_reason = _auto_refresh_meta_if_due()
+        if refresh_ok:
+            print("[META] Token refresh completed before run")
+        elif refresh_reason not in ("not_due", "auto_refresh_disabled"):
+            print(f"[META] Token refresh skipped/failed: {refresh_reason}")
         try:
-            timeout_sec = _slot_timeout_sec()
+            timeout_sec = int(os.environ.get("RUN_SLOT_TIMEOUT_SEC", "420"))
             scripts_dir = os.path.join(os.path.dirname(__file__), "scripts")
             run_engine_path = os.path.join(scripts_dir, "run_engine.py")
             env = os.environ.copy()
@@ -1815,7 +1473,7 @@ def run_slot(
                 check=False,
             )
 
-            output = (_process_output_text(completed.stdout) + "\n" + _process_output_text(completed.stderr)).strip()
+            output = ((completed.stdout or "") + "\n" + (completed.stderr or "")).strip()
             if output:
                 print(output[-4000:])
 
@@ -1824,15 +1482,9 @@ def run_slot(
 
             LAST_RUN["status"] = "success"
         except subprocess.TimeoutExpired as e:
-            partial = (_process_output_text(e.stdout) + "\n" + _process_output_text(e.stderr)).strip()
+            partial = ((e.stdout or "") + "\n" + (e.stderr or "")).strip()
             LAST_RUN["status"] = "failed"
             LAST_RUN["error"] = f"run_timeout_after_{timeout_sec}s"
-            _persist_run_timeout_audit(
-                slot=slot,
-                timeout_sec=timeout_sec,
-                force_live=force_live,
-                shadow_mode=shadow_mode,
-            )
             if partial:
                 print(partial[-4000:])
             print(f"[ERROR] {slot} run timed out after {timeout_sec}s")
@@ -1864,18 +1516,6 @@ def run_slot(
                 os.environ["POST_PIPELINE_OVERRIDE"] = previous_pipeline_override
             elif "POST_PIPELINE_OVERRIDE" in os.environ:
                 del os.environ["POST_PIPELINE_OVERRIDE"]
-            if previous_engine_override:
-                os.environ["POST_ENGINE_OVERRIDE"] = previous_engine_override
-            elif "POST_ENGINE_OVERRIDE" in os.environ:
-                del os.environ["POST_ENGINE_OVERRIDE"]
-            if previous_excluded_product_ids:
-                os.environ["POST_EXCLUDED_PRODUCT_IDS"] = previous_excluded_product_ids
-            elif "POST_EXCLUDED_PRODUCT_IDS" in os.environ:
-                del os.environ["POST_EXCLUDED_PRODUCT_IDS"]
-            if previous_require_product_free:
-                os.environ["POST_REQUIRE_PRODUCT_FREE"] = previous_require_product_free
-            elif "POST_REQUIRE_PRODUCT_FREE" in os.environ:
-                del os.environ["POST_REQUIRE_PRODUCT_FREE"]
             if previous_shadow_mode:
                 os.environ["SOCIAL_SHADOW_MODE"] = previous_shadow_mode
             elif "SOCIAL_SHADOW_MODE" in os.environ:

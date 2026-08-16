@@ -18,15 +18,6 @@ _PLANNING_INSTRUCTION_PATTERNS = (
     r"\bencourage engagement\b",
     r"\badd (?:a )?practical question\b",
 )
-_SYSTEM_LIKE_SALES_TERMS = (
-    "supporting proof", "decision evidence", "primary benefit", "human value",
-    "reader job", "product role", "conversation mechanism", "strategy support",
-)
-_MALFORMED_PHRASE_PATTERNS = (r"\bfor\s+before\b", r"\b(?:in|on|at|for|with)\s+(?:in|on|at|for|with)\b")
-_SEMANTIC_STOPWORDS = {
-    "a", "an", "and", "as", "at", "be", "by", "for", "from", "in", "is",
-    "it", "of", "on", "or", "that", "the", "this", "to", "with", "you", "your",
-}
 
 
 def _paragraphs(text: str) -> list[str]:
@@ -134,98 +125,52 @@ def _semantic_key(paragraph: str, product: str) -> str:
     return "context"
 
 
-def _semantic_tokens(text: str, product: str) -> set[str]:
-    product_tokens = set(re.findall(r"[a-z0-9]+", product.lower()))
-    return {
-        token for token in re.findall(r"[a-z0-9]+", text.lower())
-        if len(token) > 2 and token not in _SEMANTIC_STOPWORDS and token not in product_tokens
-    }
-
-
-def _depth_classification(candidate: str, *, earlier_layers: list[str], product: str) -> str:
-    """Accept only customer-facing depth that advances the earlier sales argument."""
-    lowered = candidate.lower()
-    if any(term in lowered for term in _SYSTEM_LIKE_SALES_TERMS):
-        return "LOW_VALUE_FILLER"
-    prior_text = " ".join(earlier_layers).lower()
-    if (
-        ("phone" in lowered and any(term in lowered for term in ("power reserve", "dedicated power station", "portable backup")))
-        or ("power bank" in lowered and any(term in lowered for term in ("capacity", "port", "match the job", "fall short")))
-    ) and any(term in prior_text for term in ("power bank", "portable backup", "portable power")):
-        return "SEMANTIC_REPEAT"
-    candidate_tokens = _semantic_tokens(candidate, product)
-    prior_tokens = set().union(*(_semantic_tokens(layer, product) for layer in earlier_layers)) if earlier_layers else set()
-    if not candidate_tokens:
-        return "LOW_VALUE_FILLER"
-    overlap = len(candidate_tokens & prior_tokens) / len(candidate_tokens)
-    if any(re.sub(r"[^a-z0-9]+", " ", candidate.lower()).strip() in re.sub(r"[^a-z0-9]+", " ", layer.lower()).strip() for layer in earlier_layers):
-        return "SEMANTIC_REPEAT"
-    novelty_markers = ("compare", "capacity", "ac", "outlet", "device fit", "carry", "drone", "photography", "remote work", "mobile office", "travel", "adventure", "backup planning")
-    new_value = any(marker in lowered and marker not in prior_text for marker in novelty_markers)
-    if overlap >= 0.72 and not new_value:
-        return "SEMANTIC_REPEAT"
-    if any(marker in lowered for marker in ("compare", "capacity", "ac", "device fit", "power requirements")):
-        return "ADDITIVE_DEPTH"
-    if new_value:
-        return "USEFUL_EXPANSION"
-    if any(token in lowered for token in ("154wh", "41,600mah", "200w", "110v")):
-        return "SUPPORTING_PROOF"
-    return "REMOVE_DEPTH"
-
-
-def _select_optional_depth(
-    source_parts: list[str], *, earlier_layers: list[str], product: str, cta: str
-) -> tuple[list[str], list[dict[str, str]]]:
-    """Preserve only source-backed depth that is semantically additive to rendered layers."""
-    candidates: list[tuple[int, int, str]] = []
-    assessments: list[dict[str, str]] = []
-    seen: set[str] = set()
-    priority_markers = ("drone", "photography", "remote work", "mobile office", "travel", "adventure", "compare", "device fit", "power requirements")
+def _new_supporting_depth(source_parts: list[str], *, product: str, covered: set[str], cta: str) -> list[str]:
+    """Keep source information only when it adds a new sales dimension."""
+    depth: list[str] = []
+    seen: set[str] = set(covered)
     for paragraph in source_parts:
+        if paragraph.strip().lower() == cta.lower() or re.fullmatch(r"(?:#[A-Za-z0-9_]+\s*)+", paragraph):
+            continue
+        key = _semantic_key(paragraph, product)
+        normalized = re.sub(r"[^a-z0-9]+", " ", paragraph.lower()).strip()
+        if key in seen or normalized in seen:
+            continue
+        seen.add(key)
+        seen.add(normalized)
+        depth.append(paragraph)
+    return depth
+
+
+def _preserved_sales_depth(source_parts: list[str], *, cta: str) -> list[str]:
+    """Retain source-backed use context that adds value beyond the core proof block."""
+    markers = (
+        "drone", "mobile office", "remote work", "photography", "camping",
+        "adventure", "travel", "outage", "off-grid", "emergency", "vehicle",
+        "backpack", "long commute", "daily carry",
+    )
+    candidates: list[tuple[int, int, str]] = []
+    seen: set[str] = set()
+    for paragraph_index, paragraph in enumerate(source_parts):
         for sentence in _sentences(paragraph):
-            sentence = sentence.strip()
             normalized = re.sub(r"[^a-z0-9]+", " ", sentence.lower()).strip()
+            lowered = sentence.lower()
             if (
                 not normalized
                 or normalized in seen
-                or sentence.lower() == cta.lower()
-                or re.fullmatch(r"(?:#[A-Za-z0-9_]+\s*)+", sentence)
-                or "key specs" in sentence.lower()
-                or "why buyers choose" in sentence.lower()
+                or sentence.strip().lower() == cta.lower()
+                or re.fullmatch(r"(?:#[A-Za-z0-9_]+\s*)+", sentence.strip())
+                or "key specs" in lowered
+                or "why buyers choose" in lowered
                 or _is_contrast(sentence)
             ):
                 continue
-            seen.add(normalized)
-            classification = _depth_classification(
-                sentence,
-                earlier_layers=earlier_layers,
-                product=product,
-            )
-            assessments.append({"text": sentence, "classification": classification})
-            if classification in {"ADDITIVE_DEPTH", "USEFUL_EXPANSION", "SUPPORTING_PROOF"}:
-                score = (20 if classification == "USEFUL_EXPANSION" else 10 if classification == "ADDITIVE_DEPTH" else 5)
-                score += sum(marker in sentence.lower() for marker in priority_markers)
-                candidates.append((score, len(candidates), sentence))
-    selected = [sentence for _, _, sentence in sorted(candidates, key=lambda item: (-item[0], item[1]))[:3]]
-    return selected, assessments
-
-
-def _content_preservation_map(source_parts: list[str], *, product: str, cta: str) -> list[dict[str, str]]:
-    """Keep a compact audit of material sales ideas before presentation restructuring."""
-    inventory: list[dict[str, str]] = []
-    for paragraph in source_parts:
-        for sentence in _sentences(paragraph):
-            if sentence.strip().lower() == cta.lower() or re.fullmatch(r"(?:#[A-Za-z0-9_]+\s*)+", sentence):
-                continue
-            idea = _semantic_key(sentence, product)
-            if "power bank" in sentence.lower() or "power reserve" in sentence.lower():
-                idea = "contrast"
-            role = {
-                "contrast": "CORE", "product": "CORE", "proof": "PROOF", "use_case": "OPTIONAL_DEPTH",
-                "decision_step": "OPTIONAL_DEPTH", "context": "OPTIONAL_DEPTH", "pain": "CORE",
-            }.get(idea, "OPTIONAL_DEPTH")
-            inventory.append({"idea": idea, "role": role, "source": sentence.strip()})
-    return inventory
+            if any(marker in lowered for marker in markers):
+                seen.add(normalized)
+                device_value = sum(token in lowered for token in ("laptop", "phone", "camera", "drone", "electronics"))
+                context_value = sum(marker in lowered for marker in markers)
+                candidates.append((device_value * 10 + context_value, paragraph_index, sentence.strip()))
+    return [sentence for _, _, sentence in sorted(candidates, key=lambda item: (-item[0], item[1]))[:3]]
 
 
 def _layered_caption(
@@ -283,23 +228,17 @@ def refine_caption(
     proof = [str(item).strip() for item in (components.get("feature_bullets") or []) if str(item).strip()]
     cta = str(components.get("cta") or "Learn more").strip()
     contrast_explained = _is_contrast(hook)
-    product_value = f"Meet {product}: a portable charging backup that {benefit}." if product_led and product else ""
-    proof_meanings = _sales_meaning(proof, use_case) if include_proof else []
-    earlier_layers = [hook, product_value, use_case, *proof_meanings]
-    optional_depth, depth_assessment = _select_optional_depth(
-        source_without_tags,
-        earlier_layers=earlier_layers,
-        product=product,
-        cta=cta,
-    )
+    covered = {"contrast", "product", "proof", "use_case"} if product_led else {"contrast", "proof", "use_case"}
+    optional_depth = _new_supporting_depth(source_without_tags, product=product, covered=covered, cta=cta)
+    preserved_depth = _preserved_sales_depth(source_without_tags, cta=cta)
+    for detail in preserved_depth:
+        if detail not in optional_depth:
+            optional_depth.append(detail)
     if product_led and not optional_depth:
         optional_depth = [
             "The practical decision is not just how much power is listed. Compare the published capacity, AC access, and supported device fit with the equipment you expect to carry."
         ]
-        depth_assessment.append({
-            "text": optional_depth[0],
-            "classification": "ADDITIVE_DEPTH",
-        })
+    proof_meanings = _sales_meaning(proof, use_case) if include_proof else []
     tags, categories = _portfolio(components, platform, caption)
     hashtag_line = " ".join(f"#{tag}" for tag in tags)
     refined, optional_start = _layered_caption(
@@ -326,8 +265,6 @@ def refine_caption(
         "hashtag_reason": "brand, product, category, verified use-case, and discovery tags only",
         "optional_depth_present": bool(optional_depth),
         "optional_depth_start_word": optional_start,
-        "optional_depth_assessment": depth_assessment,
-        "content_preservation_map": _content_preservation_map(source_without_tags, product=product, cta=cta),
         "spec_sales_intelligence": "PASS" if proof_meanings else "NOT_APPLICABLE",
         "semantic_layer_evidence": {
             "hook": hook,
@@ -433,7 +370,6 @@ def evaluate(
     benefit = str(components.get("benefit_fragment") or "")
     cta = str(components.get("cta") or "")
     leaks = _internal_instruction_leaks(text, planning_instructions)
-    system_like_terms = [term for term in _SYSTEM_LIKE_SALES_TERMS if term in text.lower()]
     density = "TOO_DENSE" if len(words) > {"facebook": 190, "instagram": 120, "linkedin": 260}.get(platform, 190) else "APPROPRIATE"
     return {
         "final_caption": text,
@@ -455,8 +391,6 @@ def evaluate(
         "link_present": bool(re.search(r"https?://\S+", text)),
         "internal_instruction_leak": bool(leaks),
         "internal_instruction_leaks": leaks,
-        "system_like_customer_language": bool(system_like_terms),
-        "system_like_terms": system_like_terms,
         "specs_present": duplicate_specs,
         "optional_depth_present": len(_paragraphs(text)) >= 5,
     }
@@ -477,25 +411,20 @@ def final_caption_qa(
         components=components,
         planning_instructions=planning_instructions,
     )
-    product_free = str(components.get("product_role") or "").upper() == "NONE"
-    numeric_proof_available = not product_free and any(_numeric_proof_tokens(str(item)) for item in components.get("feature_bullets") or [])
+    numeric_proof_available = any(_numeric_proof_tokens(str(item)) for item in components.get("feature_bullets") or [])
     reasons: list[str] = []
     if metrics["internal_instruction_leak"]:
         reasons.append("internal_instruction_leak")
-    if metrics["system_like_customer_language"]:
-        reasons.append("system_like_customer_language")
-    if not product_free and not metrics["product_intro_position"]:
+    if not metrics["product_intro_position"]:
         reasons.append("product_not_visible")
-    if not product_free and not metrics["primary_benefit_position"]:
+    if not metrics["primary_benefit_position"]:
         reasons.append("primary_value_not_visible")
     if platform == "facebook" and numeric_proof_available and not metrics["specs_present"]:
         reasons.append("verified_proof_missing")
-    if platform == "facebook" and not product_free and not metrics["link_present"]:
+    if platform == "facebook" and not metrics["link_present"]:
         reasons.append("required_link_missing")
     if metrics["paragraph_count"] < 4:
         reasons.append("paragraph_structure_missing")
-    if any(re.search(pattern, str(caption or ""), flags=re.IGNORECASE) for pattern in _MALFORMED_PHRASE_PATTERNS):
-        reasons.append("broken_phrase")
     return {
         "status": "PRESENTATION_READY" if not reasons else "REVISE_PRESENTATION",
         "reasons": reasons,
@@ -518,44 +447,18 @@ def _compact_parts(components: dict[str, Any], platform: str) -> tuple[str, str,
 
 def format_caption(components: dict[str, Any], *, platform: str) -> tuple[str, dict[str, Any]]:
     """Use one proof in copy; let a spec-carrying visual carry the rest."""
-    if str(components.get("product_role") or "").upper() == "NONE":
-        caption = "\n\n".join(item for item in (str(components.get("logic_hook") or components.get("hook") or "").strip(), str(components.get("logic_bridge") or components.get("situation") or "").strip(), str(components.get("emotional_outcome") or components.get("benefit_fragment") or "").strip(), str(components.get("cta") or "Save this decision guide.").strip(), "#InfenergyPower #Preparedness #PracticalPlanning") if item)
-        presentation = evaluate(caption, platform=platform, visual_specs=[], components=components)
-        presentation.update({"platform_expression": "product_free_audience_value", "presentation_critic": "PASS"})
-        return caption, presentation
     hook, context, payoff, specs = _compact_parts(components, platform)
     cta = str(components.get("cta") or "Learn more").strip()
-    narrative = components.get("product_narrative") if isinstance(components.get("product_narrative"), dict) else {}
-    decision_support = narrative.get("role") in {"FIT_DEMONSTRATION", "DECISION_SUPPORT"}
-    if decision_support:
-        product_proof = str(components.get("product_connection") or payoff).strip()
-        tags, categories = _portfolio(components, platform, " ".join((hook, context, product_proof)))
-        caption = "\n\n".join(filter(None, [hook, context, product_proof, cta, " ".join(f"#{tag}" for tag in tags)]))
-        presentation = evaluate(caption, platform=platform, visual_specs=specs, components=components)
-        presentation.update({
-            "priority_layers": ["scroll_stopper", "decision_method", "product_proof", "action_discovery"],
-            "selected_hashtags": [f"#{tag}" for tag in tags],
-            "hashtag_categories": categories,
-            "semantic_layer_evidence": {
-                "hook": hook,
-                "decision_method": context,
-                "product_proof": product_proof,
-                "cta": cta,
-            },
-            "reordered_for_priority": True,
-            "platform_expression": "decision_support_with_product_proof",
-        })
-    elif platform == "instagram":
+    if platform == "instagram":
         caption = "\n\n".join(filter(None, [hook, context, payoff, cta, "#PortablePower #Preparedness #TravelPower"]))
     elif platform == "linkedin":
         caption = "\n\n".join(filter(None, [hook, context, "The decision is less about accumulating specs and more about matching the supported job to the equipment you carry.", payoff, cta, "#PortablePower #Resilience #BusinessContinuity"]))
     else:
         caption = "\n\n".join(filter(None, [hook, context, payoff, cta, "#PortablePower #Preparedness #BackupPower"]))
-    if not decision_support:
-        caption, priority = refine_caption(caption, components=components, platform=platform, include_proof=False)
-        presentation = evaluate(caption, platform=platform, visual_specs=specs, components=components)
-        presentation.update(priority)
+    caption, priority = refine_caption(caption, components=components, platform=platform, include_proof=False)
+    presentation = evaluate(caption, platform=platform, visual_specs=specs)
     presentation.update({
+        **priority,
         "platform_role": platform,
         "emoji_mode": "NONE",
         "decoration_decisions": ["whitespace: hierarchy", "cta_separation: visibility"],

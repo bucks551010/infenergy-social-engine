@@ -159,29 +159,13 @@ def _route_generate_orchestrator(
     """Return the first orchestrated post package in the legacy payload shape used by the runtime."""
     social_platform = _social_platform_key(platform)
     council_decision: dict[str, Any] = {}
-    remediation_context = kw.get("remediation_context") if isinstance(kw.get("remediation_context"), dict) else {}
-    recovery_context = any(
-        remediation_context.get(key)
-        for key in (
-            "replacement_candidate", "original_candidate_id", "recovery_mode", "candidate_attempt_id",
-            "excluded_concepts", "exclude_engine_a_decision_thesis",
-        )
-    )
-    if not recovery_context and not isinstance(kw.get("approved_strategy"), dict):
+    if not isinstance(kw.get("approved_strategy"), dict):
         approved_strategy, council_decision = _living_strategy_for_generation()
         if approved_strategy:
             kw["approved_strategy"] = approved_strategy
-    elif recovery_context:
-        council_decision = {"decision": "strategy_reselected", "source": "evidence_safe_remediation"}
     else:
         council_decision = {"decision": "strategy_selected", "source": "caller_override"}
-    rotation_index = int(remediation_context.get("selection_rotation_index", 0) or 0)
-    batch = run_social_intelligence(
-        count=1,
-        platform=social_platform,
-        rotation_index=rotation_index,
-        **kw,
-    )
+    batch = run_social_intelligence(count=1, platform=social_platform, **kw)
     if not batch:
         return {}
 
@@ -208,51 +192,7 @@ def _route_generate_orchestrator(
     takeaway = str(copy_pkg.get("takeaway") or copy_pkg.get("memory_anchor") or "").strip()
     selected_hook = str(copy_pkg.get("hook") or "").strip()
     selected_cta = str(copy_pkg.get("cta") or "Learn more").strip()
-    funnel_stage = _normalize_funnel_stage_override(funnel_stage_override)
-    if not funnel_stage:
-        funnel_stage = stage_for_slot(
-            slot,
-            history=load_history(),
-            funnel_config=load_funnel_config(),
-            schedule=load_channel_schedule(),
-            now_utc=datetime.now(timezone.utc),
-        ) if slot else "EDUCATION"
-    from social import visual_contract
-
-    strategy_lock = copy_pkg.get("strategy_lock") if isinstance(copy_pkg.get("strategy_lock"), dict) else {}
-    role_contract = visual_contract.requirements({"copy": copy_pkg, "strategy_lock": strategy_lock, "anchored_offering": offering, "strategic_brief": brief})
-    product_free = role_contract["product_role"] == "NONE"
-    product_name = str(offering.get("name") or "").strip()
-    rendered_copy = " ".join((selected_hook, copy_body, takeaway)).lower()
-    product_name_tokens = re.findall(r"[a-z0-9]+", product_name.lower())
-    product_short_name = " ".join(product_name_tokens[:2])
-    generic_product_terms = {
-        "power", "portable", "bank", "station", "charger", "battery", "solar",
-        "energy", "system", "backup", "generator", "light", "fan",
-    }
-    product_short_name_is_distinctive = (
-        len(product_name_tokens) >= 2
-        and any(token not in generic_product_terms for token in product_name_tokens[:2])
-    )
-    product_sku = str(offering.get("sku") or offering.get("offering_id") or "").strip().lower()
-    copy_mentions_product = (
-        (bool(product_name) and product_name.lower() in rendered_copy)
-        or (product_short_name_is_distinctive and product_short_name in rendered_copy)
-        or (bool(product_sku) and product_sku in rendered_copy)
-    )
-    if product_free and copy_mentions_product:
-        # A product-free strategy cannot emit product-led copy. Preserve the
-        # product identity and require the matching visual contract instead of
-        # silently adapting the contradiction as generic audience content.
-        product_free = False
-        role_contract = {
-            **role_contract,
-            "product_role": "PRIMARY",
-            "product_relevance": "RELEVANT",
-            "product_presence_required": True,
-            "product_fidelity_applicable": True,
-        }
-    destination_url = SITE_URL if product_free else (catalog_product or {}).get("product_url") or SITE_URL
+    funnel_stage = _normalize_funnel_stage_override(funnel_stage_override) or "EDUCATION"
     product_for_adaptation = {
         "id": offering.get("offering_id") or offering.get("sku") or "",
         "name": offering.get("name", ""),
@@ -261,8 +201,6 @@ def _route_generate_orchestrator(
         "metrics": (catalog_product or {}).get("metrics", []) or list(offering.get("verified_facts", [])),
         "fact_snippet": (catalog_product or {}).get("fact_snippet", "") or offering.get("description_clean", ""),
     }
-    if product_free:
-        product_for_adaptation = {}
     topic = str((brief.get("topic_path") or {}).get("topic") or "Product education").strip()
     components = _build_post_components(
         topic=topic,
@@ -270,7 +208,6 @@ def _route_generate_orchestrator(
         selected_cta=selected_cta,
         product=product_for_adaptation,
         funnel_stage=funnel_stage,
-        product_narrative=copy_pkg.get("product_narrative") if isinstance(copy_pkg.get("product_narrative"), dict) else None,
     )
     components.update({
         "logic_hook": selected_hook,
@@ -279,15 +216,13 @@ def _route_generate_orchestrator(
         "emotional_outcome": takeaway or components["emotional_outcome"],
         "on_image_headline": selected_hook or components["on_image_headline"],
         "on_image_subline": takeaway or components["on_image_subline"],
-        "product_relevance": role_contract["product_relevance"],
-        "product_role": role_contract["product_role"],
     })
     platform_posts = _build_platform_posts(
         post_id=str(first.get("post_id") or ""),
         campaign_id="",
         audience_segment=str(brief.get("audience_segment") or ""),
         funnel_stage=funnel_stage,
-        destination_url=destination_url,
+        destination_url=(catalog_product or {}).get("product_url") or SITE_URL,
         components=components,
         quality_score=float(quality_pkg.get("overall") or 0),
         strategy_lock=copy_pkg.get("strategy_lock") if isinstance(copy_pkg.get("strategy_lock"), dict) else {},
@@ -316,18 +251,16 @@ def _route_generate_orchestrator(
 
     legacy = {
         "post_id": first.get("post_id"),
-        "candidate_attempt_id": str(remediation_context.get("candidate_attempt_id") or f"{first.get('post_id')}:candidate-1"),
-        "selection_rotation_index": rotation_index,
         "copy_generation_source": "social_intelligence_orchestrator",
         "business_context": first.get("business_context") or {},
         "anchored_offering": offering,
-        "product_id": None if product_free else offering.get("offering_id") or offering.get("sku") or None,
-        "product_name": "" if product_free else offering.get("name", ""),
-        "product_sku": "" if product_free else offering.get("sku", ""),
-        "product_image_url": "" if product_free else (offering.get("images") or [""])[0],
-        "product_image_candidates": [] if product_free else (offering.get("images") or [])[1:],
-        "product_url": "" if product_free else (catalog_product or {}).get("product_url", ""),
-        "destination_url": destination_url,
+        "product_id": offering.get("offering_id") or offering.get("sku") or None,
+        "product_name": offering.get("name", ""),
+        "product_sku": offering.get("sku", ""),
+        "product_image_url": (offering.get("images") or [""])[0],
+        "product_image_candidates": (offering.get("images") or [])[1:],
+        "product_url": (catalog_product or {}).get("product_url", ""),
+        "destination_url": SITE_URL,
         "product_price": (catalog_product or {}).get("price", ""),
         "product_sale_price": (catalog_product or {}).get("sale_price", ""),
         "product_metrics": (catalog_product or {}).get("metrics", []) or list(offering.get("verified_facts", [])),
@@ -336,7 +269,7 @@ def _route_generate_orchestrator(
         "selected_hook": selected_hook,
         "selected_cta": selected_cta,
         "copy": copy_pkg,
-        "strategy_lock": {**strategy_lock, "product_relevance": role_contract["product_relevance"], "product_role": role_contract["product_role"]},
+        "strategy_lock": copy_pkg.get("strategy_lock") if isinstance(copy_pkg.get("strategy_lock"), dict) else {},
         "visual": visual_pkg,
         "layout_grammar": visual_pkg.get("layout_grammar", {}),
         "information_priority": visual_pkg.get("information_priority", {}),
@@ -374,7 +307,6 @@ def _route_generate_orchestrator(
         "wp_title": selected_hook or topic,
         "wp_content": wp_content,
         "wp_excerpt": takeaway or selected_hook,
-        "post_components": components,
         "fb_caption": platform_posts["facebook"]["final_caption"],
         "ig_caption": platform_posts["instagram"]["final_caption"],
         "li_text": platform_posts["linkedin"]["final_caption"],
@@ -3702,7 +3634,6 @@ def _build_post_components(
     funnel_stage: str,
     product_intelligence: dict | None = None,
     logical_strategy: dict | None = None,
-    product_narrative: dict | None = None,
 ) -> dict:
     product_name = (product or {}).get("name", "Infenergy preparedness solution")
     product_id = (product or {}).get("id", "")
@@ -3753,27 +3684,6 @@ def _build_post_components(
         cta = "Build your backup-power setup."
 
     strategy = logical_strategy if isinstance(logical_strategy, dict) else {}
-    narrative = product_narrative if isinstance(product_narrative, dict) else {}
-    if narrative.get("role") in {"FIT_DEMONSTRATION", "DECISION_SUPPORT", "EVIDENCE", "EXAMPLE"} and not narrative.get("narrative_hijack"):
-        capacity = next((str(metric) for metric in metrics if "wh" in str(metric).lower()), m1)
-        output = next((str(metric) for metric in metrics if "w" in str(metric).lower() and "wh" not in str(metric).lower()), m2)
-        ac_access = next((str(metric) for metric in metrics if "v" in str(metric).lower()), "")
-        human_reality = str(narrative.get("human_reality") or "the current mobile-work situation")
-        decision_principle = (
-            "Start with the device's actual power requirement. Then check the available output and connection; "
-            "use stored energy to judge the reserve after the fit is established."
-        )
-        situation = f"For {human_reality}, the useful question is whether the equipment and power source fit the same job."
-        info = decision_principle
-        why = "A larger battery number alone does not establish device fit."
-        product_connection = (
-            f"{product_name} is a fit demonstration, not the answer by default: {output} is its stated output boundary, "
-            f"{capacity} describes its stored-energy reserve"
-            + (f", and {ac_access} describes its AC access." if ac_access else ".")
-        )
-        proof = "; ".join(item for item in (capacity, output, ac_access) if item) + "."
-        feature_bullets = [item for item in (capacity, output, ac_access) if item]
-        cta = "Save this decision sequence and compare your current setup." if narrative.get("cta_class") == "COMPARE" else selected_cta
     return {
         "product_id": product_id or None,
         "hook": selected_hook,
@@ -3796,7 +3706,6 @@ def _build_post_components(
         "emotional_outcome": str(strategy.get("emotional_outcome") or "confidence through better preparation"),
         "on_image_headline": str(strategy.get("on_image_headline") or selected_hook),
         "on_image_subline": str(strategy.get("on_image_subline") or m1),
-        "product_narrative": narrative,
     }
 
 
@@ -4011,10 +3920,12 @@ def _apply_platform_presentation_priority(platform_posts: dict, components: dict
         package = platform_posts.get(platform, {}) if isinstance(platform_posts, dict) else {}
         if not isinstance(package, dict):
             continue
-        if str(components.get("product_role") or "").upper() == "NONE":
-            refined_caption, priority = platform_presentation.format_caption(components, platform=platform)
-        else:
-            refined_caption, priority = platform_presentation.refine_caption(str(package.get("caption", "")), components=components, platform=platform, product_led=bool(components.get("product_id")))
+        refined_caption, priority = platform_presentation.refine_caption(
+            str(package.get("caption", "")),
+            components=components,
+            platform=platform,
+            product_led=bool(components.get("product_id")),
+        )
         final_caption = platform_presentation.render_platform_caption(
             refined_caption,
             destination_url=str(package.get("utm_url") or package.get("destination_url") or ""),
@@ -4317,7 +4228,6 @@ def _generate_json_with_gemini(prompt: str, model_candidates: list[str], attempt
 
     client = genai.Client(api_key=api_key)
     last_error = "no_model_candidates_configured"
-    terminal_markers = ("quota", "billing", "credit", "rate limit", "429", "payment", "503")
 
     for model_name in model_candidates:
         for attempt in range(max(1, attempts_per_model)):
@@ -4339,9 +4249,6 @@ def _generate_json_with_gemini(prompt: str, model_candidates: list[str], attempt
                 return json.loads(raw.strip())
             except Exception as e:
                 last_error = f"{model_name}:attempt{attempt + 1}:{type(e).__name__}:{str(e)[:200]}"
-                if any(marker in last_error.lower() for marker in terminal_markers):
-                    return None
-                continue
                 continue
 
     # Every model/attempt failed. Log the real reason so this is diagnosable in
@@ -4982,28 +4889,9 @@ def generate(
     pipeline_override: str = "",
     approved_strategy: dict[str, Any] | None = None,
     revision_feedback: list[str] | None = None,
-    remediation_context: dict[str, Any] | None = None,
-    verified_facts_override: list[str] | None = None,
 ) -> dict:
     mode = _pipeline_mode(pipeline_override)
     platform = os.environ.get("POST_PLATFORMS", "instagram_feed").split(",")[0].strip() or "instagram_feed"
-    session_excluded_product_ids = [
-        value.strip() for value in os.environ.get("POST_EXCLUDED_PRODUCT_IDS", "").split(",") if value.strip()
-    ]
-    effective_remediation_context = dict(remediation_context or {})
-    effective_remediation_context["excluded_product_ids"] = list(dict.fromkeys([
-        *(str(value) for value in effective_remediation_context.get("excluded_product_ids", []) if str(value)),
-        *session_excluded_product_ids,
-    ]))
-    if os.environ.get("POST_REQUIRE_PRODUCT_FREE", "").strip().lower() in {"1", "true", "yes", "on"}:
-        effective_remediation_context["require_product_free"] = True
-    preferred_engine = os.environ.get("POST_ENGINE_OVERRIDE", "").strip().upper()
-    if preferred_engine == "PRODUCT":
-        preferred_engine = "A"
-    if preferred_engine not in {"A", "B", "C"}:
-        preferred_engine = ""
-    if effective_remediation_context.get("require_product_free"):
-        preferred_engine = "B"
 
     if mode == "best_of":
         return _generate_best_of(slot, funnel_stage_override=funnel_stage_override, product_id_override=product_id_override)
@@ -5015,9 +4903,6 @@ def generate(
             funnel_stage_override=funnel_stage_override,
             approved_strategy=approved_strategy,
             revision_feedback=revision_feedback,
-            remediation_context=effective_remediation_context,
-            verified_facts=verified_facts_override,
-            preferred_engine=preferred_engine or None,
         )
     if mode != "legacy" and _social_intelligence_enabled():
         return _route_generate_orchestrator(
@@ -5027,9 +4912,6 @@ def generate(
             funnel_stage_override=funnel_stage_override,
             approved_strategy=approved_strategy,
             revision_feedback=revision_feedback,
-            remediation_context=effective_remediation_context,
-            verified_facts=verified_facts_override,
-            preferred_engine=preferred_engine or None,
         )
 
     ensure_runtime_data()

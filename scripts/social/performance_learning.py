@@ -63,24 +63,3 @@ def aggregate_creative_learning(observations: list[dict[str, Any]]) -> dict[str,
             hypotheses[key]["values"] = values
     supported = [item for item in hypotheses.values() if item["state"] == "SUPPORTED_PATTERN" and item["contradiction_count"] == 0]
     return {"hypotheses": hypotheses, "supported_patterns": supported, "recommendations": [{"dimension": item["dimension"], "values": item["values"], "action": "prefer as one controlled future test, not a permanent rule", "confidence": item["confidence"]} for item in supported]}
-
-
-def interpret_audience_value_signal(*, metrics: dict[str, float], reader_problem: str) -> dict[str, str]:
-    """Translate performance into a cautious audience insight, never a format rule."""
-    saves = float(metrics.get("saves", 0) or 0)
-    shares = float(metrics.get("shares", 0) or 0)
-    comments = float(metrics.get("comments", 0) or 0)
-    dwell = float(metrics.get("dwell", 0) or 0)
-    completion = float(metrics.get("reel_completion", 0) or 0)
-    clicks = float(metrics.get("clicks", 0) or 0)
-    if saves >= 5:
-        return {"learning": f"{reader_problem} appears worth returning to as a decision problem.", "next_decision": "test a related unresolved consequence, not another checklist", "confidence": "low directional signal"}
-    if shares >= 5:
-        return {"learning": f"{reader_problem} may be socially useful enough to pass between people.", "next_decision": "explore who else is affected by the same tension", "confidence": "low directional signal"}
-    if completion >= 0.7 and dwell >= 0.5:
-        return {"learning": f"The audience stayed with the explanation of {reader_problem}.", "next_decision": "deepen the reasoning with one adjacent question", "confidence": "low directional signal"}
-    if comments < 2 and saves >= 2:
-        return {"learning": "The value may be private and practical rather than conversational.", "next_decision": "do not force a discussion prompt; clarify the next decision instead", "confidence": "low directional signal"}
-    if clicks < 1:
-        return {"learning": "Weak clicks do not reduce the value of a product-free learning post.", "next_decision": "judge the audience problem separately from commercial behavior", "confidence": "low directional signal"}
-    return {"learning": "No meaningful audience learning is available from this observation.", "next_decision": "avoid optimizing the next post from noise", "confidence": "insufficient evidence"}

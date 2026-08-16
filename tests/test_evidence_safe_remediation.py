@@ -196,6 +196,22 @@ def test_verified_facts_only_recovery_uses_same_product_without_reusing_blocked_
     assert recovered["excluded_concepts"] == []
 
 
+def test_verified_facts_exhaustion_retires_only_current_product_and_keeps_campaign_exclusions():
+    content = {"post_id": "candidate-a", "product_id": "PF-150W", "selection_rotation_index": 2}
+    remediation = {"excluded_product_ids": ["PPP-200"], "selection_rotation_index": 2}
+
+    next_product = run_engine._next_product_recovery_context(
+        content,
+        remediation,
+        "no_viable_verified_fact_opportunity",
+    )
+
+    assert next_product["recovery_mode"] == "NEXT_ELIGIBLE_PRODUCT"
+    assert next_product["excluded_product_ids"] == ["PPP-200", "PF-150W"]
+    assert next_product["retired_products"] == [{"product_id": "PF-150W", "reason": "no_viable_verified_fact_opportunity"}]
+    assert next_product["selection_rotation_index"] == 3
+
+
 def test_replacement_selector_rejects_powerpulse_before_trip_fit_reserve_paraphrase():
     blocked = {
         "product_id": "PPP-200", "question": "Can I trust airport outlets?", "angle": "Establish fit before reserve.",

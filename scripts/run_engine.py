@@ -407,6 +407,26 @@ def _verified_facts_only_recovery_context(content: dict, remediation: dict) -> d
     }
 
 
+def _next_product_recovery_context(content: dict, remediation: dict, reason: str) -> dict:
+    """Retire one product for this decision while keeping campaign exclusions intact."""
+    product_id = str(content.get("product_id") or "").strip()
+    retired = list(remediation.get("retired_products") or [])
+    if product_id:
+        retired.append({"product_id": product_id, "reason": reason})
+    excluded_product_ids = list(dict.fromkeys([
+        *(str(value) for value in remediation.get("excluded_product_ids", []) if str(value)),
+        *(str(item.get("product_id") or "") for item in retired if isinstance(item, dict)),
+    ]))
+    return {
+        "recovery_mode": "NEXT_ELIGIBLE_PRODUCT",
+        "retired_products": retired,
+        "excluded_product_ids": excluded_product_ids,
+        "selection_rotation_index": int(remediation.get("selection_rotation_index") or content.get("selection_rotation_index") or 0) + 1,
+        "candidate_attempt_id": f"{content.get('post_id')}:next-product",
+        "retirement_reason": reason,
+    }
+
+
 def _quality_recovery_context(content: dict, decision: dict, duplicates: dict) -> dict:
     """Retire a weak premise after its bounded copy work and continue the retained bench."""
     context = _remediation_context(content, decision, duplicates)
@@ -1997,6 +2017,29 @@ def main() -> None:
         if publish_decision["publishable"]:
             break
 
+        verified_facts_recovery = str((remediation_context or {}).get("recovery_mode") or "") == "VERIFIED_FACTS_ONLY_RECOVERY"
+        if verified_facts_recovery and not product_id_override and idx + 1 < decision_budget:
+            retirement_reason = "verified_facts_candidate_not_publishable"
+            remediation_context = _next_product_recovery_context(content, remediation_context or {}, retirement_reason)
+            recovery_story.setdefault("products_retired", []).append({
+                "product_id": str(content.get("product_id") or ""),
+                "reason": retirement_reason,
+            })
+            recovery_story["classification"] = "NEXT_ELIGIBLE_PRODUCT"
+            pending_feedback = [
+                "Select a new eligible product and build a truthful, product-centered opportunity from its owned verified facts.",
+                "Do not reuse a retired product, its failed premise, or unsupported technical consequences.",
+            ]
+            pending_scope = "strategy"
+            prior_generated_visuals = {}
+            locked_strategy = {}
+            locked_product_id = ""
+            evidence_remediation_used = False
+            research_recovery_used = False
+            research_verified_facts = []
+            candidate_identity_reset = True
+            continue
+
         quality_candidate_shift_needed = (
             candidate_realization_count >= 2
             and idx + 1 < decision_budget
@@ -2141,6 +2184,30 @@ def main() -> None:
                         prior_generated_visuals = {}
                         locked_strategy = {}
                         locked_product_id = str(content.get("product_id") or "")
+                        candidate_identity_reset = True
+                        continue
+                    if not product_id_override and idx + 1 < decision_budget:
+                        remediation_context = _next_product_recovery_context(
+                            content,
+                            verified_facts_context,
+                            "no_viable_verified_fact_opportunity",
+                        )
+                        recovery_story.setdefault("products_retired", []).append({
+                            "product_id": str(content.get("product_id") or ""),
+                            "reason": "no_viable_verified_fact_opportunity",
+                        })
+                        recovery_story["classification"] = "NEXT_ELIGIBLE_PRODUCT"
+                        pending_feedback = [
+                            "Select a new eligible product and build a truthful, product-centered opportunity from its owned verified facts.",
+                            "Do not reuse a retired product, its failed premise, or unsupported technical consequences.",
+                        ]
+                        pending_scope = "strategy"
+                        prior_generated_visuals = {}
+                        locked_strategy = {}
+                        locked_product_id = ""
+                        evidence_remediation_used = False
+                        research_recovery_used = False
+                        research_verified_facts = []
                         candidate_identity_reset = True
                         continue
                     recovery_story.update({

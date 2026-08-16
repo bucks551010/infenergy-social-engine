@@ -508,7 +508,10 @@ def _engine_a_product_field(excluded_product_ids: set[str]) -> dict:
         "products_considered": len(eligible),
         "non_ppp_opportunity_count": len(opportunities),
         "selected_product_id": str(first_eligible.get("offering_id") or first_eligible.get("sku") or ""),
-        "opportunity_ids": [candidate.candidate_id for candidate in opportunities],
+        "opportunity_ids": [
+            f"{candidate.pillar_id}:{candidate.genre_id}:{candidate.topic_path.topic}"
+            for candidate in opportunities
+        ],
     }
 
 

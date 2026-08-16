@@ -2,14 +2,16 @@ import os
 import time
 import tempfile
 import requests
-from datetime import datetime, timezone
+from datetime import timezone
 
 from PIL import Image, ImageFilter, ImageOps
 
 from url_safety import is_safe_http_url
 
 LI_API = "https://api.linkedin.com/v2"
-DEFAULT_LINKEDIN_VERSION = datetime.now(timezone.utc).strftime("%Y%m")
+# LinkedIn rejects future calendar versions. Keep an explicit, externally
+# verified baseline while allowing operations to advance it by configuration.
+DEFAULT_LINKEDIN_VERSION = "202401"
 
 
 def _env(name: str, default: str = "") -> str:

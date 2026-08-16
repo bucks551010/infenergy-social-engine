@@ -98,7 +98,9 @@ def test_external_social_policy_requires_live_non_shadow_mode():
 
 def test_engine_a_product_field_excludes_products_without_generating_content(monkeypatch):
     class Candidate:
-        candidate_id = "engine-a:preparedness"
+        pillar_id = "preparedness"
+        genre_id = "checklist"
+        topic_path = type("TopicPath", (), {"topic": "Outages"})()
 
     from business_intelligence import api as bi_api
     from social import memory_intelligence, opportunity_engine

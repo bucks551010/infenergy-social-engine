@@ -34,6 +34,12 @@ from social_visuals import (  # noqa: E402
 
 
 class PublisherVisualTests(unittest.TestCase):
+    def test_linkedin_uses_a_pinned_supported_default_version(self) -> None:
+        with patch.dict(os.environ, {"LINKEDIN_ACCESS_TOKEN": "test-token"}, clear=True):
+            headers = publish_linkedin._headers()
+
+        self.assertEqual(headers["LinkedIn-Version"], "202401")
+
     def test_normalize_brand_text(self) -> None:
         text = "INF Energy Power helps INF Energy customers. #InfEnergyPower"
         normalized = normalize_brand_text(text)

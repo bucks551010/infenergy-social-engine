@@ -300,7 +300,7 @@ class ConversionEngine:
             recent=recent,
             audience_hint=audience_hint,
             seasonal_context=seasonal_context,
-            preferred_pillar=preferred_pillar or "product_education",
+            preferred_pillar=preferred_pillar,
             excluded_concepts=excluded_concepts,
             rotation_index=rotation_index,
             selected_opportunity_id=selected_opportunity_id,

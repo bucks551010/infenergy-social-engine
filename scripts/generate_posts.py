@@ -176,26 +176,12 @@ def _route_generate_orchestrator(
     else:
         council_decision = {"decision": "strategy_selected", "source": "caller_override"}
     rotation_index = int(remediation_context.get("selection_rotation_index", 0) or 0)
-    preferred_engine = str(kw.get("preferred_engine") or "").upper()
-    product_id_override = str(kw.get("product_id_override") or "").strip()
-    max_realizations = max(1, int(os.environ.get("CONTENT_DECISION_MAX_REALIZATIONS", "8") or 8))
-    attempts = max_realizations if preferred_engine == "A" and not product_id_override else 1
-    batch: list[dict[str, Any]] = []
-    for attempt in range(attempts):
-        try:
-            batch = run_social_intelligence(
-                count=1,
-                platform=social_platform,
-                rotation_index=rotation_index + attempt,
-                **kw,
-            )
-            break
-        except RuntimeError as exc:
-            if str(exc) != "no viable opportunities generated" or attempt + 1 >= attempts:
-                raise
-            # The selected product's field is exhausted. Advance to the next
-            # eligible product without relaxing exclusions or evidence rules.
-            continue
+    batch = run_social_intelligence(
+        count=1,
+        platform=social_platform,
+        rotation_index=rotation_index,
+        **kw,
+    )
     if not batch:
         return {}
 

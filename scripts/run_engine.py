@@ -258,7 +258,7 @@ def _build_phase5_channel_readiness(effective_channels: dict[str, bool], dry_run
             try:
                 resp = requests.get(
                     "https://api.linkedin.com/v2/userinfo",
-                    headers={"Authorization": f"Bearer {token}", "LinkedIn-Version": datetime.now(timezone.utc).strftime("%Y%m")},
+                    headers=publish_linkedin._headers(),
                     timeout=15,
                 )
                 if resp.ok:

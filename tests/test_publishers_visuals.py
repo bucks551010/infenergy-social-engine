@@ -14,6 +14,7 @@ sys.path.insert(0, SCRIPTS)
 import publish_facebook  # noqa: E402
 import publish_instagram  # noqa: E402
 import publish_linkedin  # noqa: E402
+import run_engine  # noqa: E402
 from generate_posts import (  # noqa: E402
     _build_fallback_content,
     _enforce_conversion_caption,
@@ -22,7 +23,7 @@ from generate_posts import (  # noqa: E402
     _model_caption_overrides,
     _product_copy_profile,
 )
-from run_engine import _live_visual_gate_errors  # noqa: E402
+from run_engine import _build_phase5_channel_readiness, _live_visual_gate_errors  # noqa: E402
 from social import visual_contract  # noqa: E402
 from social_visuals import (  # noqa: E402
     _build_gemini_image_prompt,
@@ -39,6 +40,20 @@ class PublisherVisualTests(unittest.TestCase):
             headers = publish_linkedin._headers()
 
         self.assertEqual(headers["LinkedIn-Version"], "202401")
+
+    def test_linkedin_readiness_uses_publisher_headers(self) -> None:
+        response = Mock(ok=True)
+        with patch.dict(os.environ, {"LINKEDIN_ACCESS_TOKEN": "test-token"}, clear=True), patch.object(
+            publish_linkedin, "_headers", return_value={"Authorization": "Bearer test-token", "LinkedIn-Version": "202401"}
+        ) as mock_headers, patch.object(run_engine.requests, "get", return_value=response) as mock_get:
+            readiness = _build_phase5_channel_readiness(
+                {"wordpress": False, "facebook": False, "instagram": False, "linkedin": True},
+                dry_run=False,
+            )
+
+        self.assertEqual(readiness["checks"]["linkedin"]["status"], "green")
+        mock_headers.assert_called_once_with()
+        self.assertEqual(mock_get.call_args.kwargs["headers"]["LinkedIn-Version"], "202401")
 
     def test_normalize_brand_text(self) -> None:
         text = "INF Energy Power helps INF Energy customers. #InfEnergyPower"

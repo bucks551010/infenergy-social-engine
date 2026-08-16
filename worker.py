@@ -525,12 +525,17 @@ def _engine_a_product_field(excluded_product_ids: set[str]) -> dict:
     preferred_pillar = relationship_context.get("pillar_id") or orchestrator._bi_preferred_pillar(bi_context)
     audience_hint = relationship_context.get("audience_id") or orchestrator._bi_audience_hint(bi_context)
     try:
-        engines.get_engine("A").build(
+        orchestrator._build_engine_brief(
+            engines.get_engine("A"),
+            engine_name="A",
+            preferred_engine="A",
             recent=recent,
             audience_hint=audience_hint,
+            seasonal_context=None,
             preferred_pillar=preferred_pillar,
             excluded_concepts=attempt_only_exclusions,
             rotation_index=0,
+            selected_opportunity_id="",
         )
         brief_build_status = "pass"
     except RuntimeError as exc:

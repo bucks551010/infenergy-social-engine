@@ -127,6 +127,8 @@ def test_engine_a_product_field_excludes_products_without_generating_content(mon
     monkeypatch.setattr(memory_intelligence, "recent", lambda *args, **kwargs: {"pillars": [], "genres": [], "topics": [], "microtopics": []})
     monkeypatch.setattr(opportunity_engine, "generate", lambda **kwargs: [Candidate()])
     monkeypatch.setattr(engines, "get_engine", lambda _name: type("Engine", (), {"build": lambda self, **kwargs: object()})())
+    from social import orchestrator
+    monkeypatch.setattr(orchestrator, "_build_engine_brief", lambda engine, **kwargs: engine.build(**kwargs))
 
     field = worker._engine_a_product_field({"PPP-200"})
 

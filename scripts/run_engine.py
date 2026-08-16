@@ -937,12 +937,21 @@ def _live_visual_gate_errors(content: dict, effective_channels: dict[str, bool],
     instagram_post = ((content.get("platform_posts") or {}).get("instagram") or {})
     if effective_channels.get("instagram") and str(instagram_post.get("media_type") or "").upper() == "REEL":
         reel = content.get("instagram_reel") if isinstance(content.get("instagram_reel"), dict) else {}
+        reel_qa_failed = False
         for qa_name in ("technical_qa", "motion_qa", "freeze_qa", "final_frame_qa", "cover_qa"):
             if str((reel.get(qa_name) or {}).get("status") or "").upper() != "PASS":
+                reel_qa_failed = True
                 errors.append(f"instagram_reel_{qa_name}_failed")
         presentation = instagram_post.get("presentation") if isinstance(instagram_post.get("presentation"), dict) else {}
         if str(presentation.get("presentation_critic") or "").upper() != "PASS":
-            errors.append("instagram_reel_platform_presentation_failed")
+            if reel_qa_failed:
+                errors.append("instagram_reel_platform_presentation_failed")
+            else:
+                instagram_post["media_type"] = "STATIC"
+                instagram_post["media_fallback_reason"] = "reel_platform_presentation_failed"
+                decision = content.get("instagram_media_decision")
+                if isinstance(decision, dict):
+                    decision["selected_format"] = "STATIC"
     return errors
 
 

@@ -129,3 +129,36 @@ def test_final_presentation_gate_blocks_non_ready_facebook_copy():
     )
 
     assert errors == ["facebook_final_presentation_not_ready"]
+
+
+def test_reel_presentation_failure_falls_back_to_static_when_reel_qa_passes():
+    content = {
+        "platform_posts": {
+            "instagram": {
+                "media_type": "REEL",
+                "presentation": {"presentation_critic": "REVISE"},
+            }
+        },
+        "instagram_media_decision": {"selected_format": "REEL"},
+        "instagram_reel": {
+            name: {"status": "PASS"}
+            for name in ("technical_qa", "motion_qa", "freeze_qa", "final_frame_qa", "cover_qa")
+        },
+        "generated_visuals": {
+            "instagram": "/data/generated_visuals/instagram.png",
+            "render_engines": {"instagram": "gemini"},
+            "product_overlay_applied": {"instagram": True},
+            "product_specific_source_present": "true",
+        },
+        "product_id": "PPP-200",
+    }
+
+    errors = run_engine._live_visual_gate_errors(
+        content,
+        {"facebook": False, "instagram": True, "linkedin": False},
+        dry_run=False,
+    )
+
+    assert errors == []
+    assert content["platform_posts"]["instagram"]["media_type"] == "STATIC"
+    assert content["instagram_media_decision"]["selected_format"] == "STATIC"

@@ -21,6 +21,7 @@ DEFAULT_WINDOWS = {
 }
 DEFAULT_DISABLED_SIGNATURES: tuple[str, ...] = ()
 DEFAULT_MAX_VIOLATIONS_ALLOWED = 0
+DEFAULT_BLOCKING_SIGNATURES: tuple[str, ...] = ("exact_caption",)
 
 
 def _config_path() -> str:
@@ -50,6 +51,8 @@ def load_anti_repeat_windows() -> dict[str, Any]:
                         pass
                 disabled = data.get("disabled_signatures", DEFAULT_DISABLED_SIGNATURES)
                 out["disabled_signatures"] = [str(value) for value in disabled] if isinstance(disabled, list) else []
+                blocking = data.get("blocking_signatures", DEFAULT_BLOCKING_SIGNATURES)
+                out["blocking_signatures"] = [str(value) for value in blocking] if isinstance(blocking, list) else list(DEFAULT_BLOCKING_SIGNATURES)
                 try:
                     out["max_violations_allowed"] = max(0, int(data.get("max_violations_allowed", DEFAULT_MAX_VIOLATIONS_ALLOWED)))
                 except Exception:
@@ -212,10 +215,25 @@ def check_duplicates(content: dict[str, Any], history: dict[str, Any], windows: 
     # must never gate publishing, or "same funnel stage" would be treated as
     # "duplicate content" and block almost every post after the first.
 
-    # Rotation-aware selection keeps product, topic, hook, and CTA recency useful as
-    # diagnostics. They must not turn a valid candidate into an empty slot, though:
-    # exact caption reuse is the sole duplicate condition that blocks publication.
-    blocking_reasons = [reason for reason in reasons if reason == "duplicate_exact_caption_within_window"]
+    blocking_signatures = {
+        str(value).strip().lower()
+        for value in cfg.get("blocking_signatures", DEFAULT_BLOCKING_SIGNATURES)
+    }
+    strict_reasons = [
+        reason
+        for reason in reasons
+        if reason == "duplicate_exact_caption_within_window" and "exact_caption" in blocking_signatures
+    ]
+    configured_reasons = [
+        reason
+        for reason in reasons
+        if reason not in strict_reasons
+        and reason.removeprefix("duplicate_").removesuffix("_within_window") in blocking_signatures
+    ]
+    max_violations_allowed = int(cfg.get("max_violations_allowed", DEFAULT_MAX_VIOLATIONS_ALLOWED))
+    blocking_reasons = strict_reasons + (
+        configured_reasons if len(configured_reasons) > max_violations_allowed else []
+    )
     return {
         "ok": len(blocking_reasons) == 0,
         "reasons": blocking_reasons,

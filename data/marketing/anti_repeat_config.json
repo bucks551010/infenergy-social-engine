@@ -5,5 +5,6 @@
   "topic_days": 21,
   "cta_days": 14,
   "disabled_signatures": ["cta"],
+  "blocking_signatures": ["exact_caption"],
   "max_violations_allowed": 1
 }

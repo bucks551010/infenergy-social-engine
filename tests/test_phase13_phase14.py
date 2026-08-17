@@ -324,11 +324,32 @@ class PhaseThirteenFourteenTests(unittest.TestCase):
             ]
         }
         result = check_duplicates(content, history)
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["reasons"], [])
+        self.assertIn("duplicate_topic_within_window", result["observed_reasons"])
+        self.assertIn("duplicate_hook_within_window", result["observed_reasons"])
+        self.assertIn("duplicate_cta_within_window", result["observed_reasons"])
+        self.assertIn("duplicate_product_within_window", result["observed_reasons"])
+
+    def test_duplicate_policy_can_configure_product_as_a_blocker(self) -> None:
+        content = _base_content()
+        history = {
+            "posts": [{
+                "run_started_at_utc": "2099-01-01T00:00:00+00:00",
+                "product_id": "prod_1",
+                "product_name": "PowerFlex",
+                "product_sku": "PF-1",
+            }]
+        }
+
+        result = check_duplicates(
+            content,
+            history,
+            windows={"blocking_signatures": ["exact_caption", "product"], "max_violations_allowed": 0},
+        )
+
         self.assertFalse(result["ok"])
-        self.assertIn("duplicate_topic_within_window", result["reasons"])
-        self.assertIn("duplicate_hook_within_window", result["reasons"])
-        self.assertIn("duplicate_cta_within_window", result["reasons"])
-        self.assertIn("duplicate_product_within_window", result["reasons"])
+        self.assertEqual(result["reasons"], ["duplicate_product_within_window"])
 
     def test_duplicate_conflicts_consume_retry_budget_and_product_conflicts_reset_lock(self) -> None:
         reasons = ["duplicate_cta_within_window", "duplicate_product_within_window"]

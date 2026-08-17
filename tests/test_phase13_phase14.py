@@ -330,6 +330,18 @@ class PhaseThirteenFourteenTests(unittest.TestCase):
         self.assertIn("duplicate_cta_within_window", result["reasons"])
         self.assertIn("duplicate_product_within_window", result["reasons"])
 
+    def test_duplicate_conflicts_consume_retry_budget_and_product_conflicts_reset_lock(self) -> None:
+        reasons = ["duplicate_cta_within_window", "duplicate_product_within_window"]
+
+        retryability = run_engine._retryability_classification(
+            {"reasons": reasons},
+            reasons,
+        )
+
+        self.assertEqual(retryability, "RETRYABLE_CONTENT")
+        self.assertTrue(run_engine._duplicate_conflict_requires_fresh_product(reasons))
+        self.assertFalse(run_engine._duplicate_conflict_requires_fresh_product(["duplicate_cta_within_window"]))
+
     def test_duplicate_detection_accepts_old_history_records(self) -> None:
         content = _base_content()
         history = {

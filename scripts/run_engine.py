@@ -564,6 +564,7 @@ _RETRYABLE_CONTENT_FINDINGS = {
     "generic_or_ai_like_language",
     "hook-payoff mismatch",
 }
+_RETRYABLE_DUPLICATE_PREFIX = "duplicate_"
 _TERMINAL_FINDINGS = {
     "product_url_missing",
     "product_unavailable_or_out_of_stock",
@@ -579,9 +580,16 @@ def _retryability_classification(decision: dict, findings: list[str]) -> str:
     reasons = {str(item) for item in decision.get("reasons", []) if str(item)} | {str(item) for item in findings if str(item)}
     if any(reason in _TERMINAL_FINDINGS for reason in reasons):
         return "TERMINAL"
+    if reasons and all(reason.startswith(_RETRYABLE_DUPLICATE_PREFIX) for reason in reasons):
+        return "RETRYABLE_CONTENT"
     if any(reason in _RETRYABLE_CONTENT_FINDINGS or reason.startswith(_RETRYABLE_CONTENT_PREFIXES) for reason in reasons):
         return "RETRYABLE_CONTENT"
     return "TERMINAL"
+
+
+def _duplicate_conflict_requires_fresh_product(findings: list[str]) -> bool:
+    """A product-window conflict cannot be repaired while retaining its product lock."""
+    return "duplicate_product_within_window" in {str(finding) for finding in findings}
 
 
 def _enforce_candidate_claim_boundary(content: dict) -> list[str]:
@@ -1425,6 +1433,11 @@ def main() -> None:
                 prior_generated_visuals = {}
             else:
                 prior_generated_visuals = dict(content.get("generated_visuals") or {})
+            if _duplicate_conflict_requires_fresh_product(critic_feedback):
+                # A retry using the locked product necessarily repeats the product-window conflict.
+                locked_product_id = ""
+                locked_strategy = {}
+                prior_generated_visuals = {}
             previous_decision = str(publish_decision["decision"])
             previous_current_findings = list(critic_feedback)
             continue

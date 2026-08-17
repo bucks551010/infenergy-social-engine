@@ -378,7 +378,7 @@ def _successful_publish_receipt(content: dict, platform: str) -> dict:
 
 
 def _receipt_external_id(receipt: dict) -> str:
-    return str(receipt.get("external_post_id") or receipt.get("facebook_post_id") or receipt.get("instagram_media_id") or "").strip()
+    return str(receipt.get("external_post_id") or receipt.get("facebook_post_id") or receipt.get("instagram_media_id") or receipt.get("linkedin_post_id") or "").strip()
 
 
 def _persist_publish_receipt(content: dict, *, platform: str, external_post_id: str, run_id: str, container_id: str = "") -> dict:
@@ -392,6 +392,7 @@ def _persist_publish_receipt(content: dict, *, platform: str, external_post_id: 
         "external_post_id": external_post_id,
         "facebook_post_id": external_post_id if platform == "facebook" else "",
         "instagram_media_id": external_post_id if platform == "instagram" else "",
+        "linkedin_post_id": external_post_id if platform == "linkedin" else "",
         "container_id": container_id if platform == "instagram" else "",
         "media_type": str(((content.get("platform_posts") or {}).get("instagram") or {}).get("media_type") or "IMAGE") if platform == "instagram" else "IMAGE",
         "published_at": datetime.now(timezone.utc).isoformat(),
@@ -409,6 +410,32 @@ def _persist_publish_receipt(content: dict, *, platform: str, external_post_id: 
     state["receipts"] = [item for item in state["receipts"] if item.get("key") != key] + [receipt]
     _save_publish_receipts(state)
     return receipt
+
+
+def _pending_publish_receipt(content: dict, *, platform: str, run_id: str) -> bool:
+    """Persist intent before an irreversible platform call.
+
+    A later run refuses to repeat an unresolved intent because the prior call
+    may have succeeded after the process crashed.
+    """
+    state = _load_publish_receipts()
+    key = _receipt_key(content, platform)
+    existing = next((item for item in state["receipts"] if item.get("key") == key), {})
+    if existing.get("publisher_status") == "pending":
+        return False
+    receipt = {
+        "key": key,
+        "platform": platform,
+        "post_id": str(content.get("post_id") or ""),
+        "run_id": run_id,
+        "published_at": datetime.now(timezone.utc).isoformat(),
+        "publisher_status": "pending",
+        "provider_response_status": "not_called",
+        "postprocess_status": "pending",
+    }
+    state["receipts"] = [item for item in state["receipts"] if item.get("key") != key] + [receipt]
+    _save_publish_receipts(state)
+    return True
 
 
 def _persist_reconciled_publish_receipt(*, platform: str, external_post_id: str, published_at: str, run_started: str) -> dict:
@@ -620,6 +647,11 @@ def _retryability_classification(decision: dict, findings: list[str]) -> str:
 def _duplicate_conflict_requires_fresh_product(findings: list[str]) -> bool:
     """A product-window conflict cannot be repaired while retaining its product lock."""
     return "duplicate_product_within_window" in {str(finding) for finding in findings}
+
+
+def _duplicate_conflict_requires_fresh_strategy(findings: list[str]) -> bool:
+    """Any duplicate retry must release its locked strategy so content can vary."""
+    return any(str(finding).startswith(_RETRYABLE_DUPLICATE_PREFIX) for finding in findings)
 
 
 def _enforce_candidate_claim_boundary(content: dict) -> list[str]:
@@ -1465,9 +1497,10 @@ def main() -> None:
                 prior_generated_visuals = {}
             else:
                 prior_generated_visuals = dict(content.get("generated_visuals") or {})
-            if _duplicate_conflict_requires_fresh_product(critic_feedback):
+            if _duplicate_conflict_requires_fresh_strategy(critic_feedback):
                 # A retry using the locked product necessarily repeats the product-window conflict.
-                locked_product_id = ""
+                if _duplicate_conflict_requires_fresh_product(critic_feedback):
+                    locked_product_id = ""
                 locked_strategy = {}
                 prior_generated_visuals = {}
             previous_decision = str(publish_decision["decision"])
@@ -1857,11 +1890,28 @@ def main() -> None:
     print("[5/5] LinkedIn...")
     t_li = time.perf_counter()
     if effective_channels["linkedin"]:
-        if (not dry_run) and was_recent_channel_success(history, "li", slot, skip_success_hours):
+        existing_receipt = _successful_publish_receipt(content, "linkedin") if not dry_run else {}
+        if existing_receipt:
+            li_result = {"id": _receipt_external_id(existing_receipt), "reused_receipt": True}
+            print(f"[SKIP] LinkedIn already published: {li_result['id']}")
+        elif (not dry_run) and not _pending_publish_receipt(content, platform="linkedin", run_id=str(runtime_metrics["started_at_utc"])):
+            msg = "linkedin_publish_pending_reconciliation"
+            errors.append(f"LinkedIn: {msg}")
+            error_map["linkedin"] = msg
+            print(f"[ERROR] LinkedIn publish blocked: {msg}")
+        elif (not dry_run) and was_recent_channel_success(history, "li", slot, skip_success_hours):
             print("[SKIP] LinkedIn recent successful publish within configured window")
         else:
             try:
                 li_result = publish_linkedin.publish(content, wp_link_li, dry_run=dry_run)
+                linkedin_post_id = str(li_result.get("id") or "").strip()
+                if linkedin_post_id and linkedin_post_id not in {"dry-run", "skipped"}:
+                    _persist_publish_receipt(
+                        content,
+                        platform="linkedin",
+                        external_post_id=linkedin_post_id,
+                        run_id=str(runtime_metrics["started_at_utc"]),
+                    )
             except Exception as e:
                 errors.append(f"LinkedIn: {e}")
                 error_map["linkedin"] = str(e)
@@ -1971,11 +2021,11 @@ def main() -> None:
     history["posts"] = history["posts"][-200:]
     try:
         generate_posts.save_history(history)
-        for platform, result in (("facebook", fb_result), ("instagram", ig_result)):
+        for platform, result in (("facebook", fb_result), ("instagram", ig_result), ("linkedin", li_result)):
             if str(result.get("id") or "").strip() and not dry_run:
                 _mark_publish_postprocess_complete(content, platform)
     except Exception as exc:
-        for platform, result in (("facebook", fb_result), ("instagram", ig_result)):
+        for platform, result in (("facebook", fb_result), ("instagram", ig_result), ("linkedin", li_result)):
             if str(result.get("id") or "").strip() and not dry_run:
                 _mark_publish_postprocess_error(content, platform, exc)
                 raise RuntimeError(f"published_persistence_error:{platform}:{exc}") from exc

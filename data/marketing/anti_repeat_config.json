@@ -1,0 +1,9 @@
+{
+  "exact_caption_days": 180,
+  "hook_days": 60,
+  "product_feature_days": 7,
+  "topic_days": 21,
+  "cta_days": 14,
+  "disabled_signatures": ["cta"],
+  "max_violations_allowed": 1
+}

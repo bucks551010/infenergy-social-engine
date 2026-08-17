@@ -19,6 +19,8 @@ DEFAULT_WINDOWS = {
     "topic_days": 21,
     "cta_days": 14,
 }
+DEFAULT_DISABLED_SIGNATURES: tuple[str, ...] = ()
+DEFAULT_MAX_VIOLATIONS_ALLOWED = 0
 
 
 def _config_path() -> str:
@@ -33,7 +35,7 @@ def ensure_anti_repeat_config() -> None:
             json.dump(DEFAULT_WINDOWS, f, indent=2)
 
 
-def load_anti_repeat_windows() -> dict[str, int]:
+def load_anti_repeat_windows() -> dict[str, Any]:
     ensure_anti_repeat_config()
     path = _config_path()
     try:
@@ -46,6 +48,12 @@ def load_anti_repeat_windows() -> dict[str, int]:
                         out[k] = int(data.get(k, out[k]))
                     except Exception:
                         pass
+                disabled = data.get("disabled_signatures", DEFAULT_DISABLED_SIGNATURES)
+                out["disabled_signatures"] = [str(value) for value in disabled] if isinstance(disabled, list) else []
+                try:
+                    out["max_violations_allowed"] = max(0, int(data.get("max_violations_allowed", DEFAULT_MAX_VIOLATIONS_ALLOWED)))
+                except Exception:
+                    out["max_violations_allowed"] = DEFAULT_MAX_VIOLATIONS_ALLOWED
             return out
     except Exception:
         return dict(DEFAULT_WINDOWS)
@@ -94,6 +102,7 @@ def check_duplicates(content: dict[str, Any], history: dict[str, Any], windows: 
     cfg = dict(DEFAULT_WINDOWS)
     if windows:
         cfg.update(windows)
+    disabled_signatures = {str(value).strip().lower() for value in cfg.get("disabled_signatures", [])}
 
     posts = [p for p in (history.get("posts", []) if isinstance(history, dict) else []) if isinstance(p, dict)]
     # Never-published attempts (validation/quality/duplicate/channel-readiness skips)
@@ -106,7 +115,7 @@ def check_duplicates(content: dict[str, Any], history: dict[str, Any], windows: 
 
     # Topic window
     topic_hash = str(content.get("topic_hash", ""))
-    if topic_hash:
+    if topic_hash and "topic" not in disabled_signatures:
         for p in _recent_posts(posts, cfg["topic_days"]):
             if str(p.get("topic_hash", "")) == topic_hash:
                 reasons.append("duplicate_topic_within_window")
@@ -114,7 +123,7 @@ def check_duplicates(content: dict[str, Any], history: dict[str, Any], windows: 
 
     # Hook window
     hook_hash = str(content.get("hook_hash", "") or stable_text_hash(str(content.get("selected_hook", ""))))
-    if hook_hash:
+    if hook_hash and "hook" not in disabled_signatures:
         for p in _recent_posts(posts, cfg["hook_days"]):
             existing = str(p.get("hook_hash", "") or stable_text_hash(str(p.get("selected_hook", ""))))
             if existing == hook_hash:
@@ -123,7 +132,7 @@ def check_duplicates(content: dict[str, Any], history: dict[str, Any], windows: 
 
     # CTA window
     cta_hash = str(content.get("cta_hash", "") or stable_text_hash(str(content.get("selected_cta", ""))))
-    if cta_hash:
+    if cta_hash and "cta" not in disabled_signatures:
         for p in _recent_posts(posts, cfg["cta_days"]):
             existing = str(p.get("cta_hash", "") or stable_text_hash(str(p.get("selected_cta", ""))))
             if existing == cta_hash:
@@ -132,7 +141,7 @@ def check_duplicates(content: dict[str, Any], history: dict[str, Any], windows: 
 
     # Product feature window
     product_key = _normalize_text(f"{content.get('product_id', '')}|{content.get('product_name', '')}|{content.get('product_sku', '')}")
-    if product_key != "||":
+    if product_key != "||" and "product" not in disabled_signatures:
         for p in _recent_posts(posts, cfg["product_feature_days"]):
             existing = _normalize_text(f"{p.get('product_id', '')}|{p.get('product_name', '')}|{p.get('product_sku', '')}")
             if existing == product_key:
@@ -203,9 +212,16 @@ def check_duplicates(content: dict[str, Any], history: dict[str, Any], windows: 
     # must never gate publishing, or "same funnel stage" would be treated as
     # "duplicate content" and block almost every post after the first.
 
+    strict_reasons = [reason for reason in reasons if reason == "duplicate_exact_caption_within_window"]
+    tolerated_reasons = [reason for reason in reasons if reason not in strict_reasons]
+    max_violations_allowed = int(cfg.get("max_violations_allowed", DEFAULT_MAX_VIOLATIONS_ALLOWED))
+    blocking_reasons = strict_reasons + (
+        tolerated_reasons if len(tolerated_reasons) > max_violations_allowed else []
+    )
     return {
-        "ok": len(reasons) == 0,
-        "reasons": reasons,
+        "ok": len(blocking_reasons) == 0,
+        "reasons": blocking_reasons,
+        "observed_reasons": reasons,
         "signatures": {
             "exact_caption_signature": exact_signature,
             "opening_signature": opening_signature,

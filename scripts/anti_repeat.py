@@ -11,6 +11,7 @@ from campaign_runtime import stable_text_hash
 BASE_DIR = os.path.dirname(__file__)
 DATA_DIR = os.environ.get("DATA_DIR", os.path.join(BASE_DIR, "..", "data"))
 MARKETING_DIR = os.path.join(DATA_DIR, "marketing")
+SOURCE_MARKETING_DIR = os.path.join(BASE_DIR, "..", "data", "marketing")
 
 DEFAULT_WINDOWS = {
     "exact_caption_days": 180,
@@ -36,30 +37,48 @@ def ensure_anti_repeat_config() -> None:
             json.dump(DEFAULT_WINDOWS, f, indent=2)
 
 
+def _apply_config(out: dict[str, Any], data: object) -> None:
+    if not isinstance(data, dict):
+        return
+    for key in DEFAULT_WINDOWS:
+        try:
+            out[key] = int(data.get(key, out[key]))
+        except Exception:
+            pass
+    if "disabled_signatures" in data and isinstance(data["disabled_signatures"], list):
+        out["disabled_signatures"] = [str(value) for value in data["disabled_signatures"]]
+    if "blocking_signatures" in data and isinstance(data["blocking_signatures"], list):
+        out["blocking_signatures"] = [str(value) for value in data["blocking_signatures"]]
+    if "max_violations_allowed" in data:
+        try:
+            out["max_violations_allowed"] = max(0, int(data["max_violations_allowed"]))
+        except Exception:
+            pass
+
+
 def load_anti_repeat_windows() -> dict[str, Any]:
     ensure_anti_repeat_config()
-    path = _config_path()
-    try:
-        with open(path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-            out = dict(DEFAULT_WINDOWS)
-            if isinstance(data, dict):
-                for k in DEFAULT_WINDOWS:
-                    try:
-                        out[k] = int(data.get(k, out[k]))
-                    except Exception:
-                        pass
-                disabled = data.get("disabled_signatures", DEFAULT_DISABLED_SIGNATURES)
-                out["disabled_signatures"] = [str(value) for value in disabled] if isinstance(disabled, list) else []
-                blocking = data.get("blocking_signatures", DEFAULT_BLOCKING_SIGNATURES)
-                out["blocking_signatures"] = [str(value) for value in blocking] if isinstance(blocking, list) else list(DEFAULT_BLOCKING_SIGNATURES)
-                try:
-                    out["max_violations_allowed"] = max(0, int(data.get("max_violations_allowed", DEFAULT_MAX_VIOLATIONS_ALLOWED)))
-                except Exception:
-                    out["max_violations_allowed"] = DEFAULT_MAX_VIOLATIONS_ALLOWED
-            return out
-    except Exception:
-        return dict(DEFAULT_WINDOWS)
+    out: dict[str, Any] = {
+        **DEFAULT_WINDOWS,
+        "disabled_signatures": list(DEFAULT_DISABLED_SIGNATURES),
+        "blocking_signatures": list(DEFAULT_BLOCKING_SIGNATURES),
+        "max_violations_allowed": DEFAULT_MAX_VIOLATIONS_ALLOWED,
+    }
+    # Version-controlled policy is the baseline. The persistent Railway volume
+    # can override only fields it explicitly defines, so old config files do not
+    # silently erase newly deployed controls.
+    source_path = os.path.join(SOURCE_MARKETING_DIR, "anti_repeat_config.json")
+    paths = [source_path]
+    runtime_path = _config_path()
+    if os.path.abspath(runtime_path) != os.path.abspath(source_path):
+        paths.append(runtime_path)
+    for path in paths:
+        try:
+            with open(path, "r", encoding="utf-8") as handle:
+                _apply_config(out, json.load(handle))
+        except Exception:
+            continue
+    return out
 
 
 def _parse_dt(post: dict[str, Any]) -> datetime | None:

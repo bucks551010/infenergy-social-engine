@@ -4,6 +4,7 @@ import os
 import sys
 import unittest
 import tempfile
+import json
 from copy import deepcopy
 from unittest.mock import patch
 
@@ -14,6 +15,7 @@ sys.path.insert(0, SCRIPTS)
 
 import generate_posts  # noqa: E402
 import run_engine  # noqa: E402
+import anti_repeat  # noqa: E402
 from agent_control_plane import evaluate_global_gates, validate_agent_output  # noqa: E402
 from anti_repeat import check_duplicates  # noqa: E402
 from build_utm_url import build_utm_url  # noqa: E402
@@ -350,6 +352,19 @@ class PhaseThirteenFourteenTests(unittest.TestCase):
 
         self.assertFalse(result["ok"])
         self.assertEqual(result["reasons"], ["duplicate_product_within_window"])
+
+    def test_runtime_duplicate_config_preserves_shipped_policy_fields(self) -> None:
+        with tempfile.TemporaryDirectory() as data_dir:
+            marketing_dir = os.path.join(data_dir, "marketing")
+            os.makedirs(marketing_dir)
+            with open(os.path.join(marketing_dir, "anti_repeat_config.json"), "w", encoding="utf-8") as handle:
+                json.dump({"product_feature_days": 3}, handle)
+            with patch.object(anti_repeat, "MARKETING_DIR", marketing_dir):
+                config = anti_repeat.load_anti_repeat_windows()
+
+        self.assertEqual(config["product_feature_days"], 3)
+        self.assertEqual(config["disabled_signatures"], ["cta"])
+        self.assertEqual(config["blocking_signatures"], ["exact_caption"])
 
     def test_duplicate_conflicts_consume_retry_budget_and_product_conflicts_reset_lock(self) -> None:
         reasons = ["duplicate_cta_within_window", "duplicate_product_within_window"]

@@ -45,6 +45,7 @@ class Claim:
     verification_status: str = "unverified"
     provenance: str = "UNVERIFIED_INFERENCE"
     rejection_reason: str | None = None
+    source_concept_ids: tuple[str, ...] = ()
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -57,6 +58,7 @@ class Claim:
             "verification_status": self.verification_status,
             "provenance": self.provenance,
             "rejection_reason": self.rejection_reason,
+            "source_concept_ids": list(self.source_concept_ids),
         }
 
 
@@ -228,10 +230,16 @@ def build_ledger(
     *,
     verified_facts: Iterable[str] = (),
     forbidden_claims: Iterable[str] = (),
+    source_concepts: dict[str, str] | None = None,
 ) -> ClaimLedger:
     ledger = ClaimLedger()
     for c in extract_claims(text):
         provenance, rejection_reason = _claim_provenance(c, verified_facts)
+        c.source_concept_ids = tuple(
+            concept_id
+            for concept_text, concept_id in (source_concepts or {}).items()
+            if concept_text and concept_id and concept_text.lower() in c.claim_text.lower()
+        )
         c.provenance = provenance
         c.rejection_reason = rejection_reason
         if provenance == "VERIFIED_PRODUCT_FACT":

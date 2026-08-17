@@ -17,7 +17,8 @@ import publish_instagram
 import publish_linkedin
 from score_content import score_content
 from social.publish_decision import decide as decide_publication
-from social.claim_intelligence import remove_unsupported_numeric_claims
+from social import claim_governance
+from social.claim_intelligence import build_ledger, remove_unsupported_numeric_claims
 from social import strategy_lock as strategy_lock_intelligence
 from social import memory_intelligence
 from social import creative_intelligence
@@ -312,6 +313,35 @@ def _generation_diagnostics(content: dict) -> dict:
         "creative_decision_packet": content.get("creative_decision_packet", {}),
         "publish_decision": content.get("publish_decision", {}),
     }
+
+
+def _evidence_readiness(content: dict) -> dict:
+    """Assess material claims at the final boundary using only supplied evidence."""
+    copy = content.get("copy") if isinstance(content.get("copy"), dict) else {}
+    existing = copy.get("evidence_readiness") or content.get("evidence_readiness")
+    if isinstance(existing, dict):
+        return existing
+    text = " ".join(str(content.get(key, "")) for key in ("fb_caption", "ig_caption", "li_text", "wp_content"))
+    verified_facts = list(content.get("product_metrics", []) or [])
+    product_facts = str(content.get("product_facts", "") or "")
+    if product_facts:
+        verified_facts.append(product_facts)
+    ledger = build_ledger(text, verified_facts=verified_facts)
+    readiness = claim_governance.assess(ledger, hook=str(content.get("selected_hook", "")))
+    content["claim_ledger"] = ledger.as_dict()
+    content["evidence_readiness"] = readiness
+    return readiness
+
+
+def _evidence_safe_remediation_feedback(content: dict) -> list[str]:
+    """Request one verified-facts-only replacement after a governance block."""
+    product = str(content.get("product_name") or content.get("product_id") or "the product")
+    return [
+        "The prior candidate is blocked by central unsupported reasoning. Do not restate, soften, or remove metadata from that claim.",
+        f"Choose a materially new, single-situation angle for {product} using only verified product facts already supplied to the generator.",
+        "Express feature to function to practical use to human value without asserting compatibility, runtime, safety, outage performance, or other unverified consequences.",
+        "Keep one natural human situation, a useful verified-fact takeaway, and an earned CTA. Abstain if no such angle is available.",
+    ]
 
 
 def _publish_receipts_path() -> str:
@@ -1295,6 +1325,7 @@ def main() -> None:
             duplicates=duplicates,
             conversion_quality_score=cqs_total,
             orchestrator_quality=content.get("orchestrator_quality"),
+            evidence_readiness=_evidence_readiness(content),
         )
         content["publish_decision"] = publish_decision
         current_strategy = _strategy_lock_for_revision(content)
@@ -1395,6 +1426,7 @@ def main() -> None:
                 duplicates=duplicates,
                 conversion_quality_score=cqs_total,
                 orchestrator_quality=content.get("orchestrator_quality"),
+                evidence_readiness=_evidence_readiness(content),
             )
             content["publish_decision"] = publish_decision
             attempts.append(
@@ -1481,6 +1513,7 @@ def main() -> None:
         conversion_quality_score=final_cqs_total,
         orchestrator_quality=content.get("orchestrator_quality"),
         visual_errors=visual_gate_errors,
+        evidence_readiness=_evidence_readiness(content),
     )
     content["publish_decision"] = final_decision
     if not final_decision["publishable"] and not shadow_mode:

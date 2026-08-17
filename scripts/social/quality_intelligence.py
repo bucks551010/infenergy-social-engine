@@ -51,6 +51,55 @@ DEFAULT_THRESHOLDS = {
     "high_risk_claims_blocking": True,
 }
 
+
+def expected_response_contract(
+    *,
+    reader_job: str,
+    cta_class: str = "",
+    content_role: str = "",
+) -> dict[str, Any]:
+    """Derive the reader response expected before copy scoring."""
+    job = str(reader_job or "").upper()
+    cta = str(cta_class or "").upper()
+    role = str(content_role or "").upper()
+    source = "reader_job"
+    if job == "START_A_CONVERSATION":
+        response_type = "PUBLIC_CONVERSATION"
+    elif job in {"MAKE_ME_THINK", "REFLECT"}:
+        response_type = "REFLECTION"
+    elif job == "GIVE_ME_A_REFERENCE":
+        response_type = "SAVE_REFERENCE"
+    elif job == "HELP_ME_CHOOSE":
+        response_type = "COMPARE_DECISION"
+    elif role in {"COMMUNITY", "COMMUNITY_CONVERSATION"}:
+        response_type, source = "PUBLIC_CONVERSATION", "content_role"
+    elif role in {"FIT_DEMONSTRATION", "DECISION_SUPPORT"}:
+        response_type, source = "COMPARE_DECISION", "content_role"
+    elif role in {"DIRECT_OFFER", "OFFER"}:
+        response_type, source = "ACTION_CLARITY", "content_role"
+    elif cta == "COMPARE":
+        response_type, source = "COMPARE_DECISION", "cta_class"
+    elif cta in {"BUY", "LEARN", "EXPLORE"}:
+        response_type, source = "ACTION_CLARITY", "cta_class"
+    elif cta in {"RESPOND", "COMMENT"}:
+        response_type, source = "PUBLIC_CONVERSATION", "cta_class"
+    elif cta == "SAVE":
+        response_type, source = "SAVE_REFERENCE", "cta_class"
+    elif cta == "REFLECT":
+        response_type, source = "REFLECTION", "cta_class"
+    else:
+        response_type = "GENERAL_VALUE"
+    return {
+        "expected_response_type": response_type,
+        "reader_job": job,
+        "cta_class": cta,
+        "content_role": role,
+        "response_applicability": "CONVERSATION_REQUIRED" if response_type == "PUBLIC_CONVERSATION" else "INTENT_RESPONSE_REQUIRED",
+        "response_contract_source": source,
+        "response_contract_inputs": {"reader_job": job, "cta_class": cta, "content_role": role},
+        "response_contract_resolution": f"{source} resolved {response_type} before copy scoring",
+    }
+
 _CONCEPT_ALIASES = {
     "charge": {"charge", "charged", "charging", "recharge", "recharged", "recharging", "power", "powered"},
     "device": {"device", "devices", "laptop", "laptops", "phone", "phones", "tablet", "tablets", "equipment", "gear"},

@@ -212,12 +212,10 @@ def check_duplicates(content: dict[str, Any], history: dict[str, Any], windows: 
     # must never gate publishing, or "same funnel stage" would be treated as
     # "duplicate content" and block almost every post after the first.
 
-    strict_reasons = [reason for reason in reasons if reason == "duplicate_exact_caption_within_window"]
-    tolerated_reasons = [reason for reason in reasons if reason not in strict_reasons]
-    max_violations_allowed = int(cfg.get("max_violations_allowed", DEFAULT_MAX_VIOLATIONS_ALLOWED))
-    blocking_reasons = strict_reasons + (
-        tolerated_reasons if len(tolerated_reasons) > max_violations_allowed else []
-    )
+    # Rotation-aware selection keeps product, topic, hook, and CTA recency useful as
+    # diagnostics. They must not turn a valid candidate into an empty slot, though:
+    # exact caption reuse is the sole duplicate condition that blocks publication.
+    blocking_reasons = [reason for reason in reasons if reason == "duplicate_exact_caption_within_window"]
     return {
         "ok": len(blocking_reasons) == 0,
         "reasons": blocking_reasons,

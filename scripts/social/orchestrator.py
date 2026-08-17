@@ -142,7 +142,7 @@ def _bi_brand_voice(ctx: dict[str, Any] | None) -> dict[str, Any] | None:
     return ctx.get("voice") or None
 
 
-def _bi_pick_offering(rotation_index: int) -> dict[str, Any] | None:
+def _bi_pick_offering(rotation_index: int, data_dir: str | None = None) -> dict[str, Any] | None:
     """Rotate through catalog offerings when BI is active."""
     if not _bi_enabled():
         return None
@@ -153,6 +153,10 @@ def _bi_pick_offering(rotation_index: int) -> dict[str, Any] | None:
     try:
         profile = bi_api.get_business_profile()
         offerings = profile.get("offerings", []) or []
+        if data_dir:
+            from social.product_eligibility import filter_evidence_eligible_products
+
+            offerings, _ = filter_evidence_eligible_products(offerings, data_dir)
         if not offerings:
             return None
         return offerings[rotation_index % len(offerings)]
@@ -504,7 +508,7 @@ class SocialIntelligenceOrchestrator:
 
         # 0b. Optional BI Foundation hydration — only when the caller
         # didn't already specify a value and the flag is on.
-        bi_offering = _bi_get_offering(product_id_override) if product_id_override else _bi_pick_offering(rotation_index)
+        bi_offering = _bi_get_offering(product_id_override) if product_id_override else _bi_pick_offering(rotation_index, self.data_dir)
         bi_ctx = _load_bi_creative_context(
             str((bi_offering or {}).get("offering_id") or (bi_offering or {}).get("sku") or "")
         )

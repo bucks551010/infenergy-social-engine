@@ -16,6 +16,7 @@ import publish_facebook
 import publish_instagram
 import publish_linkedin
 from score_content import score_content
+from social.candidate_pool import CandidatePool
 from social.publish_decision import decide as decide_publication
 from social import claim_governance
 from social.claim_intelligence import build_ledger, remove_unsupported_numeric_claims
@@ -96,6 +97,24 @@ def _env_flag(name: str, default: bool) -> bool:
     if value is None:
         return default
     return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _write_run_outcome(status: str, *, slot: str, detail: str = "") -> None:
+    path = os.path.join(generate_posts.DATA_DIR, "social", "last_run_outcome.json")
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    temporary_path = f"{path}.tmp"
+    with open(temporary_path, "w", encoding="utf-8") as handle:
+        json.dump(
+            {
+                "status": status,
+                "slot": slot,
+                "finished_at_utc": datetime.now(timezone.utc).isoformat(),
+                "detail": detail,
+            },
+            handle,
+            ensure_ascii=True,
+        )
+    os.replace(temporary_path, path)
 
 
 def get_channel_config() -> dict:
@@ -1194,13 +1213,22 @@ def main() -> None:
 
     # Compute a stage first so schedule rules can enforce stage eligibility.
     generate_posts.ensure_runtime_data()
+    candidate_pool = CandidatePool(generate_posts.DATA_DIR)
+    pooled_candidate = next(iter(candidate_pool.available()), None)
     t_preview = time.perf_counter()
-    preview_content = generate_posts.generate(
-        slot,
-        funnel_stage_override=funnel_stage_override,
-        product_id_override=product_id_override,
-        pipeline_override=pipeline_override,
-    )
+    if pooled_candidate and isinstance(pooled_candidate.get("content"), dict):
+        preview_content = dict(pooled_candidate["content"])
+        preview_content["candidate_id"] = pooled_candidate.get("candidate_id", "")
+        preview_content["candidate_created_at"] = pooled_candidate.get("created_at", "")
+        preview_content["rotation_selected"] = pooled_candidate.get("rotation_selected", {})
+        preview_content["batch_gate_results"] = pooled_candidate.get("batch_gate_results", {})
+    else:
+        preview_content = generate_posts.generate(
+            slot,
+            funnel_stage_override=funnel_stage_override,
+            product_id_override=product_id_override,
+            pipeline_override=pipeline_override,
+        )
     _apply_phase8_budget(runtime_metrics, "preview_generation", time.perf_counter() - t_preview, generation_budget)
     funnel_stage = str(preview_content.get("funnel_stage", "EDUCATION"))
 
@@ -1518,6 +1546,10 @@ def main() -> None:
     final_validation_ok = content.get("validation_status") == "passed"
     final_score = float(content.get("quality_score") or 0)
     duplicate_ok = bool(content.get("duplicate_check", {}).get("ok", True))
+    deferred_visuals = content.get("generated_visuals") if isinstance(content.get("generated_visuals"), dict) else {}
+    if deferred_visuals.get("deferred"):
+        content["generated_visuals"] = generate_posts.generate_visuals(content, visual_plan=content.get("visual_plan"))
+        content["image_generation_attempts"] = int(content.get("image_generation_attempts", 0) or 0) + 1
     _ensure_final_artifact_qa(content, effective_channels)
     artifact_errors = _artifact_visual_errors_by_platform(content, effective_channels)
     for platform, issues in artifact_errors.items():
@@ -1626,6 +1658,7 @@ def main() -> None:
         history["posts"] = history["posts"][-200:]
         _apply_phase8_budget(runtime_metrics, "total", time.perf_counter() - t_total, total_budget)
         generate_posts.save_history(history)
+        _write_run_outcome("blocked_no_publish", slot=slot, detail="failed_quality_or_validation_or_duplicate")
         print("\n=== Done (skipped) ===\n")
         return
 
@@ -1966,7 +1999,7 @@ def main() -> None:
         "content_format": "multi",
         "destination_url": content.get("destination_url") or None,
         "utm_url": None,
-        "status": "success",
+        "status": "success" if not errors else "partial_error",
         "error": " | ".join(errors) if errors else None,
         "date": content["date"],
         "slot": slot,
@@ -1989,6 +2022,11 @@ def main() -> None:
         "copy_generation_source": content.get("copy_generation_source", "unknown"),
         "quality_score": content.get("quality_score"),
         "quality_component_scores": content.get("quality_component_scores", {}),
+        "rotation_selected": content.get("rotation_selected", {}),
+        "candidate_id": content.get("candidate_id", ""),
+        "candidate_age_at_publish": content.get("candidate_created_at", ""),
+        "batch_gate_results": content.get("batch_gate_results", {}),
+        "image_generation_attempts": int(content.get("image_generation_attempts", 0) or 0),
         **_generation_diagnostics(content),
         "quality_warnings": content.get("quality_warnings", []),
         **_conversion_learning_fields(content),
@@ -2031,9 +2069,20 @@ def main() -> None:
                 raise RuntimeError(f"published_persistence_error:{platform}:{exc}") from exc
         raise
 
+    published_records = [
+        record
+        for record in platform_records
+        if str(record.get("status", "")).strip().lower() in {"published", "dry-run"}
+    ]
+    if published_records and str(content.get("candidate_id") or ""):
+        candidate_pool.consume(str(content["candidate_id"]), published_at=run_started)
+    _write_run_outcome(
+        "published" if published_records else "blocked_no_publish",
+        slot=slot,
+        detail="platforms=" + ",".join(str(record.get("platform", "")) for record in published_records),
+    )
     if errors:
         raise RuntimeError(" | ".join(errors))
-
     print("\n=== Done ===\n")
 
 

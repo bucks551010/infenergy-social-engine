@@ -496,6 +496,16 @@ def _uptime_seconds() -> int:
     return int((datetime.now(timezone.utc) - STARTED_AT).total_seconds())
 
 
+def _last_run_outcome() -> dict:
+    return _load_json(os.path.join(_data_dir(), "social", "last_run_outcome.json"), {})
+
+
+def _candidate_pool_depth() -> int:
+    payload = _load_json(os.path.join(_data_dir(), "social", "candidate_pool.json"), {})
+    candidates = payload.get("candidates", []) if isinstance(payload, dict) else []
+    return sum(1 for candidate in candidates if isinstance(candidate, dict) and candidate.get("status") == "available")
+
+
 def _run_script(script_name: str) -> tuple[bool, str]:
     scripts_dir = os.path.join(os.path.dirname(__file__), "scripts")
     script_path = os.path.join(scripts_dir, script_name)
@@ -638,6 +648,7 @@ class HealthHandler(BaseHTTPRequestHandler):
                 "time_utc": _utc_now(),
                 "uptime_seconds": _uptime_seconds(),
                 "last_run": LAST_RUN,
+                "candidate_pool_depth": _candidate_pool_depth(),
                 "dry_run": os.environ.get("SOCIAL_DRY_RUN", "true"),
                 "shadow_mode": os.environ.get("SOCIAL_SHADOW_MODE", "false"),
                 "recent_quality": _quality_summary(recent_posts),
@@ -1478,18 +1489,29 @@ def run_slot(
                 print(output[-4000:])
 
             if completed.returncode != 0:
+                outcome = _last_run_outcome()
+                if outcome.get("slot") == slot and outcome.get("status") == "published":
+                    LAST_RUN["status"] = "published"
+                    LAST_RUN["error"] = f"partial_platform_failure: {output[-1500:]}"
+                    return
                 raise RuntimeError(f"run_engine exit={completed.returncode} output_tail={output[-1500:]}")
 
-            LAST_RUN["status"] = "success"
+            outcome = _last_run_outcome()
+            if outcome.get("slot") == slot and outcome.get("status") in {"published", "blocked_no_publish"}:
+                LAST_RUN["status"] = outcome["status"]
+                LAST_RUN["error"] = str(outcome.get("detail") or "") or None
+            else:
+                LAST_RUN["status"] = "generation_failed"
+                LAST_RUN["error"] = "run_engine_completed_without_outcome"
         except subprocess.TimeoutExpired as e:
             partial = ((e.stdout or "") + "\n" + (e.stderr or "")).strip()
-            LAST_RUN["status"] = "failed"
+            LAST_RUN["status"] = "generation_failed"
             LAST_RUN["error"] = f"run_timeout_after_{timeout_sec}s"
             if partial:
                 print(partial[-4000:])
             print(f"[ERROR] {slot} run timed out after {timeout_sec}s")
         except BaseException as e:
-            LAST_RUN["status"] = "failed"
+            LAST_RUN["status"] = "generation_failed"
             LAST_RUN["error"] = str(e)
             print(f"[ERROR] {slot} run failed: {e}")
             traceback.print_exc()
@@ -1540,12 +1562,19 @@ def run_intelligence_heartbeat(level: str) -> None:
     result = heartbeat(_data_dir(), level=level, website_url=os.environ.get("FIRST_PARTY_SITE_URL", ""), publication_records=_load_history(limit=200))
     print(f"[INTELLIGENCE] {level}: {len(result.get('observations', []))} observations")
 
+
+def run_candidate_batch() -> None:
+    ok, output = _run_script("build_candidate_pool.py")
+    status = "ok" if ok else "failed"
+    print(f"[CANDIDATE_POOL] {status}: {output[-1000:]}")
+
 def main() -> None:
     schedule.clear()
     schedule.every().day.at(morning_utc).do(run_slot, "morning")
     schedule.every().day.at(midday_utc).do(run_slot, "midday")
     schedule.every().day.at(evening_utc).do(run_slot, "evening")
     schedule.every().day.at(intelligence_light_utc).do(run_intelligence_heartbeat, "LIGHT_HEARTBEAT")
+    schedule.every().day.at("10:00").do(run_candidate_batch)
     schedule.every().monday.at(intelligence_standard_utc).do(run_intelligence_heartbeat, "STANDARD_HEARTBEAT")
     schedule.every().sunday.at(intelligence_deep_utc).do(run_intelligence_heartbeat, "DEEP_HEARTBEAT")
 

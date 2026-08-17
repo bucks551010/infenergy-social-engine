@@ -37,6 +37,10 @@ def _business_intelligence_enabled() -> bool:
     return os.environ.get("ENABLE_BUSINESS_INTELLIGENCE", "true").lower() in {"1", "true", "yes", "on"}
 
 
+def _text_only_generation() -> bool:
+    return os.environ.get("POST_TEXT_ONLY", "false").lower() in {"1", "true", "yes", "on"}
+
+
 _PIPELINE_ALIASES = {
     "legacy": "legacy", "classic": "legacy", "conversion": "legacy",
     "orchestrator": "orchestrator", "social_intelligence": "orchestrator", "new": "orchestrator",
@@ -331,7 +335,11 @@ def _route_generate_orchestrator(
     # generate_visuals() step the legacy pipeline uses so orchestrator
     # posts get real, product-anchored creative instead of staying empty.
     legacy["visual_plan"] = visual_pkg
-    legacy["generated_visuals"] = generate_visuals(legacy, visual_plan=visual_pkg)
+    legacy["generated_visuals"] = (
+        {"deferred": True, "reason": "text_only_candidate_pool"}
+        if _text_only_generation()
+        else generate_visuals(legacy, visual_plan=visual_pkg)
+    )
     from social import reels
 
     instagram_decision = reels.choose_instagram_media(
@@ -391,6 +399,8 @@ from campaign_runtime import (
 from generate_hooks import select_hook
 from anti_repeat import load_anti_repeat_windows
 from build_utm_url import build_utm_url
+from social.candidate_pool import build_rotation_ledger, select_least_recently_used
+from social.product_eligibility import filter_evidence_eligible_products
 from social_visuals import generate_visuals, normalize_brand_content, normalize_brand_text
 from agents import product_intelligence
 from agents import conversion_strategist
@@ -2033,16 +2043,30 @@ def _load_products_from_csv() -> list[dict]:
     return products
 
 
+_LAST_PRODUCT_SELECTION_REPORT: dict[str, Any] = {}
+
+
+def product_selection_report() -> dict[str, Any]:
+    return dict(_LAST_PRODUCT_SELECTION_REPORT)
+
+
+def _filter_selectable_products(products: list[dict]) -> list[dict]:
+    global _LAST_PRODUCT_SELECTION_REPORT
+    eligible, report = filter_evidence_eligible_products(products, DATA_DIR)
+    _LAST_PRODUCT_SELECTION_REPORT = report
+    return eligible
+
+
 def load_products() -> list[dict]:
     sync_inventory_database(force=False)
     from_db = inventory_db.fetch_products(DATA_DIR)
     if from_db:
-        return from_db
+        return _filter_selectable_products(from_db)
 
     fallback = _load_products_from_csv()
     if fallback:
         inventory_db.upsert_products(DATA_DIR, fallback, source="wc_csv")
-    return fallback
+    return _filter_selectable_products(fallback)
 
 
 def _pick_product(products: list[dict], history: dict) -> dict | None:
@@ -2050,33 +2074,24 @@ def _pick_product(products: list[dict], history: dict) -> dict | None:
         return None
 
     windows = load_anti_repeat_windows()
-    days = int(windows.get("product_feature_days", 7))
-    cutoff = datetime.now(timezone.utc) - timedelta(days=max(0, days))
-
-    def _post_dt(post: dict) -> datetime | None:
-        raw = str(post.get("run_started_at_utc") or post.get("date") or "")
-        if not raw:
-            return None
-        try:
-            if len(raw) == 10 and "-" in raw:
-                return datetime.fromisoformat(raw + "T00:00:00+00:00")
-            return datetime.fromisoformat(raw.replace("Z", "+00:00"))
-        except Exception:
-            return None
-
-    recent_keys = {
-        f"{p.get('product_name', '')}|{p.get('product_sku', '')}".lower()
-        for p in history.get("posts", [])
-        if p.get("product_name") and (_post_dt(p) and _post_dt(p) >= cutoff)
-    }
-
-    random.shuffle(products)
+    ledger = build_rotation_ledger(history, windows)
+    candidates = []
     for product in products:
-        key = f"{product.get('name', '')}|{product.get('sku', '')}".lower()
-        if key not in recent_keys:
-            return product
-
-    return random.choice(products)
+        candidate = dict(product)
+        candidate["_rotation_product_id"] = str(product.get("id") or product.get("sku") or product.get("name") or "")
+        if candidate["_rotation_product_id"]:
+            candidates.append(candidate)
+    selected, decision = select_least_recently_used(
+        candidates,
+        "product_id",
+        ledger,
+        value_key="_rotation_product_id",
+    )
+    if not selected:
+        return None
+    selected.pop("_rotation_product_id", None)
+    selected["_rotation_decision"] = decision
+    return selected
 
 
 def _pick_product_by_id(products: list[dict], product_id: str) -> dict | None:
@@ -2223,51 +2238,28 @@ def _pick_topic_for_product(
     preferred_pillars: list[str] | None = None,
 ) -> tuple[str, str, str]:
     windows = load_anti_repeat_windows()
-    days = int(windows.get("topic_days", 21))
-    cutoff = datetime.now(timezone.utc) - timedelta(days=max(0, days))
-
-    used_hashes = set()
-    for p in history.get("posts", []):
-        if not isinstance(p, dict):
-            continue
-        topic_hash = str(p.get("topic_hash", "")).strip()
-        if not topic_hash:
-            continue
-        raw = str(p.get("run_started_at_utc") or p.get("date") or "")
-        if not raw:
-            continue
-        try:
-            if len(raw) == 10 and "-" in raw:
-                dt = datetime.fromisoformat(raw + "T00:00:00+00:00")
-            else:
-                dt = datetime.fromisoformat(raw.replace("Z", "+00:00"))
-            if dt >= cutoff:
-                used_hashes.add(topic_hash)
-        except Exception:
-            continue
-
     queue_pillars = [str(p).strip() for p in queue.get("pillars", []) if str(p).strip()]
     preferred = [p for p in (preferred_pillars or []) if p in queue_pillars]
     remaining = [p for p in queue_pillars if p not in preferred]
-    random.shuffle(preferred)
-    random.shuffle(remaining)
     pillars = preferred + remaining
     scored: list[tuple[int, str, str, str]] = []
     for pillar in pillars:
         topics = queue.get("topics", {}).get(pillar, [])[:]
-        random.shuffle(topics)
         for topic in topics:
             topic_hash = hashlib.md5(topic.encode()).hexdigest()
-            if topic_hash in used_hashes:
-                continue
             score = _product_topic_fit_score(product, topic, pillar, funnel_stage)
             scored.append((score, pillar, topic, topic_hash))
 
     if scored:
-        scored.sort(key=lambda row: row[0], reverse=True)
-        best_score, best_pillar, best_topic, best_hash = scored[0]
-        if best_score > 0:
-            return best_pillar, best_topic, best_hash
+        best_score = max(row[0] for row in scored)
+        candidates = [
+            {"pillar": pillar, "topic": topic, "topic_hash": topic_hash}
+            for score, pillar, topic, topic_hash in scored
+            if score == best_score
+        ]
+        selected, _ = select_least_recently_used(candidates, "topic", build_rotation_ledger(history, windows))
+        if selected and best_score > 0:
+            return selected["pillar"], selected["topic"], selected["topic_hash"]
 
     fallback_pillar, fallback_topic = _fallback_topic_for_product(product, funnel_stage)
     return fallback_pillar, fallback_topic, hashlib.md5(fallback_topic.encode()).hexdigest()
@@ -2275,48 +2267,21 @@ def _pick_topic_for_product(
 
 def _pick_topic(queue: dict, history: dict, preferred_pillars: list[str] | None = None) -> tuple[str, str, str]:
     windows = load_anti_repeat_windows()
-    days = int(windows.get("topic_days", 21))
-    cutoff = datetime.now(timezone.utc) - timedelta(days=max(0, days))
-
-    used_hashes = set()
-    for p in history.get("posts", []):
-        if not isinstance(p, dict):
-            continue
-        topic_hash = str(p.get("topic_hash", "")).strip()
-        if not topic_hash:
-            continue
-        raw = str(p.get("run_started_at_utc") or p.get("date") or "")
-        if not raw:
-            continue
-        try:
-            if len(raw) == 10 and "-" in raw:
-                dt = datetime.fromisoformat(raw + "T00:00:00+00:00")
-            else:
-                dt = datetime.fromisoformat(raw.replace("Z", "+00:00"))
-            if dt >= cutoff:
-                used_hashes.add(topic_hash)
-        except Exception:
-            continue
-
     queue_pillars = [str(p).strip() for p in queue.get("pillars", []) if str(p).strip()]
     preferred = [p for p in (preferred_pillars or []) if p in queue_pillars]
     remaining = [p for p in queue_pillars if p not in preferred]
-    random.shuffle(preferred)
-    random.shuffle(remaining)
     pillars = preferred + remaining
     if not pillars:
         raise ValueError("topic queue has no valid pillars")
-    for pillar in pillars:
-        topics = queue["topics"][pillar][:]
-        random.shuffle(topics)
-        for topic in topics:
-            h = hashlib.md5(topic.encode()).hexdigest()
-            if h not in used_hashes:
-                return pillar, topic, h
-    # All used recently — reset and pick random
-    pillar = random.choice(pillars)
-    topic = random.choice(queue["topics"][pillar])
-    return pillar, topic, hashlib.md5(topic.encode()).hexdigest()
+    candidates = [
+        {"pillar": pillar, "topic": topic, "topic_hash": hashlib.md5(topic.encode()).hexdigest()}
+        for pillar in pillars
+        for topic in queue["topics"][pillar]
+    ]
+    selected, _ = select_least_recently_used(candidates, "topic", build_rotation_ledger(history, windows))
+    if not selected:
+        raise ValueError("topic queue has no valid topics")
+    return selected["pillar"], selected["topic"], selected["topic_hash"]
 
 
 def _recent_history_window(history: dict, limit: int = 14) -> list[dict]:
@@ -6116,7 +6081,11 @@ Return ONLY valid JSON with these exact keys (no markdown, no code fences):
         platform_posts["instagram"]["carousel_campaign"] = social_media_assets["asset_2_carousel_campaign"]
         content["on_image_headline"] = components["on_image_headline"]
         content["on_image_subline"] = components["on_image_subline"]
-        content["generated_visuals"] = generate_visuals(content, visual_plan=visual_plan)
+        content["generated_visuals"] = (
+            {"deferred": True, "reason": "text_only_candidate_pool"}
+            if _text_only_generation()
+            else generate_visuals(content, visual_plan=visual_plan)
+        )
         from social import reels
 
         strategy_lock = content.get("strategy_lock") if isinstance(content.get("strategy_lock"), dict) else {}
@@ -6448,7 +6417,11 @@ Return ONLY valid JSON with these exact keys (no markdown, no code fences):
     platform_posts["instagram"]["carousel_campaign"] = social_media_assets["asset_2_carousel_campaign"]
     content["on_image_headline"] = components["on_image_headline"]
     content["on_image_subline"] = components["on_image_subline"]
-    content["generated_visuals"] = generate_visuals(content, visual_plan=visual_plan)
+    content["generated_visuals"] = (
+        {"deferred": True, "reason": "text_only_candidate_pool"}
+        if _text_only_generation()
+        else generate_visuals(content, visual_plan=visual_plan)
+    )
     content["visual_plan"] = visual_plan
     content["pre_generation_conference"] = pre_generation_conference
     content["phase2_creative_stack"] = phase2_stack

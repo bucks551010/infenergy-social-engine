@@ -226,6 +226,23 @@ The infinite re-selection loop is broken:
 - Pushed to `origin/master` (commit `7f15869`)
 - Railway auto-deploy triggered
 - Tests: 394/395 passed (1 unrelated agent roster failure)
+- **Deployed:** Confirmed via `/health` endpoint (uptime reset to 59s at 16:09 UTC)
+
+### Local Validation
+
+```
+After add: depth=1
+quarantine() returned: True
+After quarantine: depth=0
+Test PASSED
+```
+
+### Production Validation
+
+Pending - `MANUAL_RUN_TOKEN` has changed. Operator should:
+1. Run `/run-now?slot=morning&dry_run=true&token=...` with correct token
+2. Check logs for `[POOL] Quarantined candidate...` message
+3. Run 3 consecutive runs and confirm different `candidate_id` values
 
 ---
 

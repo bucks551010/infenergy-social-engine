@@ -9,6 +9,7 @@ sys.path.insert(0, _REPO)
 sys.path.insert(0, os.path.join(_REPO, "scripts"))
 
 import worker
+from social.platform_presentation import final_caption_qa
 
 
 def test_content_preview_forces_text_only_generation(monkeypatch) -> None:
@@ -47,3 +48,22 @@ def test_content_preview_can_force_non_product_bucket(monkeypatch) -> None:
     assert "POST_TEXT_ONLY" not in os.environ
     assert "CONTENT_BUCKET_OVERRIDE" not in os.environ
     assert preview["preview_only"] is True
+
+
+def test_plan_caption_requires_actionable_steps() -> None:
+    components = {"product_id": "", "product_name": "", "feature_bullets": []}
+
+    missing_steps = final_caption_qa(
+        "24-hour outage plan\n\nSave this checklist.",
+        platform="instagram",
+        components=components,
+    )
+    complete_plan = final_caption_qa(
+        "24-hour outage plan:\n1. List must-run needs.\n2. Stage supplies.\n3. Test the plan.\n\n"
+        "Why this matters: it reduces confusion.\n\nSave this checklist.",
+        platform="instagram",
+        components=components,
+    )
+
+    assert "promised_plan_missing_actionable_steps" in missing_steps["reasons"]
+    assert "promised_plan_missing_actionable_steps" not in complete_plan["reasons"]

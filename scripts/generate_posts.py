@@ -4253,6 +4253,31 @@ _PILLAR_HASHTAGS = {
 }
 
 
+def _no_product_action_plan(topic: str, pillar: str) -> str:
+    lowered_topic = topic.lower()
+    if "outage" in lowered_topic or pillar in ("preparedness_education", "home_resilience"):
+        return (
+            "24-hour outage plan:\n"
+            "1. Write down the three devices or needs that cannot wait until power returns.\n"
+            "2. Put lighting, phone charging, medical needs, and food-safety decisions in that order.\n"
+            "3. Check the power source, cables, batteries, and charging location before storm season.\n"
+            "4. Run a short household check so everyone knows what to use first and who needs help."
+        )
+    if "travel" in lowered_topic or pillar == "travel_and_outdoor_preparedness":
+        return (
+            "Practical travel-power checklist:\n"
+            "1. List the devices you must charge away from an outlet.\n"
+            "2. Check each device's charging method before packing.\n"
+            "3. Pack cables, backup power, and lighting together in one easy-to-reach place."
+        )
+    return (
+        "Practical readiness steps:\n"
+        "1. Name the need that would create the biggest problem during an outage.\n"
+        "2. Decide what must stay available first.\n"
+        "3. Test the plan before you need it."
+    )
+
+
 def _build_fallback_content_no_product(
     slot: str,
     topic: str,
@@ -4274,6 +4299,7 @@ def _build_fallback_content_no_product(
     angle = str(talking_point.get("angle") or topic).strip()
     first_step = str(talking_point.get("first_step") or "Comment below, we read every reply.").strip()
     hashtag_line = _PILLAR_HASHTAGS.get(pillar, "#Preparedness #InfenergyPower")
+    action_plan = _no_product_action_plan(topic, pillar)
     transformation_from = str(persuasion.get("transformation_from", "") or "").strip()
     transformation_to = str(persuasion.get("transformation_to", "") or "").strip()
     transformation_line = (
@@ -4290,13 +4316,14 @@ def _build_fallback_content_no_product(
         f"<h2>Next Step</h2><p>{first_step}</p>"
     )
 
-    fb_caption = _join_paragraphs(pain_point, topic, angle, transformation_line, f"{first_step}\n{hashtag_line}")
+    fb_caption = _join_paragraphs(pain_point, topic, angle, action_plan, transformation_line, f"{first_step}\n{hashtag_line}")
 
-    ig_caption = _join_paragraphs(topic, pain_point, angle, transformation_line, f"{first_step}\n{hashtag_line}")
+    ig_caption = _join_paragraphs(topic, pain_point, angle, action_plan, transformation_line, f"{first_step}\n{hashtag_line}")
 
     li_text = _join_paragraphs(
         pain_point,
         angle,
+        action_plan,
         transformation_line,
         "For households, caregivers, travelers, and small operators, this kind of practical clarity is what actually reduces risk.",
         first_step,

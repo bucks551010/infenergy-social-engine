@@ -554,13 +554,18 @@ def final_caption_qa(
         planning_instructions=planning_instructions,
     )
     numeric_proof_available = any(_numeric_proof_tokens(str(item)) for item in components.get("feature_bullets") or [])
+    product_led = bool(str(components.get("product_id") or "").strip())
+    plan_promised = bool(re.search(r"\b(?:plan|checklist|priority list|steps)\b", caption, flags=re.IGNORECASE))
+    actionable_steps = len(re.findall(r"(?m)^\s*\d+\.\s+\S+", caption)) >= 3
     reasons: list[str] = []
     if metrics["internal_instruction_leak"]:
         reasons.append("internal_instruction_leak")
-    if not metrics["product_intro_position"]:
+    if product_led and not metrics["product_intro_position"]:
         reasons.append("product_not_visible")
-    if not metrics["primary_benefit_position"]:
+    if product_led and not metrics["primary_benefit_position"]:
         reasons.append("primary_value_not_visible")
+    if plan_promised and not actionable_steps:
+        reasons.append("promised_plan_missing_actionable_steps")
     if platform == "facebook" and numeric_proof_available and not metrics["specs_present"]:
         reasons.append("verified_proof_missing")
     if platform == "facebook" and not metrics["link_present"]:

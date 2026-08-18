@@ -14,6 +14,7 @@ from . import (
     alt_text_accessibility,
     brand_voice_drift,
     candidate_pool,
+    content_forensic,
     carousel_slide_writer,
     crisis_relevance,
     cross_post_recycler,
@@ -33,6 +34,7 @@ from . import (
 _REGISTRY: dict[str, Callable[..., dict]] = {
     "engagement_ingestion": engagement_ingestion.run,
     "candidate_pool": candidate_pool.run,
+    "content_forensic": content_forensic.run,
     "performance_reflection": performance_reflection.run,
     "learning_ingestion": learning_ingestion.run,
     "topic_intelligence": topic_intelligence.run,

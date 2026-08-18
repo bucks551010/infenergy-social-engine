@@ -11,7 +11,42 @@ from datetime import datetime, timezone
 from typing import Any
 
 
-def run(data_dir: str, count: int = 10, **_: Any) -> dict:
+def _latest_report(data_dir: str) -> dict:
+    diagnostics_dir = os.path.join(data_dir, "diagnostics")
+    try:
+        runs = sorted(
+            [name for name in os.listdir(diagnostics_dir) if name.startswith("content_generation_10_run_")],
+            reverse=True,
+        )
+    except OSError:
+        runs = []
+    if not runs:
+        return {"error": "content_forensic_report_not_found"}
+    output_dir = os.path.join(diagnostics_dir, runs[0])
+    try:
+        with open(os.path.join(output_dir, "content_generation_10_run.json"), encoding="utf-8") as handle:
+            report = json.load(handle)
+        with open(os.path.join(output_dir, "content_generation_10_run.md"), encoding="utf-8") as handle:
+            markdown = handle.read()
+    except (OSError, json.JSONDecodeError) as exc:
+        return {"error": f"content_forensic_report_unreadable:{exc}", "output_dir": output_dir}
+    return {
+        "status": "completed",
+        "output_dir": output_dir,
+        "aggregate": report.get("aggregate", {}),
+        "safety": {
+            "images_generated": report.get("metadata", {}).get("image_provider_calls", 0),
+            "publisher_calls": report.get("metadata", {}).get("publisher_calls", 0),
+            "production_state_contaminated": report.get("metadata", {}).get("production_state_contaminated"),
+        },
+        "markdown_report": markdown,
+        "json_report": report,
+    }
+
+
+def run(data_dir: str, count: int = 10, action: str = "run", **_: Any) -> dict:
+    if str(action).strip().lower() in {"latest", "report", "read"}:
+        return _latest_report(data_dir)
     if int(count) != 10:
         return {"error": "content_forensic_requires_exactly_10_runs"}
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")

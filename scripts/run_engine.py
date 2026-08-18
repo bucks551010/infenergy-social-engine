@@ -4,6 +4,7 @@ import time
 import json
 import shutil
 import hashlib
+from copy import deepcopy
 from datetime import datetime, timezone
 
 import requests
@@ -1330,6 +1331,13 @@ def main() -> None:
             effective_channels[platform] = False
             channel_reasons[platform] = "strategy_platform_not_appropriate"
 
+    require_all_social = _env_flag("POST_REQUIRE_ALL_SOCIAL", True)
+    if require_all_social and not dry_run:
+        for platform in ("facebook", "instagram", "linkedin"):
+            if channels.get(platform):
+                effective_channels[platform] = True
+                channel_reasons[platform] = "all_social_slot_policy"
+
     phase5_readiness = _build_phase5_channel_readiness(effective_channels, dry_run)
     for platform in phase5_readiness.get("blocking_channels", []):
         effective_channels[platform] = False
@@ -1364,8 +1372,10 @@ def main() -> None:
     print(f"Phase5 readiness: {json.dumps(phase5_readiness, ensure_ascii=True)}\n")
 
     print("[1/5] Generating content with Gemini...")
-    # Phase 8: up to three generation attempts with score/validation gating.
+    # Build a full candidate set before selecting the strongest compliant post.
     attempts: list[dict] = []
+    publishable_candidates: list[dict] = []
+    candidate_count = max(1, int(os.environ.get("POST_CANDIDATE_COUNT", "7")))
     windows = load_anti_repeat_windows()
     content = preview_content
     locked_strategy: dict = {}
@@ -1376,7 +1386,7 @@ def main() -> None:
     previous_decision: str | None = None
     previous_current_findings: list[str] = []
     t_generation = time.perf_counter()
-    for idx in range(3):
+    for idx in range(candidate_count):
         if idx > 0:
             content = generate_posts.generate(
                 slot,
@@ -1475,7 +1485,7 @@ def main() -> None:
             removed_claims=claim_corrections,
             findings=critic_feedback,
         )
-        diagnosis["metacognition"]["attempt_budget_remaining"] = 2 - idx
+        diagnosis["metacognition"]["attempt_budget_remaining"] = candidate_count - idx - 1
 
         attempts.append(
             {
@@ -1510,6 +1520,20 @@ def main() -> None:
         content["creative_concept_escalation"] = metacognitive_review
 
         if publish_decision["publishable"]:
+            publishable_candidates.append({
+                "content": deepcopy(content),
+                "scoring": deepcopy(scoring),
+                "decision": deepcopy(publish_decision),
+                "attempt": idx + 1,
+            })
+            if idx < candidate_count - 1:
+                locked_strategy = {}
+                locked_product_id = product_id_override
+                pending_feedback = []
+                prior_generated_visuals = {}
+                previous_decision = "publishable_candidate_retained"
+                previous_current_findings = []
+                continue
             break
 
         if idx == 0:
@@ -1580,7 +1604,7 @@ def main() -> None:
                 break
 
         # A critic-directed revision is bounded to three candidates total.
-        if idx < 2 and scoring.get("decision") != "reject" and (
+        if idx < candidate_count - 1 and scoring.get("decision") != "reject" and (
             publish_decision["decision"] in {"revise", "regenerate"}
             or (publish_decision["decision"] == "do_not_publish" and retryability == "RETRYABLE_CONTENT")
         ):
@@ -1611,13 +1635,38 @@ def main() -> None:
             previous_current_findings = list(critic_feedback)
             continue
 
-        if publish_decision["decision"] == "do_not_publish":
+        if idx == candidate_count - 1:
             break
 
-        # Otherwise stop on final attempt or hard rejection.
-        if idx == 2 or scoring.get("decision") == "reject":
-            break
+        # Terminal claims, product availability, and score rejections invalidate
+        # this candidate only. Start the next candidate from a fresh strategy.
+        locked_strategy = {}
+        locked_product_id = product_id_override
+        pending_feedback = [
+            "Create a materially different candidate that satisfies all claim, quality, duplicate, and platform requirements."
+        ]
+        pending_scope = "strategy"
+        prior_generated_visuals = {}
+        previous_decision = str(publish_decision["decision"])
+        previous_current_findings = list(critic_feedback)
     _apply_phase8_budget(runtime_metrics, "generation", time.perf_counter() - t_generation, generation_budget)
+
+    if publishable_candidates:
+        selected = max(
+            publishable_candidates,
+            key=lambda candidate: (
+                float(candidate["scoring"].get("total") or 0),
+                float(candidate["decision"].get("orchestrator_critic_score") or 0),
+            ),
+        )
+        content = selected["content"]
+        scoring = selected["scoring"]
+        content["candidate_selection"] = {
+            "candidate_count": candidate_count,
+            "publishable_count": len(publishable_candidates),
+            "selected_attempt": selected["attempt"],
+            "selection_reason": "highest_compliant_quality_score",
+        }
 
     final_validation_ok = content.get("validation_status") == "passed"
     final_score = float(content.get("quality_score") or 0)
@@ -1722,6 +1771,7 @@ def main() -> None:
             "format_signature": content.get("format_signature", ""),
             "structure_signature": content.get("structure_signature", ""),
             "generation_attempts": attempts,
+            "candidate_selection": content.get("candidate_selection", {}),
             "dry_run": dry_run,
             "status": "skipped_validation_or_quality",
             "channel_reasons": channel_reasons,
@@ -1761,7 +1811,7 @@ def main() -> None:
             **_generation_diagnostics(content), **_conversion_learning_fields(content),
             "validation_status": content.get("validation_status"), "validation_errors": content.get("validation_errors", []),
             "duplicate_reasons": content.get("duplicate_check", {}).get("reasons", []),
-            "generation_attempts": attempts, "dry_run": dry_run, "shadow_mode": True,
+            "generation_attempts": attempts, "candidate_selection": content.get("candidate_selection", {}), "dry_run": dry_run, "shadow_mode": True,
             "artifact_visual_qa": content.get("artifact_visual_qa", {}),
             "status": "shadow_completed", "decision_record": _shadow_decision_record(content),
             "channel_reasons": channel_reasons, "phase5_channel_readiness": phase5_readiness,
@@ -1860,6 +1910,7 @@ def main() -> None:
             "format_signature": content.get("format_signature", ""),
             "structure_signature": content.get("structure_signature", ""),
             "generation_attempts": attempts,
+            "candidate_selection": content.get("candidate_selection", {}),
             "dry_run": dry_run,
             "status": "skipped_no_eligible_platforms",
             "channel_reasons": channel_reasons,
@@ -2125,6 +2176,7 @@ def main() -> None:
         "format_signature": content.get("format_signature", ""),
         "structure_signature": content.get("structure_signature", ""),
         "generation_attempts": attempts,
+        "candidate_selection": content.get("candidate_selection", {}),
         "dry_run": dry_run,
         "channel_reasons": channel_reasons,
         "phase5_channel_readiness": phase5_readiness,

@@ -58,6 +58,7 @@ def route_candidates(task: str) -> list[str]:
 
 
 _LAST_ERROR: str | None = None
+_PROVIDER_UNAVAILABLE_REASON: str | None = None
 
 
 def last_error() -> str | None:
@@ -84,9 +85,13 @@ def generate_json(task: str, prompt: str, *, system_instruction: str = "") -> di
     Returns ``None`` when GEMINI_API_KEY is unset, the SDK is unavailable,
     or the call/parse fails for any reason.
     """
+    global _LAST_ERROR, _PROVIDER_UNAVAILABLE_REASON
+    if _PROVIDER_UNAVAILABLE_REASON:
+        _LAST_ERROR = _PROVIDER_UNAVAILABLE_REASON
+        return None
+
     api_key = os.environ.get("GEMINI_API_KEY", "").strip()
     if not api_key:
-        global _LAST_ERROR
         _LAST_ERROR = "GEMINI_API_KEY not set"
         return None
     try:
@@ -119,7 +124,11 @@ def generate_json(task: str, prompt: str, *, system_instruction: str = "") -> di
             _LAST_ERROR = None
             return parsed
         except Exception as exc:
-            errors.append(f"model={model}: {type(exc).__name__}: {exc}")
+            error = f"model={model}: {type(exc).__name__}: {exc}"
+            errors.append(error)
+            if "RESOURCE_EXHAUSTED" in str(exc).upper() or "429" in str(exc):
+                _PROVIDER_UNAVAILABLE_REASON = f"Gemini provider unavailable: {error}"
+                break
     _LAST_ERROR = f"task={task}: " + " | ".join(errors)
     print(f"[model_router] {_LAST_ERROR}")
     return None

@@ -472,12 +472,54 @@ class PhaseThirteenFourteenTests(unittest.TestCase):
             ), \
             patch.object(run_engine, "load_anti_repeat_windows", return_value={}), \
             patch.object(run_engine, "check_duplicates", return_value={"ok": True, "reasons": [], "signatures": {}}), \
-            patch.dict(os.environ, {"SOCIAL_DRY_RUN": "true", "POST_SLOT": "morning"}, clear=False):
+            patch.dict(os.environ, {"SOCIAL_DRY_RUN": "true", "POST_SLOT": "morning", "POST_CANDIDATE_COUNT": "2"}, clear=False):
             run_engine.main()
 
         self.assertEqual(mock_generate.call_count, 2)
         self.assertEqual(save_calls[-1]["posts"][-1]["status"], "skipped_validation_or_quality")
         self.assertEqual(len(save_calls[-1]["posts"][-1]["generation_attempts"]), 2)
+
+    def test_run_engine_selects_highest_quality_candidate_from_seven(self) -> None:
+        save_calls: list[dict] = []
+        candidates = []
+        for number in range(1, 8):
+            candidate = deepcopy(_base_content())
+            candidate["post_id"] = f"candidate-{number}"
+            candidate["topic_hash"] = f"topic-{number}"
+            candidates.append(candidate)
+        scores = [82, 91, 87, 94, 89, 90, 86]
+        decisions = [
+            {"decision": "publish", "publishable": True, "reasons": [], "orchestrator_critic_score": 85}
+            for _ in candidates
+        ] + [{"decision": "publish", "publishable": True, "reasons": [], "orchestrator_critic_score": 85}]
+
+        with patch.object(run_engine.generate_posts, "ensure_runtime_data", return_value=None), \
+            patch.object(run_engine.generate_posts, "generate", side_effect=candidates) as mock_generate, \
+            patch.object(run_engine.generate_posts, "load_history", return_value={"posts": []}), \
+            patch.object(run_engine.generate_posts, "save_history", side_effect=lambda history: save_calls.append(history)), \
+            patch.object(run_engine, "load_channel_schedule", return_value={}), \
+            patch.object(run_engine, "eligible_channels_for_slot", return_value={
+                "wordpress": (False, "disabled_env"), "facebook": (False, "not_scheduled"),
+                "instagram": (False, "not_scheduled"), "linkedin": (False, "not_scheduled"),
+            }), \
+            patch.object(run_engine, "validate_generated_content", return_value={"passed": True, "errors": [], "warnings": []}), \
+            patch.object(run_engine, "score_content", side_effect=[{"total": score, "decision": "approve", "component_scores": {}} for score in scores]), \
+            patch.object(run_engine, "decide_publication", side_effect=decisions), \
+            patch.object(run_engine, "load_anti_repeat_windows", return_value={}), \
+            patch.object(run_engine, "check_duplicates", return_value={"ok": True, "reasons": [], "signatures": {}}), \
+            patch.dict(os.environ, {"SOCIAL_DRY_RUN": "true", "POST_SLOT": "morning", "POST_CANDIDATE_COUNT": "7"}, clear=False):
+            run_engine.main()
+
+        self.assertEqual(mock_generate.call_count, 7)
+        saved_post = save_calls[-1]["posts"][-1]
+        self.assertEqual(saved_post["post_id"], "candidate-4")
+        self.assertEqual(saved_post["candidate_selection"], {
+            "candidate_count": 7,
+            "publishable_count": 7,
+            "selected_attempt": 4,
+            "selection_reason": "highest_compliant_quality_score",
+        })
+        self.assertEqual(len(saved_post["generation_attempts"]), 7)
 
     def test_run_engine_revise_retries_with_critic_feedback_and_strategy_lock(self) -> None:
         save_calls: list[dict] = []
@@ -510,7 +552,7 @@ class PhaseThirteenFourteenTests(unittest.TestCase):
             patch.object(run_engine, "decide_publication", side_effect=decisions), \
             patch.object(run_engine, "load_anti_repeat_windows", return_value={}), \
             patch.object(run_engine, "check_duplicates", return_value={"ok": True, "reasons": [], "signatures": {}}), \
-            patch.dict(os.environ, {"SOCIAL_DRY_RUN": "true", "POST_SLOT": "morning"}, clear=False):
+            patch.dict(os.environ, {"SOCIAL_DRY_RUN": "true", "POST_SLOT": "morning", "POST_CANDIDATE_COUNT": "2"}, clear=False):
             run_engine.main()
 
         self.assertEqual(mock_generate.call_count, 2)
@@ -571,7 +613,7 @@ class PhaseThirteenFourteenTests(unittest.TestCase):
             patch.object(run_engine, "decide_publication", side_effect=decisions), \
             patch.object(run_engine, "load_anti_repeat_windows", return_value={}), \
             patch.object(run_engine, "check_duplicates", return_value={"ok": True, "reasons": [], "signatures": {}}), \
-            patch.dict(os.environ, {"SOCIAL_DRY_RUN": "true", "POST_SLOT": "morning"}, clear=False):
+            patch.dict(os.environ, {"SOCIAL_DRY_RUN": "true", "POST_SLOT": "morning", "POST_CANDIDATE_COUNT": "2"}, clear=False):
             run_engine.main()
 
         self.assertEqual(mock_generate.call_count, 2)
@@ -617,7 +659,7 @@ class PhaseThirteenFourteenTests(unittest.TestCase):
             patch.object(run_engine, "decide_publication", return_value=decision), \
             patch.object(run_engine, "load_anti_repeat_windows", return_value={}), \
             patch.object(run_engine, "check_duplicates", return_value={"ok": True, "reasons": [], "signatures": {}}), \
-            patch.dict(os.environ, {"SOCIAL_DRY_RUN": "true", "POST_SLOT": "morning"}, clear=False):
+            patch.dict(os.environ, {"SOCIAL_DRY_RUN": "true", "POST_SLOT": "morning", "POST_CANDIDATE_COUNT": "1"}, clear=False):
             run_engine.main()
 
         self.assertEqual(mock_generate.call_count, 1)

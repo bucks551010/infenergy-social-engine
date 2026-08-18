@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "owner_authored_only": true,
+  "entry_rules": {
+    "store_verbatim": true,
+    "do_not_summarize": true,
+    "do_not_store_finished_captions": true,
+    "require_consent_to_use": true
+  },
+  "required_fields": [
+    "id",
+    "category",
+    "raw_text",
+    "source_provenance",
+    "consent_to_use",
+    "owner_approved_at"
+  ],
+  "materials": []
+}

@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "owner_authored_only": true,
+  "entry_rules": {
+    "store_verbatim": true,
+    "no_paste_ready_copy": true,
+    "product_relevance_may_be_false": true
+  },
+  "required_fields": [
+    "id",
+    "tension",
+    "who_feels_it",
+    "when_it_surfaces",
+    "what_is_at_stake",
+    "product_relevant",
+    "territory",
+    "owner_approved_at"
+  ],
+  "tensions": []
+}

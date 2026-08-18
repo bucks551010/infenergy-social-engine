@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "behaviors": [
+    {
+      "id": "honest_limits",
+      "definition": "State what the product cannot do plainly and unprompted."
+    },
+    {
+      "id": "specificity_with_provenance",
+      "definition": "Use exact numbers only with provenance."
+    },
+    {
+      "id": "answer_hard_question",
+      "definition": "Answer the skeptical buyer's question before asking for a purchase."
+    },
+    {
+      "id": "value_before_asking",
+      "definition": "Deliver useful value before any request."
+    },
+    {
+      "id": "never_overclaim",
+      "definition": "Avoid exaggeration and unsupported capability claims."
+    },
+    {
+      "id": "consistent_presence",
+      "definition": "Maintain reliable, useful presence."
+    },
+    {
+      "id": "open_objection_handling",
+      "definition": "Handle objections openly rather than avoiding them."
+    }
+  ]
+}

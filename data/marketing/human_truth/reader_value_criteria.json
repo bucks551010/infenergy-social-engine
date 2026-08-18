@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "minimum_score": 0.6,
+  "criteria": [
+    {
+      "id": "useful",
+      "question": "Does someone leave knowing or able to do something they could not before?"
+    },
+    {
+      "id": "captivating",
+      "question": "Does it hold attention past the first line without a cheap hook?"
+    },
+    {
+      "id": "caring",
+      "question": "Does it demonstrate we understand their actual situation?"
+    },
+    {
+      "id": "for_them",
+      "question": "Is it oriented to the reader's need, not the sales need?"
+    },
+    {
+      "id": "trust_building",
+      "question": "Does it make buying from us feel safer, not riskier?"
+    }
+  ]
+}

@@ -615,6 +615,7 @@ def _auto_bootstrap_visual_repo() -> dict:
 def _start_slot_thread(
     slot: str,
     force_live: bool = False,
+    force_dry_run: bool = False,
     shadow_mode: bool = False,
     platforms_override: str = "",
     duplicate_mode: str = "",
@@ -631,6 +632,7 @@ def _start_slot_thread(
         kwargs={
             "slot": slot,
             "force_live": force_live,
+            "force_dry_run": force_dry_run,
             "shadow_mode": shadow_mode,
             "platforms_override": platforms_override,
             "duplicate_mode": duplicate_mode,
@@ -1303,6 +1305,7 @@ class HealthHandler(BaseHTTPRequestHandler):
             provided = params.get("token", [""])[0]
             slot = params.get("slot", ["morning"])[0]
             force_live = params.get("live", ["false"])[0].lower() in ("1", "true", "yes")
+            force_dry_run = params.get("dry_run", ["false"])[0].lower() in ("1", "true", "yes")
             shadow_mode = params.get("shadow", ["false"])[0].lower() in ("1", "true", "yes")
             platforms_override = params.get("platforms", [""])[0]
             duplicate_mode = params.get("duplicate_mode", [""])[0].strip().lower()
@@ -1344,6 +1347,7 @@ class HealthHandler(BaseHTTPRequestHandler):
             started = _start_slot_thread(
                 slot,
                 force_live=force_live,
+                force_dry_run=force_dry_run,
                 platforms_override=platforms_override,
                 duplicate_mode=duplicate_mode,
                 readiness_block_override=readiness_block_override,
@@ -1356,6 +1360,7 @@ class HealthHandler(BaseHTTPRequestHandler):
                 "accepted": started,
                 "slot": slot,
                 "force_live": force_live,
+                "force_dry_run": force_dry_run,
                 "shadow_mode": shadow_mode,
                 "platforms": platforms_override,
                 "duplicate_mode": duplicate_mode or "env_default",
@@ -1488,6 +1493,7 @@ def start_health_server() -> None:
 def run_slot(
     slot: str,
     force_live: bool = False,
+    force_dry_run: bool = False,
     shadow_mode: bool = False,
     platforms_override: str = "",
     duplicate_mode: str = "",
@@ -1533,6 +1539,8 @@ def run_slot(
             os.environ["POST_PIPELINE_OVERRIDE"] = pipeline_override
         if force_live:
             os.environ["SOCIAL_DRY_RUN"] = "false"
+        elif force_dry_run:
+            os.environ["SOCIAL_DRY_RUN"] = "true"
         if shadow_mode:
             os.environ["SOCIAL_SHADOW_MODE"] = "true"
 

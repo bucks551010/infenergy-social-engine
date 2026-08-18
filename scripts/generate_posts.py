@@ -5037,9 +5037,7 @@ def generate(
     preferred_model = os.environ.get("GEMINI_MODEL", "").strip()
     model_candidates = [
         preferred_model,
-        "gemini-2.5-flash",
-        "gemini-2.0-flash",
-        "gemini-1.5-flash",
+        "gemini-3.6-flash",
     ]
     model_candidates = [m for m in model_candidates if m]
     preferred_visual_director_model = os.environ.get("GEMINI_VISUAL_DIRECTOR_MODEL", "").strip()

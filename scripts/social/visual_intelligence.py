@@ -19,8 +19,10 @@ Everything is data-driven; safe to run without a network.
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Iterable
 
 from . import libraries
@@ -508,3 +510,130 @@ _UNTRUTHFUL_CLAIMS = (
 def visual_truth_violations(positive_prompt: str) -> list[str]:
     low = positive_prompt.lower()
     return [c for c in _UNTRUTHFUL_CLAIMS if re.search(c, low)]
+
+
+# --- V5 tension-first visual direction -------------------------------------
+
+
+_HUMAN_TRUTH_DIR = Path(__file__).resolve().parents[2] / "data" / "marketing" / "human_truth"
+
+
+def _human_truth_payload(name: str) -> dict[str, Any]:
+    try:
+        payload = json.loads((_HUMAN_TRUTH_DIR / name).read_text(encoding="utf-8"))
+        return payload if isinstance(payload, dict) else {}
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def _v5_archetype(*, reader_job: str, genre_id: str, strategy: dict[str, Any]) -> str:
+    job = str(reader_job or "").upper()
+    genre = str(genre_id or "").lower()
+    if job in {"MAKE_ME_THINK", "START_A_CONVERSATION"}:
+        return "engagement"
+    if job in {"GIVE_ME_A_REFERENCE", "SAVE_ME_TIME", "EXPLAIN_THIS"} or any(token in genre for token in ("checklist", "faq", "myth", "reference")):
+        return "text_forward"
+    if job in {"TEACH_ME", "SHOW_ME", "HELP_ME_CHOOSE", "PREPARE_ME"}:
+        return "educational"
+    if strategy.get("customer_moment") or strategy.get("human_need"):
+        return "human_moment"
+    return "brand_position"
+
+
+def _product_presence(*, archetype: str, offering: dict[str, Any] | None) -> str:
+    if archetype in {"engagement", "text_forward", "human_moment", "brand_position"}:
+        return "absent"
+    if archetype == "educational":
+        return "incidental" if offering else "absent"
+    return "hero" if offering else "absent"
+
+
+def _matching_tension(strategy: dict[str, Any], audience: str) -> dict[str, Any]:
+    tensions = _human_truth_payload("tension_library.json").get("tensions", [])
+    if not isinstance(tensions, list):
+        return {}
+    text = " ".join(str(strategy.get(key) or "") for key in ("customer_moment", "human_need", "angle", "topic")).lower()
+    for tension in tensions:
+        if isinstance(tension, dict) and str(tension.get("who_feels_it") or "") == audience:
+            return tension
+    return next((item for item in tensions if isinstance(item, dict) and any(token in text for token in str(item.get("tension") or "").lower().split())), {})
+
+
+def build_v5_art_directions(
+    *,
+    strategy: dict[str, Any],
+    reader_job: str,
+    genre_id: str,
+    platform: str,
+    offering: dict[str, Any] | None = None,
+    overlay_text: str = "",
+) -> list[dict[str, Any]]:
+    """Create three distinct, scored directions before choosing one render."""
+    identity = _human_truth_payload("visual_identity.json").get("approved_visual_identity", {})
+    archetype = _v5_archetype(reader_job=reader_job, genre_id=genre_id, strategy=strategy)
+    presence = _product_presence(archetype=archetype, offering=offering)
+    audience = str(strategy.get("audience") or "")
+    tension = _matching_tension(strategy, audience)
+    environments = identity.get("environment_library", []) if isinstance(identity, dict) else []
+    lights = identity.get("light_library", []) if isinstance(identity, dict) else []
+    compositions = identity.get("composition_library", []) if isinstance(identity, dict) else []
+    if not environments or not lights or not compositions:
+        return []
+    directions: list[dict[str, Any]] = []
+    for index in range(3):
+        environment = environments[index % len(environments)]
+        light = lights[index % len(lights)]
+        composition = compositions[index % len(compositions)]
+        text_forward = archetype == "text_forward"
+        scene = str(tension.get("visual_register") or strategy.get("customer_moment") or strategy.get("angle") or "a real moment of practical preparation")
+        score = 100.0 - index * 2.0
+        if text_forward and composition.get("negative_space"):
+            score += 4.0
+        if presence == "absent":
+            score += 3.0
+        directions.append({
+            "version": "human_truth_v5",
+            "archetype": archetype,
+            "product_presence": presence,
+            "tension_id": tension.get("id", ""),
+            "scene": scene,
+            "hero_idea": str(strategy.get("human_need") or strategy.get("angle") or scene),
+            "subject": str(tension.get("who_feels_it") or audience or "a person in a real preparation moment"),
+            "environment": environment,
+            "foreground": "one ordinary, used object that makes the moment specific",
+            "midground": "the person or practical task in progress",
+            "background": environment.get("place", "a real regional environment"),
+            "light": light,
+            "composition": composition,
+            "optics": {"focal_length": "35mm", "aperture": "f/4", "focus_point": "the practical action", "motion": "subtle handheld imperfection", "capture_style": "handheld documentary"},
+            "color": {"palette": identity.get("palette", []), "temperature_bias": light.get("temperature", "neutral"), "contrast_curve": light.get("contrast", "balanced"), "saturation": "restrained"},
+            "texture": ", ".join(environment.get("details", [])[:3]),
+            "emotional_register": "capable, calm, and seen",
+            "negative_space": composition.get("negative_space", "upper third for breathing room"),
+            "aspect_ratio": "1:1" if platform.startswith("instagram") else "4:5",
+            "text_overlay": {"enabled": text_forward, "text": overlay_text, "placement": composition.get("negative_space", "upper third"), "safe_margin_ratio": identity.get("typography", {}).get("safe_margin_ratio", 0.08)},
+            "must_not_appear": list(identity.get("never_appears", [])),
+            "style_anchor": "available-light documentary reportage",
+            "reference_conditioning_required": presence in {"incidental", "hero"},
+            "score": score,
+        })
+    return sorted(directions, key=lambda item: float(item["score"]), reverse=True)
+
+
+def compile_v5_scene_prompt(direction: dict[str, Any]) -> str:
+    """Compile one clean photographic background plate; typography is composited later."""
+    light = direction.get("light", {}) if isinstance(direction.get("light"), dict) else {}
+    composition = direction.get("composition", {}) if isinstance(direction.get("composition"), dict) else {}
+    optics = direction.get("optics", {}) if isinstance(direction.get("optics"), dict) else {}
+    color = direction.get("color", {}) if isinstance(direction.get("color"), dict) else {}
+    parts = [
+        f"Photograph {direction.get('subject', 'a real person')} in {direction.get('scene', 'a practical real-world moment')}",
+        f"Set in {direction.get('environment', {}).get('place', 'a specific regional environment') if isinstance(direction.get('environment'), dict) else direction.get('environment', '')}",
+        f"Foreground: {direction.get('foreground', '')}. Midground: {direction.get('midground', '')}. Background: {direction.get('background', '')}",
+        f"Light is {light.get('source', 'available light')} from {light.get('direction', 'the side')}, {light.get('quality', 'natural')}, {light.get('temperature', 'neutral')}, motivated by {light.get('motivation', 'the scene')}",
+        f"Composition is {composition.get('framing', 'medium')} at {composition.get('camera_height', 'eye level')}, {composition.get('angle', 'three-quarter')}, with {composition.get('negative_space', direction.get('negative_space', 'clear negative space'))}",
+        f"Capture at {optics.get('focal_length', '35mm')} {optics.get('aperture', 'f/4')}, focus on {optics.get('focus_point', 'the action')}, {optics.get('capture_style', 'documentary')}",
+        f"Texture: {direction.get('texture', '')}. Color: {', '.join(color.get('palette', []))}; {color.get('temperature_bias', '')}; {color.get('contrast_curve', '')}",
+        f"Style: {direction.get('style_anchor', 'available-light documentary reportage')}. No readable text, signs, screens, logos, badges, watermarks, or rendered typography.",
+    ]
+    return ". ".join(part.strip(". ") for part in parts if part).strip()[:3200]

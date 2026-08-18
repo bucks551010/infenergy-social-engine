@@ -99,3 +99,32 @@ def assess(
     if needs:
         return {"ready": False, "status": "RESEARCH_REQUIRED", "claims": audited, "research_needs": needs}
     return {"ready": True, "status": "READY", "claims": audited, "research_needs": []}
+
+
+def assess_visual_prompt(direction: dict[str, Any], prompt: str, *, has_product_reference: bool) -> dict[str, Any]:
+    """Fail closed before a V5 scene reaches an image provider."""
+    required = ("scene", "light", "composition", "optics", "negative_space", "style_anchor", "product_presence")
+    failures = [f"missing:{field}" for field in required if not direction.get(field)]
+    light = direction.get("light") if isinstance(direction.get("light"), dict) else {}
+    for field in ("source", "direction", "quality", "temperature", "motivation"):
+        if not light.get(field):
+            failures.append(f"missing_light:{field}")
+    presence = str(direction.get("product_presence") or "")
+    prompt_lower = str(prompt or "").lower()
+    if "no readable text" not in prompt_lower:
+        failures.append("rendered_text_not_prohibited")
+    if presence == "absent" and any(token in prompt_lower for token in ("stage the real product", "product hero", "product zone")):
+        failures.append("absent_product_conflict")
+    if direction.get("reference_conditioning_required") and not has_product_reference:
+        failures.append("missing_product_reference")
+    forbidden = [str(item) for item in direction.get("must_not_appear", []) if str(item).lower() in prompt_lower and str(item).lower() not in {"rendered text", "logos"}]
+    if forbidden:
+        failures.extend(f"forbidden_prompt_term:{item}" for item in forbidden)
+    return {
+        "ready": not failures,
+        "status": "READY" if not failures else "REJECTED",
+        "failures": failures,
+        "product_presence": presence,
+        "requires_text_compositing": bool((direction.get("text_overlay") or {}).get("enabled")),
+        "reference_conditioning_required": bool(direction.get("reference_conditioning_required")),
+    }

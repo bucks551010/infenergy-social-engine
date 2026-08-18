@@ -16,5 +16,9 @@
     "territory",
     "owner_approved_at"
   ],
-  "tensions": []
+  "tensions": [
+    {"id": "prepare_before_the_outage", "tension": "Waiting for an outage leaves a household improvising instead of deciding calmly beforehand.", "who_feels_it": "preparedness_buyer", "when_it_surfaces": "storm season and changing weather", "what_is_at_stake": "communication, lighting, and a clear plan for essential devices", "product_relevant": false, "territory": "preparedness over panic", "visual_register": "a Gulf Coast kitchen with storm light through blinds and a practical checklist on a counter", "source_provenance": ["founder_brand_manifesto.origin_story", "personas.preparedness_buyer"], "owner_approved_at": "2026-08-18"},
+    {"id": "care_without_guesswork", "tension": "The person responsible for others needs clarity before an interruption, not a promise after it starts.", "who_feels_it": "caregiver", "when_it_surfaces": "planning for continuity of care", "what_is_at_stake": "confidence in a practical plan", "product_relevant": false, "territory": "calm protective guidance", "visual_register": "a quiet kitchen at dawn, practical supplies arranged without drama", "source_provenance": ["personas.caregiver", "transformations.uncertain_to_in_control"], "owner_approved_at": "2026-08-18"},
+    {"id": "outlet_dependent_work", "tension": "A mobile professional loses momentum when every plan depends on finding the next outlet.", "who_feels_it": "mobile_professional", "when_it_surfaces": "travel, field work, and client days", "what_is_at_stake": "productive time and continuity", "product_relevant": false, "territory": "freedom through practical planning", "visual_register": "an over-shoulder view of a work bag and laptop at a quiet roadside stop, with natural window light", "source_provenance": ["personas.mobile_professional", "transformations.outlet_dependent_to_portable"], "owner_approved_at": "2026-08-18"}
+  ]
 }

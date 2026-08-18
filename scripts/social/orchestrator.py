@@ -28,6 +28,7 @@ from typing import Any
 
 from . import (
     carousel_director,
+    claim_governance,
     claim_intelligence,
     copy_intelligence,
     creative_cognition,
@@ -759,6 +760,17 @@ class SocialIntelligenceOrchestrator:
             art,
             extra_negatives=_bi_visual_prohibitions(bi_ctx),
         )
+        v5_directions = visual_intelligence.build_v5_art_directions(
+            strategy=locked,
+            reader_job=brief.reader_job,
+            genre_id=brief.genre.get("id", ""),
+            platform=platform,
+            offering=bi_offering,
+            overlay_text=hook_text,
+        )
+        v5_direction = v5_directions[0] if v5_directions else {}
+        if v5_direction:
+            positive_prompt = visual_intelligence.compile_v5_scene_prompt(v5_direction)
         v_humanness = visual_intelligence.visual_prompt_humanness(positive_prompt)
 
         # 5. Text/visual allocation
@@ -843,12 +855,21 @@ class SocialIntelligenceOrchestrator:
         art_dict["platform_interpretations"] = creative_packet["platform_interpretations"]
         art_dict["information_priority"] = creative_packet["information_priority"]
         art_dict["benefit_translation"] = creative_packet["benefit_translation"]
+        art_dict["v5_direction_candidates"] = v5_directions
+        art_dict["v5_direction"] = v5_direction
+        art_dict["v5_scene_prompt"] = positive_prompt if v5_direction else ""
         if bi_offering:
             art_dict["product_name"] = bi_offering.get("name", "")
             offering_images = bi_offering.get("images") or []
             if offering_images:
                 art_dict["product_image_url"] = offering_images[0]
-        if pre_render_gate.get("decision") == "CONCEPT_READY":
+        prompt_governance = claim_governance.assess_visual_prompt(
+            v5_direction,
+            positive_prompt,
+            has_product_reference=bool(art_dict.get("product_image_url")),
+        ) if v5_direction else {"ready": True, "status": "LEGACY_DIRECTION"}
+        art_dict["prompt_governance"] = prompt_governance
+        if pre_render_gate.get("decision") == "CONCEPT_READY" and prompt_governance.get("ready"):
             provider_result = self.provider.generate(
                 art_direction=art_dict,
                 positive_prompt=positive_prompt,
@@ -865,6 +886,7 @@ class SocialIntelligenceOrchestrator:
                     "platform": platform,
                     "reason": "pre_render_gate_not_ready",
                     "gate": pre_render_gate,
+                    "prompt_governance": prompt_governance,
                 },
             )
 
@@ -902,6 +924,9 @@ class SocialIntelligenceOrchestrator:
                 "necessity_score": necessity,
                 "required": must_render,
                 "art_direction": art.as_dict(),
+                "v5_direction_candidates": v5_directions,
+                "v5_direction": v5_direction,
+                "prompt_governance": prompt_governance,
                 "positive_prompt": positive_prompt,
                 "negative_prompt": negative_prompt,
                 "prompt_humanness": v_humanness,
@@ -998,6 +1023,12 @@ class SocialIntelligenceOrchestrator:
                     "art_direction_family": creative_packet["SELECTED_ANSWER"]["reference_id"],
                     "visual_concept": creative_packet["SELECTED_ANSWER"]["creative_concept"],
                     "art_direction": art.as_dict(),
+                    "v5_archetype": v5_direction.get("archetype", ""),
+                    "v5_scene": v5_direction.get("scene", ""),
+                    "v5_light": v5_direction.get("light", {}),
+                    "v5_composition": v5_direction.get("composition", {}),
+                    "v5_product_presence": v5_direction.get("product_presence", ""),
+                    "v5_prompt_governance": prompt_governance.get("status", ""),
                     "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
                 },
                 data_dir=self.data_dir,

@@ -134,6 +134,7 @@ class GeminiVisualProvider:
             return fb
 
         layout = art_direction.get("layout_grammar", {}) or {}
+        v5_direction = art_direction.get("v5_direction", {}) if isinstance(art_direction.get("v5_direction"), dict) else {}
         content = {
             "post_id": art_direction.get("post_id") or "preview",
             "topic": art_direction.get("primary_subject", ""),
@@ -141,7 +142,7 @@ class GeminiVisualProvider:
             "selected_cta": art_direction.get("cta", ""),
             "product_name": art_direction.get("product_name", ""),
             "product_image_url": art_direction.get("product_image_url", ""),
-            "on_image_headline": art_direction.get("visual_message", ""),
+            "on_image_headline": (v5_direction.get("text_overlay", {}) or {}).get("text", "") or art_direction.get("visual_message", ""),
             "layout_grammar": layout,
             "platform_interpretations": art_direction.get("platform_interpretations", {}),
             "information_priority": art_direction.get("information_priority", {}),
@@ -150,6 +151,8 @@ class GeminiVisualProvider:
         }
         visual_plan = {
             "image_strategy": "gemini_generated",
+            "v5_direction": v5_direction,
+            "gemini_image_prompt": art_direction.get("v5_scene_prompt", positive_prompt),
             "layout_grammar": layout,
             "platform_interpretations": art_direction.get("platform_interpretations", {}),
             "information_priority": art_direction.get("information_priority", {}),

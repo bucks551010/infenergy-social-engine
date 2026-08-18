@@ -21,5 +21,26 @@
     "source_provenance",
     "owner_approved_at"
   ],
-  "approved_visual_identity": {}
+  "approved_visual_identity": {
+    "palette": ["#15191d", "#112d44", "#f7a30f", "#ffd469"],
+    "light_library": [
+      {"id": "storm_blinds", "source": "overcast storm light through half-closed blinds", "direction": "side", "quality": "soft and diffused", "temperature": "cool overcast", "motivation": "daylight muted by incoming weather", "time_of_day": "midday", "weather_modifier": "storm diffusion and humidity haze", "contrast": "low-key"},
+      {"id": "garage_headlamp", "source": "headlamp", "direction": "three-quarter", "quality": "hard and directional", "temperature": "cool", "motivation": "hands-on preparation in a dim garage", "time_of_day": "full night", "weather_modifier": "dust in the air", "contrast": "chiaroscuro"},
+      {"id": "dawn_window", "source": "dawn through a window", "direction": "side", "quality": "soft and diffused", "temperature": "cool blue hour", "motivation": "the morning after a disrupted night", "time_of_day": "pre-dawn", "weather_modifier": "humidity haze", "contrast": "balanced"}
+    ],
+    "environment_library": [
+      {"id": "gulf_coast_kitchen", "place": "Gulf Coast kitchen", "details": ["worn counter", "half-closed blinds", "fridge magnets", "humid storm light"], "suits": ["preparedness", "caregiver", "education"]},
+      {"id": "spring_tx_garage", "place": "Spring, Texas garage", "details": ["scuffed workbench", "extension cords", "storm-prep bins", "concrete floor"], "suits": ["preparedness", "human_moment", "product_in_context"]},
+      {"id": "driveway_before_weather", "place": "Gulf Coast driveway before weather", "details": ["truck bed", "wet pavement", "heat haze", "packed supplies"], "suits": ["preparedness", "outdoor", "engagement"]}
+    ],
+    "composition_library": [
+      {"id": "through_doorway", "framing": "medium wide", "camera_height": "eye level", "angle": "through-a-doorway", "subject_placement": "edge-weighted", "negative_space": "upper-left for overlay"},
+      {"id": "over_shoulder", "framing": "medium", "camera_height": "eye level", "angle": "over-shoulder", "subject_placement": "thirds", "negative_space": "opposite side of the subject"},
+      {"id": "detail_story", "framing": "close", "camera_height": "low", "angle": "three-quarter", "subject_placement": "thirds", "negative_space": "upper third"}
+    ],
+    "typography": {"font_preference": "DejaVu Sans Bold", "safe_margin_ratio": 0.08, "minimum_contrast_ratio": 4.5, "max_overlay_lines": 4},
+    "never_appears": ["rendered text", "logos", "glossy studio product on seamless white", "generic smiling stock families", "disaster spectacle", "fake lens flare", "plastic skin", "impossible physics", "generic tech blue gradients"],
+    "source_provenance": ["data/marketing/founder_brand_manifesto.json", "HUMAN_TRUTH_ENGINE_V5 owner direction"],
+    "owner_approved_at": "2026-08-18"
+  }
 }

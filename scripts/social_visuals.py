@@ -457,6 +457,8 @@ def _gemini_semantic_plate_quality(
     enabled = str(os.environ.get("GEMINI_VISUAL_QA_ENABLED", "true")).strip().lower() not in {"0", "false", "no"}
     if not enabled:
         return True, []
+    if expected_headline == "" and expected_cta == "":
+        return True, []
     spec = _platform_visual_spec(platform)
     review_prompt = (
         "Review this finished social ad card. It must already contain rendered, legible on-image text: "
@@ -508,6 +510,10 @@ _CONSUMER_STAGE_LABELS = {
 
 
 def _build_gemini_image_prompt(content: dict[str, Any], platform: str, visual_plan: dict[str, Any]) -> str:
+    v5_direction = _safe_json_dict(visual_plan.get("v5_direction"))
+    v5_prompt = str(visual_plan.get("gemini_image_prompt") or "").strip()
+    if v5_direction and v5_prompt:
+        return v5_prompt[:3200]
     spec = _platform_visual_spec(platform)
     platform_key = platform.split("_", 1)[0]
     platform_cfg = _safe_json_dict((visual_plan.get("platform_overrides") or {}).get(platform))
@@ -692,6 +698,50 @@ def _build_gemini_image_prompt(content: dict[str, Any], platform: str, visual_pl
     )
 
 
+def _apply_v5_text_overlay(image: Any, direction: dict[str, Any]) -> tuple[Any, str]:
+    """Composite approved text after image generation so model typography never reaches publication."""
+    overlay = direction.get("text_overlay") if isinstance(direction.get("text_overlay"), dict) else {}
+    text = normalize_brand_text(str(overlay.get("text") or "")).strip()
+    if not overlay.get("enabled") or not text:
+        return image, ""
+    image_module, draw_module, font_module = _load_pillow()
+    if image_module is None or draw_module is None or font_module is None:
+        return image, "pillow_unavailable_for_overlay"
+    width, height = image.size
+    margin = max(24, int(min(width, height) * float(overlay.get("safe_margin_ratio") or 0.08)))
+    max_width = width - margin * 2
+    font_size = max(28, int(min(width, height) * 0.072))
+    try:
+        font = font_module.truetype("DejaVuSans-Bold.ttf", font_size)
+    except Exception:
+        font = font_module.load_default()
+    draw = draw_module.Draw(image, "RGBA")
+    words = text.split()
+    lines: list[str] = []
+    current = ""
+    for word in words:
+        candidate = f"{current} {word}".strip()
+        if draw.textbbox((0, 0), candidate, font=font)[2] <= max_width or not current:
+            current = candidate
+        else:
+            lines.append(current)
+            current = word
+    if current:
+        lines.append(current)
+    if len(lines) > 4:
+        return image, "overlay_text_exceeds_line_budget"
+    line_height = int(font_size * 1.2)
+    block_height = len(lines) * line_height + margin
+    if block_height > height * 0.45:
+        return image, "overlay_text_exceeds_safe_area"
+    placement = str(overlay.get("placement") or "upper third").lower()
+    y_start = height - margin - block_height if "bottom" in placement else margin
+    draw.rounded_rectangle((margin // 2, y_start - margin // 2, width - margin // 2, y_start + block_height), radius=12, fill=(10, 18, 26, 190))
+    for index, line in enumerate(lines):
+        draw.text((margin, y_start + index * line_height), line, font=font, fill=(255, 255, 255, 255))
+    return image, ""
+
+
 def _generate_gemini_full_creative(content: dict[str, Any], platform: str, visual_plan: dict[str, Any], output_path: str) -> tuple[bool, str, dict[str, Any]]:
     started_at = datetime.now(timezone.utc).isoformat()
     api_key = os.environ.get("GEMINI_API_KEY", "").strip()
@@ -761,8 +811,10 @@ def _generate_gemini_full_creative(content: dict[str, Any], platform: str, visua
 
     prompt = _build_gemini_image_prompt(content, platform, visual_plan)
     metadata["visual_prompt_hash"] = hashlib.sha256(prompt.encode("utf-8")).hexdigest()
-    expected_headline, _ = _headline_lockup(content)
-    expected_cta = normalize_brand_text(str(content.get("selected_cta") or "Learn more"))
+    v5_direction = _safe_json_dict(visual_plan.get("v5_direction"))
+    v5_text_forward = bool((_safe_json_dict(v5_direction.get("text_overlay"))).get("enabled"))
+    expected_headline, _ = _headline_lockup(content) if not v5_text_forward else ("", "")
+    expected_cta = normalize_brand_text(str(content.get("selected_cta") or "Learn more")) if not v5_text_forward else ""
     repo_context = _load_visual_repo_context()
     repo_refs = repo_context.get("references", []) if isinstance(repo_context, dict) else []
     reasons_by_model: dict[str, str] = {}
@@ -805,7 +857,7 @@ def _generate_gemini_full_creative(content: dict[str, Any], platform: str, visua
                 continue
             seen_models.add(model_name)
             for attempt in range(2):
-                retry_note = "" if attempt == 0 else " Previous attempt failed automated quality checks. Keep every listed text string exact, legible, and correctly spelled, and preserve the requested aspect ratio."
+                retry_note = "" if attempt == 0 else (" Previous attempt failed automated quality checks. Preserve the requested aspect ratio and produce a physically credible scene." if v5_direction else " Previous attempt failed automated quality checks. Keep every listed text string exact, legible, and correctly spelled, and preserve the requested aspect ratio.")
                 contents: Any = [prompt + retry_note, *reference_parts] if reference_parts else prompt + retry_note
                 try:
                     config_kwargs: dict[str, Any] = {"response_modalities": ["TEXT", "IMAGE"]}
@@ -839,6 +891,10 @@ def _generate_gemini_full_creative(content: dict[str, Any], platform: str, visua
                     generated = _resize_cover(generated, spec["target"], image_module)
                     if generated.size != spec["target"]:
                         reasons_by_model[model_name] = "resize_mismatch"
+                        continue
+                    generated, overlay_error = _apply_v5_text_overlay(generated, v5_direction)
+                    if overlay_error:
+                        reasons_by_model[model_name] = overlay_error
                         continue
                     os.makedirs(os.path.dirname(output_path), exist_ok=True)
                     generated.save(output_path, format="PNG", optimize=True)
@@ -1034,6 +1090,15 @@ def generate_visuals(content: dict[str, Any], visual_plan: dict[str, Any] | None
             product_overlay_applied[platform] = product_specific_source_present
             visuals[platform] = file_path
             artifact_reviews[platform] = review_rendered_visual(file_path, platform)
+            v5_direction = _safe_json_dict(plan.get("v5_direction"))
+            if v5_direction:
+                try:
+                    from agents import visual_qa_reviewer
+                    visual_generation[platform]["v5_qa"] = visual_qa_reviewer.run(
+                        DATA_DIR, image_path=file_path, platform=platform, direction=v5_direction
+                    )
+                except Exception as exc:
+                    visual_generation[platform]["v5_qa"] = {"direction_fidelity": "UNAVAILABLE", "reason": type(exc).__name__}
         elif resolved_override and _save_product_photo_fallback(resolved_override, file_path, platform):
             render_engines[platform] = "approved_product_photo"
             product_overlay_applied[platform] = True

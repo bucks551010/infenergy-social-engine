@@ -63,7 +63,7 @@ def review(image_bytes: bytes, platform: str) -> dict:
         return _default_report()
 
 
-def run(data_dir: str, image_path: str = "", platform: str = "facebook") -> dict:
+def run(data_dir: str, image_path: str = "", platform: str = "facebook", direction: dict[str, Any] | None = None) -> dict:
     raw = b""
     if image_path and os.path.exists(image_path):
         try:
@@ -72,12 +72,31 @@ def run(data_dir: str, image_path: str = "", platform: str = "facebook") -> dict
         except Exception:
             raw = b""
     report = review(raw, platform)
+    expected = direction if isinstance(direction, dict) else {}
+    technical_issues: list[str] = []
+    if not raw:
+        technical_issues.append("image_missing")
+    if expected and not expected.get("scene"):
+        technical_issues.append("direction_missing_scene")
+    light = expected.get("light") if isinstance(expected.get("light"), dict) else {}
+    if expected and not all(light.get(field) for field in ("source", "direction", "quality", "temperature", "motivation")):
+        technical_issues.append("direction_missing_explicit_light")
+    if expected and not expected.get("composition"):
+        technical_issues.append("direction_missing_composition")
+    deterministic = {
+        "direction_fidelity": "PASS" if not technical_issues else "REVIEW",
+        "product_fidelity": "NOT_REQUIRED" if expected.get("product_presence") == "absent" else "REFERENCE_REQUIRED" if expected.get("reference_conditioning_required") else "NOT_APPLICABLE",
+        "technical_issues": technical_issues,
+        "overlay_required": bool((expected.get("text_overlay") or {}).get("enabled")),
+        "intent_result_delta": "UNASSESSED" if not raw else "PENDING_SEMANTIC_REVIEW",
+    }
     payload = {
         "agent": "visual_qa_reviewer",
         "time_utc": utc_now(),
         "image_path": image_path,
         "platform": platform,
         **report,
+        **deterministic,
     }
     write_snapshot(data_dir, "visual_qa_reviewer", payload)
     return payload

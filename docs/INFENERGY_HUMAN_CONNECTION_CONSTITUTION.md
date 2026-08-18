@@ -15,6 +15,19 @@ Preparedness means clarity before pressure: understanding what matters, what is 
 available, and what equipment can and cannot do. It does not mean buying everything,
 manufacturing panic, pushing the largest product, or treating a possibility as a certainty.
 
+## The Four Operating Principles
+
+- **Moments over demographics:** We start with the lived decision state, such as a parent watching
+	the weather forecast while mentally checking phones, flashlights, the refrigerator, children,
+	and what happens if power is out overnight. A demographic label can route context; it cannot
+	substitute for the moment.
+- **Responsibility over fear:** We understand the people and responsibilities someone carries,
+	then help them think clearly. We never ask them to be scared.
+- **Capability over gadgets:** The hero is the person's ability to remain capable. A product is a
+	tool that may support that ability, not the starting point of the story.
+- **Relationship over transaction:** The goal is a durable habit: before making a personal-power
+	decision, a person wants to see what Infenergy says.
+
 ## The People And Moments We Care About
 
 Infenergy serves people carrying responsibility: families, caregivers, travelers and mobile

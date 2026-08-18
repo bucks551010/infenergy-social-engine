@@ -42,7 +42,7 @@ def validate_constitution_integrity() -> dict[str, Any]:
     errors: list[str] = []
     if constitution.get("schema_version") != "constitution.v1":
         errors.append("invalid_schema_version")
-    for key in ("constitution_id", "core_mandates", "trust_boundaries", "voice", "references"):
+    for key in ("constitution_id", "operating_principles", "core_mandates", "moment_worlds", "trust_boundaries", "voice", "references"):
         if not constitution.get(key):
             errors.append(f"missing:{key}")
     repo_root = Path(paths._repo_root())
@@ -84,7 +84,9 @@ def compile_constitutional_context(*, segment_id: str = "", moment_id: str = "",
         "human_value_ladder": constitution.get("human_value_ladder", {}),
         "audience_world": _pick_by_id(constitution.get("audience_worlds", []), segment_id),
         "buying_moment": moment,
+        "moment_world": _pick_by_id(constitution.get("moment_worlds", []), moment),
         "content_job": content_job,
+        "operating_principles": constitution.get("operating_principles", []),
         "trust_boundaries": constitution.get("trust_boundaries", {}),
         "voice_guidance": {
             "name": voice.get("name", ""),

@@ -4,6 +4,12 @@
   "owner_authored_only": true,
   "owner": "Joseph Moten",
   "source_authority_order": ["OWNER_CONSTITUTIONAL_TRUTH", "OWNER_OBSERVATION", "OWNED_VERIFIED_FACT", "REAL_CUSTOMER_LANGUAGE", "ACCEPTED_RESEARCH", "SYSTEM_DERIVATION", "SYSTEM_HYPOTHESIS", "FALLBACK_DEFAULT"],
+  "operating_principles": [
+    {"id": "moments_over_demographics", "text": "Start from a specific lived moment and decision state, not a broad demographic label. Demographics may help route context but never replace the moment.", "source_authority": "OWNER_CONSTITUTIONAL_TRUTH"},
+    {"id": "responsibility_over_fear", "text": "Understand the responsibilities people carry and help them think clearly about what matters. Never ask them to be scared.", "source_authority": "OWNER_CONSTITUTIONAL_TRUTH"},
+    {"id": "capability_over_gadgets", "text": "The person's ability to remain capable is the hero. Products are tools that may support that capability; they are never the starting point.", "source_authority": "OWNER_CONSTITUTIONAL_TRUTH"},
+    {"id": "relationship_over_transaction", "text": "Build the habit of consulting Infenergy before a personal-power decision. A sale is one possible result of becoming a trusted source of understanding.", "source_authority": "OWNER_CONSTITUTIONAL_TRUTH"}
+  ],
   "core_mandates": [
     {"id": "human_reality_before_product", "text": "Start with the person, situation, responsibility, and what matters before considering a product.", "source_authority": "OWNER_CONSTITUTIONAL_TRUTH"},
     {"id": "preparedness_over_panic", "text": "Preparedness is clarity before pressure, not fear as a sales weapon.", "source_authority": "OWNER_CONSTITUTIONAL_TRUTH"},
@@ -21,6 +27,12 @@
     {"id": "student_outdoor_user", "responsibility": "Make a realistic, budget-aware fit decision for uneven access to power or time away from infrastructure.", "product_relevance": "situation_dependent", "source_authority": "OWNER_CONSTITUTIONAL_TRUTH"}
   ],
   "buying_moments": ["weather_forecast_changes", "hurricane_season_approaches", "outage_or_power_interruption", "trip_or_camping_plan", "limited_outlet_access_for_work_or_school", "emergency_kit_planning", "power_bank_vs_power_station_comparison", "device_compatibility_question", "possible_overbuying_or_underbuying"],
+  "moment_worlds": [
+    {"id": "weather_forecast_changes", "person": "A parent watching a changing weather forecast in the evening.", "decision_state": "Mentally checking phones, flashlights, refrigerator, children, and what happens if power is out overnight.", "responsibility": "Decide what deserves attention before pressure makes every choice feel urgent.", "human_question": "What would we actually need to keep working?", "capability_goal": "Know household priorities and the limits of the available power plan.", "product_role": "optional_or_downstream", "source_authority": "OWNER_CONSTITUTIONAL_TRUTH"},
+    {"id": "outage_or_power_interruption", "person": "A household hearing the fridge stop and the house become unusually quiet.", "decision_state": "Normal routines, communication, information, and comfort may suddenly need a plan.", "responsibility": "Prioritize people and essentials without turning uncertainty into panic.", "human_question": "What matters first, and what can our current setup really support?", "capability_goal": "Move from reacting to knowing what can be done next.", "product_role": "situation_dependent", "source_authority": "OWNER_CONSTITUTIONAL_TRUTH"},
+    {"id": "limited_outlet_access_for_work_or_school", "person": "A traveler, student, or mobile worker away from a dependable outlet.", "decision_state": "A phone or work device is losing charge while the next reliable power source is uncertain.", "responsibility": "Protect the ability to communicate, work, learn, or navigate without carrying more than is useful.", "human_question": "What capability is worth carrying for this actual day?", "capability_goal": "Choose a realistic portable-power plan matched to the device and situation.", "product_role": "situation_dependent", "source_authority": "OWNER_CONSTITUTIONAL_TRUTH"},
+    {"id": "device_compatibility_question", "person": "A customer trying to understand watt-hours, ports, charging standards, or whether a device will work.", "decision_state": "Technical language is obscuring a practical decision.", "responsibility": "Avoid wasting money or relying on an assumption when the needed answer can be explained clearly.", "human_question": "What does this specification mean for my actual device and use?", "capability_goal": "Understand enough to make a right-fit decision with verified facts.", "product_role": "situation_dependent", "source_authority": "OWNER_CONSTITUTIONAL_TRUTH"}
+  ],
   "content_jobs": ["teach", "help_decide", "help_prepare", "help_plan", "answer_a_question", "correct_a_misconception", "translate_a_technical_concept", "show_a_capability", "build_trust", "start_a_conversation", "sell"],
   "scene_library": [
     {"id": "gulf_coast_outage_blue_hour", "classification": "CREATIVE_EXEMPLAR", "setting": "A lived-in Gulf Coast home at blue hour after a power interruption.", "details": ["rain reflections", "kitchen island", "phone", "refrigerator", "handwritten household note"], "human_question": "What actually needs to stay working?", "content_opportunity": "Preparedness starts with priorities.", "product_role": "optional_or_downstream", "source_authority": "OWNER_CONSTITUTIONAL_TRUTH"},
@@ -37,6 +49,6 @@
     {"text": "Emergency Ready. Family Powered.", "source": "historical founder language", "purpose": "creative territory", "status": "NEEDS_OWNER_DECISION", "public_approval": false, "conceptual_meaning": "equipment supports people and routines"},
     {"text": "Disaster Proof Products.", "source": "founder pitch", "purpose": "historical product language", "status": "RETIRED_UNSUPPORTED", "public_approval": false, "conceptual_meaning": "products can matter when routines or infrastructure are difficult"}
   ],
-  "reputation_destination": "When people need to think about personal power, preparedness, or portable energy, Infenergy is a trusted place to help them understand, prioritize, and choose responsibly.",
+  "reputation_destination": "Before making a personal-power decision, people think to see what Infenergy says because it consistently helps them understand, prioritize, and choose responsibly.",
   "references": ["data/marketing/founder_brand_manifesto.json", "data/marketing/founder_shark_tank_pitch_2026-08-11.txt", "data/marketing/human_truth/trust_behaviors.json", "data/marketing/human_truth/reader_value_criteria.json", "data/social/audience_world.json"]
 }

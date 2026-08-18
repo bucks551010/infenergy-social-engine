@@ -26,7 +26,15 @@ def test_constitution_is_valid_and_historical_language_is_not_public_copy() -> N
     assert context["source_authority"] == "OWNER_CONSTITUTIONAL_TRUTH"
     assert context["audience_world"]["id"] == "family_parent"
     assert context["buying_moment"] == "outage_or_power_interruption"
+    assert context["moment_world"]["id"] == "outage_or_power_interruption"
+    assert context["moment_world"]["capability_goal"]
     assert context["content_job"] == "help_prepare"
+    assert [principle["id"] for principle in context["operating_principles"]] == [
+        "moments_over_demographics",
+        "responsibility_over_fear",
+        "capability_over_gadgets",
+        "relationship_over_transaction",
+    ]
     assert context["approved_historical_language"] == []
     assert context["constitution_checksum"]
     assert context["manifesto_checksum"]
@@ -76,3 +84,20 @@ def test_changed_manifesto_propagates_without_replacing_catalog(tmp_path: Path, 
     assert "mission" in affected_fields
     assert inventory_db.fetch_brand_profile(data_dir)["mission"] == second["mission"]
     assert inventory_db.products_count(data_dir) == 1
+
+
+def test_weather_radar_parent_compiles_as_a_responsibility_moment() -> None:
+    from business_intelligence.constitution import compile_constitutional_context
+
+    context = compile_constitutional_context(
+        segment_id="family_parent",
+        moment_id="weather_forecast_changes",
+        job="help_plan",
+    )
+
+    moment = context["moment_world"]
+    assert moment["person"] == "A parent watching a changing weather forecast in the evening."
+    assert "phones, flashlights, refrigerator, children" in moment["decision_state"]
+    assert moment["responsibility"]
+    assert moment["capability_goal"]
+    assert moment["product_role"] == "optional_or_downstream"

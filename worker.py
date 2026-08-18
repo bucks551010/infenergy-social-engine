@@ -415,12 +415,20 @@ def _parse_preview_params(params: dict) -> dict:
 
 
 def _content_preview(preview_params: dict) -> dict:
-    content = generate_posts.generate(
-        preview_params["slot"],
-        funnel_stage_override=str(preview_params.get("funnel_stage", "")),
-        product_id_override=str(preview_params.get("product_id", "")),
-        pipeline_override=str(preview_params.get("pipeline", "")),
-    )
+    previous_text_only = os.environ.get("POST_TEXT_ONLY")
+    os.environ["POST_TEXT_ONLY"] = "true"
+    try:
+        content = generate_posts.generate(
+            preview_params["slot"],
+            funnel_stage_override=str(preview_params.get("funnel_stage", "")),
+            product_id_override=str(preview_params.get("product_id", "")),
+            pipeline_override=str(preview_params.get("pipeline", "")),
+        )
+    finally:
+        if previous_text_only is None:
+            os.environ.pop("POST_TEXT_ONLY", None)
+        else:
+            os.environ["POST_TEXT_ONLY"] = previous_text_only
     platform = preview_params.get("platform", "")
     requested_stage = preview_params.get("funnel_stage", "")
     requested_product_id = preview_params.get("product_id", "")

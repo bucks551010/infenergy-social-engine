@@ -346,11 +346,14 @@ def _route_generate_orchestrator(
     )
     from social import reels
 
-    instagram_decision = reels.choose_instagram_media(
-        strategy_lock=legacy["strategy_lock"],
-        components=components,
-        visual_plan=visual_pkg,
-    )
+    if _text_only_generation():
+        instagram_decision = {"selected_format": "DEFERRED", "reason": "text_only_generation"}
+    else:
+        instagram_decision = reels.choose_instagram_media(
+            strategy_lock=legacy["strategy_lock"],
+            components=components,
+            visual_plan=visual_pkg,
+        )
     legacy["instagram_media_decision"] = instagram_decision
     platform_posts["instagram"]["media_type"] = instagram_decision["selected_format"]
     platform_posts["instagram"]["instagram_media_decision"] = instagram_decision
@@ -6180,11 +6183,14 @@ Return ONLY valid JSON with these exact keys (no markdown, no code fences):
         from social import reels
 
         strategy_lock = content.get("strategy_lock") if isinstance(content.get("strategy_lock"), dict) else {}
-        instagram_decision = reels.choose_instagram_media(
-            strategy_lock=strategy_lock,
-            components=components,
-            visual_plan=visual_plan,
-        )
+        if _text_only_generation():
+            instagram_decision = {"selected_format": "DEFERRED", "reason": "text_only_generation"}
+        else:
+            instagram_decision = reels.choose_instagram_media(
+                strategy_lock=strategy_lock,
+                components=components,
+                visual_plan=visual_plan,
+            )
         content["instagram_media_decision"] = instagram_decision
         platform_posts["instagram"]["media_type"] = instagram_decision["selected_format"]
         platform_posts["instagram"]["instagram_media_decision"] = instagram_decision

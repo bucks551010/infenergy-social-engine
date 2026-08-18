@@ -161,28 +161,39 @@ class GeminiVisualProvider:
             "mood": art_direction.get("mood", ""),
         }
         plat_key = platform.split("_", 1)[0]
-
-        try:
-            result = social_visuals.generate_visuals(content, visual_plan)
-        except Exception as exc:
+        attempts = [{"direction": v5_direction, "prompt": visual_plan["gemini_image_prompt"], "kind": "primary"}]
+        attempts.extend(
+            {"direction": item.get("direction", {}), "prompt": item.get("prompt", ""), "kind": "next_direction"}
+            for item in art_direction.get("v5_fallback_candidates", [])
+            if isinstance(item, dict) and isinstance(item.get("direction"), dict) and str(item.get("prompt", "")).strip()
+        )
+        fallback_attempts: list[dict[str, str]] = []
+        result: dict[str, Any] = {}
+        asset_path: str | None = None
+        for attempt in attempts:
+            attempt_plan = dict(visual_plan)
+            attempt_plan["v5_direction"] = attempt["direction"]
+            attempt_plan["gemini_image_prompt"] = attempt["prompt"]
+            try:
+                result = social_visuals.generate_visuals(content, attempt_plan)
+            except Exception as exc:
+                fallback_attempts.append({"kind": attempt["kind"], "reason": str(exc)[:240]})
+                continue
+            asset_path = result.get(plat_key) if isinstance(result, dict) else None
+            if asset_path:
+                break
+            fallback_attempts.append({
+                "kind": attempt["kind"],
+                "reason": str((result.get("fallback_reasons", {}) or {}).get(plat_key, "no_asset"))[:240] if isinstance(result, dict) else "invalid_result",
+            })
+        if not asset_path and fallback_attempts:
             fb = self._fallback.generate(
                 art_direction=art_direction,
                 positive_prompt=positive_prompt,
                 negative_prompt=negative_prompt,
                 platform=platform,
             )
-            fb.provider_meta["gemini_error"] = str(exc)
-            return fb
-
-        asset_path = result.get(plat_key) if isinstance(result, dict) else None
-        if not asset_path:
-            fb = self._fallback.generate(
-                art_direction=art_direction,
-                positive_prompt=positive_prompt,
-                negative_prompt=negative_prompt,
-                platform=platform,
-            )
-            fb.provider_meta["gemini_fallback_reason"] = (result.get("fallback_reasons", {}) or {}).get(plat_key, "no_asset")
+            fb.provider_meta["fallback_ladder"] = fallback_attempts
             return fb
 
         return VisualResult(
@@ -191,7 +202,7 @@ class GeminiVisualProvider:
             prompt=positive_prompt,
             negative_prompt=negative_prompt,
             asset_path=asset_path,
-            provider_meta={"platform": platform, **{k: v for k, v in result.items() if k != plat_key}},
+            provider_meta={"platform": platform, "fallback_ladder": fallback_attempts, **{k: v for k, v in result.items() if k != plat_key}},
         )
 
 

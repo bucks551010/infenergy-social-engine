@@ -878,7 +878,24 @@ class SocialIntelligenceOrchestrator:
             verified_facts=list((bi_offering or {}).get("verified_facts") or verified_facts or _bi_verified_facts(bi_ctx)),
             forbidden_claims=_bi_forbidden_claims(bi_ctx),
         ) if v5_direction else {"ready": True, "status": "LEGACY_DIRECTION"}
+        v5_fallback_candidates = []
+        for candidate in v5_directions[1:]:
+            candidate_prompt = visual_intelligence.compile_v5_scene_prompt(candidate)
+            candidate_governance = claim_governance.assess_visual_prompt(
+                candidate,
+                candidate_prompt,
+                has_product_reference=bool(art_dict.get("product_image_url")),
+                verified_facts=list((bi_offering or {}).get("verified_facts") or verified_facts or _bi_verified_facts(bi_ctx)),
+                forbidden_claims=_bi_forbidden_claims(bi_ctx),
+            )
+            if candidate_governance.get("ready"):
+                v5_fallback_candidates.append({
+                    "direction": candidate,
+                    "prompt": candidate_prompt,
+                    "prompt_governance": candidate_governance,
+                })
         art_dict["prompt_governance"] = prompt_governance
+        art_dict["v5_fallback_candidates"] = v5_fallback_candidates
         art_dict["human_truth_gate"] = human_truth
         if pre_render_gate.get("decision") == "CONCEPT_READY" and prompt_governance.get("ready") and human_truth.get("ready"):
             provider_result = self.provider.generate(
@@ -937,6 +954,7 @@ class SocialIntelligenceOrchestrator:
                 "required": must_render,
                 "art_direction": art.as_dict(),
                 "v5_direction_candidates": v5_directions,
+                "v5_fallback_candidates": v5_fallback_candidates,
                 "v5_direction": v5_direction,
                 "prompt_governance": prompt_governance,
                 "human_truth_gate": human_truth,

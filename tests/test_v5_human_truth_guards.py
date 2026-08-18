@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import sys
 import tempfile
+import types
 
 
 _REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -12,6 +13,7 @@ from run_engine import _v5_semantic_visual_errors
 from social.claim_governance import assess_visual_prompt
 from social.quality_intelligence import human_truth_gate
 from social.living_intelligence import load, propose_static_update
+from social.visual_provider import GeminiVisualProvider
 from social.visual_intelligence import build_v5_art_directions, compile_v5_scene_prompt
 
 
@@ -75,3 +77,30 @@ def test_static_proposal_stays_pending_owner_approval() -> None:
 
     assert proposal["status"] == "PENDING_OWNER_APPROVAL"
     assert load(data_dir)["static_proposals"][0]["rationale"] == "new first-party evidence needs review"
+
+
+def test_gemini_provider_tries_next_governed_v5_direction(monkeypatch) -> None:
+    calls: list[str] = []
+
+    def generate_visuals(_content, plan):
+        calls.append(plan["gemini_image_prompt"])
+        return {"fallback_reasons": {"instagram": "primary_failed"}} if len(calls) == 1 else {"instagram": "alternate.png"}
+
+    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
+    monkeypatch.setitem(sys.modules, "social_visuals", types.SimpleNamespace(generate_visuals=generate_visuals))
+    result = GeminiVisualProvider().generate(
+        art_direction={
+            "post_id": "p1",
+            "v5_direction": {"scene": "primary"},
+            "v5_scene_prompt": "primary prompt",
+            "v5_fallback_candidates": [{"direction": {"scene": "alternate"}, "prompt": "alternate prompt", "prompt_governance": {"ready": True}}],
+        },
+        positive_prompt="primary prompt",
+        negative_prompt="",
+        platform="instagram_feed",
+    )
+
+    assert result.kind == "generated_image"
+    assert result.asset_path == "alternate.png"
+    assert calls == ["primary prompt", "alternate prompt"]
+    assert result.provider_meta["fallback_ladder"] == [{"kind": "primary", "reason": "primary_failed"}]

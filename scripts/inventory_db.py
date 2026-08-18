@@ -90,6 +90,12 @@ def init_inventory_db(data_dir: str) -> str:
                 updated_at_utc TEXT NOT NULL
             );
 
+            CREATE TABLE IF NOT EXISTS brand_profile_source_state (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                manifesto_checksum TEXT NOT NULL,
+                synced_at_utc TEXT NOT NULL
+            );
+
             CREATE TABLE IF NOT EXISTS selling_ideology (
                 id INTEGER PRIMARY KEY CHECK (id = 1),
                 framework_mode TEXT,
@@ -358,6 +364,35 @@ def upsert_brand_profile(data_dir: str, profile: dict) -> bool:
         )
         conn.commit()
         return True
+    finally:
+        conn.close()
+
+
+def get_brand_profile_manifesto_checksum(data_dir: str) -> str:
+    conn = _connect(data_dir)
+    try:
+        row = conn.execute(
+            "SELECT manifesto_checksum FROM brand_profile_source_state WHERE id = 1"
+        ).fetchone()
+        return str(row["manifesto_checksum"] or "") if row else ""
+    finally:
+        conn.close()
+
+
+def set_brand_profile_manifesto_checksum(data_dir: str, checksum: str) -> None:
+    conn = _connect(data_dir)
+    try:
+        conn.execute(
+            """
+            INSERT INTO brand_profile_source_state (id, manifesto_checksum, synced_at_utc)
+            VALUES (1, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                manifesto_checksum = excluded.manifesto_checksum,
+                synced_at_utc = excluded.synced_at_utc
+            """,
+            (str(checksum or ""), _utc_now()),
+        )
+        conn.commit()
     finally:
         conn.close()
 

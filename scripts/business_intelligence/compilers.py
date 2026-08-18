@@ -17,7 +17,7 @@ import json
 import os
 from typing import Any
 
-from . import paths, profile as profile_mod
+from . import constitution, paths, profile as profile_mod
 
 
 def _cache(name: str, payload: dict[str, Any]) -> None:
@@ -73,7 +73,7 @@ def compile_conversion_context(*, segment_id: str = "", offering_id: str = "") -
 # --- Creative context (§45) -------------------------------------------
 
 
-def compile_creative_context(*, territory_id: str = "", segment_id: str = "", offering_id: str = "") -> dict[str, Any]:
+def compile_creative_context(*, territory_id: str = "", segment_id: str = "", offering_id: str = "", moment_id: str = "", job: str = "") -> dict[str, Any]:
     p = _load_profile()
     territories = p.get("content_territories", [])
     territory = next((t for t in territories if t.get("territory_id") == territory_id), None) if territory_id else None
@@ -107,6 +107,11 @@ def compile_creative_context(*, territory_id: str = "", segment_id: str = "", of
             "visual": p.get("visual", {}).get("prohibited_visual_patterns", []),
         },
         "learning_state": p.get("learning_state", {}),
+        "human_connection": constitution.compile_constitutional_context(
+            segment_id=segment_id,
+            moment_id=moment_id,
+            job=job,
+        ),
     }
     _cache("creative_context.json", payload)
     return payload

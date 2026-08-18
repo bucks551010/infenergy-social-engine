@@ -12,6 +12,7 @@ from . import (
     bootstrap as bootstrap_mod,
     compilers,
     conference,
+    constitution,
     critic,
     evidence,
     learning,
@@ -66,16 +67,26 @@ def compile_conversion_context(*, segment_id: str = "", offering_id: str = "") -
     return compilers.compile_conversion_context(segment_id=segment_id, offering_id=offering_id)
 
 
-def compile_creative_context(*, territory_id: str = "", segment_id: str = "", offering_id: str = "") -> dict[str, Any]:
+def compile_creative_context(*, territory_id: str = "", segment_id: str = "", offering_id: str = "", moment_id: str = "", job: str = "") -> dict[str, Any]:
     return compilers.compile_creative_context(
         territory_id=territory_id,
         segment_id=segment_id,
         offering_id=offering_id,
+        moment_id=moment_id,
+        job=job,
     )
 
 
 def compile_orchestrator_context() -> dict[str, Any]:
     return compilers.compile_orchestrator_context()
+
+
+def compile_human_connection_context(*, segment_id: str = "", moment_id: str = "", job: str = "") -> dict[str, Any]:
+    return constitution.compile_constitutional_context(segment_id=segment_id, moment_id=moment_id, job=job)
+
+
+def validate_human_connection_constitution() -> dict[str, Any]:
+    return constitution.validate_constitution_integrity()
 
 
 def run_agent_conference(*, persist: bool = True) -> dict[str, Any]:

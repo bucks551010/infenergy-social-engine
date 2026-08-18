@@ -1526,6 +1526,36 @@ def _products_csv_fingerprint() -> str:
     return digest.hexdigest()
 
 
+def _manifesto_fingerprint(manifesto: dict) -> str:
+    canonical = json.dumps(
+        manifesto if isinstance(manifesto, dict) else {},
+        ensure_ascii=True,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def _sync_manifesto_brand_profile(manifesto: dict, strategy: dict, *, force: bool = False) -> tuple[bool, bool, list[str]]:
+    """Synchronize only manifesto-owned operational profile data, never catalog/runtime state."""
+    fingerprint = _manifesto_fingerprint(manifesto)
+    previous_fingerprint = inventory_db.get_brand_profile_manifesto_checksum(DATA_DIR)
+    changed = bool(fingerprint) and fingerprint != previous_fingerprint
+    if not force and not changed and inventory_db.has_brand_profile(DATA_DIR):
+        return False, False, []
+
+    seed = _build_brand_profile_seed(strategy, manifesto)
+    previous_profile = inventory_db.fetch_brand_profile(DATA_DIR)
+    affected_fields = sorted(
+        key for key, value in seed.items()
+        if previous_profile.get(key) != value
+    )
+    seeded = inventory_db.upsert_brand_profile(DATA_DIR, seed) if seed else False
+    if seeded:
+        inventory_db.set_brand_profile_manifesto_checksum(DATA_DIR, fingerprint)
+    return seeded, changed, affected_fields
+
+
 def sync_inventory_database(force: bool = False) -> dict:
     inventory_db.init_inventory_db(DATA_DIR)
     before_count = inventory_db.products_count(DATA_DIR)
@@ -1547,12 +1577,13 @@ def sync_inventory_database(force: bool = False) -> dict:
         if current_fingerprint:
             inventory_db.set_products_source_fingerprint(DATA_DIR, current_fingerprint)
 
-    if force or not inventory_db.has_brand_profile(DATA_DIR):
-        strategy = _load_latest_marketing_strategy()
-        manifesto = _load_founder_brand_manifesto()
-        seed = _build_brand_profile_seed(strategy, manifesto)
-        if seed:
-            brand_seeded = inventory_db.upsert_brand_profile(DATA_DIR, seed)
+    strategy = _load_latest_marketing_strategy()
+    manifesto = _load_founder_brand_manifesto()
+    brand_seeded, manifesto_changed, brand_fields_changed = _sync_manifesto_brand_profile(
+        manifesto,
+        strategy,
+        force=force,
+    )
 
     if force or not inventory_db.has_selling_ideology(DATA_DIR):
         ideology_seeded = inventory_db.upsert_selling_ideology(DATA_DIR, conference_selling_ideology_payload())
@@ -1565,6 +1596,8 @@ def sync_inventory_database(force: bool = False) -> dict:
         "products_after": after_count,
         "products_csv_changed": csv_changed,
         "brand_seeded": brand_seeded,
+        "brand_manifesto_changed": manifesto_changed,
+        "brand_profile_fields_changed": brand_fields_changed,
         "ideology_seeded": ideology_seeded,
         "brand_profile_present": inventory_db.has_brand_profile(DATA_DIR),
         "selling_ideology_present": inventory_db.has_selling_ideology(DATA_DIR),

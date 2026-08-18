@@ -5,8 +5,16 @@
   "product_type": "power_system_component",
   "role": "modular power-system component",
   "product_summary": "Sorein Modular Power System - Mobile Battery Chassis is a modular power-system component that adds a documented capability to a compatible modular power system.",
-  "categories": [],
-  "verified_facts": [],
+  "categories": [
+    "Home Backup"
+  ],
+  "verified_facts": [
+    "1 hour",
+    "1.8 hours",
+    "1,800W",
+    "1,000W",
+    "A wheeled base that adds capacity and mobility. The Mobile Battery Chassis pairs extra battery capacity with a suitcase-style telescopic trolley bar and oversized rubber wheels built for rugged terrain. Engineered by Sorein Innovation Co., Limited, with a core team from Anker Innovations and TP-Link. Built on EV-grade LFP (Lithium Iron Phosphate) battery cells rated for 3,500+ charge and discharge cycles at 80% capacity retention. A true 0ms UPS switchover keeps sensitive electronics like comput"
+  ],
   "core_benefits": [
     "adds a documented capability to a compatible modular power system",
     "supports a more purpose-built system configuration"
@@ -36,5 +44,5 @@
     "Do not use power-device language for water, comfort, safety, or other non-power primary products."
   ],
   "source_image_url": "https://infenergypower.com/wp-content/uploads/2025/06/Photoroom_20250613_004503.png",
-  "updated_at_utc": "2026-08-10T21:08:04.261038+00:00"
+  "updated_at_utc": "2026-08-17T03:42:06.922915+00:00"
 }

@@ -1583,6 +1583,13 @@ def main() -> None:
     content["publish_decision"] = final_decision
     if not final_decision["publishable"] and not shadow_mode:
         print("[SKIP] Content did not pass validation/quality thresholds; recording skipped run")
+        # Quarantine pooled candidates that failed so they won't be re-selected indefinitely
+        candidate_id = str(content.get("candidate_id") or "")
+        if candidate_id:
+            dup_reasons = content.get("duplicate_check", {}).get("reasons", [])
+            quarantine_reason = ",".join(str(r) for r in dup_reasons) if dup_reasons else "validation_or_quality_failure"
+            if candidate_pool.quarantine(candidate_id, reason=quarantine_reason):
+                print(f"[POOL] Quarantined candidate {candidate_id[:8]}... reason={quarantine_reason}")
         history = generate_posts.load_history()
         run_started = datetime.now(timezone.utc).isoformat()
         tracked_links = {"facebook": None, "instagram": None, "linkedin": None, "wordpress": None}

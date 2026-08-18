@@ -5,8 +5,15 @@
   "product_type": "power_station",
   "role": "backup power station",
   "product_summary": "SolarMax Pro 5kW-10kW - 2 SolarMax Pros is a backup power station that supports priority devices during outages and off-grid use.",
-  "categories": [],
-  "verified_facts": [],
+  "categories": [
+    "Home Backup",
+    "Outdoors & Camping",
+    "Portable Power",
+    "Solar Generators"
+  ],
+  "verified_facts": [
+    "Two linked SolarMax Pro units delivering a massive 10,000 watts, enough to power an entire home. Built on the SolarMax Pro platform: a 5,000-watt solar generator that links with a second unit to double output to 10,000 watts, enough to power an entire home, RV, or off-grid setup. Ideal for emergency home backup, RV and van life, or professional job sites. This configuration links two SolarMax Pro units together for the system's full 10,000-watt capacity."
+  ],
   "core_benefits": [
     "supports priority devices during outages and off-grid use",
     "combines portable stored energy with published output options"
@@ -38,5 +45,5 @@
     "Do not use power-device language for water, comfort, safety, or other non-power primary products."
   ],
   "source_image_url": "https://infenergypower.com/wp-content/uploads/2024/08/Hf699989df4454beaa92a7454bda21c81w.avif",
-  "updated_at_utc": "2026-08-10T20:36:45.523437+00:00"
+  "updated_at_utc": "2026-08-17T03:42:26.732500+00:00"
 }

@@ -1,0 +1,25 @@
+{
+  "records": [
+    {
+      "product_id": "PPP-200",
+      "condition": "runtime_angle_without_verified_evidence",
+      "action": "challenge_angle_or_require_evidence",
+      "evidence": [
+        "verified_runtime_evidence_missing",
+        "claim_limits_prohibit_unverified_runtime"
+      ],
+      "source_decision": "CHANGE_ANGLE",
+      "source_strategy_version": 1,
+      "lesson": "Require verified runtime evidence or choose a different angle.",
+      "lesson_id": "1b88457fad427f50",
+      "created_at": "2026-08-17T03:47:56.838437+00:00",
+      "scope": {
+        "product_id": "PPP-200",
+        "condition": "runtime_angle_without_verified_evidence"
+      },
+      "future_applicability": "matching product and evidence condition only",
+      "confidence": 0.9,
+      "revalidation": "reconsider when matching verified evidence becomes available"
+    }
+  ]
+}

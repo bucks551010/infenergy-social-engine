@@ -1,0 +1,205 @@
+{
+  "references": [
+    {
+      "reference_id": "layout-editorial-explainer",
+      "source": "internal design principle",
+      "source_type": "internal_repository",
+      "pattern_type": "layout",
+      "platform": [
+        "facebook",
+        "instagram",
+        "linkedin"
+      ],
+      "content_job": [
+        "EXPLAIN_THIS",
+        "TEACH_ME"
+      ],
+      "layout_logic": "editorial hierarchy: question, answer, supporting proof",
+      "copy_logic": "question -> answer -> why it matters",
+      "visual_logic": "one focal proof with generous reading space",
+      "information_hierarchy": "headline, proof, explanation",
+      "product_role": "supporting proof",
+      "human_role": "decision maker",
+      "benefit_presentation": "diagram or ordered reference",
+      "cta_style": "learn_more",
+      "text_density": "medium",
+      "format": "editorial",
+      "why_it_works": "prioritizes comprehension before promotion",
+      "when_to_use": "an evidence-backed educational decision",
+      "when_not_to_use": "a product-only announcement",
+      "brand_compatibility": "high",
+      "novelty": "stable",
+      "license_or_use_boundary": "abstract principle; no external creative copied"
+    },
+    {
+      "reference_id": "layout-human-context",
+      "source": "internal design principle",
+      "source_type": "internal_repository",
+      "pattern_type": "composition",
+      "platform": [
+        "facebook",
+        "instagram"
+      ],
+      "content_job": [
+        "PREPARE_ME",
+        "HELP_ME"
+      ],
+      "layout_logic": "human situation leads; product appears as a credible supporting object",
+      "copy_logic": "situation -> friction -> practical possibility",
+      "visual_logic": "believable use context instead of literal emotional claim",
+      "information_hierarchy": "human moment, product role, practical action",
+      "product_role": "demonstration object",
+      "human_role": "active user",
+      "benefit_presentation": "scene plus one clear callout",
+      "cta_style": "see_how_it_works",
+      "text_density": "low",
+      "format": "context-led",
+      "why_it_works": "makes the benefit legible without exploiting anxiety",
+      "when_to_use": "a supported customer moment exists",
+      "when_not_to_use": "the claim needs detailed comparison",
+      "brand_compatibility": "high",
+      "novelty": "diverse",
+      "license_or_use_boundary": "abstract principle; no external creative copied"
+    },
+    {
+      "reference_id": "layout-comparison-decision",
+      "source": "internal design principle",
+      "source_type": "internal_repository",
+      "pattern_type": "information_design",
+      "platform": [
+        "facebook",
+        "instagram",
+        "linkedin"
+      ],
+      "content_job": [
+        "HELP_ME_CHOOSE",
+        "GIVE_ME_A_REFERENCE"
+      ],
+      "layout_logic": "side-by-side decision criteria with one recommended evaluation method",
+      "copy_logic": "decision -> options -> tradeoff -> recommendation",
+      "visual_logic": "truthful comparison grid or priority ladder",
+      "information_hierarchy": "decision, criteria, recommendation",
+      "product_role": "reference or proof",
+      "human_role": "informed chooser",
+      "benefit_presentation": "comparison",
+      "cta_style": "compare_options",
+      "text_density": "medium",
+      "format": "data-led",
+      "why_it_works": "turns specifications into a usable decision",
+      "when_to_use": "customers need to compare supported facts",
+      "when_not_to_use": "there is no defensible comparison",
+      "brand_compatibility": "high",
+      "novelty": "diverse",
+      "license_or_use_boundary": "abstract principle; no external creative copied"
+    },
+    {
+      "reference_id": "layout-professional-brief",
+      "source": "internal design principle",
+      "source_type": "internal_repository",
+      "pattern_type": "platform_creative",
+      "platform": [
+        "linkedin"
+      ],
+      "content_job": [
+        "EXPLAIN_THIS",
+        "HELP_ME_CHOOSE"
+      ],
+      "layout_logic": "professional brief: operational context, decision support, proof",
+      "copy_logic": "observation -> business implication -> practical recommendation",
+      "visual_logic": "restrained information hierarchy with a useful takeaway",
+      "information_hierarchy": "context, implication, recommendation",
+      "product_role": "proof",
+      "human_role": "professional decision maker",
+      "benefit_presentation": "decision support",
+      "cta_style": "learn_more",
+      "text_density": "medium",
+      "format": "professional-editorial",
+      "why_it_works": "respects LinkedIn's professional context",
+      "when_to_use": "a legitimate business or operational context is supported",
+      "when_not_to_use": "consumer-only lifestyle content",
+      "brand_compatibility": "high",
+      "novelty": "stable",
+      "license_or_use_boundary": "abstract principle; no external creative copied"
+    }
+  ],
+  "copy_grammars": [
+    {
+      "id": "observation_insight",
+      "steps": [
+        "observation",
+        "insight",
+        "business_connection"
+      ],
+      "best_for": [
+        "EXPLAIN_THIS",
+        "TEACH_ME"
+      ]
+    },
+    {
+      "id": "question_answer",
+      "steps": [
+        "question",
+        "answer",
+        "why_it_matters"
+      ],
+      "best_for": [
+        "EXPLAIN_THIS",
+        "HELP_ME_CHOOSE"
+      ]
+    },
+    {
+      "id": "situation_friction_possibility",
+      "steps": [
+        "situation",
+        "friction",
+        "possibility"
+      ],
+      "best_for": [
+        "PREPARE_ME",
+        "HELP_ME"
+      ]
+    },
+    {
+      "id": "misconception_truth",
+      "steps": [
+        "misconception",
+        "truth",
+        "explanation"
+      ],
+      "best_for": [
+        "TEACH_ME",
+        "EXPLAIN_THIS"
+      ]
+    },
+    {
+      "id": "decision_tradeoff",
+      "steps": [
+        "decision",
+        "options",
+        "tradeoff",
+        "recommendation"
+      ],
+      "best_for": [
+        "HELP_ME_CHOOSE",
+        "GIVE_ME_A_REFERENCE"
+      ]
+    },
+    {
+      "id": "capability_outcome",
+      "steps": [
+        "product",
+        "capability",
+        "human_outcome"
+      ],
+      "best_for": [
+        "SHOW_ME",
+        "HELP_ME"
+      ]
+    }
+  ],
+  "last_heartbeat": {
+    "level": "LIGHT",
+    "at": "2026-08-18T16:02:05.178504+00:00",
+    "references": 4
+  }
+}

@@ -211,5 +211,22 @@ class CandidatePool:
                 return True
         return False
 
+    def quarantine(self, candidate_id: str, *, reason: str = "", quarantined_at: str | None = None) -> bool:
+        """Mark a candidate as quarantined so it won't be re-selected.
+
+        Use this when a candidate fails a gate (e.g., duplicate check) but wasn't
+        published. Without quarantine, the candidate remains "available" and gets
+        re-selected indefinitely, causing the same failure repeatedly.
+        """
+        payload = self._load()
+        for candidate in payload.get("candidates", []):
+            if isinstance(candidate, dict) and candidate.get("candidate_id") == candidate_id and candidate.get("status") == "available":
+                candidate["status"] = "quarantined"
+                candidate["quarantined_at"] = quarantined_at or _utc_now().isoformat()
+                candidate["quarantine_reason"] = reason or "unspecified"
+                self._save(payload)
+                return True
+        return False
+
     def depth(self) -> int:
         return len(self.available())

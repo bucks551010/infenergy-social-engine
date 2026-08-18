@@ -506,6 +506,62 @@ def _candidate_pool_depth() -> int:
     return sum(1 for candidate in candidates if isinstance(candidate, dict) and candidate.get("status") == "available")
 
 
+def _env_is_true(name: str, default: bool) -> bool:
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _production_readiness_snapshot() -> dict:
+    data_dir = _data_dir()
+    channel_flags = run_engine.get_channel_config()
+    overrides = {
+        name: str(os.environ.get(name, "")).strip()
+        for name in (
+            "POST_PLATFORMS",
+            "POST_PRODUCT_ID_OVERRIDE",
+            "POST_FUNNEL_STAGE_OVERRIDE",
+            "POST_PIPELINE_OVERRIDE",
+            "MANUAL_DUPLICATE_MODE",
+            "CHANNEL_READINESS_BLOCK_ON_RED",
+            "SKIP_RECENT_SUCCESS_HOURS",
+        )
+    }
+    return {
+        "time_utc": _utc_now(),
+        "global": {
+            "dry_run": str(os.environ.get("SOCIAL_DRY_RUN", "true")).lower() == "true",
+            "shadow_mode": _env_is_true("SOCIAL_SHADOW_MODE", False),
+            "run_lock_active": RUN_LOCK.locked(),
+            "scheduler_jobs_registered": len(schedule.jobs),
+        },
+        "channels": channel_flags,
+        "platform_configuration_present": {
+            "facebook": bool(os.environ.get("META_PAGE_ID", "").strip() and os.environ.get("META_PAGE_ACCESS_TOKEN", "").strip()),
+            "instagram": bool(os.environ.get("META_IG_USER_ID", "").strip() and os.environ.get("META_PAGE_ACCESS_TOKEN", "").strip()),
+            "linkedin": bool(os.environ.get("LINKEDIN_ACCESS_TOKEN", "").strip()),
+        },
+        "linkedin_target_configuration": {
+            "explicit_target_present": bool(os.environ.get("LINKEDIN_ORGANIZATION_URN", "").strip() or os.environ.get("LINKEDIN_AUTHOR_URN", "").strip()),
+            "automatic_resolution_available": bool(os.environ.get("LINKEDIN_ACCESS_TOKEN", "").strip()),
+        },
+        "gemini": {
+            "api_key_present": bool(os.environ.get("GEMINI_API_KEY", "").strip()),
+            "text_model": str(os.environ.get("GEMINI_MODEL", "")).strip() or "provider_default",
+            "image_model": str(os.environ.get("GEMINI_IMAGE_MODEL", "")).strip() or "gemini-2.5-flash-image",
+        },
+        "data": {
+            "path": data_dir,
+            "exists": os.path.isdir(data_dir),
+            "writable": os.access(data_dir, os.W_OK),
+            "history_present": os.path.isfile(os.path.join(data_dir, "post_history.json")),
+            "receipts_present": os.path.isfile(os.path.join(data_dir, "social", "publish_receipts.json")),
+        },
+        "overrides": overrides,
+    }
+
+
 def _run_script(script_name: str) -> tuple[bool, str]:
     scripts_dir = os.path.join(os.path.dirname(__file__), "scripts")
     script_path = os.path.join(scripts_dir, script_name)
@@ -860,6 +916,25 @@ class HealthHandler(BaseHTTPRequestHandler):
                 "days": _schedule_preview(days=7),
             }
             body = json.dumps(payload).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
+        if parsed.path == "/production-readiness":
+            params = parse_qs(parsed.query)
+            authorized, status_code, error_payload = _authorized(params)
+            if not authorized:
+                body = json.dumps(error_payload).encode("utf-8")
+                self.send_response(status_code)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+                return
+            body = json.dumps({"status": "ok", "readiness": _production_readiness_snapshot()}).encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(body)))

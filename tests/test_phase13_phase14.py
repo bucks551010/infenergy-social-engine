@@ -16,6 +16,7 @@ sys.path.insert(0, SCRIPTS)
 import generate_posts  # noqa: E402
 import run_engine  # noqa: E402
 import anti_repeat  # noqa: E402
+import worker  # noqa: E402
 from agent_control_plane import evaluate_global_gates, validate_agent_output  # noqa: E402
 from anti_repeat import check_duplicates  # noqa: E402
 from build_utm_url import build_utm_url  # noqa: E402
@@ -365,6 +366,33 @@ class PhaseThirteenFourteenTests(unittest.TestCase):
         self.assertEqual(config["product_feature_days"], 3)
         self.assertEqual(config["disabled_signatures"], ["cta"])
         self.assertEqual(config["blocking_signatures"], ["exact_caption"])
+
+    def test_production_readiness_snapshot_reports_effective_controls_without_secrets(self) -> None:
+        with patch.dict(os.environ, {
+            "SOCIAL_DRY_RUN": "false",
+            "SOCIAL_SHADOW_MODE": "false",
+            "ENABLE_FACEBOOK": "true",
+            "ENABLE_INSTAGRAM": "true",
+            "ENABLE_LINKEDIN": "true",
+            "META_PAGE_ID": "page-id",
+            "META_PAGE_ACCESS_TOKEN": "secret-page-token",
+            "META_IG_USER_ID": "ig-id",
+            "LINKEDIN_ACCESS_TOKEN": "secret-linkedin-token",
+            "LINKEDIN_ORGANIZATION_URN": "urn:li:organization:1",
+            "GEMINI_API_KEY": "secret-gemini-key",
+            "DATA_DIR": "C:/test-data",
+        }, clear=False), patch.object(worker, "_data_dir", return_value="C:/test-data"), patch.object(worker.os.path, "isdir", return_value=True), patch.object(worker.os, "access", return_value=True), patch.object(worker.os.path, "isfile", return_value=True):
+            snapshot = worker._production_readiness_snapshot()
+
+        self.assertFalse(snapshot["global"]["dry_run"])
+        self.assertFalse(snapshot["global"]["shadow_mode"])
+        self.assertTrue(snapshot["channels"]["facebook"])
+        self.assertTrue(snapshot["platform_configuration_present"]["instagram"])
+        self.assertTrue(snapshot["linkedin_target_configuration"]["explicit_target_present"])
+        self.assertTrue(snapshot["gemini"]["api_key_present"])
+        self.assertNotIn("secret-page-token", str(snapshot))
+        self.assertNotIn("secret-linkedin-token", str(snapshot))
+        self.assertNotIn("secret-gemini-key", str(snapshot))
 
     def test_duplicate_conflicts_consume_retry_budget_and_product_conflicts_reset_lock(self) -> None:
         reasons = ["duplicate_cta_within_window", "duplicate_product_within_window"]

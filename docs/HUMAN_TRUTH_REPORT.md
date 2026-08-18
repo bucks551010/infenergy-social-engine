@@ -30,6 +30,8 @@ This report records the implemented Human Truth, V5 visual, operational, and lea
 - A controlled Railway dry run previously reached a generic upstream validation block before rendering, so V5 live image fidelity has not yet been proven by this change set.
 - Three Railway revisions failed before build at `Snapshot code` because 2,135 generated media artifacts and a 26 MB forensic dump were tracked in Git (about 265 MB total). Generated media is now ignored and untracked while retained on local disk and the Railway volume; the repaired deployment reaches Railway image build and push.
 - Railway now has an explicit `/health` probe with a 180-second startup allowance; the exact `python -u social_engine/start.py` entrypoint and health endpoint were verified locally.
+- Railway deployment `ace69b48-331f-4838-8a11-b078e646af15` reached `Online`; its `/health` response is `ok` and `/status.operational_intelligence.status` is `READY`.
+- A controlled Railway orchestrator shadow run was accepted without publishing. It exposed two provider conditions: `gemini-2.5-pro` was retired and has been replaced by `gemini-3.1-pro-preview` in source and Railway configuration; the configured Gemini project currently returns `429 RESOURCE_EXHAUSTED` because its monthly spending cap is exceeded. This external billing condition prevents honest collection of required real Gemini render samples until capacity is restored.
 
 ## Required Production Evidence
 

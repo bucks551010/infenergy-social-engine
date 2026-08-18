@@ -19,12 +19,12 @@ DEFAULT_MODEL_ROUTES: dict[str, str] = {
     # lighter current route by default and keep fallbacks explicit below.
     "classification": "gemini-2.5-flash-lite",
     "topic_generation": "gemini-2.5-flash-lite",
-    "strategy": "gemini-2.5-pro",
-    "visual_direction": "gemini-2.5-pro",
+    "strategy": "gemini-3.1-pro-preview",
+    "visual_direction": "gemini-3.1-pro-preview",
     "copy_editing": "gemini-3.1-flash-lite",
     "image_analysis": "gemini-2.5-flash-lite",
-    "fact_reasoning": "gemini-2.5-pro",
-    "final_review": "gemini-2.5-pro",
+    "fact_reasoning": "gemini-3.1-pro-preview",
+    "final_review": "gemini-3.1-pro-preview",
 }
 
 

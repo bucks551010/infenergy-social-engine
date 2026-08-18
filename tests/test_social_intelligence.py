@@ -1233,7 +1233,7 @@ def test_template_render_provider_returns_recipe():
 
 
 def test_model_router_uses_default_and_env_override(monkeypatch):
-    assert model_router.route_for("strategy") == "gemini-2.5-pro"
+    assert model_router.route_for("strategy") == "gemini-3.1-pro-preview"
     assert model_router.route_for("copy_editing") == "gemini-3.1-flash-lite"
     monkeypatch.setenv("GEMINI_ROUTE_STRATEGY", "custom-model")
     assert model_router.route_for("strategy") == "custom-model"

@@ -8,6 +8,7 @@ import publish_wordpress
 from url_safety import is_safe_http_url
 
 GRAPH_BASE = "https://graph.facebook.com/v26.0"
+INSTAGRAM_CAPTION_MAX_LENGTH = 2200
 
 
 def _env(name: str, default: str = "") -> str:
@@ -186,6 +187,16 @@ def _dedupe_keep_order(items: list[str]) -> list[str]:
     return out
 
 
+def _bounded_caption(value: str, limit: int = INSTAGRAM_CAPTION_MAX_LENGTH) -> str:
+    """Keep the API payload within Instagram's documented caption limit."""
+    caption = str(value or "").strip()
+    if len(caption) <= limit:
+        return caption
+    cutoff = max(1, limit - 3)
+    boundary = caption.rfind(" ", 0, cutoff)
+    return f"{caption[:boundary if boundary > 0 else cutoff].rstrip()}..."
+
+
 def _extract_page_image_candidate(page_url: str, timeout: int = 15) -> str:
     if not page_url or not str(page_url).strip().lower().startswith("http"):
         return ""
@@ -279,7 +290,7 @@ def publish(content: dict, dry_run: bool = False) -> dict:
             "candidate_count": len(candidates),
         }
 
-    caption = content["ig_caption"]
+    caption = _bounded_caption(content["ig_caption"])
 
     if dry_run:
         print(f"[DRY RUN] Instagram: would post:\n{caption[:150]}...\n")

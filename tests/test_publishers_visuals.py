@@ -188,6 +188,38 @@ class PublisherVisualTests(unittest.TestCase):
                     dry_run=False,
                 )
 
+    def test_instagram_bounds_caption_before_creating_media(self) -> None:
+        create_response = Mock(ok=True)
+        create_response.json.return_value = {"id": "container_123"}
+        publish_response = Mock(ok=True)
+        publish_response.json.return_value = {"id": "instagram_456"}
+        long_caption = "Useful preparation advice " * 150
+
+        with patch.dict(
+            os.environ,
+            {
+                "META_IG_USER_ID": "ig123",
+                "META_PAGE_ACCESS_TOKEN": "token123",
+                "IG_VALIDATE_IMAGE_URLS": "false",
+            },
+            clear=False,
+        ), patch.object(publish_instagram, "_wait_for_media_container", return_value=(True, "finished")), patch.object(
+            publish_instagram,
+            "_post_with_retry",
+            side_effect=[create_response, publish_response],
+        ) as mock_post:
+            result = publish_instagram.publish(
+                {
+                    "ig_caption": long_caption,
+                    "product_image_url": "https://example.com/product.png",
+                }
+            )
+
+        self.assertEqual(result["id"], "instagram_456")
+        caption = mock_post.call_args_list[0].args[1]["caption"]
+        self.assertLessEqual(len(caption), publish_instagram.INSTAGRAM_CAPTION_MAX_LENGTH)
+        self.assertTrue(caption.endswith("..."))
+
     def test_generate_visuals_has_no_fallback_when_gemini_unavailable(self) -> None:
         with patch.dict(os.environ, {"GEMINI_API_KEY": ""}, clear=False):
             visuals = generate_visuals(

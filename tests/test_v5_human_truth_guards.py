@@ -4,6 +4,7 @@ import os
 import sys
 import tempfile
 import types
+from datetime import datetime, timedelta, timezone
 
 
 _REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -14,6 +15,7 @@ from social.claim_governance import assess_visual_prompt
 from social.quality_intelligence import human_truth_gate
 from social.living_intelligence import load, propose_static_update
 from social.visual_provider import GeminiVisualProvider
+import worker
 from social.visual_intelligence import build_v5_art_directions, compile_v5_scene_prompt
 
 
@@ -104,3 +106,11 @@ def test_gemini_provider_tries_next_governed_v5_direction(monkeypatch) -> None:
     assert result.asset_path == "alternate.png"
     assert calls == ["primary prompt", "alternate prompt"]
     assert result.provider_meta["fallback_ladder"] == [{"kind": "primary", "reason": "primary_failed"}]
+
+
+def test_operational_status_warns_when_meta_token_expires_within_seven_days(monkeypatch) -> None:
+    monkeypatch.setenv("META_TOKEN_EXPIRES_AT_UTC", (datetime.now(timezone.utc) + timedelta(days=6)).isoformat())
+
+    snapshot = worker._operational_intelligence_snapshot()
+
+    assert snapshot["token_expiry"]["status"] == "WARNING_RENEW_WITHIN_7_DAYS"

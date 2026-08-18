@@ -515,14 +515,27 @@ def _operational_intelligence_snapshot() -> dict:
     except Exception as exc:
         return {"status": "UNAVAILABLE", "reason": type(exc).__name__}
     target_depth = int(os.environ.get("CANDIDATE_POOL_TARGET_DEPTH", "6"))
-    token_expiry = str(os.environ.get("META_TOKEN_EXPIRES_AT", "")).strip()
+    token_expiry = str(os.environ.get("META_TOKEN_EXPIRES_AT_UTC", "") or os.environ.get("META_TOKEN_EXPIRES_AT", "")).strip()
+    token_status = {"status": "UNAVAILABLE", "value": None}
+    if token_expiry:
+        try:
+            expiry = datetime.fromisoformat(token_expiry.replace("Z", "+00:00"))
+            expiry = expiry if expiry.tzinfo else expiry.replace(tzinfo=timezone.utc)
+            days_remaining = (expiry - datetime.now(timezone.utc)).total_seconds() / 86400
+            token_status = {
+                "status": "EXPIRED" if days_remaining < 0 else "WARNING_RENEW_WITHIN_7_DAYS" if days_remaining <= 7 else "HEALTHY",
+                "value": token_expiry,
+                "days_remaining": round(days_remaining, 2),
+            }
+        except ValueError:
+            token_status = {"status": "INVALID_TIMESTAMP", "value": token_expiry}
     return {
         "status": "READY",
         "pool": {"available": _candidate_pool_depth(), "target": target_depth, "refill_needed": _candidate_pool_depth() < target_depth},
         "seasonal_lookahead": state.get("seasonal_lookahead", []),
         "visual_novelty": state.get("visual_novelty", {}),
         "exploration": state.get("exploration", {}),
-        "token_expiry": {"status": "REPORTED" if token_expiry else "UNAVAILABLE", "value": token_expiry or None},
+        "token_expiry": token_status,
         "gemini": {"configured": bool(os.environ.get("GEMINI_API_KEY", "").strip()), "budget_status": "UNAVAILABLE_NO_SUPPORTED_BILLING_SOURCE"},
         "living": living,
     }

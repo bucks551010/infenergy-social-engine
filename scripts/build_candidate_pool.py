@@ -96,7 +96,13 @@ def build_pool(*, target_depth: int | None = None, max_attempts: int | None = No
             content["quality_score"] = scoring.get("total")
             content["quality_component_scores"] = scoring.get("component_scores", {})
             content["publish_decision"] = decision
-            candidate = pool.add(content, rotation=selection, batch_gate_results=gate_results)
+            selection_lane = "exploration" if len(accepted) % 4 == 0 else "proven"
+            candidate = pool.add(
+                content,
+                rotation=selection,
+                batch_gate_results=gate_results,
+                selection_lane=selection_lane,
+            )
             _record_batch_selection(selection, used)
             accepted.append(candidate["candidate_id"])
     finally:

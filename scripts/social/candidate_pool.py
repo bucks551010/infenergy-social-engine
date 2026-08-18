@@ -12,6 +12,7 @@ from typing import Any
 
 POOL_FILENAME = "candidate_pool.json"
 DEFAULT_TTL_DAYS = 7
+DEFAULT_EXPLORATION_FLOOR = 0.25
 ROTATION_DIMENSIONS = (
     "product_id",
     "topic",
@@ -178,7 +179,14 @@ class CandidatePool:
                 changed = True
         return changed
 
-    def add(self, content: dict[str, Any], *, rotation: dict[str, Any], batch_gate_results: dict[str, Any]) -> dict[str, Any]:
+    def add(
+        self,
+        content: dict[str, Any],
+        *,
+        rotation: dict[str, Any],
+        batch_gate_results: dict[str, Any],
+        selection_lane: str = "proven",
+    ) -> dict[str, Any]:
         now = _utc_now()
         payload = self._load()
         self._expire(payload, now)
@@ -189,6 +197,7 @@ class CandidatePool:
             "content": content,
             "rotation_selected": rotation,
             "batch_gate_results": batch_gate_results,
+            "selection_lane": "exploration" if selection_lane == "exploration" else "proven",
         }
         payload.setdefault("candidates", []).append(candidate)
         self._save(payload)
@@ -200,6 +209,42 @@ class CandidatePool:
         if self._expire(payload, now):
             self._save(payload)
         return [candidate for candidate in payload.get("candidates", []) if isinstance(candidate, dict) and candidate.get("status") == "available"]
+
+    def select_for_publication(self, *, exploration_floor: float = DEFAULT_EXPLORATION_FLOOR) -> tuple[dict[str, Any] | None, dict[str, Any]]:
+        """Select LRU content while preserving a bounded exploration allocation."""
+        floor = min(0.5, max(0.0, float(exploration_floor)))
+        payload = self._load()
+        now = _utc_now()
+        if self._expire(payload, now):
+            self._save(payload)
+            payload = self._load()
+
+        available = [candidate for candidate in payload.get("candidates", []) if isinstance(candidate, dict) and candidate.get("status") == "available"]
+        available.sort(key=lambda candidate: str(candidate.get("created_at") or ""))
+        exploratory = [candidate for candidate in available if candidate.get("selection_lane") == "exploration"]
+        events = [event for event in payload.get("selection_events", []) if isinstance(event, dict)]
+        exploration_count = sum(1 for event in events if event.get("selection_lane") == "exploration")
+        exploration_rate = exploration_count / len(events) if events else 0.0
+        reserve_due = bool(exploratory and exploration_rate < floor)
+        selected = (exploratory if reserve_due else available)
+        candidate = selected[0] if selected else None
+        lane = str(candidate.get("selection_lane") or "proven") if candidate else ""
+        telemetry = {
+            "selection_lane": lane,
+            "selection_reason": "exploration_reserve" if reserve_due else "least_recently_created",
+            "exploration_floor": floor,
+            "exploration_rate_before": round(exploration_rate, 3),
+            "available_exploration_candidates": len(exploratory),
+        }
+        if candidate:
+            events.append({
+                "candidate_id": candidate.get("candidate_id", ""),
+                "selection_lane": lane,
+                "selected_at": now.isoformat(),
+            })
+            payload["selection_events"] = events[-100:]
+            self._save(payload)
+        return candidate, telemetry
 
     def consume(self, candidate_id: str, *, published_at: str | None = None) -> bool:
         payload = self._load()

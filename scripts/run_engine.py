@@ -1271,7 +1271,19 @@ def main() -> None:
     # Compute a stage first so schedule rules can enforce stage eligibility.
     generate_posts.ensure_runtime_data()
     candidate_pool = CandidatePool(generate_posts.DATA_DIR)
-    pooled_candidate = next(iter(candidate_pool.available()), None)
+    pool_enabled = _env_flag("CANDIDATE_POOL_RUNTIME_ENABLED", False)
+    pooled_candidate: dict | None = None
+    pool_selection: dict = {"selection_reason": "runtime_pool_disabled"}
+    if pool_enabled:
+        pool_floor = max(1, int(os.environ.get("CANDIDATE_POOL_MIN_DEPTH", "2")))
+        if candidate_pool.depth() < pool_floor:
+            from build_candidate_pool import build_pool
+
+            refill = build_pool(target_depth=max(pool_floor, int(os.environ.get("CANDIDATE_POOL_TARGET_DEPTH", "6"))))
+            runtime_metrics["candidate_pool_refill"] = refill
+        pooled_candidate, pool_selection = candidate_pool.select_for_publication(
+            exploration_floor=float(os.environ.get("CANDIDATE_POOL_EXPLORATION_FLOOR", "0.25")),
+        )
     t_preview = time.perf_counter()
     if pooled_candidate and isinstance(pooled_candidate.get("content"), dict):
         preview_content = dict(pooled_candidate["content"])
@@ -1279,6 +1291,7 @@ def main() -> None:
         preview_content["candidate_created_at"] = pooled_candidate.get("created_at", "")
         preview_content["rotation_selected"] = pooled_candidate.get("rotation_selected", {})
         preview_content["batch_gate_results"] = pooled_candidate.get("batch_gate_results", {})
+        preview_content["pool_selection"] = pool_selection
     else:
         preview_content = generate_posts.generate(
             slot,

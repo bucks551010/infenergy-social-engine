@@ -59,6 +59,19 @@ def test_candidate_pool_expires_and_consumes(tmp_path):
     assert pool.depth() == 0
 
 
+def test_candidate_pool_enforces_exploration_reserve(tmp_path):
+    pool = CandidatePool(str(tmp_path))
+    proven = pool.add({"post_id": "proven"}, rotation={}, batch_gate_results={}, selection_lane="proven")
+    exploratory = pool.add({"post_id": "explore"}, rotation={}, batch_gate_results={}, selection_lane="exploration")
+
+    selected, telemetry = pool.select_for_publication(exploration_floor=0.25)
+
+    assert selected["candidate_id"] == exploratory["candidate_id"]
+    assert selected["candidate_id"] != proven["candidate_id"]
+    assert telemetry["selection_reason"] == "exploration_reserve"
+    assert telemetry["exploration_rate_before"] == 0.0
+
+
 def test_failed_pooled_candidate_is_quarantined_before_fresh_retry(tmp_path):
     pool = CandidatePool(str(tmp_path))
     candidate = pool.add({"post_id": "pooled-1"}, rotation={}, batch_gate_results={})

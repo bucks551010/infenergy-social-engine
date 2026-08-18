@@ -12,13 +12,13 @@ This report records the implemented Human Truth, V5 visual, operational, and lea
 - Prompt governance: a visual prompt must include scene structure, light, composition, text prohibition, required product reference conditioning, every negative constraint, and no unsupported whole-home, runtime, compatibility, or weather implication. Disaster spectacle is rejected.
 - Render QA: actual artifact QA already blocks active platform artifacts. An explicit failed V5 semantic review for text, fake products, busy copy zone, off-brand content, or unacceptable output now enters the authoritative publication error list.
 - Living operations: seasonal pre-stage windows, visual novelty/repeat rates, bounded exploration allocation, V5 decision records, pool target/floor state, and honest Gemini/token availability are exposed through the living store and `/status`.
-- Candidate readiness: the worker refills a pool below its configured target before a scheduled slot. Candidates rejected by the Reader Value gate do not enter the pool.
+- Candidate readiness: the Railway worker refills a pool below its configured target before a scheduled slot and enforces a 25% exploration reserve during pool selection. Direct generator callers remain pool-independent. Candidates rejected by the Reader Value gate do not enter the pool.
 - Performance learning: Meta observations derive a reader-value composite weighted toward saves, shares, comments, and conversions; absent metrics are represented as unobserved. V5 tension, reader job, scene, product presence, and Reader Value readiness are retained as cautious attribution hypotheses.
 
 ## Verification
 
-- Full local suite: `424 passed, 13 subtests passed`.
-- Focused V5 guard suite: `5 passed`.
+- Full local suite: `427 passed, 13 subtests passed`.
+- Focused V5 guard suite: `7 passed`.
 - Focused smoke checks covered living-decision persistence, seasonal lookahead, novelty selection, prompt claim rejection, semantic publication gating, operational status, and performance composites.
 - The full suite reports one deprecation warning from the installed Google GenAI dependency.
 
@@ -28,6 +28,8 @@ This report records the implemented Human Truth, V5 visual, operational, and lea
 - Gemini budget is reported as unavailable unless a supported billing source is configured; it is not inferred from key presence.
 - LinkedIn analytics remains explicitly unavailable until an analytics API integration is configured.
 - A controlled Railway dry run previously reached a generic upstream validation block before rendering, so V5 live image fidelity has not yet been proven by this change set.
+- Three Railway revisions failed before build at `Snapshot code` because 2,135 generated media artifacts and a 26 MB forensic dump were tracked in Git (about 265 MB total). Generated media is now ignored and untracked while retained on local disk and the Railway volume; the repaired deployment reaches Railway image build and push.
+- Railway now has an explicit `/health` probe with a 180-second startup allowance; the exact `python -u social_engine/start.py` entrypoint and health endpoint were verified locally.
 
 ## Required Production Evidence
 

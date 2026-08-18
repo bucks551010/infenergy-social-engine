@@ -1570,8 +1570,10 @@ def run_slot(
         previous_funnel_stage_override = os.environ.get("POST_FUNNEL_STAGE_OVERRIDE", "")
         previous_pipeline_override = os.environ.get("POST_PIPELINE_OVERRIDE", "")
         previous_shadow_mode = os.environ.get("SOCIAL_SHADOW_MODE", "")
+        previous_pool_runtime = os.environ.get("CANDIDATE_POOL_RUNTIME_ENABLED", "")
         os.environ["POST_SLOT"] = slot
         os.environ["POST_PLATFORMS"] = platforms_override
+        os.environ["CANDIDATE_POOL_RUNTIME_ENABLED"] = "true"
         if duplicate_mode:
             os.environ["MANUAL_DUPLICATE_MODE"] = duplicate_mode
         if readiness_block_override:
@@ -1670,6 +1672,10 @@ def run_slot(
                 os.environ["SOCIAL_SHADOW_MODE"] = previous_shadow_mode
             elif "SOCIAL_SHADOW_MODE" in os.environ:
                 del os.environ["SOCIAL_SHADOW_MODE"]
+            if previous_pool_runtime:
+                os.environ["CANDIDATE_POOL_RUNTIME_ENABLED"] = previous_pool_runtime
+            elif "CANDIDATE_POOL_RUNTIME_ENABLED" in os.environ:
+                del os.environ["CANDIDATE_POOL_RUNTIME_ENABLED"]
             LAST_RUN["finished_at_utc"] = _utc_now()
 
 

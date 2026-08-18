@@ -1572,7 +1572,7 @@ def run_slot(
                 raise RuntimeError(f"run_engine exit={completed.returncode} output_tail={output[-1500:]}")
 
             outcome = _last_run_outcome()
-            if outcome.get("slot") == slot and outcome.get("status") in {"published", "blocked_no_publish"}:
+            if outcome.get("slot") == slot and outcome.get("status") in {"published", "blocked_no_publish", "skipped_no_eligible_platforms"}:
                 LAST_RUN["status"] = outcome["status"]
                 LAST_RUN["error"] = str(outcome.get("detail") or "") or None
             else:

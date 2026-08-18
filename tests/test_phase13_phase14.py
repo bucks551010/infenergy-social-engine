@@ -627,6 +627,7 @@ class PhaseThirteenFourteenTests(unittest.TestCase):
 
     def test_run_engine_records_skipped_no_eligible_platforms(self) -> None:
         save_calls: list[dict] = []
+        outcomes: list[dict] = []
         content = deepcopy(_base_content())
         content.pop("date")
         content.pop("pillar")
@@ -651,6 +652,7 @@ class PhaseThirteenFourteenTests(unittest.TestCase):
             patch.object(run_engine, "score_content", return_value={"total": 90, "decision": "approve", "component_scores": {}}), \
             patch.object(run_engine, "load_anti_repeat_windows", return_value={}), \
             patch.object(run_engine, "check_duplicates", return_value={"ok": True, "reasons": [], "signatures": {}}), \
+            patch.object(run_engine, "_write_run_outcome", side_effect=lambda status, **kwargs: outcomes.append({"status": status, **kwargs})), \
             patch.dict(os.environ, {"SOCIAL_DRY_RUN": "true", "POST_SLOT": "morning"}, clear=False):
             run_engine.main()
 
@@ -659,6 +661,7 @@ class PhaseThirteenFourteenTests(unittest.TestCase):
         self.assertEqual(saved_post["date"], saved_post["run_started_at_utc"][:10])
         self.assertIn("platform_records", saved_post)
         self.assertEqual(len(saved_post["platform_records"]), 4)
+        self.assertEqual(outcomes, [{"status": "skipped_no_eligible_platforms", "slot": "morning", "detail": "no_eligible_platforms"}])
 
     def test_run_engine_blocks_when_orchestration_control_plane_fails(self) -> None:
         save_calls: list[dict] = []

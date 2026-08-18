@@ -1796,6 +1796,7 @@ def main() -> None:
         history["posts"] = history["posts"][-200:]
         _apply_phase8_budget(runtime_metrics, "total", time.perf_counter() - t_total, total_budget)
         generate_posts.save_history(history)
+        _write_run_outcome("skipped_no_eligible_platforms", slot=slot, detail="no_eligible_platforms")
         print("\n=== Done (skipped) ===\n")
         return
 

@@ -18,7 +18,7 @@ This report records the implemented Human Truth, V5 visual, operational, and lea
 ## Verification
 
 - Full local suite: `423 passed, 13 subtests passed`.
-- Focused V5 guard suite: `4 passed`.
+- Focused V5 guard suite: `5 passed`.
 - Focused smoke checks covered living-decision persistence, seasonal lookahead, novelty selection, prompt claim rejection, semantic publication gating, operational status, and performance composites.
 - The full suite reports one deprecation warning from the installed Google GenAI dependency.
 

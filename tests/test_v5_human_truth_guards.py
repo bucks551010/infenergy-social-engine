@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import sys
+import tempfile
 
 
 _REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -10,6 +11,7 @@ sys.path.insert(0, os.path.join(_REPO, "scripts"))
 from run_engine import _v5_semantic_visual_errors
 from social.claim_governance import assess_visual_prompt
 from social.quality_intelligence import human_truth_gate
+from social.living_intelligence import load, propose_static_update
 from social.visual_intelligence import build_v5_art_directions, compile_v5_scene_prompt
 
 
@@ -65,3 +67,11 @@ def test_failed_v5_semantic_qa_blocks_active_platform() -> None:
     }
 
     assert _v5_semantic_visual_errors(content, {"instagram": True}) == ["instagram_v5_semantic_qa:has_text,unacceptable"]
+
+
+def test_static_proposal_stays_pending_owner_approval() -> None:
+    data_dir = tempfile.mkdtemp()
+    proposal = propose_static_update(data_dir, proposal_type="claim_review", rationale="new first-party evidence needs review", evidence=[{"source": "first_party"}])
+
+    assert proposal["status"] == "PENDING_OWNER_APPROVAL"
+    assert load(data_dir)["static_proposals"][0]["rationale"] == "new first-party evidence needs review"

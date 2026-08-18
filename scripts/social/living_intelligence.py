@@ -103,6 +103,24 @@ def record_decision(data_dir: str, *, post_id: str, strategy: dict[str, Any], di
     save(data_dir, state)
 
 
+def propose_static_update(data_dir: str, *, proposal_type: str, rationale: str, evidence: list[dict[str, Any]]) -> dict[str, Any]:
+    """Queue a non-executable owner proposal; this function never changes static truth."""
+    if not proposal_type.strip() or not rationale.strip() or not evidence:
+        raise ValueError("proposal_type, rationale, and evidence are required")
+    proposal = {
+        "proposal_type": proposal_type.strip(),
+        "rationale": rationale.strip(),
+        "evidence": [dict(item) for item in evidence if isinstance(item, dict)][:10],
+        "status": "PENDING_OWNER_APPROVAL",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    state = load(data_dir)
+    state.setdefault("static_proposals", []).append(proposal)
+    state["static_proposals"] = state["static_proposals"][-100:]
+    save(data_dir, state)
+    return proposal
+
+
 def human_connection(*, audience: str, moment: str, situation: str, need: str, capability: str, benefit: str, outcome: str, responsibility: str = "", friction: str = "") -> dict[str, str]:
     """Express a human meaning only when supported by a real customer moment."""
     meaning = ""
@@ -269,4 +287,5 @@ def decision_record(*, trigger: str, heartbeat_result: dict[str, Any], council_r
 def operational_status(data_dir: str) -> dict[str, Any]:
     state = load(data_dir)
     items = state.get("opportunities", [])
-    return {"last_light_heartbeat": state.get("heartbeat_history", {}).get("LIGHT_HEARTBEAT"), "last_standard_heartbeat": state.get("heartbeat_history", {}).get("STANDARD_HEARTBEAT"), "last_deep_heartbeat": state.get("heartbeat_history", {}).get("DEEP_HEARTBEAT"), "opportunities_ready": sum(item.get("state") == "READY" for item in items), "opportunities_research_needed": sum(item.get("state") == "RESEARCH_NEEDED" for item in items), "last_council_decision": state.get("last_council_decision"), "recent_failures": state.get("operational_failures", [])[-10:], "unresolved_operational_blockers": ["authenticated_railway_content_preview_not_verified"]}
+    proposals = state.get("static_proposals", [])
+    return {"last_light_heartbeat": state.get("heartbeat_history", {}).get("LIGHT_HEARTBEAT"), "last_standard_heartbeat": state.get("heartbeat_history", {}).get("STANDARD_HEARTBEAT"), "last_deep_heartbeat": state.get("heartbeat_history", {}).get("DEEP_HEARTBEAT"), "opportunities_ready": sum(item.get("state") == "READY" for item in items), "opportunities_research_needed": sum(item.get("state") == "RESEARCH_NEEDED" for item in items), "last_council_decision": state.get("last_council_decision"), "recent_failures": state.get("operational_failures", [])[-10:], "pending_owner_proposals": sum(item.get("status") == "PENDING_OWNER_APPROVAL" for item in proposals if isinstance(item, dict)), "unresolved_operational_blockers": ["authenticated_railway_content_preview_not_verified"]}

@@ -269,6 +269,24 @@ class AgentsTests(unittest.TestCase):
         self.assertGreater(result["total_banned_hits"], 0)
         self.assertIn(result["drift_status"], ("green", "yellow", "red"))
 
+    def test_brand_voice_drift_reads_current_nested_manifesto_shape(self) -> None:
+        os.makedirs(os.path.join(self._tmp, "marketing"), exist_ok=True)
+        with open(os.path.join(self._tmp, "marketing", "founder_brand_manifesto.json"), "w", encoding="utf-8") as f:
+            json.dump(
+                {
+                    "business_profile": {"positioning": "preparedness-first portable power"},
+                    "guardrails": {"disallowed_claim_patterns": ["fear-only manipulation"]},
+                },
+                f,
+            )
+        _make_history(self._tmp, [{"post_id": "p1", "fb_caption": "Portable power without fear-only manipulation."}])
+
+        result = brand_voice_drift.run(self._tmp)
+
+        self.assertEqual(result["banned_phrase_count"], 1)
+        self.assertEqual(result["total_banned_hits"], 1)
+        self.assertGreater(result["per_caption"][0]["positioning_overlap"], 0)
+
     def test_hashtag_intelligence_respects_platform_limits(self) -> None:
         result = hashtag_intelligence.run(
             self._tmp,

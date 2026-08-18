@@ -44,12 +44,19 @@ def _load_captions(data_dir: str, limit: int) -> list[dict]:
     return out
 
 
+def _manifesto_drift_rules(manifesto: dict) -> tuple[list[str], set[str]]:
+    guardrails = manifesto.get("guardrails", {}) if isinstance(manifesto.get("guardrails"), dict) else {}
+    business_profile = manifesto.get("business_profile", {}) if isinstance(manifesto.get("business_profile"), dict) else {}
+    banned_values = list(manifesto.get("banned_phrases", [])) + list(guardrails.get("disallowed_claim_patterns", []))
+    banned = list(dict.fromkeys(str(value).strip().lower() for value in banned_values if str(value).strip()))
+    positioning = str(manifesto.get("positioning") or business_profile.get("positioning") or "").lower()
+    return banned, set(re.findall(r"[a-z0-9]+", positioning))
+
+
 def run(data_dir: str) -> dict:
     limit = env_int("BRAND_DRIFT_LOOKBACK", 20)
     manifesto = _load_manifesto(data_dir)
-    banned = [str(p).strip().lower() for p in manifesto.get("banned_phrases", []) if str(p).strip()]
-    positioning = str(manifesto.get("positioning", "") or "").lower()
-    positioning_tokens = set(re.findall(r"[a-z0-9]+", positioning))
+    banned, positioning_tokens = _manifesto_drift_rules(manifesto)
 
     captions = _load_captions(data_dir, limit)
     per_caption: list[dict] = []

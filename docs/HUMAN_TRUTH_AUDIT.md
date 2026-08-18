@@ -19,6 +19,9 @@ module also derives identity, voice, and visual DNA from that manifesto. This is
 existing integration, not proof that Human Truth's tension-first or prompt-governance contracts
 are active.
 
+The owner questionnaire at `docs/BRAND_PROFILE_BUILDOUT_QUESTIONS.md` identifies the missing
+specificity needed to deepen this profile without inventing source material.
+
 ## Completed In This Audit
 
 - Preserved the governing plan unchanged at `docs/HUMAN_TRUTH_ENGINE.md`.

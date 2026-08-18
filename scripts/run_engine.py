@@ -619,6 +619,10 @@ def _strategy_integrity_errors(content: dict) -> list[str]:
         return [f"human_connection_review_{human_verdict.lower()}:{detail}"]
     if human_verdict == "CHANGE_ANGLE":
         return ["human_connection_review_change_angle"]
+    human_truth = (content.get("creative_director") or {}).get("human_truth_gate", {})
+    if isinstance(human_truth, dict) and not human_truth.get("ready", True):
+        failures = ",".join(str(item) for item in human_truth.get("failures", []) if str(item))
+        return [f"human_truth_gate_rejected:{failures or 'reader_value'}"]
     return []
 
 
@@ -1103,6 +1107,26 @@ def _artifact_visual_errors_by_platform(content: dict, effective_channels: dict[
         if str(review.get("verdict", "")).upper() != "PASS":
             issues = review.get("issues") if isinstance(review.get("issues"), list) else ["artifact_review_missing"]
             errors[platform] = [str(issue) for issue in issues] or ["artifact_review_missing"]
+    return errors
+
+
+def _v5_semantic_visual_errors(content: dict, effective_channels: dict[str, bool]) -> list[str]:
+    """Block a rendered V5 image only on an explicit semantic QA failure."""
+    visuals = content.get("generated_visuals") if isinstance(content.get("generated_visuals"), dict) else {}
+    generation = visuals.get("visual_generation") if isinstance(visuals.get("visual_generation"), dict) else {}
+    errors: list[str] = []
+    for platform in ("facebook", "instagram", "linkedin"):
+        if not effective_channels.get(platform):
+            continue
+        metadata = generation.get(platform) if isinstance(generation.get(platform), dict) else {}
+        report = metadata.get("v5_qa") if isinstance(metadata.get("v5_qa"), dict) else {}
+        if not report:
+            continue
+        flags = [name for name in ("has_text", "has_fake_products", "busy_copy_zone", "off_brand") if report.get(name) is True]
+        if report.get("acceptable") is False:
+            flags.append("unacceptable")
+        if flags:
+            errors.append(f"{platform}_v5_semantic_qa:{','.join(sorted(set(flags)))}")
     return errors
 
 
@@ -1596,6 +1620,7 @@ def main() -> None:
         channel_reasons[platform] = f"artifact_visual_qa:{','.join(issues)}"
     visual_gate_errors = _live_visual_gate_errors(content, effective_channels, dry_run or shadow_mode)
     visual_gate_errors.extend(_strategy_integrity_errors(content))
+    visual_gate_errors.extend(_v5_semantic_visual_errors(content, effective_channels))
     visual_gate_errors.extend(_final_presentation_errors(content, effective_channels))
     content["artifact_visual_qa"] = (content.get("generated_visuals") or {}).get("artifact_reviews", {})
     content["artifact_visual_qa_failures"] = artifact_errors

@@ -9,6 +9,19 @@ import requests
 
 
 DEFAULT_WINDOWS_HOURS = (24, 168, 720)
+COMPOSITE_WEIGHTS = {"saves": 3.0, "shares": 3.0, "comments": 2.0, "clicks": 1.0, "conversions": 4.0}
+
+
+def composite_metric(metrics: dict[str, float]) -> dict[str, Any]:
+    """Weight durable reader signals without silently treating missing metrics as zero."""
+    observed = {name: float(metrics[name]) for name in COMPOSITE_WEIGHTS if isinstance(metrics.get(name), (int, float))}
+    weighted = sum(observed[name] * COMPOSITE_WEIGHTS[name] for name in observed)
+    return {
+        "value": round(weighted, 3) if observed else None,
+        "observed_metrics": sorted(observed),
+        "unobserved_metrics": sorted(set(COMPOSITE_WEIGHTS) - set(observed)),
+        "status": "OBSERVED" if observed else "UNOBSERVED",
+    }
 
 
 def configured_windows() -> tuple[int, ...]:
@@ -64,5 +77,5 @@ def collect_meta(record: dict[str, Any]) -> list[dict[str, Any]]:
             values = item.get("values") or []
             if values and isinstance(values[0], dict) and isinstance(values[0].get("value"), (int, float)):
                 metrics[name] = float(values[0]["value"])
-        observations.append({"platform_post_id": post_id, "platform": platform, "published_at": record.get("published_at", ""), "raw_observation": {"metrics": metrics}, "derived_metrics": {}, "collected_at": datetime.now(timezone.utc).isoformat()})
+        observations.append({"platform_post_id": post_id, "platform": platform, "published_at": record.get("published_at", ""), "raw_observation": {"metrics": metrics}, "derived_metrics": {"reader_value_composite": composite_metric(metrics)}, "collected_at": datetime.now(timezone.utc).isoformat()})
     return observations

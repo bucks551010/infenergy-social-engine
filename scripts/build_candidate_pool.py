@@ -63,6 +63,12 @@ def build_pool(*, target_depth: int | None = None, max_attempts: int | None = No
                 rejected.append({"reason": "in_batch_rotation_collision", "rotation_selected": selection})
                 continue
 
+            creative_director = content.get("creative_director") if isinstance(content.get("creative_director"), dict) else {}
+            human_truth_gate = creative_director.get("human_truth_gate") if isinstance(creative_director.get("human_truth_gate"), dict) else {}
+            if human_truth_gate and not human_truth_gate.get("ready", False):
+                rejected.append({"reason": "human_truth_gate_rejected", "rotation_selected": selection, "failures": human_truth_gate.get("failures", [])})
+                continue
+
             run_engine._enforce_candidate_claim_boundary(content)
             validation = validate_generated_content(content)
             scoring = score_content(content)

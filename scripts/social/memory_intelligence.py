@@ -219,6 +219,8 @@ def recent(data_dir: str | None = None, *, limit: int = 20) -> dict[str, list[An
         "headline_placements": _recent_field(vdata["records"], "headline_placement", limit),
         "art_direction_families": _recent_field(vdata["records"], "art_direction_family", limit),
         "visual_concepts": _recent_field(vdata["records"], "visual_concept", limit),
+        "v5_scenes": _recent_field(vdata["records"], "v5_scene", limit),
+        "v5_archetypes": _recent_field(vdata["records"], "v5_archetype", limit),
     }
 
 

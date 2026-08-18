@@ -506,6 +506,28 @@ def _candidate_pool_depth() -> int:
     return sum(1 for candidate in candidates if isinstance(candidate, dict) and candidate.get("status") == "available")
 
 
+def _operational_intelligence_snapshot() -> dict:
+    """Expose only operational facts with a local source; never infer provider budgets."""
+    try:
+        from social.living_intelligence import operational_status
+        living = operational_status(_data_dir())
+        state = _load_json(os.path.join(_data_dir(), "social", "living_intelligence.json"), {})
+    except Exception as exc:
+        return {"status": "UNAVAILABLE", "reason": type(exc).__name__}
+    target_depth = int(os.environ.get("CANDIDATE_POOL_TARGET_DEPTH", "6"))
+    token_expiry = str(os.environ.get("META_TOKEN_EXPIRES_AT", "")).strip()
+    return {
+        "status": "READY",
+        "pool": {"available": _candidate_pool_depth(), "target": target_depth, "refill_needed": _candidate_pool_depth() < target_depth},
+        "seasonal_lookahead": state.get("seasonal_lookahead", []),
+        "visual_novelty": state.get("visual_novelty", {}),
+        "exploration": state.get("exploration", {}),
+        "token_expiry": {"status": "REPORTED" if token_expiry else "UNAVAILABLE", "value": token_expiry or None},
+        "gemini": {"configured": bool(os.environ.get("GEMINI_API_KEY", "").strip()), "budget_status": "UNAVAILABLE_NO_SUPPORTED_BILLING_SOURCE"},
+        "living": living,
+    }
+
+
 def _env_is_true(name: str, default: bool) -> bool:
     value = os.environ.get(name)
     if value is None:
@@ -711,6 +733,7 @@ class HealthHandler(BaseHTTPRequestHandler):
                 "shadow_mode": os.environ.get("SOCIAL_SHADOW_MODE", "false"),
                 "recent_quality": _quality_summary(recent_posts),
                 "visual_repo_bootstrap": VISUAL_REPO_BOOTSTRAP,
+                "operational_intelligence": _operational_intelligence_snapshot(),
             }
             body = json.dumps(payload).encode("utf-8")
             self.send_response(200)
@@ -1517,6 +1540,15 @@ def run_slot(
             heartbeat(_data_dir(), level="LIGHT_HEARTBEAT", website_url=os.environ.get("FIRST_PARTY_SITE_URL", ""))
         except Exception as exc:
             print(f"[INTELLIGENCE] heartbeat unavailable: {exc}")
+        try:
+            from social.candidate_pool import CandidatePool
+            from build_candidate_pool import build_pool
+            target_depth = int(os.environ.get("CANDIDATE_POOL_TARGET_DEPTH", "6"))
+            if CandidatePool(_data_dir()).depth() < target_depth:
+                result = build_pool(target_depth=target_depth)
+                print(f"[POOL] pre-slot refill depth={result.get('pool_depth', 0)} target={target_depth}")
+        except Exception as exc:
+            print(f"[POOL] pre-slot refill unavailable: {exc}")
         previous_dry_run = os.environ.get("SOCIAL_DRY_RUN", "true")
         previous_platforms = os.environ.get("POST_PLATFORMS", "")
         previous_duplicate_mode = os.environ.get("MANUAL_DUPLICATE_MODE", "")

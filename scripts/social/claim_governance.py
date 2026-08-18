@@ -101,7 +101,14 @@ def assess(
     return {"ready": True, "status": "READY", "claims": audited, "research_needs": []}
 
 
-def assess_visual_prompt(direction: dict[str, Any], prompt: str, *, has_product_reference: bool) -> dict[str, Any]:
+def assess_visual_prompt(
+    direction: dict[str, Any],
+    prompt: str,
+    *,
+    has_product_reference: bool,
+    verified_facts: list[str] | None = None,
+    forbidden_claims: list[str] | None = None,
+) -> dict[str, Any]:
     """Fail closed before a V5 scene reaches an image provider."""
     required = ("scene", "light", "composition", "optics", "negative_space", "style_anchor", "product_presence")
     failures = [f"missing:{field}" for field in required if not direction.get(field)]
@@ -117,9 +124,26 @@ def assess_visual_prompt(direction: dict[str, Any], prompt: str, *, has_product_
         failures.append("absent_product_conflict")
     if direction.get("reference_conditioning_required") and not has_product_reference:
         failures.append("missing_product_reference")
-    forbidden = [str(item) for item in direction.get("must_not_appear", []) if str(item).lower() in prompt_lower and str(item).lower() not in {"rendered text", "logos"}]
-    if forbidden:
-        failures.extend(f"forbidden_prompt_term:{item}" for item in forbidden)
+    must_not_appear = [str(item).lower() for item in direction.get("must_not_appear", []) if str(item).strip()]
+    missing_negatives = [item for item in must_not_appear if item not in prompt_lower]
+    if missing_negatives:
+        failures.extend(f"missing_negative_constraint:{item}" for item in missing_negatives)
+    evidence = " ".join(str(item) for item in verified_facts or []).lower()
+    prohibited = " ".join(str(item) for item in forbidden_claims or []).lower()
+    implication_terms = {
+        "whole_home": ("whole home", "entire house", "every appliance"),
+        "runtime": ("runtime", "hours of power", "all night"),
+        "compatibility": ("powering a fridge", "medical device", "cpap", "runs a refrigerator"),
+        "weather_rating": ("waterproof", "rainproof", "submerged"),
+    }
+    for implication, terms in implication_terms.items():
+        if any(term in prompt_lower for term in terms) and not any(term in evidence for term in terms):
+            failures.append(f"unsupported_visual_implication:{implication}")
+        if any(term in prompt_lower for term in terms) and any(term in prohibited for term in terms):
+            failures.append(f"forbidden_visual_implication:{implication}")
+    positive_scene_text = prompt_lower.split("do not show:", 1)[0]
+    if any(term in positive_scene_text for term in ("casualties", "people died", "disaster spectacle", "panic-stricken", "terrified family")):
+        failures.append("fear_or_disaster_spectacle")
     return {
         "ready": not failures,
         "status": "READY" if not failures else "REJECTED",
@@ -127,4 +151,5 @@ def assess_visual_prompt(direction: dict[str, Any], prompt: str, *, has_product_
         "product_presence": presence,
         "requires_text_compositing": bool((direction.get("text_overlay") or {}).get("enabled")),
         "reference_conditioning_required": bool(direction.get("reference_conditioning_required")),
+        "verified_fact_count": len(verified_facts or []),
     }

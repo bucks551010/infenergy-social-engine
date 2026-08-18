@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from .analytics_ingestion import composite_metric
+
 
 def update_hypothesis(existing: dict[str, Any] | None, observation: dict[str, Any]) -> dict[str, Any]:
     """Merge supporting or contradictory observations without discarding either."""
@@ -18,9 +20,10 @@ def update_hypothesis(existing: dict[str, Any] | None, observation: dict[str, An
 
 
 def observe(*, strategy: dict[str, Any], metrics: dict[str, float], platform: str) -> dict[str, Any]:
-    engagement = sum(float(metrics.get(key, 0) or 0) for key in ("saves", "shares", "comments", "clicks", "conversions"))
+    composite = composite_metric(metrics)
+    engagement = float(composite["value"] or 0)
     confidence = 0.2 if engagement < 3 else 0.45
-    return {"type": "PERFORMANCE_EVIDENCE", "platform": platform, "strategy": {key: strategy.get(key, "") for key in ("audience", "customer_moment", "human_need", "topic", "angle", "offering", "positioning")}, "metrics": metrics, "confidence": confidence, "interpretation": "a weak directional signal, not strategic truth", "next_change": "test a related angle with one controlled difference", "uncertainty": "single-post performance cannot establish causality"}
+    return {"type": "PERFORMANCE_EVIDENCE", "platform": platform, "strategy": {key: strategy.get(key, "") for key in ("audience", "customer_moment", "human_need", "topic", "angle", "offering", "positioning", "reader_job")}, "metrics": metrics, "reader_value_composite": composite, "confidence": confidence, "interpretation": "a weak directional signal, not strategic truth", "next_change": "test a related angle with one controlled difference", "uncertainty": "single-post performance cannot establish causality"}
 
 
 def learn(*, publication_record: dict[str, Any], observation: dict[str, Any]) -> dict[str, Any]:
@@ -36,6 +39,13 @@ def learn(*, publication_record: dict[str, Any], observation: dict[str, Any]) ->
         "support_count": 1,
         "contradiction_count": 0,
         "relationship": "Audience x Angle x Platform",
+        "v5_attribution": {
+            "tension_id": packet.get("tension_id", "") or visual.get("tension_id", ""),
+            "reader_job": strategy.get("reader_job", ""),
+            "scene": visual.get("v5_scene", "") or visual.get("scene", ""),
+            "product_presence": visual.get("v5_product_presence", "") or visual.get("product_presence", ""),
+            "reader_value_ready": ((packet.get("creative_director") or {}).get("human_truth_gate") or {}).get("ready"),
+        },
         "creative_relationships": {
             "layout_family_x_platform": [visual.get("layout_logic", ""), observation.get("platform", "")],
             "hook_family_x_platform": [strategy.get("genre_id", ""), observation.get("platform", "")],

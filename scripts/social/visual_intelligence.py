@@ -567,6 +567,7 @@ def build_v5_art_directions(
     platform: str,
     offering: dict[str, Any] | None = None,
     overlay_text: str = "",
+    recent_scenes: Iterable[str] = (),
 ) -> list[dict[str, Any]]:
     """Create three distinct, scored directions before choosing one render."""
     identity = _human_truth_payload("visual_identity.json").get("approved_visual_identity", {})
@@ -580,13 +581,16 @@ def build_v5_art_directions(
     if not environments or not lights or not compositions:
         return []
     directions: list[dict[str, Any]] = []
+    recent_scene_set = {str(scene).strip().lower() for scene in recent_scenes if str(scene).strip()}
     for index in range(3):
         environment = environments[index % len(environments)]
         light = lights[index % len(lights)]
         composition = compositions[index % len(compositions)]
         text_forward = archetype == "text_forward"
         scene = str(tension.get("visual_register") or strategy.get("customer_moment") or strategy.get("angle") or "a real moment of practical preparation")
-        score = 100.0 - index * 2.0
+        scene_key = scene.lower()
+        novelty = 0.0 if scene_key in recent_scene_set else 1.0
+        score = 90.0 - index * 2.0 + novelty * 8.0
         if text_forward and composition.get("negative_space"):
             score += 4.0
         if presence == "absent":
@@ -615,6 +619,13 @@ def build_v5_art_directions(
             "must_not_appear": list(identity.get("never_appears", [])),
             "style_anchor": "available-light documentary reportage",
             "reference_conditioning_required": presence in {"incidental", "hero"},
+            "score_components": {
+                "scene_truth": 1.0 if tension else 0.6,
+                "specificity": 1.0 if environment.get("details") else 0.5,
+                "brand_fit": 1.0,
+                "visual_novelty": novelty,
+                "claim_safety": 1.0,
+            },
             "score": score,
         })
     return sorted(directions, key=lambda item: float(item["score"]), reverse=True)
@@ -635,5 +646,6 @@ def compile_v5_scene_prompt(direction: dict[str, Any]) -> str:
         f"Capture at {optics.get('focal_length', '35mm')} {optics.get('aperture', 'f/4')}, focus on {optics.get('focus_point', 'the action')}, {optics.get('capture_style', 'documentary')}",
         f"Texture: {direction.get('texture', '')}. Color: {', '.join(color.get('palette', []))}; {color.get('temperature_bias', '')}; {color.get('contrast_curve', '')}",
         f"Style: {direction.get('style_anchor', 'available-light documentary reportage')}. No readable text, signs, screens, logos, badges, watermarks, or rendered typography.",
+        "Do not show: " + "; ".join(str(item) for item in direction.get("must_not_appear", []) if str(item).strip()) + ".",
     ]
     return ". ".join(part.strip(". ") for part in parts if part).strip()[:3200]

@@ -52,6 +52,72 @@ DEFAULT_THRESHOLDS = {
 }
 
 
+_FEAR_LEVERAGE = (
+    "act now before it's too late",
+    "your family will suffer",
+    "you cannot afford to be unprepared",
+    "disaster is coming",
+    "people died",
+    "casualties",
+)
+_CAPABILITY_LANGUAGE = ("check", "plan", "prioritize", "compare", "prepare", "choose", "understand", "first")
+_TRUST_BEHAVIORS = {
+    "value_before_asking": ("how", "what", "check", "compare", "choose", "plan", "first"),
+    "honest_limits": ("depends", "cannot", "may", "limit", "verify"),
+    "answer_hard_question": ("?", "compare", "depends", "check"),
+    "never_overclaim": (),
+}
+
+
+def human_truth_gate(*, hook: str, body: str, takeaway: str, strategy: dict[str, Any]) -> dict[str, Any]:
+    """Assess reader value before a candidate can spend image-render budget."""
+    text = " ".join((hook, body, takeaway)).strip()
+    lower = text.lower()
+    fear_terms = [term for term in _FEAR_LEVERAGE if term in lower]
+    moment = str(strategy.get("customer_moment") or "")
+    need = str(strategy.get("human_need") or "")
+    angle = str(strategy.get("angle") or "")
+    moment_terms = {word for word in re.findall(r"[a-z]{4,}", f"{moment} {need} {angle}".lower())}
+    text_terms = set(re.findall(r"[a-z]{4,}", lower))
+    recognition = bool(moment_terms & text_terms)
+    useful = bool(takeaway) and any(token in lower for token in _CAPABILITY_LANGUAGE)
+    captivating = len(hook.split()) >= 4 and not fear_terms
+    caring = bool(moment and need and recognition)
+    for_them = any(token in lower for token in (" you ", " your ", "?"))
+    trust_building = not fear_terms and (not strategy.get("important_capability") or any(token in lower for token in _CAPABILITY_LANGUAGE))
+    reader_value = {
+        "useful": float(useful),
+        "captivating": float(captivating),
+        "caring": float(caring),
+        "for_them": float(for_them),
+        "trust_building": float(trust_building),
+    }
+    trust_signals = [
+        name for name, signals in _TRUST_BEHAVIORS.items()
+        if (name == "never_overclaim" and not fear_terms) or any(signal in lower for signal in signals)
+    ]
+    craft = {
+        "tension": float(bool(moment and need)),
+        "stakes": float(bool(need and ("because" in lower or "so" in lower or takeaway))),
+        "specificity": float(bool(moment_terms & text_terms)),
+        "recognition": float(recognition),
+        "reframe": float(any(signal in lower for signal in ("instead", "not just", "rather than", "the real question"))),
+        "takeaway": float(bool(takeaway)),
+    }
+    failures = [name for name, score in reader_value.items() if score < 1.0]
+    if fear_terms:
+        failures.append("fear_leverage")
+    return {
+        "ready": not failures,
+        "status": "READY" if not failures else "REJECTED",
+        "reader_value": reader_value,
+        "trust_signals": trust_signals,
+        "craft_mechanics": craft,
+        "fear_terms": fear_terms,
+        "failures": failures,
+    }
+
+
 def expected_response_contract(
     *,
     reader_job: str,

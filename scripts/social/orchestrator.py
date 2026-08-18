@@ -36,6 +36,7 @@ from . import (
     engines,
     libraries,
     lean_intelligence,
+    living_intelligence,
     memory_intelligence,
     model_router,
     quality_intelligence,
@@ -767,6 +768,7 @@ class SocialIntelligenceOrchestrator:
             platform=platform,
             offering=bi_offering,
             overlay_text=hook_text,
+            recent_scenes=recent.get("v5_scenes", []),
         )
         v5_direction = v5_directions[0] if v5_directions else {}
         if v5_direction:
@@ -822,6 +824,12 @@ class SocialIntelligenceOrchestrator:
             engine=engine_name,
             brand_voice=_bi_brand_voice(bi_ctx),
         )
+        human_truth = quality_intelligence.human_truth_gate(
+            hook=hook_text,
+            body=body_text,
+            takeaway=takeaway,
+            strategy=locked,
+        )
         cd = quality_intelligence.creative_director_test(
             strategy_reason=f"engine={engine_name} pillar={brief.pillar.get('id')} genre={brief.genre.get('id')}",
             audience_reason=f"segment={brief.audience_segment} reader_job={brief.reader_job}",
@@ -867,9 +875,12 @@ class SocialIntelligenceOrchestrator:
             v5_direction,
             positive_prompt,
             has_product_reference=bool(art_dict.get("product_image_url")),
+            verified_facts=list((bi_offering or {}).get("verified_facts") or verified_facts or _bi_verified_facts(bi_ctx)),
+            forbidden_claims=_bi_forbidden_claims(bi_ctx),
         ) if v5_direction else {"ready": True, "status": "LEGACY_DIRECTION"}
         art_dict["prompt_governance"] = prompt_governance
-        if pre_render_gate.get("decision") == "CONCEPT_READY" and prompt_governance.get("ready"):
+        art_dict["human_truth_gate"] = human_truth
+        if pre_render_gate.get("decision") == "CONCEPT_READY" and prompt_governance.get("ready") and human_truth.get("ready"):
             provider_result = self.provider.generate(
                 art_direction=art_dict,
                 positive_prompt=positive_prompt,
@@ -887,6 +898,7 @@ class SocialIntelligenceOrchestrator:
                     "reason": "pre_render_gate_not_ready",
                     "gate": pre_render_gate,
                     "prompt_governance": prompt_governance,
+                    "human_truth_gate": human_truth,
                 },
             )
 
@@ -927,6 +939,7 @@ class SocialIntelligenceOrchestrator:
                 "v5_direction_candidates": v5_directions,
                 "v5_direction": v5_direction,
                 "prompt_governance": prompt_governance,
+                "human_truth_gate": human_truth,
                 "positive_prompt": positive_prompt,
                 "negative_prompt": negative_prompt,
                 "prompt_humanness": v_humanness,
@@ -954,6 +967,7 @@ class SocialIntelligenceOrchestrator:
             anchored_offering=bi_offering,
             creative_decision_packet=creative_packet,
         )
+        package.creative_director["human_truth_gate"] = human_truth
         if locked:
             package.creative_director["creative_decision_review"] = {
                 "verdict": "PASS" if creative_packet["ACTION"] == "create" else "DO_NOT_PUBLISH",
@@ -976,6 +990,16 @@ class SocialIntelligenceOrchestrator:
             )
             package.creative_director["visual_critic_review"] = quality_intelligence.visual_critic(
                 visual=package.visual, provider_result=package.provider_result, platform=platform
+            )
+
+        if record_memory:
+            living_intelligence.record_decision(
+                self.data_dir or os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "data"),
+                post_id=post_id,
+                strategy=locked,
+                direction=v5_direction,
+                human_truth=human_truth,
+                prompt_governance=prompt_governance,
             )
 
         # 10. Memory

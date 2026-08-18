@@ -15,6 +15,12 @@ DEFAULT_BUDGETS = {
     "DEEP_HEARTBEAT": {"max_research_tasks": 5, "max_sources_retrieved": 10, "max_competitor_refreshes": 5},
     "DEEP_REFRESH": {"max_research_tasks": 5, "max_sources_retrieved": 10, "max_competitor_refreshes": 5},
 }
+EXPLORATION_RESERVE = 0.25
+SEASONAL_LOOKAHEAD = (
+    {"id": "gulf_hurricane_readiness", "months": (6, 7, 8, 9, 10), "lead_days": 21, "territory": "preparedness over panic"},
+    {"id": "summer_heat_and_travel", "months": (5, 6, 7, 8, 9), "lead_days": 14, "territory": "portable practical power"},
+    {"id": "winter_outage_planning", "months": (11, 12, 1, 2), "lead_days": 21, "territory": "household continuity"},
+)
 
 
 def _path(data_dir: str) -> str:
@@ -33,6 +39,68 @@ def save(data_dir: str, state: dict[str, Any]) -> None:
     os.makedirs(os.path.dirname(_path(data_dir)), exist_ok=True)
     with open(_path(data_dir), "w", encoding="utf-8") as handle:
         json.dump(state, handle, indent=2)
+
+
+def seasonal_lookahead(*, now: datetime | None = None) -> list[dict[str, Any]]:
+    """Return upcoming preparation windows without creating paste-ready content."""
+    now = now or datetime.now(timezone.utc)
+    active: list[dict[str, Any]] = []
+    for window in SEASONAL_LOOKAHEAD:
+        if now.month in window["months"]:
+            active.append({**window, "status": "PRE_STAGE", "observed_at": now.isoformat()})
+    return active
+
+
+def visual_novelty(records: list[dict[str, Any]], *, limit: int = 30) -> dict[str, Any]:
+    """Report bounded visual repetition dimensions from the existing visual memory."""
+    recent = [record for record in records[-limit:] if isinstance(record, dict)]
+    dimensions = {
+        "scene": [str(record.get("v5_scene") or "") for record in recent],
+        "archetype": [str(record.get("v5_archetype") or "") for record in recent],
+        "product_presence": [str(record.get("v5_product_presence") or "") for record in recent],
+        "signature": [str(record.get("visual_signature") or "") for record in recent],
+    }
+    summary = {}
+    for name, values in dimensions.items():
+        populated = [value for value in values if value]
+        unique = len(set(populated))
+        summary[name] = {"samples": len(populated), "unique": unique, "repeat_rate": round(1.0 - unique / max(1, len(populated)), 3)}
+    return {"window": limit, "dimensions": summary, "healthy": all(item["repeat_rate"] <= 0.7 for item in summary.values())}
+
+
+def exploration_status(records: list[dict[str, Any]]) -> dict[str, Any]:
+    """Keep a fixed allocation outside previously supported patterns."""
+    recent = [record for record in records[-40:] if isinstance(record, dict)]
+    exploratory = sum(bool(record.get("exploration")) for record in recent)
+    share = exploratory / max(1, len(recent))
+    return {"samples": len(recent), "exploration_share": round(share, 3), "minimum_share": EXPLORATION_RESERVE, "ready": share >= EXPLORATION_RESERVE or not recent}
+
+
+def record_decision(data_dir: str, *, post_id: str, strategy: dict[str, Any], direction: dict[str, Any], human_truth: dict[str, Any], prompt_governance: dict[str, Any]) -> None:
+    """Persist bounded decision metadata; static owner truth is never modified."""
+    state = load(data_dir)
+    entry = {
+        "post_id": post_id,
+        "tension_id": direction.get("tension_id", ""),
+        "reader_job": strategy.get("reader_job", ""),
+        "scene": direction.get("scene", ""),
+        "archetype": direction.get("archetype", ""),
+        "product_presence": direction.get("product_presence", ""),
+        "prompt_governance": prompt_governance.get("status", ""),
+        "reader_value_ready": human_truth.get("ready", False),
+        "exploration": bool(direction.get("tension_id")),
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    state.setdefault("decision_history", []).append(entry)
+    state["decision_history"] = state["decision_history"][-500:]
+    state.setdefault("visual_usage", []).append({
+        "v5_scene": entry["scene"], "v5_archetype": entry["archetype"],
+        "v5_product_presence": entry["product_presence"], "visual_signature": direction.get("scene", ""),
+    })
+    state["visual_usage"] = state["visual_usage"][-500:]
+    state["visual_novelty"] = visual_novelty(state["visual_usage"])
+    state["exploration"] = exploration_status(state["decision_history"])
+    save(data_dir, state)
 
 
 def human_connection(*, audience: str, moment: str, situation: str, need: str, capability: str, benefit: str, outcome: str, responsibility: str = "", friction: str = "") -> dict[str, str]:
@@ -93,6 +161,10 @@ def heartbeat(
     creative_observations = [item for item in evidence if item.get("creative_relationships")]
     creative_learning = performance_learning.aggregate_creative_learning(creative_observations)
     state["creative_learning"] = creative_learning
+    visual_records = state.get("visual_usage", [])
+    state["visual_novelty"] = visual_novelty(visual_records)
+    state["exploration"] = exploration_status(state.get("decision_history", []))
+    state["seasonal_lookahead"] = seasonal_lookahead()
     consumers = consumer_intelligence.normalize(consumer_signals or [])
     state["consumer_relationships"] = consumer_intelligence.relationships(consumers)
     competitors, competitor_changes = competitor_intelligence.observe(competitor_observations or [], state.get("competitors", {}))

@@ -197,6 +197,38 @@ When the only available pool candidate fails duplicate checking, bypass the pool
 
 ---
 
+## FIX IMPLEMENTED (commit 7f15869)
+
+**Date:** 2026-08-18  
+**Approach:** Hybrid of Options A and C
+
+### Changes
+
+1. **`scripts/social/candidate_pool.py`**: Added `quarantine(candidate_id, reason)` method
+   - Marks candidate status as `"quarantined"` instead of leaving it `"available"`
+   - Records `quarantined_at` timestamp and `quarantine_reason`
+   - Quarantined candidates are excluded from `available()` results
+
+2. **`scripts/run_engine.py`**: Call quarantine in the skip block
+   - When `final_decision["publishable"] == False`, quarantine any pooled candidate
+   - Logs: `[POOL] Quarantined candidate {id}... reason={reasons}`
+   - Reasons captured from `duplicate_check.reasons` or fallback `"validation_or_quality_failure"`
+
+### Effect
+
+The infinite re-selection loop is broken:
+- Run 1: Candidate fails duplicate → **quarantined** (not "available")
+- Run 2: Pool has 0 available → fresh generation triggered
+- Run 3+: Each run gets fresh content, preventing cascade of same-content failures
+
+### Deployment
+
+- Pushed to `origin/master` (commit `7f15869`)
+- Railway auto-deploy triggered
+- Tests: 394/395 passed (1 unrelated agent roster failure)
+
+---
+
 ## POST-FIX FORENSIC REQUIREMENT
 
 After the pool quarantine fix is deployed:

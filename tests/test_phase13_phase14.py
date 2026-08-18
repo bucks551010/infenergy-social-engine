@@ -600,6 +600,9 @@ class PhaseThirteenFourteenTests(unittest.TestCase):
     def test_run_engine_records_skipped_no_eligible_platforms(self) -> None:
         save_calls: list[dict] = []
         content = deepcopy(_base_content())
+        content.pop("date")
+        content.pop("pillar")
+        content.pop("topic_hash")
 
         with patch.object(run_engine.generate_posts, "ensure_runtime_data", return_value=None), \
             patch.object(run_engine.generate_posts, "generate", return_value=content), \
@@ -625,6 +628,7 @@ class PhaseThirteenFourteenTests(unittest.TestCase):
 
         saved_post = save_calls[-1]["posts"][-1]
         self.assertEqual(saved_post["status"], "skipped_no_eligible_platforms")
+        self.assertEqual(saved_post["date"], saved_post["run_started_at_utc"][:10])
         self.assertIn("platform_records", saved_post)
         self.assertEqual(len(saved_post["platform_records"]), 4)
 

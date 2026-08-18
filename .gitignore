@@ -17,3 +17,6 @@ data/business_intelligence/offerings/
 data/business_intelligence/profile/
 data/social/content_memory.json
 data/social/visual_memory.json
+data/generated_visuals/
+data/public_media/
+forensic_*.json

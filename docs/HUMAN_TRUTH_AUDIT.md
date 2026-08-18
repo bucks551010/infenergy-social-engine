@@ -13,6 +13,12 @@ not, however, complete the Human Truth Engine plan.
 Phase 0 publishing has evidence of successful historic publishes. Persistence across a Railway
 redeploy remains unverified, so the Phase 0 persistence requirement is still open.
 
+Existing owner brand material is actively consumed: `generate_posts.py` loads
+`founder_brand_manifesto.json` into the brand-profile seed and generation prompt. The BI brand
+module also derives identity, voice, and visual DNA from that manifesto. This is evidence of
+existing integration, not proof that Human Truth's tension-first or prompt-governance contracts
+are active.
+
 ## Completed In This Audit
 
 - Preserved the governing plan unchanged at `docs/HUMAN_TRUTH_ENGINE.md`.
@@ -22,6 +28,8 @@ redeploy remains unverified, so the Phase 0 persistence requirement is still ope
   - `human_material_reserve.json`
   - `reader_value_criteria.json`
   - `trust_behaviors.json`
+   - `brand_truth.json`
+   - `visual_identity.json`
 - Added `scripts/social/static_repository.py` and tests that reject code-managed writes to
   the Human Truth static repository while allowing living-data writes.
 
@@ -34,6 +42,7 @@ hooks were invented. The owner must supply those entries verbatim.
 |---|---|---|---|
 | Candidate pool / duplicate safety | Partial | `scripts/social/candidate_pool.py`, `scripts/run_engine.py` | Quarantine is post-failure; a current-slot fresh-generation fallback is not implemented. |
 | Static/living boundary | Partial | `scripts/social/static_repository.py` | The new Human Truth static files are guarded; existing generation code does not yet consume them. |
+| Existing owner brand source | Active | `data/marketing/founder_brand_manifesto.json`, `generate_posts.py`, `business_intelligence/brand.py` | It supplies current brand prompts, but does not yet populate or enforce Human Truth's explicit Brand Truth and Visual Identity contracts. |
 | Human Material Reserve and intake | Structure complete | `docs/HUMAN_MATERIAL_INTAKE.md`, `data/marketing/human_truth/human_material_reserve.json` | Owner material is intentionally empty. |
 | Tension-first selection | Absent | Existing emotional-driver and strategy modules are adjacent only | No tension selection, moment selection, or product-optional flow in production generation. |
 | Explicit job dimension | Partial | Existing strategic briefs | Required jobs, including honest-limit and skeptic-answer work, are not selected or recorded consistently. |

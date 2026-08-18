@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "owner_authored_only": true,
+  "source_of_truth": [
+    "data/marketing/founder_brand_manifesto.json"
+  ],
+  "entry_rules": {
+    "derive_only_from_owner_sources": true,
+    "do_not_invent_positions": true,
+    "require_owner_approval": true
+  },
+  "required_fields": [
+    "positions_held",
+    "positions_refused",
+    "voice_boundaries",
+    "mission_territories",
+    "source_provenance",
+    "owner_approved_at"
+  ],
+  "approved_brand_truth": {}
+}

@@ -1,5 +1,6 @@
 {
   "schema_version": 1,
+  "owner_authored_only": true,
   "minimum_score": 0.6,
   "criteria": [
     {

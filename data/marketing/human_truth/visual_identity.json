@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "owner_authored_only": true,
+  "source_of_truth": [
+    "data/marketing/founder_brand_manifesto.json"
+  ],
+  "entry_rules": {
+    "require_owner_approval": true,
+    "do_not_use_generic_stock_environments": true,
+    "do_not_imply_unverified_product_capability": true
+  },
+  "required_fields": [
+    "palette",
+    "light_quality",
+    "time_of_day_preferences",
+    "grain_and_texture",
+    "framing_preferences",
+    "regional_environments",
+    "never_appears",
+    "approved_product_references",
+    "source_provenance",
+    "owner_approved_at"
+  ],
+  "approved_visual_identity": {}
+}

@@ -1,5 +1,6 @@
 {
   "schema_version": 1,
+  "owner_authored_only": true,
   "behaviors": [
     {
       "id": "honest_limits",

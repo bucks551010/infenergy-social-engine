@@ -980,6 +980,25 @@ def review_rendered_visual(path: str, platform: str) -> dict[str, Any]:
     }
 
 
+def _save_product_photo_fallback(source: str, output_path: str, platform: str) -> bool:
+    """Create a publishable platform artifact from an approved product source."""
+    image_module, _, _ = _load_pillow()
+    if image_module is None:
+        return False
+    raw, _ = _read_image_bytes_any(source)
+    if not raw:
+        return False
+    try:
+        with image_module.open(io.BytesIO(raw)) as source_image:
+            image = source_image.convert("RGB")
+            artifact = _resize_cover(image, _platform_visual_spec(platform)["target"], image_module)
+            os.makedirs(os.path.dirname(output_path), exist_ok=True)
+            artifact.save(output_path, format="PNG", optimize=True)
+        return os.path.isfile(output_path) and os.path.getsize(output_path) > 0
+    except Exception:
+        return False
+
+
 def generate_visuals(content: dict[str, Any], visual_plan: dict[str, Any] | None = None) -> dict[str, Any]:
     post_id = str(content.get("post_id") or "preview")
     visuals: dict[str, Any] = {}
@@ -1013,6 +1032,20 @@ def generate_visuals(content: dict[str, Any], visual_plan: dict[str, Any] | None
         if rendered:
             render_engines[platform] = "gemini"
             product_overlay_applied[platform] = product_specific_source_present
+            visuals[platform] = file_path
+            artifact_reviews[platform] = review_rendered_visual(file_path, platform)
+        elif resolved_override and _save_product_photo_fallback(resolved_override, file_path, platform):
+            render_engines[platform] = "approved_product_photo"
+            product_overlay_applied[platform] = True
+            fallback_reasons[platform] = reason
+            visual_generation[platform] = {
+                **metadata,
+                "generation_status": "fallback_product_photo",
+                "artifact_path": file_path,
+                "artifact_exists": True,
+                "fallback_used": True,
+                "fallback_source": "approved_product_photo",
+            }
             visuals[platform] = file_path
             artifact_reviews[platform] = review_rendered_visual(file_path, platform)
         else:

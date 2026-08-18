@@ -87,6 +87,20 @@ def test_incidental_medium_claim_does_not_block_and_verified_central_claim_can_p
     assert _decision(verified_readiness)["publishable"] is True
 
 
+def test_absent_conversion_score_is_not_recorded_as_a_perfect_score():
+    decision = publish_decision.decide(
+        legacy_score={"total": 97.0, "platform_results": {}},
+        validation={"passed": True, "errors": []},
+        duplicates={"ok": True, "reasons": []},
+        conversion_quality_score=None,
+        orchestrator_quality={"overall": 92.0, "critic_findings": []},
+    )
+
+    assert decision["publishable"] is True
+    assert decision["conversion_quality_score"] is None
+    assert decision["conversion_quality_available"] is False
+
+
 def test_supported_rewrite_and_abstention_are_available_without_weakening_high_risk_policy():
     rewritten = claim_intelligence.build_ledger("The published output is 200W. Compare that published fact with your device requirement.", verified_facts=["200W"], forbidden_claims=[])
     rewrite_readiness = claim_governance.assess(rewritten, hook="What output is published?", decision_insight={"relationship": ""}, takeaway="Compare the published fact.")

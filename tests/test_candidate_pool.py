@@ -7,6 +7,7 @@ _REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(_REPO, "scripts"))
 
 from social.candidate_pool import CandidatePool, build_rotation_ledger, select_least_recently_used
+import run_engine
 
 
 def test_rotation_prefers_eligible_least_recently_used():
@@ -56,3 +57,17 @@ def test_candidate_pool_expires_and_consumes(tmp_path):
     assert pool.depth() == 1
     assert pool.consume(candidate["candidate_id"]) is True
     assert pool.depth() == 0
+
+
+def test_failed_pooled_candidate_is_quarantined_before_fresh_retry(tmp_path):
+    pool = CandidatePool(str(tmp_path))
+    candidate = pool.add({"post_id": "pooled-1"}, rotation={}, batch_gate_results={})
+
+    quarantined = run_engine._quarantine_failed_pooled_candidate(
+        pool,
+        {"candidate_id": candidate["candidate_id"]},
+        reason="duplicate_exact_caption_within_window",
+    )
+
+    assert quarantined is True
+    assert pool.available() == []

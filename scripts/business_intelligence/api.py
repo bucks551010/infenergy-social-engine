@@ -89,6 +89,10 @@ def validate_human_connection_constitution() -> dict[str, Any]:
     return constitution.validate_constitution_integrity()
 
 
+def resolve_human_connection_moment(*values: str) -> str:
+    return constitution.resolve_moment_id(*values)
+
+
 def run_agent_conference(*, persist: bool = True) -> dict[str, Any]:
     return conference.run_conference(persist=persist)
 

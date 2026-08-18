@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -42,7 +43,7 @@ def validate_constitution_integrity() -> dict[str, Any]:
     errors: list[str] = []
     if constitution.get("schema_version") != "constitution.v1":
         errors.append("invalid_schema_version")
-    for key in ("constitution_id", "operating_principles", "core_mandates", "moment_worlds", "trust_boundaries", "voice", "references"):
+    for key in ("constitution_id", "operating_principles", "core_mandates", "preemptive_creation_logic", "moment_worlds", "trust_boundaries", "voice", "references"):
         if not constitution.get(key):
             errors.append(f"missing:{key}")
     repo_root = Path(paths._repo_root())
@@ -64,6 +65,30 @@ def _pick_by_id(items: list[dict[str, Any]], item_id: str) -> dict[str, Any]:
     return next((item for item in items if item.get("id") == item_id), {})
 
 
+def resolve_moment_id(*values: str) -> str:
+    """Map a live customer-moment description to a canonical moment world."""
+    text = " ".join(str(value or "").lower() for value in values)
+    constitution = load_constitution()
+    known = set(constitution.get("buying_moments", []))
+    for value in values:
+        if str(value or "") in known:
+            return str(value)
+    rules = (
+        ("device_compatibility_question", ("compatib", "watt-hour", "watt hour", "port", "charging standard")),
+        ("weather_forecast_changes", ("weather", "forecast", "radar", "storm")),
+        ("outage_or_power_interruption", ("outage", "blackout", "power interruption", "grid fails", "lights go out")),
+        ("limited_outlet_access_for_work_or_school", ("outlet", "laptop", "work", "school", "mobile")),
+        ("trip_or_camping_plan", ("trip", "travel", "camping", "next leg")),
+        ("possible_overbuying_or_underbuying", ("overbuy", "underbuy", "right fit", "too much", "too little")),
+    )
+    for moment_id, hints in rules:
+        if any(hint in text for hint in hints):
+            return moment_id
+    if re.search(r"\bwh\b", text):
+        return "device_compatibility_question"
+    return ""
+
+
 def compile_constitutional_context(*, segment_id: str = "", moment_id: str = "", job: str = "") -> dict[str, Any]:
     """Return only the high-authority Constitution material for one decision."""
     constitution = load_constitution()
@@ -81,6 +106,7 @@ def compile_constitutional_context(*, segment_id: str = "", moment_id: str = "",
         "core_mandates": constitution.get("core_mandates", []),
         "founder_origin": constitution.get("founder_origin", {}),
         "worldview": constitution.get("worldview", {}),
+        "preemptive_creation_logic": constitution.get("preemptive_creation_logic", {}),
         "human_value_ladder": constitution.get("human_value_ladder", {}),
         "audience_world": _pick_by_id(constitution.get("audience_worlds", []), segment_id),
         "buying_moment": moment,

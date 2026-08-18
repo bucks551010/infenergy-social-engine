@@ -587,13 +587,38 @@ def _attach_platform_quality(content: dict, scoring: dict) -> None:
             posts[platform]["quality_score"] = result.get("total")
             posts[platform]["quality_verdict"] = result
 
+
+def _conversion_quality_score(content: dict) -> float | None:
+    score = content.get("conversion_quality_score")
+    if not isinstance(score, dict) or score.get("total") is None:
+        return None
+    try:
+        return float(score["total"])
+    except (TypeError, ValueError):
+        return None
+
+
+def _quarantine_failed_pooled_candidate(candidate_pool: CandidatePool, content: dict, *, reason: str) -> bool:
+    """Remove a failed pooled candidate before a retry replaces it with fresh content."""
+    candidate_id = str(content.get("candidate_id") or "")
+    if not candidate_id:
+        return False
+    return candidate_pool.quarantine(candidate_id, reason=reason or "validation_or_quality_failure")
+
 def _strategy_integrity_errors(content: dict) -> list[str]:
     review = (content.get("creative_director") or {}).get("strategy_integrity_review", {})
     if str(review.get("verdict", "")).upper() == "MATERIAL_DRIFT":
         return ["strategy_integrity_material_drift"]
     human_review = (content.get("creative_director") or {}).get("independent_human_connection_review", {})
-    if str(human_review.get("verdict", "")).upper() == "DO_NOT_PUBLISH":
+    human_verdict = str(human_review.get("verdict", "")).upper()
+    if human_verdict == "DO_NOT_PUBLISH":
         return ["human_connection_review_do_not_publish"]
+    if human_verdict in {"REVISE_COPY", "REVISE_BOTH", "REVISE_VISUAL"}:
+        failures = [str(item) for item in human_review.get("reader_value_failures", []) if str(item)]
+        detail = ",".join(failures) if failures else "review_failed"
+        return [f"human_connection_review_{human_verdict.lower()}:{detail}"]
+    if human_verdict == "CHANGE_ANGLE":
+        return ["human_connection_review_change_angle"]
     return []
 
 
@@ -614,6 +639,10 @@ def _revision_feedback(content: dict, decision: dict) -> list[str]:
         if isinstance(review, dict):
             findings.extend(str(issue) for issue in review.get("issues", []) if str(issue))
     creative = content.get("creative_director") if isinstance(content.get("creative_director"), dict) else {}
+    human_review = creative.get("independent_human_connection_review") if isinstance(creative.get("independent_human_connection_review"), dict) else {}
+    reader_value_failures = [str(item) for item in human_review.get("reader_value_failures", []) if str(item)]
+    if reader_value_failures:
+        findings.append("human_connection_reader_value_missing:" + ",".join(reader_value_failures))
     for key in ("copy_critic_review", "visual_critic_review"):
         review = creative.get(key) if isinstance(creative.get(key), dict) else {}
         findings.extend(str(issue) for issue in review.get("issues", []) if str(issue))
@@ -629,6 +658,8 @@ _RETRYABLE_CONTENT_PREFIXES = (
     "price_mismatch:",
     "compatibility_not_verified",
     "testimonial_or_customer_claim_unverified",
+    "human_connection_review_revise_",
+    "human_connection_reader_value_missing:",
 )
 _RETRYABLE_CONTENT_FINDINGS = {
     "runtime_quality_below_regeneration_floor",
@@ -648,6 +679,7 @@ _TERMINAL_FINDINGS = {
     "orchestration_control_plane_blocked",
     "strategy_integrity_material_drift",
     "human_connection_review_do_not_publish",
+    "human_connection_review_change_angle",
 }
 
 
@@ -1010,6 +1042,7 @@ def _live_visual_gate_errors(content: dict, effective_channels: dict[str, bool],
     render_engines = visuals.get("render_engines") if isinstance(visuals.get("render_engines"), dict) else {}
     overlays = visuals.get("product_overlay_applied") if isinstance(visuals.get("product_overlay_applied"), dict) else {}
     require_gemini = os.environ.get("LIVE_REQUIRE_GEMINI_VISUAL", "true").strip().lower() in {"1", "true", "yes", "on"}
+    approved_render_engines = {"gemini", "approved_product_photo"}
     has_anchored_product = bool(str(content.get("product_id") or "").strip())
     require_product = has_anchored_product and os.environ.get("LIVE_REQUIRE_PRODUCT_VISUAL", "true").strip().lower() in {"1", "true", "yes", "on"}
 
@@ -1019,7 +1052,7 @@ def _live_visual_gate_errors(content: dict, effective_channels: dict[str, bool],
     for platform in requested:
         if not str(visuals.get(platform, "")).strip():
             errors.append(f"{platform}_visual_missing")
-        if require_gemini and str(render_engines.get(platform, "")) != "gemini":
+        if require_gemini and str(render_engines.get(platform, "")) not in approved_render_engines:
             errors.append(f"{platform}_visual_not_gemini")
         if require_product and overlays.get(platform) is not True:
             errors.append(f"{platform}_product_overlay_missing")
@@ -1378,7 +1411,7 @@ def main() -> None:
 
         # Conversion Logic Engine rule (spec section 23): below 80 CQS, automatically
         # attempt improvement before publishing rather than accepting a "warning"-only gate.
-        cqs_total = float((content.get("conversion_quality_score") or {}).get("total", 100) or 100)
+        cqs_total = _conversion_quality_score(content)
         publish_decision = decide_publication(
             legacy_score=scoring,
             validation=validation,
@@ -1441,6 +1474,12 @@ def main() -> None:
 
         if publish_decision["publishable"]:
             break
+
+        if idx == 0:
+            duplicate_reasons = content.get("duplicate_check", {}).get("reasons", [])
+            quarantine_reason = ",".join(str(reason) for reason in duplicate_reasons) if duplicate_reasons else "validation_or_quality_failure"
+            if _quarantine_failed_pooled_candidate(candidate_pool, content, reason=quarantine_reason):
+                print(f"[POOL] Quarantined failed candidate before retry: {str(content.get('candidate_id'))[:8]}...")
 
         # Manual live override path: if operator explicitly requests allow_all, swap to a known-safe
         # product/stage combo for one retry so publishing can proceed.
@@ -1566,8 +1605,8 @@ def main() -> None:
         content.setdefault("quality_warnings", []).append("live_visual_gate_blocked")
         final_validation_ok = False
 
-    final_cqs_total = float((content.get("conversion_quality_score") or {}).get("total", 100) or 100)
-    if final_cqs_total < 80:
+    final_cqs_total = _conversion_quality_score(content)
+    if final_cqs_total is not None and final_cqs_total < 80:
         content.setdefault("quality_warnings", []).append(f"cqs_below_target_after_retries:{final_cqs_total}")
         print(f"[QUALITY] Published with Conversion Quality Score {final_cqs_total} after exhausting retries (target 80).")
 
@@ -1588,7 +1627,7 @@ def main() -> None:
         if candidate_id:
             dup_reasons = content.get("duplicate_check", {}).get("reasons", [])
             quarantine_reason = ",".join(str(r) for r in dup_reasons) if dup_reasons else "validation_or_quality_failure"
-            if candidate_pool.quarantine(candidate_id, reason=quarantine_reason):
+            if _quarantine_failed_pooled_candidate(candidate_pool, content, reason=quarantine_reason):
                 print(f"[POOL] Quarantined candidate {candidate_id[:8]}... reason={quarantine_reason}")
         history = generate_posts.load_history()
         run_started = datetime.now(timezone.utc).isoformat()

@@ -74,6 +74,31 @@ def test_generate_uses_social_intelligence_when_enabled(monkeypatch):
     assert result["anchored_offering"]["name"] == "Portable power station"
 
 
+def test_production_orchestrator_adapter_uses_recipe_provider_before_final_render(monkeypatch):
+    import importlib
+
+    captured = {}
+
+    class FakePost:
+        def as_dict(self):
+            return {"post_id": "recipe-only"}
+
+    class FakeOrchestrator:
+        def __init__(self, *, provider):
+            captured["provider"] = provider
+
+        def create_batch(self, **kwargs):
+            return [FakePost()]
+
+    live_orchestrator = importlib.import_module("social.orchestrator")
+    monkeypatch.setattr(live_orchestrator, "SocialIntelligenceOrchestrator", FakeOrchestrator)
+
+    posts = generate_posts.run_social_intelligence(count=1)
+
+    assert captured["provider"].name == "template_render"
+    assert posts == [{"post_id": "recipe-only"}]
+
+
 def test_normal_generation_defaults_to_the_orchestrator(monkeypatch):
     monkeypatch.delenv("CONTENT_PIPELINE", raising=False)
     monkeypatch.delenv("POST_PIPELINE_OVERRIDE", raising=False)
@@ -422,6 +447,26 @@ def test_orchestrator_derives_runtime_lock_and_final_reviews_without_council(mon
     assert post.creative_director["strategy_integrity_review"]["verdict"] == "ALIGNED"
 
 
+def test_pre_render_gate_blocks_provider_invocation(monkeypatch):
+    class ProviderThatMustNotRun:
+        def generate(self, **kwargs):
+            raise AssertionError("provider must not render an unready concept")
+
+    monkeypatch.setattr(orchestrator, "_llm_copy_beats", lambda *args: None)
+    monkeypatch.setattr(
+        orchestrator.creative_intelligence,
+        "pre_render_gate",
+        lambda **kwargs: {"decision": "REVISE_CONCEPT", "checks": {"claim_safe": True}},
+    )
+
+    post = orchestrator.SocialIntelligenceOrchestrator(provider=ProviderThatMustNotRun()).create_post(
+        record_memory=False
+    )
+
+    assert post.provider_result["kind"] == "none"
+    assert post.provider_result["provider_meta"]["reason"] == "pre_render_gate_not_ready"
+
+
 def test_orchestrator_creative_decision_uses_abstract_diverse_references(tmp_path, monkeypatch):
     monkeypatch.setattr(orchestrator, "_llm_copy_beats", lambda *args: None)
     post = orchestrator.SocialIntelligenceOrchestrator(data_dir=str(tmp_path)).create_post(record_memory=True)
@@ -677,6 +722,60 @@ def test_autonomous_source_discovery_starts_with_task_not_final_url(monkeypatch)
 def test_independent_human_review_rejects_exploitative_copy():
     verdict = human_connection_review.review(strategy={"customer_moment": "storm outage", "human_need": "confidence", "important_capability": "500W AC", "benefit": "prioritize essentials", "human_outcome": "confidence"}, copy={"body": "Fear will leave your family in panic."}, visual={"message": "confidence"})
     assert verdict["verdict"] == "DO_NOT_PUBLISH"
+
+
+def test_independent_human_review_scores_reader_value_from_constitution_context():
+    strategy = {
+        "customer_moment": "weather forecast changes",
+        "human_need": "clarity before pressure",
+        "important_capability": "verified product facts",
+        "benefit": "prioritize household needs",
+        "human_outcome": "confidence",
+        "human_connection": {"moment_world": {
+            "person": "A parent watching a changing weather forecast in the evening.",
+            "decision_state": "Mentally checking phones, flashlights, refrigerator, children.",
+            "responsibility": "Decide what deserves attention before pressure.",
+            "human_question": "What would we actually need to keep working?",
+        }},
+    }
+    copy = {
+        "hook": "What needs attention before the forecast changes?",
+        "body": "Check phones, flashlights, and the refrigerator first, then decide what your household needs overnight.",
+    }
+    visual = {"message": "A parent checks phones and flashlights while watching the weather forecast."}
+
+    verdict = human_connection_review.review(strategy=strategy, copy=copy, visual=visual)
+
+    assert verdict["verdict"] == "PASS"
+    assert all(score == 1.0 for score in verdict["reader_value_scores"].values())
+    assert "value_before_asking" in verdict["trust_signals"]
+
+
+def test_independent_human_review_requires_value_for_constitution_context():
+    strategy = {
+        "customer_moment": "weather forecast changes",
+        "human_need": "clarity before pressure",
+        "benefit": "prioritize household needs",
+        "human_connection": {"moment_world": {"person": "A parent watching a weather forecast."}},
+    }
+
+    verdict = human_connection_review.review(
+        strategy=strategy,
+        copy={"hook": "Power station sale", "body": "Buy today."},
+        visual={"message": "product"},
+    )
+
+    assert verdict["verdict"] == "REVISE_COPY"
+    assert verdict["reader_value_failures"]
+
+
+def test_reader_value_revision_feedback_becomes_a_specific_copy_objective():
+    objectives = orchestrator._revision_objectives(
+        ["human_connection_reader_value_missing:caring,trust_building"],
+        {},
+    )
+
+    assert any("Reader Value" in objective for objective in objectives)
 
 
 def test_due_publication_analytics_becomes_cautious_future_opportunity(tmp_path, monkeypatch):

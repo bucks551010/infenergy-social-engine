@@ -45,6 +45,24 @@ def _hashtags(text: str) -> int:
     return len(re.findall(r"#[A-Za-z0-9_]+", text or ""))
 
 
+def _has_specificity_signal(text: str) -> bool:
+    lower = str(text or "").lower()
+    return _has_numbers(lower) or any(
+        signal in lower
+        for signal in (
+            "verified",
+            "check",
+            "compare",
+            "device load",
+            "compatibility",
+            "watt-hour",
+            "right fit",
+            "depends on",
+            "prioritize",
+        )
+    )
+
+
 def score_content(content: dict[str, Any], requested_platforms: list[str] | None = None) -> dict[str, Any]:
     """Score only the requested platforms, with native criteria per social environment."""
 
@@ -78,8 +96,6 @@ def score_content(content: dict[str, Any], requested_platforms: list[str] | None
         usefulness = 15.0
         if platform == "wordpress" and len(text) < 1000:
             usefulness -= 5
-        if not _has_numbers(text):
-            usefulness -= 6
         platform_fit = 15.0
         native_checks: list[str] = []
         if platform == "facebook":
@@ -99,7 +115,7 @@ def score_content(content: dict[str, Any], requested_platforms: list[str] | None
             if _hashtags(text) > 3:
                 platform_fit -= 3
         product_message_fit = 10.0 if not product_name or product_name.lower() in lower else 6.0
-        specificity = 10.0 if _has_numbers(text) else 5.0
+        specificity = 10.0 if _has_specificity_signal(text) else 5.0
         conversion_potential = 10.0 - (6.0 if not cta.strip() else 0.0) - (3.0 if funnel_stage == "CONVERSION" and not has_explicit_cta_keyword(cta) else 0.0)
         brand_credibility = 2.0 if any(word in lower for word in ("guarantee", "100%", "instant")) else 5.0
         components = {

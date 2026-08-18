@@ -84,6 +84,22 @@ def test_generate_json_with_gemini_returns_none_when_no_api_key(monkeypatch):
     assert result is None
 
 
+def test_legacy_human_connection_prompt_uses_the_selected_lived_moment():
+    context = generate_posts._compile_human_connection_context(
+        audience_segment="family_parent",
+        topic="Watching the weather forecast before an outage",
+        selected_hook="What should your household check before power is out overnight?",
+        funnel_stage="EDUCATION",
+    )
+
+    prompt_context = generate_posts._human_connection_prompt_context(context)
+
+    assert context["moment_world"]["id"] == "weather_forecast_changes"
+    assert "HUMAN CONNECTION CONTEXT" in prompt_context
+    assert "phones, flashlights, refrigerator, children" in prompt_context
+    assert "force a product" in prompt_context
+
+
 def test_instagram_only_score_does_not_require_wordpress_content():
     content = {
         "selected_hook": "What does 41,600mAh tell you about real backup power?",

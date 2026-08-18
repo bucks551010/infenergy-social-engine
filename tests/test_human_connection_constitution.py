@@ -29,6 +29,11 @@ def test_constitution_is_valid_and_historical_language_is_not_public_copy() -> N
     assert context["moment_world"]["id"] == "outage_or_power_interruption"
     assert context["moment_world"]["capability_goal"]
     assert context["content_job"] == "help_prepare"
+    creation_logic = context["preemptive_creation_logic"]
+    assert creation_logic["purpose"] == "Use Human Brain + Human Heart upstream to prevent weak, unsupported, repetitive, manipulative, product-forced, or emotionally incoherent content from being created in the first place."
+    assert creation_logic["before_generation"]["brain_movement"]["acceptable_movements"] == ["NOTICE", "QUESTION", "UNDERSTAND", "DISTINGUISH", "REFRAME", "COMPARE", "PRIORITIZE", "RECONSIDER", "PLAN", "DECIDE", "DISCOVER"]
+    assert creation_logic["preemptive_failure_patterns"]["PRODUCT_FIRST"]
+    assert creation_logic["handling_rule"].startswith("These patterns should usually trigger premise improvement")
     assert [principle["id"] for principle in context["operating_principles"]] == [
         "moments_over_demographics",
         "responsibility_over_fear",
@@ -101,3 +106,40 @@ def test_weather_radar_parent_compiles_as_a_responsibility_moment() -> None:
     assert moment["responsibility"]
     assert moment["capability_goal"]
     assert moment["product_role"] == "optional_or_downstream"
+
+
+def test_constitution_resolves_live_language_to_a_canonical_moment() -> None:
+    from business_intelligence.constitution import resolve_moment_id
+
+    assert resolve_moment_id("Can this work with my laptop port?") == "device_compatibility_question"
+    assert resolve_moment_id("A traveler without a dependable outlet") == "limited_outlet_access_for_work_or_school"
+
+
+def test_human_connection_review_reports_brain_and_heart_outcomes() -> None:
+    from social.human_connection_review import review
+
+    result = review(
+        strategy={
+            "customer_moment": "weather forecast",
+            "human_need": "clarity",
+            "benefit": "prioritize essentials",
+            "human_connection": {
+                "moment_world": {
+                    "person": "A parent watching a changing weather forecast in the evening.",
+                    "decision_state": "Checking phones and flashlights before pressure arrives.",
+                    "responsibility": "Decide what deserves attention.",
+                    "human_question": "What would we actually need to keep working?",
+                }
+            },
+        },
+        copy={
+            "hook": "What should you check before a changing weather forecast becomes urgent?",
+            "body": "First, prioritize phones and flashlights so you can decide what matters before pressure arrives.",
+        },
+        visual={"scene": "A parent checking phones and flashlights before evening weather changes."},
+    )
+
+    assert result["human_brain"]["passed"] is True
+    assert result["human_heart"]["passed"] is True
+    assert result["human_heart"]["fear_tactics"] == []
+    assert result["preemptive_recovery_guidance"]["terminal_gate"] is False

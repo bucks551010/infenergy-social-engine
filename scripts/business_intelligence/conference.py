@@ -25,6 +25,8 @@ class AgentSpec:
 
 _OPERATIONAL: tuple[AgentSpec, ...] = (
     AgentSpec("conversion_strategist", "operational", "Plans funnel-stage conversion strategy", ("conversion_brief", "audience_direction", "cta_direction"), ("business_profile", "product_catalog", "audience_model"), ("performance_history",)),
+    AgentSpec("candidate_pool", "operational", "Builds and maintains pre-validated publishing candidates", ("candidate_pool", "candidate_availability"), ("creative_context", "product_catalog", "post_history")),
+    AgentSpec("content_forensic", "operational", "Audits generation decisions and identifies blocking gates", ("generation_forensics", "gate_failure_analysis"), ("post_history", "creative_context")),
     AgentSpec("engagement_ingestion", "operational", "Imports channel engagement metrics", ("engagement_metrics",), ("post_history", "published_platform_ids"), ("meta_credentials",)),
     AgentSpec("performance_reflection", "operational", "Finds winning and losing creative patterns", ("performance_patterns",), ("post_history", "engagement_metrics")),
     AgentSpec("learning_ingestion", "operational", "Turns outcomes into reusable learning signals", ("learning_signals",), ("post_history", "engagement_metrics")),

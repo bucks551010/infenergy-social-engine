@@ -30,6 +30,27 @@ def test_material_integrity_drift_is_a_runtime_publish_error():
     assert run_engine._strategy_integrity_errors(content) == ["strategy_integrity_material_drift"]
 
 
+def test_reader_value_revision_is_a_retryable_runtime_publish_error():
+    content = {
+        "creative_director": {
+            "independent_human_connection_review": {
+                "verdict": "REVISE_COPY",
+                "reader_value_failures": ["caring", "trust_building"],
+            }
+        }
+    }
+
+    errors = run_engine._strategy_integrity_errors(content)
+
+    assert errors == ["human_connection_review_revise_copy:caring,trust_building"]
+    assert run_engine._retryability_classification({"reasons": errors}, []) == "RETRYABLE_CONTENT"
+
+
+def test_missing_conversion_score_is_not_coerced_to_perfect():
+    assert run_engine._conversion_quality_score({}) is None
+    assert run_engine._conversion_quality_score({"conversion_quality_score": {"total": 84}}) == 84.0
+
+
 def test_shadow_decision_record_uses_existing_reviews_only():
     content = {
         "topic": "Power priorities",
@@ -96,3 +117,17 @@ def test_multiplatform_score_contains_three_independent_native_verdicts():
     assert scored["platform_results"]["facebook"]["native_checks"] == ["conversational_context"]
     assert scored["platform_results"]["instagram"]["native_checks"] == ["visual_hook_and_saveability"]
     assert scored["platform_results"]["linkedin"]["native_checks"] == ["professional_decision_support"]
+
+
+def test_non_numeric_evidence_based_education_is_not_penalized_for_avoiding_claims():
+    content = {
+        "selected_hook": "How do you decide what needs attention before an outage?",
+        "selected_cta": "Compare options",
+        "product_name": "",
+        "fb_caption": "Check the devices your household depends on, prioritize them, and compare verified compatibility before choosing equipment.",
+    }
+
+    scored = score_content(content, requested_platforms=["facebook"])
+
+    assert scored["component_scores"]["usefulness"] == 15.0
+    assert scored["component_scores"]["specificity"] == 10.0

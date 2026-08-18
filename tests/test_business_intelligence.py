@@ -789,7 +789,7 @@ def test_conference_roster_covers_every_registered_agent(bi_env):
         "copy_agent", "creative_agent", "channel_ops_agent", "seo_agent",
         "lifecycle_email_agent", "experimentation_agent", "qa_agent",
     }.issubset(names)
-    assert len(names) == 28
+    assert len(names) == 30
 
 
 def test_conference_identifies_empty_history_as_real_blocker(bi_env):
@@ -866,7 +866,7 @@ def test_conference_cli_command(bi_env, capsys):
     payload = json.loads(capsys.readouterr().out)
     assert rc == 0
     assert payload["conference_version"] == "agent-conference.v1"
-    assert payload["summary"]["agents_present"] == 28
+    assert payload["summary"]["agents_present"] == 30
 
 
 def test_social_memory_writes_deduplicated_shared_history(bi_env):

@@ -68,7 +68,13 @@ def _bi_enabled() -> bool:
     return os.environ.get("ENABLE_BUSINESS_INTELLIGENCE", "").lower() in {"1", "true", "yes", "on"}
 
 
-def _load_bi_creative_context(offering_id: str = "") -> dict[str, Any] | None:
+def _load_bi_creative_context(
+    offering_id: str = "",
+    *,
+    segment_id: str = "",
+    moment_id: str = "",
+    job: str = "",
+) -> dict[str, Any] | None:
     if not _bi_enabled():
         return None
     try:
@@ -79,7 +85,12 @@ def _load_bi_creative_context(offering_id: str = "") -> dict[str, Any] | None:
     try:
         if not bi_profile.load_current():
             bi_api.rebuild_profile()
-        return bi_api.compile_creative_context(offering_id=offering_id)
+        return bi_api.compile_creative_context(
+            offering_id=offering_id,
+            segment_id=segment_id,
+            moment_id=moment_id,
+            job=job,
+        )
     except Exception:
         return None
 
@@ -119,6 +130,41 @@ def _bi_visual_prohibitions(ctx: dict[str, Any] | None) -> list[str]:
     if not ctx:
         return []
     return list((ctx.get("brand_prohibitions") or {}).get("visual", []))
+
+
+def _constitution_job(reader_job: str) -> str:
+    return {
+        "TEACH_ME": "teach",
+        "HELP_ME": "help_decide",
+        "EXPLAIN_THIS": "translate_a_technical_concept",
+        "SHOW_ME": "show_a_capability",
+        "PREPARE_ME": "help_prepare",
+        "HELP_ME_CHOOSE": "help_decide",
+        "GIVE_ME_A_REFERENCE": "build_trust",
+        "START_A_CONVERSATION": "start_a_conversation",
+    }.get(str(reader_job or "").upper(), "")
+
+
+def _refresh_bi_context_for_strategy(
+    *, offering: dict[str, Any] | None, strategy: dict[str, Any], fallback: dict[str, Any] | None
+) -> dict[str, Any] | None:
+    if not _bi_enabled():
+        return fallback
+    try:
+        from business_intelligence import api as bi_api
+        moment_id = bi_api.resolve_human_connection_moment(
+            str(strategy.get("customer_moment", "")),
+            str(strategy.get("human_need", "")),
+            str(strategy.get("angle", "")),
+        )
+    except Exception:
+        return fallback
+    return _load_bi_creative_context(
+        str((offering or {}).get("offering_id") or (offering or {}).get("sku") or ""),
+        segment_id=str(strategy.get("audience", "")),
+        moment_id=moment_id,
+        job=_constitution_job(str(strategy.get("reader_job", ""))),
+    ) or fallback
 
 
 _CATEGORY_PILLAR_MAP = {
@@ -200,6 +246,12 @@ def _runtime_strategy_lock(brief: engines.EngineBrief, lean_context: dict[str, A
     moment = str(relationships.get("customer_moment") or (understanding.get("primary_use_cases") or ["choosing portable backup power"])[0])
     need = str(relationships.get("primary_problem") or (marketing.get("customer_questions") or ["a practical power decision"])[0])
     human_value = str(relationships.get("human_value") or "practical clarity")
+    benefit_action = benefit
+    for prefix, replacement in (("keeps ", "keep "), ("supports ", "support "), ("helps ", "help ")):
+        if benefit_action.lower().startswith(prefix):
+            benefit_action = replacement + benefit_action[len(prefix):]
+            break
+    offering_name = str((offering or {}).get("name") or "this product")
     candidate = {
         "audience": brief.audience_segment,
         "customer_moment": moment,
@@ -207,6 +259,7 @@ def _runtime_strategy_lock(brief: engines.EngineBrief, lean_context: dict[str, A
         "human_value": human_value,
         "topic": brief.topic_path.get("topic", ""),
         "angle": brief.angle,
+        "hook_promise": f"How does {offering_name} help {benefit_action}?",
         "offering": str((offering or {}).get("name") or lean_context.get("identity", {}).get("product_name") or "product guidance"),
         "positioning": "verified product-fit guidance",
         "non_price_edge": {"kind": "DECISION_SUPPORT_EDGE", "reason": "helps customers choose from verified product facts"},
@@ -234,14 +287,7 @@ def _runtime_strategy_lock(brief: engines.EngineBrief, lean_context: dict[str, A
             data_dir=data_dir,
         ))
     if not red_team["can_lock"]:
-        benefit_action = benefit
-        for prefix, replacement in (("keeps ", "keep "), ("supports ", "support "), ("helps ", "help ")):
-            if benefit_action.lower().startswith(prefix):
-                benefit_action = replacement + benefit_action[len(prefix):]
-                break
-        offering_name = str((offering or {}).get("name") or "this product")
         candidate["angle"] = f"how does {offering_name} help {benefit_action}"
-        candidate["hook_promise"] = f"How does {offering_name} help {benefit_action}?"
         brief.angle = candidate["angle"]
     locked = strategy_lock.lock(candidate, context=candidate)
     locked["strategy_red_team"] = red_team
@@ -329,6 +375,22 @@ def _llm_copy_beats(
             + "; ".join(revision_feedback)
             + "."
         )
+    human_connection = (bi_ctx or {}).get("human_connection") or {}
+    moment_world = human_connection.get("moment_world") or {}
+    if moment_world:
+        creation_logic = human_connection.get("preemptive_creation_logic") or {}
+        before_generation = creation_logic.get("before_generation") or {}
+        prompt_parts.append(
+            "Human decision context: "
+            f"person={moment_world.get('person', '')}; "
+            f"decision_state={moment_world.get('decision_state', '')}; "
+            f"responsibility={moment_world.get('responsibility', '')}; "
+            f"capability_goal={moment_world.get('capability_goal', '')}; "
+            f"product_role={moment_world.get('product_role', '')}. "
+            f"Human Brain movement={(before_generation.get('brain_movement', {}) or {}).get('question', '')}; "
+            f"Human Heart result={(before_generation.get('heart_after', {}) or {}).get('question', '')}. "
+            "Begin with this lived moment, define the useful movement in thought, and let the earned emotional result follow from it; do not turn it into fear or a forced product pitch."
+        )
     prompt_parts.append(
         "Write truthful, specific, non-generic copy. Avoid AI-slop phrases such as "
         "'game-changer', 'unlock', 'revolutionize', 'in today's fast-paced world', 'buckle up'."
@@ -356,6 +418,11 @@ def _revision_objectives(feedback: list[str] | None, strategy: dict[str, Any]) -
         benefit = str(strategy.get("benefit") or "").strip()
         if benefit:
             objectives.append(f"State this verified primary benefit clearly and naturally: {benefit}.")
+    if any(item.startswith("human_connection_reader_value_missing:") for item in findings):
+        objectives.append(
+            "Revise for Reader Value: begin in the locked human moment, give one concrete useful way to think or act, "
+            "address the reader rather than leading with the product, and preserve truthful limits."
+        )
     if "humanness below bar" in findings:
         objectives.append(
             f"Write from the customer's real moment ({strategy.get('customer_moment', '')}) and concern "
@@ -562,6 +629,16 @@ class SocialIntelligenceOrchestrator:
         else:
             locked = _runtime_strategy_lock(brief, lean_context, bi_offering, self.data_dir)
 
+        bi_ctx = _refresh_bi_context_for_strategy(
+            offering=bi_offering,
+            strategy=locked,
+            fallback=bi_ctx,
+        )
+        human_connection = (bi_ctx or {}).get("human_connection") or {}
+        if human_connection:
+            locked = dict(locked)
+            locked["human_connection"] = human_connection
+
         brief.audience_segment = locked["audience"]
         brief.angle = locked["angle"]
         brief.topic_path["topic"] = locked["topic"]
@@ -644,6 +721,13 @@ class SocialIntelligenceOrchestrator:
             f"{v_msg}. Creative thesis: {selected_concept.get('creative_thesis', '')}. "
             f"Composition principle: {creative_packet['SELECTED_ANSWER']['visual_logic']}"
         )
+        moment_world = human_connection.get("moment_world") or {}
+        if moment_world:
+            v_msg += (
+                f" Human scene root: {moment_world.get('person', '')} "
+                f"in {moment_world.get('decision_state', '')} "
+                f"with the question {moment_world.get('human_question', '')}."
+            )
         v_format = visual_intelligence.route_visual_format(
             genre=brief.genre,
             platform=platform,
@@ -764,12 +848,25 @@ class SocialIntelligenceOrchestrator:
             offering_images = bi_offering.get("images") or []
             if offering_images:
                 art_dict["product_image_url"] = offering_images[0]
-        provider_result = self.provider.generate(
-            art_direction=art_dict,
-            positive_prompt=positive_prompt,
-            negative_prompt=negative_prompt,
-            platform=platform,
-        )
+        if pre_render_gate.get("decision") == "CONCEPT_READY":
+            provider_result = self.provider.generate(
+                art_direction=art_dict,
+                positive_prompt=positive_prompt,
+                negative_prompt=negative_prompt,
+                platform=platform,
+            )
+        else:
+            provider_result = visual_provider.VisualResult(
+                provider="pre_render_gate",
+                kind="none",
+                prompt=positive_prompt,
+                negative_prompt=negative_prompt,
+                provider_meta={
+                    "platform": platform,
+                    "reason": "pre_render_gate_not_ready",
+                    "gate": pre_render_gate,
+                },
+            )
 
         package = PostPackage(
             post_id=post_id,

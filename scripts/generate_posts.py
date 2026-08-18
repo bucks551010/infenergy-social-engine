@@ -77,8 +77,12 @@ def run_social_intelligence(count: int = 1, platform: str = "instagram_feed", **
             pass
 
     from social.orchestrator import SocialIntelligenceOrchestrator
+    from social.visual_provider import TemplateRenderProvider
 
-    orchestrator = SocialIntelligenceOrchestrator()
+    # The production adapter renders final pixels below via generate_visuals().
+    # Keep the orchestrator on a recipe-only provider so it supplies art direction
+    # without spending a second Gemini render for the same candidate.
+    orchestrator = SocialIntelligenceOrchestrator(provider=TemplateRenderProvider())
     batch = orchestrator.create_batch(count=count, platform=platform, **kw)
     return [p.as_dict() for p in batch]
 
@@ -1534,6 +1538,49 @@ def _manifesto_fingerprint(manifesto: dict) -> str:
         separators=(",", ":"),
     )
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def _compile_human_connection_context(
+    *, audience_segment: str, topic: str, selected_hook: str, funnel_stage: str
+) -> dict:
+    """Load a compact owner-truth context for either copy-generation pipeline."""
+    try:
+        from business_intelligence import api as bi_api
+        moment_id = bi_api.resolve_human_connection_moment(topic, selected_hook)
+        job = {
+            "ATTENTION": "start_a_conversation",
+            "EDUCATION": "teach",
+            "DESIRE": "help_decide",
+            "TRUST": "build_trust",
+            "CONVERSION": "sell",
+        }.get(str(funnel_stage or "").upper(), "")
+        return bi_api.compile_human_connection_context(
+            segment_id=audience_segment,
+            moment_id=moment_id,
+            job=job,
+        )
+    except Exception:
+        return {}
+
+
+def _human_connection_prompt_context(context: dict) -> str:
+    moment = context.get("moment_world") if isinstance(context.get("moment_world"), dict) else {}
+    if not moment:
+        return ""
+    creation_logic = context.get("preemptive_creation_logic") if isinstance(context.get("preemptive_creation_logic"), dict) else {}
+    before_generation = creation_logic.get("before_generation") if isinstance(creation_logic.get("before_generation"), dict) else {}
+    return (
+        "HUMAN CONNECTION CONTEXT (owner truth; use before product context):\n"
+        f"- Person: {moment.get('person', '')}\n"
+        f"- Decision state: {moment.get('decision_state', '')}\n"
+        f"- Responsibility: {moment.get('responsibility', '')}\n"
+        f"- Human question: {moment.get('human_question', '')}\n"
+        f"- Capability goal: {moment.get('capability_goal', '')}\n"
+        f"- Product role: {moment.get('product_role', '')}\n"
+        f"- Human Brain movement: {(before_generation.get('brain_movement', {}) or {}).get('question', '')}\n"
+        f"- Human Heart result: {(before_generation.get('heart_after', {}) or {}).get('question', '')}\n"
+        "- Start with this lived moment. Define the useful movement in thought before expressing its earned emotional result. Do not manufacture fear or force a product into the post.\n"
+    )
 
 
 def _sync_manifesto_brand_profile(manifesto: dict, strategy: dict, *, force: bool = False) -> tuple[bool, bool, list[str]]:
@@ -5254,6 +5301,13 @@ def generate(
             "losing_hints_applied": _strategist_output.get("losing_hints_applied", {}),
             "error": _strategist_output.get("error"),
         }
+    human_connection = _compile_human_connection_context(
+        audience_segment=audience_segment,
+        topic=topic,
+        selected_hook=selected_hook,
+        funnel_stage=funnel_stage,
+    )
+    run_context["human_connection"] = human_connection
     gate_records: list[dict] = []
     if isinstance(_strategist_output, dict) and _strategist_output.get("brief"):
         gate_records.append(
@@ -5825,6 +5879,9 @@ def generate(
         visual_plan["segment_preset"] = str(segment_constraints.get("segment_key", "")).strip()
     visual_plan = _apply_logical_visual_strategy(visual_plan, logical_strategy, product)
     visual_plan = _apply_strategic_brief_to_visual(visual_plan, run_context, product)
+    human_connection_context = _human_connection_prompt_context(
+        run_context.get("human_connection") if isinstance(run_context.get("human_connection"), dict) else {}
+    )
 
     if want_product:
         product_directive = (
@@ -5838,19 +5895,18 @@ def generate(
             f"- Product facts excerpt: {product_facts or 'N/A'}\n"
         )
         fb_caption_instruction = (
-            "150-220 words. High-conversion product sales copy. Start with a strong outage/emergency/travel hook, "
-            "explicitly name the product early, include 4-6 short feature-led lines or bullets using real specs, "
-            "explain where to keep/use it, then close with a direct buy/preparedness CTA. 4-8 targeted hashtags on the last line only."
+            "150-220 words. Start with the lived customer moment, then introduce the product only after its relevance is clear. "
+            "Use verified, relevant facts without forcing a feature count, explain fit and limits where needed, then close with a direct buy/preparedness CTA. "
+            "4-8 targeted hashtags on the last line only."
         )
         ig_caption_instruction = (
-            "110-170 words. Tight, visual, scroll-stopping product sales copy. First line should feel like a headline. "
-            "Name the product early, highlight core features/specs in short punchy lines, mention real use cases like outage, "
-            "travel, car, emergency kit, or backpack, then close with a direct tap-to-buy CTA. 7-10 hashtags on the final line only."
+            "110-170 words. Tight, visual, scroll-stopping copy rooted in the lived moment. First line should feel like a headline. "
+            "Introduce the product after relevance is clear, use verified facts only when relevant, and close with a direct tap-to-buy CTA. "
+            "7-10 hashtags on the final line only."
         )
         li_text_instruction = (
-            "170-260 words. Professional product sales copy with a preparedness/business-continuity angle. Explicitly name "
-            "the product early, include a short 'key features include' style section with real specs, explain why the product "
-            "matters in real use, and end with a direct order or action CTA."
+            "170-260 words. Professional product sales copy with a preparedness/business-continuity angle. Begin with the practical "
+            "decision, introduce the product after relevance is clear, use verified facts only when relevant, and end with a direct order or action CTA."
         )
     else:
         product_directive = (
@@ -5892,6 +5948,8 @@ TOPIC: {topic}
 CONTENT DIRECTIVE: {slot_guidance}
 
 {product_directive}
+
+{human_connection_context}
 
 {marketing_context}
 
@@ -5952,13 +6010,13 @@ COPY ACCURACY RULES:
 QUALITY RULES — every piece must follow all of these:
 1. Open with a hook that creates immediate curiosity or challenges a common assumption.
 2. Name one concrete customer pain point in the first two lines.
-3. Add one proof anchor based on verifiable specs or measurable details.
-4. Include at least one specific number, stat, or real-world comparison that makes the content credible.
+3. Add one proof anchor when a verified fact or measurable detail is relevant.
+4. Use a specific number, stat, or real-world comparison only when it is explicitly verified and relevant; otherwise provide concrete decision-support specificity without inventing a claim.
 5. Deliver a genuine insight the reader cannot easily Google — a specific angle they haven't considered.
 6. Write like a human expert, not a marketing team. Never use words like "revolutionize", "game-changer", or "unlock your potential."
 7. Never make unverifiable guarantees. Use language like "many homeowners", "up to", "in most cases" where appropriate.
 8. Every post must have a clear emotional payoff: relief, confidence, curiosity satisfied, or urgency to act.
-9. If product context is available, use at least two concrete product facts or measurable specs naturally in the copy.
+9. If product context is available, use concrete product facts only when verified and relevant to the reader's decision. Do not force a product-first narrative or a fixed fact count.
 10. Do not invent model names, specs, prices, or warranties not present in the provided product context.
 11. End with one frictionless next action that can be done today.
 

@@ -20,7 +20,7 @@ def decide(
     legacy_score: dict[str, Any],
     validation: dict[str, Any],
     duplicates: dict[str, Any],
-    conversion_quality_score: float = 100.0,
+    conversion_quality_score: float | None = None,
     orchestrator_quality: dict[str, Any] | None = None,
     visual_errors: list[str] | None = None,
     evidence_readiness: dict[str, Any] | None = None,
@@ -52,7 +52,9 @@ def decide(
         decision = "regenerate"
         reasons.extend(critic_findings)
         reasons.append("orchestrator_critic_below_regeneration_floor")
-    elif legacy_total < PUBLISH_SCORE or conversion_quality_score < CONVERSION_SCORE:
+    elif legacy_total < PUBLISH_SCORE or (
+        conversion_quality_score is not None and conversion_quality_score < CONVERSION_SCORE
+    ):
         decision = "regenerate"
         reasons.append("candidate_needs_regeneration")
     elif critic_total is not None and critic_total < PUBLISH_SCORE:
@@ -71,7 +73,8 @@ def decide(
         "critic_findings": critic_findings,
         "critic_evidence": (orchestrator_quality or {}).get("critic_evidence", []),
         "critic_decision_reason": "critic_below_publish_threshold" if critic_total is not None and critic_total < PUBLISH_SCORE else "critic_threshold_met",
-        "conversion_quality_score": float(conversion_quality_score),
+        "conversion_quality_score": float(conversion_quality_score) if conversion_quality_score is not None else None,
+        "conversion_quality_available": conversion_quality_score is not None,
         "reasons": reasons,
         "platform_results": legacy_score.get("platform_results", {}),
         "evidence_readiness": evidence_readiness or {"ready": True, "status": "NOT_ASSESSED"},

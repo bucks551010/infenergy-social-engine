@@ -9,7 +9,7 @@ sys.path.insert(0, _REPO)
 sys.path.insert(0, os.path.join(_REPO, "scripts"))
 
 import worker
-from social.platform_presentation import final_caption_qa
+from social.platform_presentation import final_caption_qa, refine_caption
 
 
 def test_content_preview_forces_text_only_generation(monkeypatch) -> None:
@@ -67,3 +67,16 @@ def test_plan_caption_requires_actionable_steps() -> None:
 
     assert "promised_plan_missing_actionable_steps" in missing_steps["reasons"]
     assert "promised_plan_missing_actionable_steps" not in complete_plan["reasons"]
+
+
+def test_caption_refinement_preserves_numbered_action_plan() -> None:
+    refined, _ = refine_caption(
+        "24-hour outage plan:\n1. List must-run needs.\n2. Stage supplies.\n3. Test the plan.",
+        components={"product_id": "", "product_name": "", "cta": "Save this checklist."},
+        platform="instagram",
+        product_led=False,
+    )
+
+    assert refined.count("\n1. ") == 1
+    assert refined.count("\n2. ") == 1
+    assert refined.count("\n3. ") == 1

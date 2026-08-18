@@ -275,6 +275,9 @@ def _source_thoughts(paragraphs: list[str]) -> list[str]:
     """Expose sentence-level thoughts only when source paragraphs are dense."""
     thoughts: list[str] = []
     for paragraph in paragraphs:
+        if re.search(r"(?m)^\s*\d+\.\s+\S+", paragraph):
+            thoughts.append(paragraph)
+            continue
         sentences = _sentences(paragraph)
         if len(sentences) < 3 and not any("👉" in sentence for sentence in sentences):
             thoughts.append(paragraph)
@@ -342,7 +345,7 @@ def refine_caption(
         if _is_hashtag_paragraph(source_part):
             tags.extend(re.findall(r"#[A-Za-z0-9_]+", source_part))
             continue
-        sanitized = _remove_internal_language(source_part)
+        sanitized = source_part if re.search(r"(?m)^\s*\d+\.\s+\S+", source_part) else _remove_internal_language(source_part)
         normalized = _normalized_paragraph(sanitized)
         if sanitized.startswith("⚡ Key specs"):
             continue

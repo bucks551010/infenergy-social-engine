@@ -397,6 +397,7 @@ def _parse_preview_params(params: dict) -> dict:
     funnel_stage = str(params.get("funnel_stage", [""])[0]).strip().upper()
     product_id = str(params.get("product_id", [""])[0]).strip()
     pipeline = str(params.get("pipeline", [""])[0]).strip().lower()
+    no_product = str(params.get("no_product", ["false"])[0]).strip().lower() in ("1", "true", "yes")
     if slot not in ("morning", "midday", "evening"):
         slot = "morning"
     if platform and platform not in ("facebook", "instagram", "linkedin", "wordpress"):
@@ -411,12 +412,16 @@ def _parse_preview_params(params: dict) -> dict:
         "funnel_stage": funnel_stage,
         "product_id": product_id,
         "pipeline": pipeline,
+        "no_product": no_product,
     }
 
 
 def _content_preview(preview_params: dict) -> dict:
     previous_text_only = os.environ.get("POST_TEXT_ONLY")
+    previous_bucket_override = os.environ.get("CONTENT_BUCKET_OVERRIDE")
     os.environ["POST_TEXT_ONLY"] = "true"
+    if preview_params.get("no_product"):
+        os.environ["CONTENT_BUCKET_OVERRIDE"] = "no_product"
     try:
         content = generate_posts.generate(
             preview_params["slot"],
@@ -429,6 +434,10 @@ def _content_preview(preview_params: dict) -> dict:
             os.environ.pop("POST_TEXT_ONLY", None)
         else:
             os.environ["POST_TEXT_ONLY"] = previous_text_only
+        if previous_bucket_override is None:
+            os.environ.pop("CONTENT_BUCKET_OVERRIDE", None)
+        else:
+            os.environ["CONTENT_BUCKET_OVERRIDE"] = previous_bucket_override
     platform = preview_params.get("platform", "")
     requested_stage = preview_params.get("funnel_stage", "")
     requested_product_id = preview_params.get("product_id", "")

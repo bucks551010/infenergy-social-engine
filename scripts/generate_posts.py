@@ -2412,6 +2412,10 @@ def _decide_content_bucket(history: dict) -> str:
     10-15% direct conversion) and the max-2-consecutive-product-posts guardrail, favoring
     whichever bucket is furthest below its target given recent history.
     """
+    override = os.environ.get("CONTENT_BUCKET_OVERRIDE", "").strip().lower()
+    if override in ("no_product", "product_education", "conversion"):
+        return override
+
     if _consecutive_product_posts(history) >= MAX_CONSECUTIVE_PRODUCT_POSTS:
         return "no_product"
 

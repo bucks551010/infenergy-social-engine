@@ -446,6 +446,40 @@ def test_product_sales_education_does_not_repeat_numeric_specs():
     assert "How to read those specs: Compare the published capacity and output" in caption
 
 
+def test_product_sales_long_imported_detail_is_readable():
+    components = _components()
+    components["info"] = " ".join(["Source-backed product context"] * 30)
+
+    caption, _ = platform_presentation.format_caption(components, platform="facebook")
+
+    assert platform_presentation.evaluate(caption, platform="facebook")["reading_burden"] == "APPROPRIATE"
+    assert len(caption.split("How to read those specs:", 1)[1].split("\n\n", 1)[0].split()) <= 50
+
+
+def test_engagement_rejects_product_language_and_overpromising_cta():
+    components = {
+        "product_id": None,
+        "funnel_stage": "ATTENTION",
+        "product_name": "",
+        "logic_hook": "If staying powered matters, waiting until power is gone is not a plan.",
+        "situation": "The product gets picked before compatibility is mapped.",
+        "logic_bridge": "The selected Infenergy product would have mattered.",
+        "why_it_matters": "That gives you another product you hope will be useful.",
+        "transformation": "A clear priority makes discussion easier.",
+        "feature_bullets": [],
+        "cta": "Tap the link to calculate your risk score in 60 seconds.",
+    }
+
+    caption, presentation = platform_presentation.format_caption(components, platform="facebook")
+
+    assert "product" not in caption.lower()
+    assert "infenergy" not in caption.lower()
+    assert "risk score" not in caption.lower()
+    assert "tap the link" not in caption.lower()
+    assert "Share the first priority you would protect and why." in caption
+    assert presentation["content_ideology"] == "earn_participation_through_relevance_not_bait"
+
+
 def test_instagram_package_persists_reel_caption_hierarchy_without_rendering():
     posts = generate_posts._build_platform_posts(
         "powerpulse-fixture",

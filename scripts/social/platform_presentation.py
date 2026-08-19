@@ -323,6 +323,24 @@ def _sentence(value: str) -> str:
     return text if text.endswith((".", "!", "?")) else f"{text}."
 
 
+def _concise_public_detail(value: str, *, max_words: int = 35) -> str:
+    cleaned = re.sub(r"&(?:amp|nbsp|quot|#39);", " ", str(value or ""), flags=re.IGNORECASE)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    words = cleaned.split()
+    return " ".join(words[:max_words]).rstrip(" ,;:")
+
+
+def _engagement_safe_text(value: str) -> str:
+    cleaned = _repair_unsupported_broad_claims(str(value or "").strip())
+    if re.search(
+        r"\b(?:product|infenergy|shop|buy|purchase|specs?|compatibility|selected|link|risk score)\b",
+        cleaned,
+        flags=re.IGNORECASE,
+    ):
+        return ""
+    return cleaned
+
+
 def _benefit_opening(components: dict[str, Any], *, product_led: bool) -> list[str]:
     """Present approved customer benefit and human outcome before supporting detail."""
     if not product_led:
@@ -379,6 +397,7 @@ def _product_sales_pyramid(
         sentence for sentence in _sentences(info)
         if not _numeric_proof_tokens(sentence)
     )
+    non_numeric_info = _concise_public_detail(non_numeric_info)
     if specs and not non_numeric_info:
         non_numeric_info = "Compare the published capacity and output with the actual devices and job before choosing."
     education = " ".join(filter(None, [
@@ -448,17 +467,21 @@ def _engagement_editorial(
     """Build product-free content around participation or useful teaching, never sales."""
     source_has_steps = bool(re.search(r"(?m)^\s*\d+\.\s+\S+", source_caption))
     stage = str(components.get("funnel_stage") or ("EDUCATION" if source_has_steps else "ATTENTION")).strip().upper()
-    hook = _repair_unsupported_broad_claims(
+    hook = _engagement_safe_text(
         str(components.get("logic_hook") or components.get("hook") or "").strip()
     )
-    situation = _repair_unsupported_broad_claims(str(components.get("situation") or "").strip())
-    insight = _repair_unsupported_broad_claims(
+    situation = _engagement_safe_text(str(components.get("situation") or "").strip())
+    insight = _engagement_safe_text(
         str(components.get("logic_bridge") or components.get("info") or "").strip()
     )
-    why = _repair_unsupported_broad_claims(
+    why = _engagement_safe_text(
         str(components.get("why_it_matters") or components.get("why") or "").strip()
     )
-    transformation = _repair_unsupported_broad_claims(str(components.get("transformation") or "").strip())
+    transformation = _engagement_safe_text(str(components.get("transformation") or "").strip())
+    situation = situation or "Most households know preparation matters, but priorities often remain unranked until normal routines are interrupted."
+    insight = insight or "Start with the people and daily responsibilities that cannot simply pause, then name the first need you would protect."
+    why = why or "A specific answer turns a vague concern into a decision you can discuss and improve."
+    transformation = transformation or "One clear priority is the beginning of a plan the household can actually use."
 
     if stage == "EDUCATION":
         if source_has_steps:
@@ -479,7 +502,7 @@ def _engagement_editorial(
                     "Decide what you will change before the need becomes urgent",
                 )
                 actions.append(_sentence(f"{len(actions) + 1}. {defaults[len(actions)]}"))
-        final_cta = cta if cta and not re.search(r"\b(?:shop|buy|product|specs?)\b", cta, flags=re.IGNORECASE) else "Save this framework for your next planning check."
+        final_cta = cta if cta and not re.search(r"\b(?:shop|buy|product|specs?|link|tap|score|seconds?)\b", cta, flags=re.IGNORECASE) else "Save this framework for your next planning check."
         paragraphs = [
             hook,
             _sentence(f"Why this matters: {why or situation}"),
@@ -498,8 +521,13 @@ def _engagement_editorial(
         ideology = "teach_for_capability_without_forcing_a_sale"
         base_tags = ["#PowerKnowledge", "#Preparedness", "#EnergyLiteracy"]
     else:
-        question = hook if hook.endswith("?") else f"{hook.rstrip('.')}?"
-        final_cta = cta if cta and not re.search(r"\b(?:shop|buy|product|specs?)\b", cta, flags=re.IGNORECASE) else "Share the first priority you would protect."
+        if hook.endswith("?"):
+            question = hook
+        elif hook:
+            question = f"What changes when you take this seriously: {hook.rstrip('.')}?"
+        else:
+            question = "When normal power disappears, what is the first part of daily life you would protect?"
+        final_cta = cta if cta and not re.search(r"\b(?:shop|buy|product|specs?|link|tap|score|seconds?)\b", cta, flags=re.IGNORECASE) else "Share the first priority you would protect and why."
         paragraphs = [
             question,
             _sentence(f"The real tension: {situation or insight}"),
@@ -518,8 +546,7 @@ def _engagement_editorial(
         ideology = "earn_participation_through_relevance_not_bait"
         base_tags = ["#PowerPreparedness", "#EverydayPower", "#Preparedness"]
 
-    source_tags = re.findall(r"#[A-Za-z0-9_]+", source_caption)
-    selected_tags = list(dict.fromkeys(source_tags + base_tags))[:_HASHTAG_LIMITS.get(platform, 5)]
+    selected_tags = base_tags[:_HASHTAG_LIMITS.get(platform, 5)]
     refined = "\n\n".join(part for part in paragraphs if part.strip())
     if selected_tags:
         refined = f"{refined}\n\n{' '.join(selected_tags)}"

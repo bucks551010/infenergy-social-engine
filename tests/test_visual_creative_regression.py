@@ -3,6 +3,9 @@ from __future__ import annotations
 import os
 import sys
 from unittest.mock import patch
+import sys
+import types
+import google
 
 from PIL import Image
 
@@ -62,6 +65,36 @@ def test_product_free_editorial_source_is_not_misclassified_as_packshot(tmp_path
 
     assert review["creative_classification"] == "EDITORIAL_SOURCE_IMAGE"
     assert review["verdict"] == "PASS"
+
+
+def test_gemini_image_quota_failure_short_circuits_following_calls(tmp_path, monkeypatch):
+    calls = {"count": 0}
+
+    class Models:
+        def generate_content(self, **_kwargs):
+            calls["count"] += 1
+            raise RuntimeError("429 RESOURCE_EXHAUSTED monthly spending cap")
+
+    fake_genai = types.ModuleType("google.genai")
+    fake_genai.Client = lambda **_kwargs: types.SimpleNamespace(models=Models())
+    fake_types = types.ModuleType("google.genai.types")
+    fake_types.GenerateContentConfig = lambda **kwargs: kwargs
+    fake_types.ImageConfig = lambda **kwargs: kwargs
+    fake_types.Part = types.SimpleNamespace(from_bytes=lambda **kwargs: kwargs)
+    fake_genai.types = fake_types
+    monkeypatch.setattr(google, "genai", fake_genai)
+    monkeypatch.setitem(sys.modules, "google.genai", fake_genai)
+    monkeypatch.setitem(sys.modules, "google.genai.types", fake_types)
+    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
+    monkeypatch.setattr(social_visuals, "_GEMINI_IMAGE_UNAVAILABLE_REASON", "")
+    content = {"post_id": "quota-test", "selected_cta": "Learn more"}
+
+    first = social_visuals._generate_gemini_full_creative(content, "facebook", {}, str(tmp_path / "first.png"))
+    second = social_visuals._generate_gemini_full_creative(content, "instagram", {}, str(tmp_path / "second.png"))
+
+    assert first[0] is False and second[0] is False
+    assert calls["count"] == 1
+    assert "resource_exhausted" in second[1].lower()
 
 
 def test_final_file_qa_preserves_packshot_only_rejection(tmp_path):

@@ -742,7 +742,11 @@ def _apply_v5_text_overlay(image: Any, direction: dict[str, Any]) -> tuple[Any, 
     return image, ""
 
 
+_GEMINI_IMAGE_UNAVAILABLE_REASON = ""
+
+
 def _generate_gemini_full_creative(content: dict[str, Any], platform: str, visual_plan: dict[str, Any], output_path: str) -> tuple[bool, str, dict[str, Any]]:
+    global _GEMINI_IMAGE_UNAVAILABLE_REASON
     started_at = datetime.now(timezone.utc).isoformat()
     api_key = os.environ.get("GEMINI_API_KEY", "").strip()
     metadata: dict[str, Any] = {
@@ -808,6 +812,8 @@ def _generate_gemini_full_creative(content: dict[str, Any], platform: str, visua
 
     if not api_key:
         return completed(False, "no_api_key")
+    if _GEMINI_IMAGE_UNAVAILABLE_REASON:
+        return completed(False, _GEMINI_IMAGE_UNAVAILABLE_REASON)
 
     prompt = _build_gemini_image_prompt(content, platform, visual_plan)
     metadata["visual_prompt_hash"] = hashlib.sha256(prompt.encode("utf-8")).hexdigest()
@@ -900,7 +906,11 @@ def _generate_gemini_full_creative(content: dict[str, Any], platform: str, visua
                     generated.save(output_path, format="PNG", optimize=True)
                     return completed(True, "ok", model=model_name, retry_count=attempt)
                 except Exception as e:
-                    reasons_by_model[model_name] = f"api_exception:{type(e).__name__}:{str(e)[:160]}"
+                    error = f"api_exception:{type(e).__name__}:{str(e)[:160]}"
+                    reasons_by_model[model_name] = error
+                    if "RESOURCE_EXHAUSTED" in str(e).upper() or "monthly spending cap" in str(e).lower():
+                        _GEMINI_IMAGE_UNAVAILABLE_REASON = error
+                        return completed(False, error, model=model_name, retry_count=attempt)
                     continue
         summary = "; ".join(f"{model}={reason}" for model, reason in reasons_by_model.items()) or "no_attempts_made"
         return completed(False, summary, model=next(reversed(reasons_by_model), ""), retry_count=1)

@@ -471,7 +471,7 @@ def _gemini_semantic_plate_quality(
     )
     model_candidates = [
         str(os.environ.get("GEMINI_VISUAL_QA_MODEL", "")).strip(),
-        "gemini-2.5-flash",
+        "gemini-3.6-flash",
     ]
     for model_name in model_candidates:
         if not model_name:

@@ -438,6 +438,113 @@ def _product_sales_pyramid(
     return refined, presentation
 
 
+def _engagement_editorial(
+    components: dict[str, Any],
+    *,
+    platform: str,
+    source_caption: str,
+    cta: str,
+) -> tuple[str, dict[str, Any]]:
+    """Build product-free content around participation or useful teaching, never sales."""
+    source_has_steps = bool(re.search(r"(?m)^\s*\d+\.\s+\S+", source_caption))
+    stage = str(components.get("funnel_stage") or ("EDUCATION" if source_has_steps else "ATTENTION")).strip().upper()
+    hook = _repair_unsupported_broad_claims(
+        str(components.get("logic_hook") or components.get("hook") or "").strip()
+    )
+    situation = _repair_unsupported_broad_claims(str(components.get("situation") or "").strip())
+    insight = _repair_unsupported_broad_claims(
+        str(components.get("logic_bridge") or components.get("info") or "").strip()
+    )
+    why = _repair_unsupported_broad_claims(
+        str(components.get("why_it_matters") or components.get("why") or "").strip()
+    )
+    transformation = _repair_unsupported_broad_claims(str(components.get("transformation") or "").strip())
+
+    if stage == "EDUCATION":
+        if source_has_steps:
+            source_lines = [line.strip() for line in source_caption.splitlines() if line.strip()]
+            source_hook = next((line for line in source_lines if not re.match(r"^\d+\.\s+", line)), hook)
+            actions = [line for line in source_lines if re.match(r"^\d+\.\s+", line)]
+            hook = source_hook
+        else:
+            action_source = [value for value in (situation, insight, why) if value]
+            actions = [
+                _sentence(f"{index}. {value}")
+                for index, value in enumerate(action_source[:3], start=1)
+            ]
+            while len(actions) < 3:
+                defaults = (
+                    "Name what must remain available",
+                    "Compare the requirement with verified information",
+                    "Decide what you will change before the need becomes urgent",
+                )
+                actions.append(_sentence(f"{len(actions) + 1}. {defaults[len(actions)]}"))
+        final_cta = cta if cta and not re.search(r"\b(?:shop|buy|product|specs?)\b", cta, flags=re.IGNORECASE) else "Save this framework for your next planning check."
+        paragraphs = [
+            hook,
+            _sentence(f"Why this matters: {why or situation}"),
+            "A practical way to use this:\n" + "\n".join(actions),
+            _sentence(f"The takeaway: {transformation or insight}"),
+            f"👉 {final_cta}",
+        ]
+        structure = [
+            "useful_knowledge_hook",
+            "why_the_lesson_matters",
+            "three_step_actionable_framework",
+            "memorable_takeaway",
+            "save_or_share_action",
+            "focused_discovery",
+        ]
+        ideology = "teach_for_capability_without_forcing_a_sale"
+        base_tags = ["#PowerKnowledge", "#Preparedness", "#EnergyLiteracy"]
+    else:
+        question = hook if hook.endswith("?") else f"{hook.rstrip('.')}?"
+        final_cta = cta if cta and not re.search(r"\b(?:shop|buy|product|specs?)\b", cta, flags=re.IGNORECASE) else "Share the first priority you would protect."
+        paragraphs = [
+            question,
+            _sentence(f"The real tension: {situation or insight}"),
+            _sentence(f"A better way to frame it: {insight or why}"),
+            _sentence(f"Why your answer matters: {why or transformation}"),
+            f"👉 {final_cta}",
+        ]
+        structure = [
+            "human_pattern_interrupt",
+            "relatable_tension",
+            "fresh_reframe",
+            "personal_stakes",
+            "specific_participation_prompt",
+            "focused_discovery",
+        ]
+        ideology = "earn_participation_through_relevance_not_bait"
+        base_tags = ["#PowerPreparedness", "#EverydayPower", "#Preparedness"]
+
+    source_tags = re.findall(r"#[A-Za-z0-9_]+", source_caption)
+    selected_tags = list(dict.fromkeys(source_tags + base_tags))[:_HASHTAG_LIMITS.get(platform, 5)]
+    refined = "\n\n".join(part for part in paragraphs if part.strip())
+    if selected_tags:
+        refined = f"{refined}\n\n{' '.join(selected_tags)}"
+    presentation = _above_fold(refined, components, platform)
+    presentation.update({
+        "engagement_structure": structure,
+        "content_ideology": ideology,
+        "selected_hashtags": selected_tags,
+        "hashtag_categories": {"engagement": selected_tags},
+        "hashtag_target_density": f"{_HASHTAG_LIMITS.get(platform, 5)} focused tags maximum",
+        "optional_depth_present": True,
+        "spec_sales_intelligence": "NOT_APPLICABLE",
+        "semantic_layer_evidence": {
+            "hook": hook,
+            "human_context": situation,
+            "insight": insight,
+            "why_it_matters": why,
+            "cta": final_cta,
+        },
+        "platform_expression": f"{platform}_{stage.lower()}_engagement_editorial",
+        "reordered_for_priority": True,
+    })
+    return refined, presentation
+
+
 def refine_caption(
     caption: str,
     *,
@@ -455,6 +562,13 @@ def refine_caption(
         cta = "Review the verified product details." if product_led else "Save this guidance for your next planning session."
     if product_led and product and str(components.get("benefit_fragment") or "").strip():
         return _product_sales_pyramid(
+            components,
+            platform=platform,
+            source_caption=caption,
+            cta=cta,
+        )
+    if not product_led:
+        return _engagement_editorial(
             components,
             platform=platform,
             source_caption=caption,
@@ -802,11 +916,19 @@ def format_caption(components: dict[str, Any], *, platform: str) -> tuple[str, d
         caption = "\n\n".join(filter(None, [hook, context, *supporting_depth, "The decision is less about accumulating specs and more about matching the supported job to the equipment you carry.", payoff, cta, "#PortablePower #Resilience #BusinessContinuity"]))
     else:
         caption = "\n\n".join(filter(None, [hook, context, payoff, *supporting_depth, cta, "#PortablePower #Preparedness #BackupPower"]))
+    product_led = bool(
+        components.get("product_id")
+        or (
+            str(components.get("product_name") or "").strip()
+            and str(components.get("benefit_fragment") or "").strip()
+            and specs
+        )
+    )
     caption, priority = refine_caption(
         caption,
         components=components,
         platform=platform,
-        product_led=bool(components.get("product_id")),
+        product_led=product_led,
         include_proof=False,
     )
     presentation = evaluate(caption, platform=platform, visual_specs=specs)

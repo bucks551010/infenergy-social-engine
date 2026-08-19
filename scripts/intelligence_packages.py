@@ -193,12 +193,24 @@ def _match_researched_urls(products: list[dict[str, Any]], pages: list[dict[str,
         product_id = str(product.get("id") or "")
         sku = _normalize_identity(str(product.get("sku") or product_id))
         name = _normalize_identity(str(product.get("name") or ""))
+        exact_matches: list[dict[str, str]] = []
+        parent_matches: list[dict[str, str]] = []
         for page in pages:
             page_sku = _normalize_identity(page.get("sku", ""))
             page_name = _normalize_identity(page.get("name", ""))
             if (sku and page_sku and sku == page_sku) or (name and page_name and name == page_name):
-                matched[product_id] = page["url"]
-                break
+                exact_matches.append(page)
+            elif (
+                name
+                and page_name
+                and bool(page.get("has_options"))
+                and name.startswith(f"{page_name} ")
+            ):
+                parent_matches.append(page)
+        candidates = exact_matches or parent_matches
+        unique_urls = {str(page.get("url") or "").strip() for page in candidates if str(page.get("url") or "").strip()}
+        if len(unique_urls) == 1:
+            matched[product_id] = unique_urls.pop()
     return matched
 
 
@@ -215,6 +227,7 @@ def _research_first_party_product_urls(products: list[dict[str, Any]]) -> dict[s
                 "url": str(item.get("permalink") or ""),
                 "sku": str(item.get("sku") or ""),
                 "name": str(item.get("name") or ""),
+                "has_options": bool(item.get("has_options")),
             }
             for item in store_products
             if isinstance(item, dict)

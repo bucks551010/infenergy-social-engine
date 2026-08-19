@@ -133,6 +133,49 @@ def test_researched_product_pages_match_exact_identity_only():
     assert matched == {"PPP-200": "https://infenergypower.com/product/powerpulse/"}
 
 
+def test_researched_product_variants_use_unique_verified_parent_permalink():
+    products = [
+        {"id": "AF-S200", "sku": "AF-S200", "name": "Aferiy Solar Panels - 200W"},
+        {"id": "SOREIN-FSP", "sku": "SOREIN-FSP", "name": "Sorein Modular Power System - Full Stack Pro"},
+    ]
+    pages = [
+        {
+            "url": "https://infenergypower.com/product/aferiy-solar-panels/",
+            "sku": "AF-SOLAR",
+            "name": "Aferiy Solar Panels",
+            "has_options": True,
+        },
+        {
+            "url": "https://infenergypower.com/product/sorein-modular-power-system/",
+            "sku": "SOREIN-SYSTEM",
+            "name": "Sorein Modular Power System",
+            "has_options": True,
+        },
+    ]
+
+    assert intelligence_packages._match_researched_urls(products, pages) == {
+        "AF-S200": "https://infenergypower.com/product/aferiy-solar-panels/",
+        "SOREIN-FSP": "https://infenergypower.com/product/sorein-modular-power-system/",
+    }
+
+
+def test_researched_product_parent_match_requires_options_and_one_unique_url():
+    product = [{"id": "variant", "sku": "", "name": "PowerCharge Pro - White"}]
+    not_a_parent = [{
+        "url": "https://infenergypower.com/product/powercharge-pro/",
+        "sku": "PCP",
+        "name": "PowerCharge Pro",
+        "has_options": False,
+    }]
+    ambiguous = [
+        {**not_a_parent[0], "has_options": True},
+        {**not_a_parent[0], "url": "https://infenergypower.com/product/other-powercharge/", "has_options": True},
+    ]
+
+    assert intelligence_packages._match_researched_urls(product, not_a_parent) == {}
+    assert intelligence_packages._match_researched_urls(product, ambiguous) == {}
+
+
 def test_compiler_reads_packaged_static_intelligence_when_runtime_volume_has_only_db(tmp_path, monkeypatch):
     packaged = tmp_path / "packaged"
     runtime = tmp_path / "runtime"
@@ -166,6 +209,7 @@ def test_store_api_enrichment_uses_exact_sku_permalink(monkeypatch):
                 "name": "PowerPulse Pro 200",
                 "sku": "PPP-200",
                 "permalink": "https://infenergypower.com/product/portable-laptop-power-stations-100w/",
+                "has_options": False,
             }]
 
     monkeypatch.setattr(intelligence_packages.requests, "get", lambda url, timeout: calls.append(url) or Response())

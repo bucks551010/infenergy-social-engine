@@ -167,6 +167,7 @@ def test_format_caption_keeps_benefit_opening_and_restores_approved_depth():
 def test_product_free_caption_is_idempotent_and_never_invents_a_product():
     components = {
         "product_id": None,
+        "funnel_stage": "ATTENTION",
         "product_name": "",
         "logic_hook": "Why is overnight charging not always the problem people assume?",
         "logic_bridge": "Understanding basic electrical terminology helps explain what is happening.",
@@ -191,6 +192,59 @@ def test_product_free_caption_is_idempotent_and_never_invents_a_product():
     assert "this product" not in twice.lower()
     assert "supporting proof for that decision" not in twice.lower()
     assert "remember:" not in twice.lower()
+    assert _["engagement_structure"][:3] == [
+        "human_pattern_interrupt",
+        "relatable_tension",
+        "fresh_reframe",
+    ]
+    assert _["content_ideology"] == "earn_participation_through_relevance_not_bait"
+
+
+def test_product_free_education_has_its_own_actionable_structure():
+    components = {
+        "product_id": None,
+        "funnel_stage": "EDUCATION",
+        "product_name": "",
+        "logic_hook": "What should a household identify before an outage?",
+        "situation": "An unranked list of devices makes the first decision harder.",
+        "logic_bridge": "Start with communication, health, and essential daily continuity.",
+        "why_it_matters": "Clear priorities reduce guesswork when normal routines are interrupted.",
+        "transformation": "A short priority order turns concern into an actionable plan.",
+        "feature_bullets": [],
+        "cta": "Save this framework for your next planning check.",
+    }
+
+    caption, presentation = platform_presentation.format_caption(components, platform="facebook")
+
+    assert "A practical way to use this:" in caption
+    assert all(f"{index}." in caption for index in (1, 2, 3))
+    assert "Key specs" not in caption
+    assert "this product" not in caption.lower()
+    assert presentation["engagement_structure"][2] == "three_step_actionable_framework"
+    assert presentation["content_ideology"] == "teach_for_capability_without_forcing_a_sale"
+    assert presentation["platform_expression"] == "facebook_education_engagement_editorial"
+
+
+def test_sales_pyramid_applies_to_products_other_than_powerpulse():
+    components = _components()
+    components.update({
+        "product_id": "CAMP-FAN-12K",
+        "product_name": "3-in-1 Portable Camping Fan",
+        "benefit_fragment": "keeps air moving while adding light and backup phone power at camp",
+        "situation": "Hot, dark campsites can force three separate tools into limited packing space.",
+        "after_state": "One matched setup can cover airflow, area light, and compatible phone charging.",
+        "feature_bullets": ["12,000mAh", "5V"],
+    })
+
+    caption, presentation = platform_presentation.format_caption(components, platform="instagram")
+
+    assert caption.startswith("✨ 3-in-1 Portable Camping Fan:")
+    assert "Now:" in caption
+    assert "With 3-in-1 Portable Camping Fan matched to the job:" in caption
+    assert caption.count("12,000mAh") == 1
+    assert caption.count("5V") == 1
+    assert presentation["sales_structure"][0] == "strongest_real_world_benefit"
+    assert presentation["platform_expression"] == "instagram_benefit_led_product_sales_editorial"
 
 
 def test_final_presentation_keeps_only_the_current_approved_cta():

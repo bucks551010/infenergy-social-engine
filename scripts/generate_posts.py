@@ -3796,6 +3796,7 @@ def _build_post_components(
     strategy = logical_strategy if isinstance(logical_strategy, dict) else {}
     return {
         "product_id": product_id or None,
+        "funnel_stage": stage,
         "hook": selected_hook,
         "situation": situation,
         "info": info,
@@ -5064,8 +5065,7 @@ def generate(
     preferred_visual_director_model = os.environ.get("GEMINI_VISUAL_DIRECTOR_MODEL", "").strip()
     visual_director_candidates = [
         preferred_visual_director_model,
-        "gemini-2.5-pro",
-        "gemini-2.5-flash",
+        "gemini-3.6-flash",
     ]
     visual_director_candidates = [m for m in visual_director_candidates if m]
 
@@ -5396,7 +5396,7 @@ def generate(
         funnel_stage=funnel_stage,
     )
     if phase2_enabled:
-        phase2_candidates = [preferred_model, conference_model if "conference_model" in locals() else "", "gemini-2.5-pro", "gemini-2.5-flash"]
+        phase2_candidates = [preferred_model, conference_model if "conference_model" in locals() else "", "gemini-3.6-flash"]
         phase2_candidates = [m for m in phase2_candidates if m]
         phase2_raw = _run_phase2_creative_stack(
             phase2_candidates,
@@ -5556,7 +5556,7 @@ def generate(
     run_context["draft_direction"]["selected_cta"] = selected_cta
     run_context["audience_segment"] = audience_segment
 
-    conference_candidates = [conference_model, preferred_visual_director_model, preferred_model, "gemini-2.5-pro", "gemini-2.5-flash"]
+    conference_candidates = [conference_model, preferred_visual_director_model, preferred_model, "gemini-3.6-flash"]
     conference_candidates = [m for m in conference_candidates if m]
 
     phase3_enabled = os.environ.get("ENABLE_PHASE3_SAFETY_STACK", "true").strip().lower() not in {"0", "false", "no"}
@@ -5566,7 +5566,7 @@ def generate(
         recent_topics=recent_topics,
     )
     if phase3_enabled:
-        phase3_candidates = [preferred_model, conference_model, "gemini-2.5-pro", "gemini-2.5-flash"]
+        phase3_candidates = [preferred_model, conference_model, "gemini-3.6-flash"]
         phase3_candidates = [m for m in phase3_candidates if m]
         preview_for_safety = (
             f"Topic: {topic}\n"
@@ -5646,7 +5646,7 @@ def generate(
         funnel_stage=funnel_stage,
     )
     if phase4_enabled:
-        phase4_candidates = [preferred_model, conference_model, preferred_visual_director_model, "gemini-2.5-pro", "gemini-2.5-flash"]
+        phase4_candidates = [preferred_model, conference_model, preferred_visual_director_model, "gemini-3.6-flash"]
         phase4_candidates = [m for m in phase4_candidates if m]
         phase4_raw = _run_phase4_optimization_stack(
             phase4_candidates,

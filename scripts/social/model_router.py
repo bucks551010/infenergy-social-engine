@@ -14,17 +14,14 @@ from typing import Any
 
 
 DEFAULT_MODEL_ROUTES: dict[str, str] = {
-    # The fast route remains entirely deployment-configurable. The earlier
-    # gemini-2.5-flash default returned 404 for this deployment, so use the
-    # lighter current route by default and keep fallbacks explicit below.
-    "classification": "gemini-2.5-flash-lite",
-    "topic_generation": "gemini-2.5-flash-lite",
-    "strategy": "gemini-3.1-pro-preview",
-    "visual_direction": "gemini-3.1-pro-preview",
-    "copy_editing": "gemini-3.1-flash-lite",
-    "image_analysis": "gemini-2.5-flash-lite",
-    "fact_reasoning": "gemini-3.1-pro-preview",
-    "final_review": "gemini-3.1-pro-preview",
+    "classification": "gemini-3.6-flash",
+    "topic_generation": "gemini-3.6-flash",
+    "strategy": "gemini-3.6-flash",
+    "visual_direction": "gemini-3.6-flash",
+    "copy_editing": "gemini-3.6-flash",
+    "image_analysis": "gemini-3.6-flash",
+    "fact_reasoning": "gemini-3.6-flash",
+    "final_review": "gemini-3.6-flash",
 }
 
 
@@ -33,7 +30,7 @@ def route_for(task: str) -> str:
     env = os.environ.get(f"GEMINI_ROUTE_{task.upper()}")
     if env:
         return env.strip()
-    return DEFAULT_MODEL_ROUTES.get(task, "gemini-2.5-flash-lite")
+    return DEFAULT_MODEL_ROUTES.get(task, "gemini-3.6-flash")
 
 
 def route_candidates(task: str) -> list[str]:

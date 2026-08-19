@@ -376,6 +376,22 @@ def test_powerpulse_product_sales_copy_follows_benefit_led_sequence():
     assert mobile["breathing_room"] is True
 
 
+def test_product_sales_education_does_not_repeat_numeric_specs():
+    components = _components()
+    components["info"] = "154Wh is a practical anchor for comparing real fit before purchase."
+    caption, _ = platform_presentation.refine_caption(
+        POWERPULSE_ORIGINAL,
+        components=components,
+        platform="facebook",
+    )
+
+    assert caption.count("154Wh") == 1
+    assert caption.count("41,600mAh") == 1
+    assert caption.count("200W") == 1
+    assert caption.count("110V") == 1
+    assert "How to read those specs: Compare the published capacity and output" in caption
+
+
 def test_instagram_package_persists_reel_caption_hierarchy_without_rendering():
     posts = generate_posts._build_platform_posts(
         "powerpulse-fixture",

@@ -207,6 +207,26 @@ def _research_first_party_product_urls(products: list[dict[str, Any]]) -> dict[s
     if urlparse(site).hostname not in {"infenergypower.com", "www.infenergypower.com"}:
         return {}
     try:
+        store_response = requests.get(f"{site}/wp-json/wc/store/v1/products?per_page=100", timeout=20)
+        store_response.raise_for_status()
+        store_products = store_response.json()
+        store_pages = [
+            {
+                "url": str(item.get("permalink") or ""),
+                "sku": str(item.get("sku") or ""),
+                "name": str(item.get("name") or ""),
+            }
+            for item in store_products
+            if isinstance(item, dict)
+            and str(item.get("permalink") or "").startswith(("https://infenergypower.com/product/", "https://www.infenergypower.com/product/"))
+        ] if isinstance(store_products, list) else []
+        store_matches = _match_researched_urls(products, store_pages)
+    except (requests.RequestException, ValueError):
+        store_matches = {}
+    unmatched = [product for product in products if str(product.get("id") or "") not in store_matches]
+    if not unmatched:
+        return store_matches
+    try:
         response = requests.get(f"{site}/wp-sitemap-posts-product-1.xml", timeout=15)
         response.raise_for_status()
         root = ET.fromstring(response.text)
@@ -231,7 +251,7 @@ def _research_first_party_product_urls(products: list[dict[str, Any]]) -> dict[s
             "sku": sku_match.group(1) if sku_match else "",
             "name": name_match.group(1) if name_match else "",
         })
-    return _match_researched_urls(products, pages)
+    return {**_match_researched_urls(unmatched, pages), **store_matches}
 
 
 def compile_packages(data_dir: str) -> dict[str, Any]:

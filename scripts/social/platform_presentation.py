@@ -375,8 +375,14 @@ def _product_sales_pyramid(
     ]))
     spec_lead = "The buying decision gets concrete in the published capability:"
     spec_block = "⚡ Key specs\n" + "\n".join(f"• {spec}" for spec in specs) if specs else ""
+    non_numeric_info = " ".join(
+        sentence for sentence in _sentences(info)
+        if not _numeric_proof_tokens(sentence)
+    )
+    if specs and not non_numeric_info:
+        non_numeric_info = "Compare the published capacity and output with the actual devices and job before choosing."
     education = " ".join(filter(None, [
-        _sentence(f"How to read those specs: {info}") if info else "",
+        _sentence(f"How to read those specs: {non_numeric_info}") if non_numeric_info else "",
         _sentence(product_connection) if product_connection else "",
     ]))
     human_value = _sentence(transformation) if transformation else ""

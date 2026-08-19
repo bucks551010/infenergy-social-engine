@@ -141,3 +141,28 @@ def test_compiler_reads_packaged_static_intelligence_when_runtime_volume_has_onl
     assert "AUDIENCE_WORLD" in coverage["package_types"]
     assert "CONTENT_READINESS" in coverage["package_types"]
     assert coverage["ready_reserve_available"] >= 1
+
+
+def test_store_api_enrichment_uses_exact_sku_permalink(monkeypatch):
+    calls = []
+
+    class Response:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return [{
+                "name": "PowerPulse Pro 200",
+                "sku": "PPP-200",
+                "permalink": "https://infenergypower.com/product/portable-laptop-power-stations-100w/",
+            }]
+
+    monkeypatch.setattr(intelligence_packages.requests, "get", lambda url, timeout: calls.append(url) or Response())
+    monkeypatch.setenv("FIRST_PARTY_SITE_URL", "https://infenergypower.com")
+
+    result = intelligence_packages._research_first_party_product_urls([
+        {"id": "PPP-200", "sku": "PPP-200", "name": "PowerPulse Pro 200"}
+    ])
+
+    assert result == {"PPP-200": "https://infenergypower.com/product/portable-laptop-power-stations-100w/"}
+    assert calls == ["https://infenergypower.com/wp-json/wc/store/v1/products?per_page=100"]

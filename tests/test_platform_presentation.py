@@ -76,18 +76,19 @@ def test_powerpulse_fixture_front_loads_value_without_losing_sales_depth():
     assert _word_depth(improved, "PowerPulse Pro 200") <= _word_depth(POWERPULSE_ORIGINAL, "PowerPulse Pro 200")
     opening_sentences = platform_presentation._sentences(" ".join(improved.split("\n\n")[:2]))
     assert opening_sentences == [
-        "✨ PowerPulse Pro 200 keeps compatible daily devices charged away from outlets.",
-        "You can keep compatible priority devices available away from wall power instead of organizing the day around the next outlet.",
+        "✨ PowerPulse Pro 200: Keeps compatible daily devices charged away from outlets.",
+        "Now: A weak power bank can fail when its capacity and ports do not match the devices carried.",
+        "With PowerPulse Pro 200 matched to the job: You can keep compatible priority devices available away from wall power instead of organizing the day around the next outlet.",
     ]
     assert "154Wh" in improved and "41,600mAh" in improved and "200W" in improved and "110V" in improved
     assert _word_depth(improved, "Key specs") < _word_depth(POWERPULSE_ORIGINAL, "Key specs")
-    assert "laptops, cameras, drones" in improved
+    assert "laptops, phones, cameras" in improved
     assert "⚡ Key specs" in improved
     assert "• 154Wh and 41,600mAh for stored power" in improved
     assert "• 200W AC and 110V output for compatible daily devices" in improved
     assert "remote work" in improved.lower()
-    assert "drones" in improved.lower()
-    assert "outages and off-grid use" in improved
+    assert "Why it matters:" in improved
+    assert "Use it for:" in improved
     assert "Invite a practical response" not in improved
     assert "Reader job" not in improved
     assert len(presentation["selected_hashtags"]) == 5
@@ -114,16 +115,16 @@ def test_dense_single_paragraph_becomes_readable_without_losing_approved_sentenc
         platform="facebook",
     )
 
-    for sentence in platform_presentation._sentences(dense.split("\n\n")[0]):
-        if not platform_presentation._numeric_proof_tokens(sentence):
-            assert sentence in improved
+    assert improved.split("\n\n")[0].startswith("✨ PowerPulse Pro 200:")
+    assert improved.split("\n\n")[1].startswith("Now:")
+    assert "With PowerPulse Pro 200 matched to the job:" in improved
     assert improved.count("154Wh") == 1
     assert improved.count("41,600mAh") == 1
     assert improved.count("200W") == 1
     assert improved.count("110V") == 1
     assert len(improved.split("\n\n")) >= 6
-    assert improved.index("PowerPulse Pro 200") < improved.index("Mobile professionals")
-    assert improved.index("⚡ Key specs") < improved.index("The deeper decision")
+    assert improved.index("PowerPulse Pro 200") < improved.index("The buying decision gets concrete")
+    assert improved.index("⚡ Key specs") < improved.index("How to read those specs")
     hashtag_line = improved.split("\n\n")[-1]
     assert hashtag_line.startswith("#PortablePower #Preparedness")
     assert len(hashtag_line.split()) == 5
@@ -140,8 +141,8 @@ def test_benefit_opening_uses_only_approved_component_meaning():
 
     first_two = platform_presentation._sentences(" ".join(improved.split("\n\n")[:2]))
     assert components["product_name"] in first_two[0]
-    assert components["benefit_fragment"] in first_two[0]
-    assert components["after_state"] in first_two[1]
+    assert components["benefit_fragment"].lower() in first_two[0].lower()
+    assert components["after_state"] in first_two[2]
     assert "powers your laptop all day" not in improved.lower()
     assert "compatible with every" not in improved.lower()
     assert presentation["semantic_layer_evidence"]["primary_benefit"] == components["benefit_fragment"]
@@ -154,12 +155,13 @@ def test_format_caption_keeps_benefit_opening_and_restores_approved_depth():
     first_two = platform_presentation._sentences(" ".join(improved.split("\n\n")[:2]))
 
     assert first_two == [
-        "✨ PowerPulse Pro 200 keeps compatible daily devices charged away from outlets.",
-        "You can keep compatible priority devices available away from wall power instead of organizing the day around the next outlet.",
+        "✨ PowerPulse Pro 200: Keeps compatible daily devices charged away from outlets.",
+        "Now: A weak power bank can fail when its capacity and ports do not match the devices carried.",
+        "With PowerPulse Pro 200 matched to the job: You can keep compatible priority devices available away from wall power instead of organizing the day around the next outlet.",
     ]
-    for key in ("situation", "transformation", "why_it_matters", "info", "use_case_line", "product_connection", "proof"):
+    for key in ("situation", "transformation", "why_it_matters", "info", "use_case_line", "product_connection"):
         assert components[key] in improved
-    assert improved.index("⚡ Key specs") < improved.index(components["use_case_line"])
+    assert improved.index(components["use_case_line"]) < improved.index("⚡ Key specs")
 
 
 def test_product_free_caption_is_idempotent_and_never_invents_a_product():
@@ -225,8 +227,8 @@ def test_presentation_preserves_existing_hashtags_and_semantics_across_platforms
     assert len(linkedin["selected_hashtags"]) == 5
     assert len(set(facebook["selected_hashtags"])) == 5
     assert "#TravelPower" in instagram_caption
-    assert "when standard portable banks fall short" in facebook_caption.lower()
-    assert facebook["platform_expression"] == "source_preserving_priority_editorial"
+    assert _components()["situation"].lower() in facebook_caption.lower()
+    assert facebook["platform_expression"] == "facebook_benefit_led_product_sales_editorial"
 
 
 def test_final_render_preserves_content_metadata_and_places_existing_destination_before_tags():
@@ -265,7 +267,7 @@ def test_powerpulse_specs_appear_once_and_unsupported_broad_claims_are_repaired(
     assert "ensures real-world compatibility" not in improved.lower()
     assert "most compact batteries fail" not in improved.lower()
     assert "keeps your laptop running mid-flight" not in improved.lower()
-    assert "compare published specifications" in improved.lower()
+    assert "compare the real job against the published capacity and output" in improved.lower()
 
 
 def test_long_useful_copy_passes_when_paragraphs_remain_readable():
@@ -339,6 +341,39 @@ def test_mobile_first_screen_detects_dense_wall():
 
     assert preview["breathing_room"] is False
     assert preview["dense_first_screen"] is True
+
+
+def test_powerpulse_product_sales_copy_follows_benefit_led_sequence():
+    caption, presentation = platform_presentation.refine_caption(
+        POWERPULSE_ORIGINAL,
+        components=_components(),
+        platform="instagram",
+    )
+    paragraphs = caption.split("\n\n")
+
+    assert paragraphs[0] == "✨ PowerPulse Pro 200: Keeps compatible daily devices charged away from outlets."
+    assert paragraphs[1].startswith("Now:")
+    assert "\nWith PowerPulse Pro 200 matched to the job:" in paragraphs[1]
+    assert paragraphs[2].startswith("Why it matters:")
+    assert "Use it for:" in paragraphs[2]
+    assert paragraphs[3] == "The buying decision gets concrete in the published capability:"
+    assert paragraphs[4].startswith("⚡ Key specs\n• 154Wh")
+    assert paragraphs[5].startswith("How to read those specs:")
+    assert caption.count("154Wh") == 1
+    assert caption.count("41,600mAh") == 1
+    assert caption.count("200W") == 1
+    assert caption.count("110V") == 1
+    assert presentation["sales_structure"][:6] == [
+        "strongest_real_world_benefit",
+        "current_state_vs_product_supported_state",
+        "why_needed_and_use_cases",
+        "sales_transition_to_specs",
+        "single_key_spec_block",
+        "post_spec_education",
+    ]
+    mobile = platform_presentation.mobile_first_screen(caption)
+    assert mobile["entry_point_visible"] is True
+    assert mobile["breathing_room"] is True
 
 
 def test_instagram_package_persists_reel_caption_hierarchy_without_rendering():

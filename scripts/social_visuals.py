@@ -1132,25 +1132,18 @@ def generate_visuals(content: dict[str, Any], visual_plan: dict[str, Any] | None
                     )
                 except Exception as exc:
                     visual_generation[platform]["v5_qa"] = {"direction_fidelity": "UNAVAILABLE", "reason": type(exc).__name__}
-        elif resolved_override and _save_product_photo_fallback(resolved_override, file_path, platform):
-            render_engines[platform] = "approved_product_photo"
-            product_overlay_applied[platform] = True
-            fallback_reasons[platform] = reason
-            visual_generation[platform] = {
-                **metadata,
-                "generation_status": "fallback_product_photo",
-                "artifact_path": file_path,
-                "artifact_exists": True,
-                "fallback_used": True,
-                "fallback_source": "approved_product_photo",
-            }
-            visuals[platform] = file_path
-            artifact_reviews[platform] = _fallback_creative_review(content, plan, file_path, platform)
-            visual_generation[platform]["creative_classification"] = artifact_reviews[platform].get("creative_classification")
         else:
             render_engines[platform] = "failed"
             product_overlay_applied[platform] = False
             fallback_reasons[platform] = reason
+            visual_generation[platform] = {
+                **metadata,
+                "generation_status": "failed",
+                "final_creative_status": "provider_failed_no_final_creative",
+                "reference_asset_used_for_conditioning": bool(resolved_override),
+                "reference_asset_role": "SOURCE_PRODUCT_REFERENCE" if resolved_override else "NONE",
+                "fallback_used": False,
+            }
             artifact_reviews[platform] = review_rendered_visual("", platform)
 
     visuals["template"] = template_name

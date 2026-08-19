@@ -339,6 +339,99 @@ def _benefit_opening(components: dict[str, Any], *, product_led: bool) -> list[s
     return opening[:2]
 
 
+def _product_sales_pyramid(
+    components: dict[str, Any],
+    *,
+    platform: str,
+    source_caption: str,
+    cta: str,
+) -> tuple[str, dict[str, Any]]:
+    """Build product sales copy from approved component meaning in a fixed editorial hierarchy."""
+    product = str(components.get("product_name") or "").strip()
+    benefit = _repair_unsupported_broad_claims(str(components.get("benefit_fragment") or "").strip().rstrip("."))
+    situation = _repair_unsupported_broad_claims(str(components.get("situation") or "").strip().rstrip("."))
+    after_state = _repair_unsupported_broad_claims(str(components.get("after_state") or components.get("emotional_outcome") or "").strip().rstrip("."))
+    why_it_matters = _repair_unsupported_broad_claims(str(components.get("why_it_matters") or "").strip().rstrip("."))
+    use_case = _repair_unsupported_broad_claims(str(components.get("use_case_line") or "").strip().rstrip("."))
+    info = _repair_unsupported_broad_claims(str(components.get("info") or components.get("logic_bridge") or "").strip().rstrip("."))
+    product_connection = _repair_unsupported_broad_claims(str(components.get("product_connection") or "").strip().rstrip("."))
+    transformation = _repair_unsupported_broad_claims(str(components.get("transformation") or "").strip().rstrip("."))
+    specs = [
+        str(spec).strip() for spec in (components.get("feature_bullets") or [])
+        if _numeric_proof_tokens(str(spec))
+    ]
+
+    benefit_tagline = benefit[:1].upper() + benefit[1:] if benefit else ""
+    tagline = _sentence(f"✨ {product}: {benefit_tagline}")
+    contrast_lines = []
+    if situation:
+        contrast_lines.append(_sentence(f"Now: {situation}"))
+    if after_state:
+        contrast_lines.append(_sentence(f"With {product} matched to the job: {after_state}"))
+    contrast = "\n".join(contrast_lines)
+    need_and_use = " ".join(filter(None, [
+        _sentence(f"Why it matters: {why_it_matters}") if why_it_matters else "",
+        _sentence(f"Use it for: {use_case}") if use_case else "",
+    ]))
+    spec_lead = "The buying decision gets concrete in the published capability:"
+    spec_block = "⚡ Key specs\n" + "\n".join(f"• {spec}" for spec in specs) if specs else ""
+    education = " ".join(filter(None, [
+        _sentence(f"How to read those specs: {info}") if info else "",
+        _sentence(product_connection) if product_connection else "",
+    ]))
+    human_value = _sentence(transformation) if transformation else ""
+    portfolio_tags, categories = _portfolio(components, platform, source_caption)
+    source_tags = re.findall(r"#[A-Za-z0-9_]+", source_caption)
+    selected_tags = list(dict.fromkeys(source_tags + [f"#{tag}" for tag in portfolio_tags]))[:_HASHTAG_LIMITS.get(platform, 5)]
+    hashtag_line = " ".join(selected_tags)
+    paragraphs = [
+        tagline,
+        contrast,
+        need_and_use,
+        spec_lead if spec_block else "",
+        spec_block,
+        education,
+        human_value,
+        f"👉 {cta}" if cta else "",
+        hashtag_line,
+    ]
+    refined = "\n\n".join(paragraph for paragraph in paragraphs if paragraph.strip())
+    presentation = _above_fold(refined, components, platform)
+    presentation.update({
+        "sales_structure": [
+            "strongest_real_world_benefit",
+            "current_state_vs_product_supported_state",
+            "why_needed_and_use_cases",
+            "sales_transition_to_specs",
+            "single_key_spec_block",
+            "post_spec_education",
+            "human_value",
+            "natural_response",
+            "focused_hashtags",
+        ],
+        "selected_hashtags": selected_tags,
+        "hashtag_categories": categories,
+        "hashtag_target_density": f"{_HASHTAG_LIMITS.get(platform, 5)} focused tags maximum",
+        "spec_sales_intelligence": "PASS" if spec_block else "NOT_APPLICABLE",
+        "optional_depth_present": bool(education or human_value),
+        "optional_depth_start_word": len(re.findall(r"\b[\w'-]+\b", "\n\n".join(paragraphs[:5]))) + 1 if education or human_value else None,
+        "semantic_layer_evidence": {
+            "tagline": tagline,
+            "product": product,
+            "primary_benefit": str(components.get("benefit_fragment") or ""),
+            "human_outcome": str(components.get("emotional_outcome") or components.get("after_state") or ""),
+            "contrast": contrast,
+            "why_and_use": need_and_use,
+            "selected_proof": [spec_block] if spec_block else [],
+            "education": education,
+            "cta": cta,
+        },
+        "platform_expression": f"{platform}_benefit_led_product_sales_editorial",
+        "reordered_for_priority": True,
+    })
+    return refined, presentation
+
+
 def refine_caption(
     caption: str,
     *,
@@ -354,6 +447,13 @@ def refine_caption(
     source_has_steps = bool(re.search(r"(?m)^\s*\d+\.\s+\S+", caption))
     if re.search(r"\b(?:checklist|plan|steps)\b", cta, flags=re.IGNORECASE) and not source_has_steps:
         cta = "Review the verified product details." if product_led else "Save this guidance for your next planning session."
+    if product_led and product and str(components.get("benefit_fragment") or "").strip():
+        return _product_sales_pyramid(
+            components,
+            platform=platform,
+            source_caption=caption,
+            cta=cta,
+        )
     benefit_opening = _benefit_opening(components, product_led=product_led)
     opening_keys = {_normalized_paragraph(part) for part in benefit_opening}
     tags: list[str] = []

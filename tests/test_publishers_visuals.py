@@ -246,7 +246,7 @@ class PublisherVisualTests(unittest.TestCase):
         self.assertEqual(render["artifact_path"], "")
         self.assertFalse(render["artifact_exists"])
 
-    def test_generate_visuals_uses_approved_product_photo_when_gemini_fails(self) -> None:
+    def test_generate_visuals_keeps_product_photo_as_reference_when_gemini_fails(self) -> None:
         from PIL import Image
 
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -260,9 +260,11 @@ class PublisherVisualTests(unittest.TestCase):
                     }
                 )
 
-            self.assertEqual(visuals["render_engines"]["instagram"], "approved_product_photo")
-            self.assertTrue(os.path.isfile(visuals["instagram"]))
-            self.assertEqual(visuals["artifact_reviews"]["instagram"]["verdict"], "PASS")
+            self.assertEqual(visuals["render_engines"]["instagram"], "failed")
+            self.assertNotIn("instagram", visuals)
+            self.assertEqual(visuals["artifact_reviews"]["instagram"]["verdict"], "REGENERATE_VISUAL")
+            self.assertEqual(visuals["visual_generation"]["instagram"]["reference_asset_role"], "SOURCE_PRODUCT_REFERENCE")
+            self.assertTrue(visuals["visual_generation"]["instagram"]["reference_asset_used_for_conditioning"])
 
     def test_live_visual_gate_rejects_local_render_and_missing_product(self) -> None:
         content = {
@@ -279,7 +281,7 @@ class PublisherVisualTests(unittest.TestCase):
         self.assertIn("facebook_visual_not_gemini", errors)
         self.assertIn("facebook_product_overlay_missing", errors)
 
-    def test_live_visual_gate_accepts_approved_product_photo_fallback(self) -> None:
+    def test_live_visual_gate_rejects_product_photo_as_final_creative(self) -> None:
         content = {
             "product_id": "SFT-20K",
             "generated_visuals": {
@@ -290,7 +292,7 @@ class PublisherVisualTests(unittest.TestCase):
             },
         }
 
-        assert _live_visual_gate_errors(content, {"facebook": True}, dry_run=False) == []
+        assert "facebook_visual_not_gemini" in _live_visual_gate_errors(content, {"facebook": True}, dry_run=False)
 
     def test_live_visual_gate_skips_product_checks_when_no_product_anchored(self) -> None:
         # Educational/pillar content with no product_id must not be blocked by

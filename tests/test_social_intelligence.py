@@ -447,6 +447,31 @@ def test_orchestrator_derives_runtime_lock_and_final_reviews_without_council(mon
     assert post.creative_director["strategy_integrity_review"]["verdict"] == "ALIGNED"
 
 
+def test_orchestrator_no_product_does_not_select_an_offering(monkeypatch):
+    monkeypatch.setattr(orchestrator, "_bi_pick_offering", lambda *args: pytest.fail("must not select a product"))
+    monkeypatch.setattr(orchestrator, "_llm_copy_beats", lambda *args: None)
+
+    post = orchestrator.SocialIntelligenceOrchestrator().create_post(no_product=True, record_memory=False)
+
+    assert post.anchored_offering is None
+
+
+def test_orchestrator_route_propagates_no_product_override(monkeypatch):
+    observed = {}
+
+    def fake_run_social_intelligence(**kwargs):
+        observed.update(kwargs)
+        return []
+
+    monkeypatch.setenv("CONTENT_BUCKET_OVERRIDE", "no_product")
+    monkeypatch.setattr(generate_posts, "_living_strategy_for_generation", lambda: pytest.fail("product council must not run"))
+    monkeypatch.setattr(generate_posts, "run_social_intelligence", fake_run_social_intelligence)
+
+    assert generate_posts._route_generate_orchestrator() == {}
+    assert observed["no_product"] is True
+    assert "approved_strategy" not in observed
+
+
 def test_pre_render_gate_blocks_provider_invocation(monkeypatch):
     class ProviderThatMustNotRun:
         def generate(self, **kwargs):

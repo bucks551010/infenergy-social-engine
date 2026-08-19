@@ -167,7 +167,12 @@ def _route_generate_orchestrator(
     """Return the first orchestrated post package in the legacy payload shape used by the runtime."""
     social_platform = _social_platform_key(platform)
     council_decision: dict[str, Any] = {}
-    if not isinstance(kw.get("approved_strategy"), dict):
+    no_product = bool(kw.get("no_product")) or os.environ.get("CONTENT_BUCKET_OVERRIDE", "").strip().lower() == "no_product"
+    if no_product:
+        kw["no_product"] = True
+        kw.pop("approved_strategy", None)
+        council_decision = {"decision": "engagement_strategy", "source": "no_product_override"}
+    elif not isinstance(kw.get("approved_strategy"), dict):
         approved_strategy, council_decision = _living_strategy_for_generation()
         if approved_strategy:
             kw["approved_strategy"] = approved_strategy

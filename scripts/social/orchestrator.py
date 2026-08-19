@@ -579,6 +579,7 @@ class SocialIntelligenceOrchestrator:
         verified_facts: list[str] | None = None,
         record_memory: bool = True,
         product_id_override: str = "",
+        no_product: bool = False,
         approved_strategy: dict[str, Any] | None = None,
         revision_feedback: list[str] | None = None,
     ) -> PostPackage:
@@ -587,11 +588,15 @@ class SocialIntelligenceOrchestrator:
 
         # 0b. Optional BI Foundation hydration — only when the caller
         # didn't already specify a value and the flag is on.
-        bi_offering = _bi_get_offering(product_id_override) if product_id_override else _bi_pick_offering(rotation_index, self.data_dir)
+        bi_offering = None if no_product else (
+            _bi_get_offering(product_id_override)
+            if product_id_override
+            else _bi_pick_offering(rotation_index, self.data_dir)
+        )
         bi_ctx = _load_bi_creative_context(
             str((bi_offering or {}).get("offering_id") or (bi_offering or {}).get("sku") or "")
         )
-        if product_id_override:
+        if product_id_override and not no_product:
             forced_offering = _bi_get_offering(product_id_override)
             if forced_offering:
                 bi_offering = forced_offering

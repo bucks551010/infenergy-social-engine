@@ -759,6 +759,7 @@ def _generate_gemini_full_creative(content: dict[str, Any], platform: str, visua
         "final_post_id": str(content.get("post_id") or ""),
         "generation_started_at": started_at,
         "retry_count": 0,
+        "image_provider_call_count": 0,
         "fallback_used": False,
     }
 
@@ -829,10 +830,7 @@ def _generate_gemini_full_creative(content: dict[str, Any], platform: str, visua
         from google.genai import types  # type: ignore
 
         client = genai.Client(api_key=api_key)
-        model_candidates = [
-            str(os.environ.get("GEMINI_IMAGE_MODEL", "")).strip(),
-            "gemini-2.5-flash-image",
-        ]
+        model_candidates = [str(os.environ.get("GEMINI_IMAGE_MODEL", "")).strip() or "gemini-2.5-flash-image"]
         seen_models: set[str] = set()
         spec = _platform_visual_spec(platform)
         reference_parts: list[Any] = []
@@ -862,15 +860,15 @@ def _generate_gemini_full_creative(content: dict[str, Any], platform: str, visua
             if not model_name or model_name in seen_models:
                 continue
             seen_models.add(model_name)
-            for attempt in range(2):
-                retry_note = "" if attempt == 0 else (" Previous attempt failed automated quality checks. Preserve the requested aspect ratio and produce a physically credible scene." if v5_direction else " Previous attempt failed automated quality checks. Keep every listed text string exact, legible, and correctly spelled, and preserve the requested aspect ratio.")
-                contents: Any = [prompt + retry_note, *reference_parts] if reference_parts else prompt + retry_note
+            for attempt in range(1):
+                contents: Any = [prompt, *reference_parts] if reference_parts else prompt
                 try:
                     config_kwargs: dict[str, Any] = {"response_modalities": ["TEXT", "IMAGE"]}
                     try:
                         config_kwargs["image_config"] = types.ImageConfig(aspect_ratio=spec["aspect_ratio"])
                     except Exception:
                         pass
+                    metadata["image_provider_call_count"] = int(metadata.get("image_provider_call_count", 0)) + 1
                     response = client.models.generate_content(
                         model=model_name,
                         contents=contents,
@@ -913,7 +911,7 @@ def _generate_gemini_full_creative(content: dict[str, Any], platform: str, visua
                         return completed(False, error, model=model_name, retry_count=attempt)
                     continue
         summary = "; ".join(f"{model}={reason}" for model, reason in reasons_by_model.items()) or "no_attempts_made"
-        return completed(False, summary, model=next(reversed(reasons_by_model), ""), retry_count=1)
+        return completed(False, summary, model=next(reversed(reasons_by_model), ""), retry_count=0)
     except Exception as e:
         return completed(False, f"setup_exception:{type(e).__name__}:{str(e)[:160]}")
 
@@ -1204,6 +1202,11 @@ def generate_visuals(content: dict[str, Any], visual_plan: dict[str, Any] | None
     visuals["product_overlay_applied"] = product_overlay_applied
     visuals["fallback_reasons"] = fallback_reasons
     visuals["visual_generation"] = visual_generation
+    visuals["image_provider_call_count"] = sum(
+        int((visual_generation.get(platform, {}) or {}).get("image_provider_call_count", 0) or 0)
+        for platform in ("facebook", "instagram", "linkedin")
+    )
+    visuals["image_provider_call_budget"] = 3
     visuals["artifact_reviews"] = artifact_reviews
     visuals["gemini_available"] = str(gemini_available).lower()
     visuals["style_reference_count"] = str(len(repo_refs) if isinstance(repo_refs, list) else 0)

@@ -41,6 +41,28 @@ def test_approved_gemini_creative_recovers_failed_platform_variants(tmp_path, mo
     assert visuals["visual_generation"]["instagram"]["fallback_used"] is False
 
 
+def test_final_creative_budget_is_exactly_one_image_call_per_platform(tmp_path, monkeypatch):
+    monkeypatch.setattr(social_visuals, "VISUAL_DIR", str(tmp_path))
+
+    def fake_generate(content, platform, plan, file_path):
+        Image.new("RGB", social_visuals._platform_visual_spec(platform)["target"], "#50646f").save(file_path)
+        return True, "", {
+            "generation_status": "success",
+            "artifact_path": file_path,
+            "image_provider_call_count": 1,
+        }
+
+    monkeypatch.setattr(social_visuals, "_generate_gemini_full_creative", fake_generate)
+    monkeypatch.setattr(social_visuals, "_load_visual_repo_context", lambda: {"references": [], "settings": {}})
+    monkeypatch.setattr(social_visuals, "_resolve_product_source", lambda *args, **kwargs: "")
+
+    visuals = social_visuals.generate_visuals({"post_id": "budget"}, {})
+
+    assert visuals["image_provider_call_count"] == 3
+    assert visuals["image_provider_call_budget"] == 3
+    assert all(visuals["visual_generation"][platform]["image_provider_call_count"] == 1 for platform in ("facebook", "instagram", "linkedin"))
+
+
 def _image(path, size=(1080, 1080)):
     image = Image.new("RGB", size, "#d9dde2")
     for x in range(size[0] // 3, (size[0] * 2) // 3):

@@ -1673,7 +1673,7 @@ def run_slot(
         elif refresh_reason not in ("not_due", "auto_refresh_disabled"):
             print(f"[META] Token refresh skipped/failed: {refresh_reason}")
         try:
-            timeout_sec = int(os.environ.get("RUN_SLOT_TIMEOUT_SEC", "420"))
+            timeout_sec = int(os.environ.get("RUN_SLOT_TIMEOUT_SEC", "900"))
             scripts_dir = os.path.join(os.path.dirname(__file__), "scripts")
             run_engine_path = os.path.join(scripts_dir, "run_engine.py")
             env = os.environ.copy()
@@ -1708,7 +1708,9 @@ def run_slot(
                 LAST_RUN["status"] = "generation_failed"
                 LAST_RUN["error"] = "run_engine_completed_without_outcome"
         except subprocess.TimeoutExpired as e:
-            partial = ((e.stdout or "") + "\n" + (e.stderr or "")).strip()
+            stdout = e.stdout.decode("utf-8", errors="replace") if isinstance(e.stdout, bytes) else str(e.stdout or "")
+            stderr = e.stderr.decode("utf-8", errors="replace") if isinstance(e.stderr, bytes) else str(e.stderr or "")
+            partial = f"{stdout}\n{stderr}".strip()
             LAST_RUN["status"] = "generation_failed"
             LAST_RUN["error"] = f"run_timeout_after_{timeout_sec}s"
             if partial:

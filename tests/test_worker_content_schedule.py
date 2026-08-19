@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import sys
 from types import SimpleNamespace
+import subprocess
 
 _REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, _REPO)
@@ -64,3 +65,23 @@ def test_manual_run_never_refills_candidate_pool_before_seven_candidate_council(
 
     assert captured_env["CANDIDATE_POOL_RUNTIME_ENABLED"] == "false"
     assert captured_env.get("POST_CANDIDATE_COUNT", "7") == "7"
+
+
+def test_run_slot_decodes_timeout_output_and_records_failure(monkeypatch):
+    monkeypatch.delenv("RUN_SLOT_TIMEOUT_SEC", raising=False)
+    monkeypatch.setattr(living_intelligence, "heartbeat", lambda *args, **kwargs: {})
+    monkeypatch.setattr(worker, "_auto_bootstrap_visual_repo", lambda: {})
+    monkeypatch.setattr(worker, "_auto_refresh_meta_if_due", lambda: (False, "not_due"))
+    monkeypatch.setattr(
+        worker.subprocess,
+        "run",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            subprocess.TimeoutExpired(args[0], kwargs["timeout"], output=b"partial stdout", stderr=b"partial stderr")
+        ),
+    )
+
+    worker.run_slot("midday", force_live=True)
+
+    assert worker.LAST_RUN["status"] == "generation_failed"
+    assert worker.LAST_RUN["error"] == "run_timeout_after_900s"
+    assert worker.LAST_RUN["finished_at_utc"]

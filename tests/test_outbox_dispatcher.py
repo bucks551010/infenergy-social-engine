@@ -102,3 +102,25 @@ def test_external_success_remains_after_aggregate_persistence_error(tmp_path):
         except sqlite3.OperationalError:
             pass
     assert platform_transaction(data_dir, outbox_id, "facebook")["state"] == "CONFIRMED_SUCCESS"
+
+
+def test_dispatcher_recovers_packshot_only_package_before_publisher_call(tmp_path):
+    data_dir = str(tmp_path)
+    outbox_id = _ready_package(data_dir, ["facebook"])
+    database = sqlite3.connect(get_db_path(data_dir))
+    row = database.execute("SELECT package_json FROM content_outbox WHERE outbox_id=?", (outbox_id,)).fetchone()
+    import json
+    package = json.loads(row[0])
+    package["generated_visuals"]["render_engines"] = {"facebook": "approved_product_photo"}
+    package["generated_visuals"]["artifact_reviews"] = {"facebook": {"verdict": "PASS"}}
+    package["visual_plan"] = {"creative_route": "PRODUCT_IN_CONTEXT"}
+    database.execute("UPDATE content_outbox SET package_json=? WHERE outbox_id=?", (json.dumps(package), outbox_id))
+    database.commit()
+    database.close()
+
+    with patch.object(dispatch_outbox.publish_facebook, "publish") as facebook:
+        result = dispatch_outbox.dispatch_due(data_dir=data_dir, now_utc="2026-08-19T13:00:01+00:00")
+
+    assert result["status"] == "CONTENT_RECOVERING"
+    assert "packshot_only" in result["error"]
+    facebook.assert_not_called()

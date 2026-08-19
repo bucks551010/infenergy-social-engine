@@ -443,6 +443,34 @@ def release_outbox(data_dir: str, outbox_id: str, error: str) -> None:
         connection.close()
 
 
+def recover_outbox(data_dir: str, outbox_id: str, error: str) -> None:
+    now = _now()
+    connection = _connect(data_dir)
+    try:
+        connection.execute("BEGIN IMMEDIATE")
+        connection.execute(
+            "UPDATE content_outbox SET status='RECOVERING', claimed_at=NULL, last_error=? WHERE outbox_id=?",
+            (error, outbox_id),
+        )
+        connection.execute(
+            "UPDATE daily_slots SET status='RECOVERING', claimed_at=NULL, last_error=?, updated_at=? WHERE outbox_id=?",
+            (error, now, outbox_id),
+        )
+        connection.execute(
+            """
+            UPDATE council_sessions SET status='RECOVERING', updated_at=?
+            WHERE decision_id=(SELECT decision_id FROM content_outbox WHERE outbox_id=?)
+            """,
+            (now, outbox_id),
+        )
+        connection.commit()
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
+
+
 def finalize_outbox(
     data_dir: str,
     outbox_id: str,

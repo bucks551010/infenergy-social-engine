@@ -16,6 +16,7 @@ from content_operations import (
     complete_platform_transaction,
     finalize_outbox,
     platform_transaction,
+    recover_outbox,
     release_outbox,
 )
 
@@ -51,6 +52,22 @@ def _publish(package: dict[str, Any], platform: str) -> dict[str, Any]:
     raise ValueError(f"unsupported platform: {platform}")
 
 
+def _creative_package_error(package: dict[str, Any], platforms: list[str]) -> str:
+    visuals = package.get("generated_visuals") if isinstance(package.get("generated_visuals"), dict) else {}
+    engines = visuals.get("render_engines") if isinstance(visuals.get("render_engines"), dict) else {}
+    reviews = visuals.get("artifact_reviews") if isinstance(visuals.get("artifact_reviews"), dict) else {}
+    visual_plan = package.get("visual_plan") if isinstance(package.get("visual_plan"), dict) else {}
+    route = str(visual_plan.get("creative_route") or visual_plan.get("visual_format") or "").strip().upper()
+    explicit_packshot = route in {"PACKSHOT", "PACKSHOT_ONLY", "PREMIUM_PRODUCT_HERO"}
+    for platform in platforms:
+        review = reviews.get(platform) if isinstance(reviews.get(platform), dict) else {}
+        if review.get("verdict") == "REGENERATE_VISUAL":
+            return f"{platform}_visual_requires_recovery"
+        if str(engines.get(platform) or "") == "approved_product_photo" and not explicit_packshot:
+            return f"{platform}_packshot_only_without_explicit_route"
+    return ""
+
+
 def dispatch_due(*, data_dir: str = DATA_DIR, now_utc: str | None = None) -> dict[str, Any]:
     claimed = claim_due(data_dir, now_utc)
     if not claimed:
@@ -62,6 +79,10 @@ def dispatch_due(*, data_dir: str = DATA_DIR, now_utc: str | None = None) -> dic
     if not platforms:
         finalize_outbox(data_dir, outbox_id, status="EXTERNAL_ACTION_REQUIRED", error="no_routed_platforms")
         return {"status": "EXTERNAL_ACTION_REQUIRED", "outbox_id": outbox_id, "error": "no_routed_platforms"}
+    creative_error = _creative_package_error(package, platforms)
+    if creative_error:
+        recover_outbox(data_dir, outbox_id, creative_error)
+        return {"status": "CONTENT_RECOVERING", "outbox_id": outbox_id, "error": creative_error}
 
     results: dict[str, Any] = {}
     retry_errors: list[str] = []

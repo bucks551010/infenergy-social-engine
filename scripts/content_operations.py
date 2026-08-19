@@ -471,6 +471,42 @@ def recover_outbox(data_dir: str, outbox_id: str, error: str) -> None:
         connection.close()
 
 
+def reconcile_ready_inventory(data_dir: str) -> list[dict[str, str]]:
+    connection = _connect(data_dir)
+    recovered: list[dict[str, str]] = []
+    try:
+        rows = connection.execute(
+            "SELECT outbox_id, package_json FROM content_outbox WHERE status='READY'"
+        ).fetchall()
+    finally:
+        connection.close()
+    for row in rows:
+        package = _decode(row["package_json"], {})
+        routing = package.get("routing") if isinstance(package.get("routing"), dict) else {}
+        platforms = routing.get("platforms") if isinstance(routing.get("platforms"), list) else []
+        issue = ""
+        if not platforms:
+            issue = "ready_package_has_no_routed_platforms"
+        visuals = package.get("generated_visuals") if isinstance(package.get("generated_visuals"), dict) else {}
+        engines = visuals.get("render_engines") if isinstance(visuals.get("render_engines"), dict) else {}
+        reviews = visuals.get("artifact_reviews") if isinstance(visuals.get("artifact_reviews"), dict) else {}
+        visual_plan = package.get("visual_plan") if isinstance(package.get("visual_plan"), dict) else {}
+        route = str(visual_plan.get("creative_route") or visual_plan.get("visual_format") or "").strip().upper()
+        explicit_packshot = route in {"PACKSHOT", "PACKSHOT_ONLY", "PREMIUM_PRODUCT_HERO"}
+        for platform in platforms:
+            review = reviews.get(platform) if isinstance(reviews.get(platform), dict) else {}
+            if review.get("verdict") == "REGENERATE_VISUAL":
+                issue = f"{platform}_visual_requires_recovery"
+                break
+            if str(engines.get(platform) or "") == "approved_product_photo" and not explicit_packshot:
+                issue = f"{platform}_packshot_only_without_explicit_route"
+                break
+        if issue:
+            recover_outbox(data_dir, str(row["outbox_id"]), issue)
+            recovered.append({"outbox_id": str(row["outbox_id"]), "reason": issue})
+    return recovered
+
+
 def finalize_outbox(
     data_dir: str,
     outbox_id: str,

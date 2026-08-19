@@ -48,6 +48,13 @@ def _stable_hash(text: str) -> str:
     return hashlib.sha256(normalized.encode("utf-8")).hexdigest() if normalized else ""
 
 
+def _routing_datetime(content_date: str, fallback: datetime) -> datetime:
+    try:
+        return datetime.fromisoformat(f"{content_date}T12:00:00+00:00")
+    except ValueError:
+        return fallback
+
+
 def _recent_duplicate_platform_caption(
     history: dict,
     platform: str,
@@ -1282,6 +1289,7 @@ def main() -> None:
         except (TypeError, ValueError):
             pass
     now_utc = datetime.now(timezone.utc)
+    routing_now_utc = _routing_datetime(content_date, now_utc)
     slot_times = {
         "morning": os.environ.get("POST_SCHEDULE_MORNING", "13:00"),
         "midday": os.environ.get("POST_SCHEDULE_MIDDAY", "17:00"),
@@ -1380,7 +1388,7 @@ def main() -> None:
         slot=slot,
         funnel_stage=funnel_stage,
         schedule=schedule,
-        now_utc=now_utc,
+        now_utc=routing_now_utc,
         manual_platforms=manual_platforms,
     )
 

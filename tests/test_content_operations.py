@@ -18,6 +18,7 @@ from content_operations import (  # noqa: E402
     ensure_daily_slots,
     init_content_operations,
     mark_ready,
+    reconcile_ready_inventory,
 )
 
 
@@ -135,3 +136,29 @@ def test_platform_transaction_states_are_idempotent_and_persistent(tmp_path):
         platform="facebook",
         payload={"message": "Line one\n\nLine two"},
     ) == request_key
+
+
+def test_restart_reopens_ready_package_without_routed_platform(tmp_path):
+    day = "2026-08-20"
+    data_dir = str(tmp_path)
+    ensure_daily_slots(data_dir, day, _schedule(day), {"mode": "owner_schedule"})
+    decision_id = create_council_session(
+        data_dir,
+        content_date=day,
+        slot="morning",
+        blackboard={"content_job": "TEACH"},
+    )
+    outbox_id = mark_ready(
+        data_dir,
+        content_date=day,
+        slot="morning",
+        scheduled_at=_schedule(day)["morning"],
+        decision_id=decision_id,
+        package={"content_id": "content-1", "routing": {"platforms": []}},
+    )
+
+    recovered = reconcile_ready_inventory(data_dir)
+    status = daily_status(data_dir, day)
+
+    assert recovered == [{"outbox_id": outbox_id, "reason": "ready_package_has_no_routed_platforms"}]
+    assert status["slots"][0]["status"] == "RECOVERING"

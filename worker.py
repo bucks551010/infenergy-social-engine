@@ -19,7 +19,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "scripts"))
 import run_engine
 import generate_posts
 import inventory_db
-from content_operations import content_detail, daily_index, daily_status, init_content_operations
+from content_operations import content_detail, daily_index, daily_status, init_content_operations, reconcile_ready_inventory
 from campaign_runtime import eligible_channels_for_slot, load_channel_schedule, load_funnel_config, stage_for_slot
 
 RUN_LOCK = threading.Lock()
@@ -1769,6 +1769,9 @@ def run_content_factory() -> None:
     try:
         data_dir = _data_dir()
         init_content_operations(data_dir)
+        reconciled = reconcile_ready_inventory(data_dir)
+        if reconciled:
+            print(f"[FACTORY] Reopened {len(reconciled)} stale ready packages: {reconciled}")
         today = datetime.now(timezone.utc).date()
         horizon = [today, today + timedelta(days=1)]
         slot_times = {"morning": morning_utc, "midday": midday_utc, "evening": evening_utc}

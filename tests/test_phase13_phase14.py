@@ -6,6 +6,7 @@ import unittest
 import tempfile
 import json
 from copy import deepcopy
+from datetime import datetime, timezone
 from unittest.mock import patch
 
 ROOT = os.path.dirname(os.path.dirname(__file__))
@@ -72,6 +73,13 @@ def _base_content() -> dict:
 
 
 class PhaseThirteenFourteenTests(unittest.TestCase):
+    def test_future_inventory_routes_using_content_date(self) -> None:
+        fallback = datetime(2026, 8, 19, 16, tzinfo=timezone.utc)
+        routed = run_engine._routing_datetime("2026-08-20", fallback)
+
+        self.assertEqual(routed.strftime("%A"), "Thursday")
+        self.assertEqual(routed.date().isoformat(), "2026-08-20")
+
     def test_material_change_angle_persists_conditional_lesson_for_matching_future_strategy(self) -> None:
         with tempfile.TemporaryDirectory() as data_dir, patch.dict(os.environ, {"DATA_DIR": data_dir}, clear=False):
             strategy = {

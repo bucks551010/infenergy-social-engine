@@ -26,6 +26,16 @@ def test_publication_clocks_dispatch_and_never_generate():
     assert {job.job_func.args[0] for job in dispatch_jobs} == {"morning", "midday", "evening", "due_sweep"}
 
 
+def test_factory_remains_scheduled_without_being_required_on_startup(monkeypatch):
+    monkeypatch.delenv("RUN_FACTORY_ON_STARTUP", raising=False)
+    worker.register_scheduled_jobs()
+
+    factory_jobs = [job for job in worker.schedule.jobs if job.job_func.func is worker._start_factory_thread]
+
+    assert len(factory_jobs) == 1
+    assert os.environ.get("RUN_FACTORY_ON_STARTUP", "false") == "false"
+
+
 def test_manual_no_product_override_is_scoped_to_one_run(monkeypatch):
     captured_env = {}
 

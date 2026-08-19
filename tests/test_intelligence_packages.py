@@ -107,6 +107,17 @@ def test_owned_json_ld_supplies_canonical_product_destination():
     assert generate_posts._canonical_product_url_from_row(unsafe) == ""
 
 
+def test_product_destination_prefers_canonical_product_permalink():
+    campaign = {"destination_url": "https://www.infenergypower.com"}
+
+    assert generate_posts._destination_url_for_content(
+        "https://infenergypower.com/product/powerpulse-pro-200/",
+        campaign,
+    ) == "https://infenergypower.com/product/powerpulse-pro-200/"
+    assert generate_posts._destination_url_for_content("", campaign) == "https://www.infenergypower.com"
+    assert generate_posts._destination_url_for_content("", {}) == generate_posts.SITE_URL
+
+
 def test_researched_product_pages_match_exact_identity_only():
     products = [
         {"id": "PPP-200", "sku": "PPP-200", "name": "PowerPulse Pro 200"},

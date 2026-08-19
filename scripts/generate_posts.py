@@ -2085,6 +2085,14 @@ def _canonical_product_url_from_row(row: dict) -> str:
     return match.group(0).rstrip(".,;)") if match else ""
 
 
+def _destination_url_for_content(product_url: str, structured_campaign: dict) -> str:
+    return (
+        str(product_url).strip()
+        or str(structured_campaign.get("destination_url", SITE_URL)).strip()
+        or SITE_URL
+    )
+
+
 def _load_products_from_csv() -> list[dict]:
     products_dir = os.path.join(BASE_DATA_DIR, "products")
     csv_paths = sorted(glob.glob(os.path.join(products_dir, "*.csv")))
@@ -5143,7 +5151,7 @@ def generate(
     selected_cta = (weekly_sequence.get("primary_cta") or "").strip()
     audience_segment = (weekly_sequence.get("segment") or structured_campaign.get("audience_segment") or "Prepared Buyer").strip()
     campaign_id = str(structured_campaign.get("campaign_id", "")).strip()
-    destination_url = str(structured_campaign.get("destination_url", SITE_URL)).strip() or SITE_URL
+    destination_url = _destination_url_for_content(product_url, structured_campaign)
 
     brand_name = str(brand_profile.get("brand_name") or "Infenergy Power").strip() or "Infenergy Power"
     brand_positioning = str(brand_profile.get("positioning") or INFENERGY_BUSINESS_GOALS["positioning"]).strip()

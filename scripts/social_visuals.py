@@ -1046,6 +1046,21 @@ def review_rendered_visual(path: str, platform: str) -> dict[str, Any]:
     }
 
 
+def _syndicate_approved_gemini_creative(source_path: str, output_path: str, platform: str) -> bool:
+    image_module, _, _ = _load_pillow()
+    if image_module is None:
+        return False
+    try:
+        from PIL import ImageOps  # type: ignore
+
+        with image_module.open(source_path) as source:
+            fitted = ImageOps.fit(source.convert("RGB"), _platform_visual_spec(platform)["target"])
+            fitted.save(output_path, format="PNG", optimize=True)
+        return True
+    except Exception:
+        return False
+
+
 def _save_product_photo_fallback(source: str, output_path: str, platform: str) -> bool:
     """Create a publishable platform artifact from an approved product source."""
     image_module, _, _ = _load_pillow()
@@ -1145,6 +1160,41 @@ def generate_visuals(content: dict[str, Any], visual_plan: dict[str, Any] | None
                 "fallback_used": False,
             }
             artifact_reviews[platform] = review_rendered_visual("", platform)
+
+    approved_source = next(
+        (
+            platform for platform in ("facebook", "instagram", "linkedin")
+            if render_engines.get(platform) == "gemini"
+            and visuals.get(platform)
+            and artifact_reviews.get(platform, {}).get("verdict") == "PASS"
+        ),
+        "",
+    )
+    if approved_source:
+        for platform in ("facebook", "instagram", "linkedin"):
+            if render_engines.get(platform) == "gemini":
+                continue
+            file_path = os.path.join(VISUAL_DIR, f"{post_id}_{platform}.png")
+            if not _syndicate_approved_gemini_creative(str(visuals[approved_source]), file_path, platform):
+                continue
+            syndicated_review = review_rendered_visual(file_path, platform)
+            if syndicated_review.get("verdict") != "PASS":
+                continue
+            visuals[platform] = file_path
+            render_engines[platform] = "gemini"
+            product_overlay_applied[platform] = product_specific_source_present
+            artifact_reviews[platform] = syndicated_review
+            fallback_reasons.pop(platform, None)
+            visual_generation[platform] = {
+                **visual_generation.get(platform, {}),
+                "generation_status": "success",
+                "final_creative_status": "approved_gemini_creative_syndicated",
+                "artifact_path": file_path,
+                "artifact_exists": True,
+                "fallback_used": False,
+                "syndicated_from_platform": approved_source,
+                "reference_asset_role": "SOURCE_PRODUCT_REFERENCE" if resolved_override else "NONE",
+            }
 
     visuals["template"] = template_name
     visuals["image_strategy"] = image_strategy

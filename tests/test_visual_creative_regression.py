@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import sys
+from pathlib import Path
 from unittest.mock import patch
 import sys
 import types
@@ -14,6 +15,30 @@ sys.path.insert(0, os.path.join(_REPO, "scripts"))
 
 import social_visuals  # noqa: E402
 import run_engine  # noqa: E402
+
+
+def test_approved_gemini_creative_recovers_failed_platform_variants(tmp_path, monkeypatch):
+    monkeypatch.setattr(social_visuals, "VISUAL_DIR", str(tmp_path))
+
+    def fake_generate(content, platform, plan, file_path):
+        if platform == "facebook":
+            Image.new("RGB", (1200, 1200), "#50646f").save(file_path)
+            return True, "", {"generation_status": "success", "artifact_path": file_path}
+        return False, "semantic_quality_rejected:gibberish_or_garbled_text", {"generation_status": "failed"}
+
+    monkeypatch.setattr(social_visuals, "_generate_gemini_full_creative", fake_generate)
+    monkeypatch.setattr(social_visuals, "_load_visual_repo_context", lambda: {"references": [], "settings": {}})
+    monkeypatch.setattr(social_visuals, "_resolve_product_source", lambda *args, **kwargs: "https://example.com/reference.jpg")
+
+    visuals = social_visuals.generate_visuals({"post_id": "winner", "product_id": "CAMP-FAN-12K"}, {})
+
+    assert visuals["render_engine"] == "gemini"
+    assert all(Path(visuals[platform]).is_file() for platform in ("facebook", "instagram", "linkedin"))
+    assert Image.open(visuals["instagram"]).size == social_visuals._platform_visual_spec("instagram")["target"]
+    assert Image.open(visuals["linkedin"]).size == social_visuals._platform_visual_spec("linkedin")["target"]
+    assert visuals["visual_generation"]["instagram"]["final_creative_status"] == "approved_gemini_creative_syndicated"
+    assert visuals["visual_generation"]["linkedin"]["syndicated_from_platform"] == "facebook"
+    assert visuals["visual_generation"]["instagram"]["fallback_used"] is False
 
 
 def _image(path, size=(1080, 1080)):

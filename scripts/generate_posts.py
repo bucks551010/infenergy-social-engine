@@ -2072,6 +2072,19 @@ def _extract_metrics(text: str) -> list[str]:
     return out[:8]
 
 
+def _canonical_product_url_from_row(row: dict) -> str:
+    external = str(row.get("External URL") or "").strip()
+    if re.match(r"^https://(?:www\.)?infenergypower\.com/product/[^\s]+/?$", external, flags=re.IGNORECASE):
+        return external
+    owned_html = " ".join((str(row.get("Short description") or ""), str(row.get("Description") or "")))
+    match = re.search(
+        r"https://(?:www\.)?infenergypower\.com/product/[^\s\"'<>\\]+/?",
+        owned_html,
+        flags=re.IGNORECASE,
+    )
+    return match.group(0).rstrip(".,;)") if match else ""
+
+
 def _load_products_from_csv() -> list[dict]:
     products_dir = os.path.join(BASE_DATA_DIR, "products")
     csv_paths = sorted(glob.glob(os.path.join(products_dir, "*.csv")))
@@ -2113,7 +2126,7 @@ def _load_products_from_csv() -> list[dict]:
                         "sale_price": (row.get("Sale price") or "").strip(),
                         "in_stock": (row.get("In stock?") or "").strip(),
                         "stock": (row.get("Stock") or "").strip(),
-                        "product_url": (row.get("External URL") or "").strip(),
+                        "product_url": _canonical_product_url_from_row(row),
                         "categories": categories[:4],
                         "metrics": metrics,
                         "fact_snippet": merged_text[:500],

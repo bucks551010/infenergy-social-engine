@@ -3,12 +3,18 @@
 from __future__ import annotations
 
 import json
+import csv
+import glob
 import os
+import re
 import sqlite3
+import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 from typing import Any
+from urllib.parse import urlparse
 
 import inventory_db
+import requests
 from social.blocker_transformation_registry import registry as blocker_registry
 
 
@@ -149,6 +155,76 @@ def _product_package(product: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _owned_product_urls(data_dir: str) -> dict[str, str]:
+    from generate_posts import _canonical_product_url_from_row
+
+    urls: dict[str, str] = {}
+    for path in glob.glob(os.path.join(data_dir, "products", "*.csv")):
+        try:
+            with open(path, encoding="utf-8", newline="") as handle:
+                for row in csv.DictReader(handle):
+                    url = _canonical_product_url_from_row(row)
+                    if not url:
+                        continue
+                    for key in (str(row.get("ID") or "").strip(), str(row.get("SKU") or "").strip()):
+                        if key:
+                            urls[key] = url
+        except OSError:
+            continue
+    return urls
+
+
+def _normalize_identity(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", " ", str(value or "").lower()).strip()
+
+
+def _match_researched_urls(products: list[dict[str, Any]], pages: list[dict[str, str]]) -> dict[str, str]:
+    matched: dict[str, str] = {}
+    for product in products:
+        product_id = str(product.get("id") or "")
+        sku = _normalize_identity(str(product.get("sku") or product_id))
+        name = _normalize_identity(str(product.get("name") or ""))
+        for page in pages:
+            page_sku = _normalize_identity(page.get("sku", ""))
+            page_name = _normalize_identity(page.get("name", ""))
+            if (sku and page_sku and sku == page_sku) or (name and page_name and name == page_name):
+                matched[product_id] = page["url"]
+                break
+    return matched
+
+
+def _research_first_party_product_urls(products: list[dict[str, Any]]) -> dict[str, str]:
+    site = str(os.environ.get("FIRST_PARTY_SITE_URL") or "https://infenergypower.com").rstrip("/")
+    if urlparse(site).hostname not in {"infenergypower.com", "www.infenergypower.com"}:
+        return {}
+    try:
+        response = requests.get(f"{site}/wp-sitemap-posts-product-1.xml", timeout=15)
+        response.raise_for_status()
+        root = ET.fromstring(response.text)
+        urls = [
+            str(node.text or "").strip()
+            for node in root.findall(".//{http://www.sitemaps.org/schemas/sitemap/0.9}loc")
+            if str(node.text or "").strip().startswith(("https://infenergypower.com/product/", "https://www.infenergypower.com/product/"))
+        ]
+    except (requests.RequestException, ET.ParseError):
+        return {}
+    pages: list[dict[str, str]] = []
+    for url in urls:
+        try:
+            page = requests.get(url, timeout=10)
+            page.raise_for_status()
+        except requests.RequestException:
+            continue
+        sku_match = re.search(r'"sku"\s*:\s*"([^"]+)"', page.text, flags=re.IGNORECASE)
+        name_match = re.search(r'"name"\s*:\s*"([^"]+)"', page.text, flags=re.IGNORECASE)
+        pages.append({
+            "url": url,
+            "sku": sku_match.group(1) if sku_match else "",
+            "name": name_match.group(1) if name_match else "",
+        })
+    return _match_researched_urls(products, pages)
+
+
 def compile_packages(data_dir: str) -> dict[str, Any]:
     init_package_store(data_dir)
     constitution_path = os.path.join(data_dir, "marketing", "human_truth", "constitution.json")
@@ -160,6 +236,13 @@ def compile_packages(data_dir: str) -> dict[str, Any]:
     creative = _load(creative_path, {})
     living = _load(living_path, {})
     products = inventory_db.fetch_products(data_dir)
+    owned_urls = _owned_product_urls(data_dir)
+    missing_products = [product for product in products if not product.get("product_url") and not owned_urls.get(str(product.get("id") or "")) and not owned_urls.get(str(product.get("sku") or ""))]
+    researched_urls = _research_first_party_product_urls(missing_products) if missing_products else {}
+    for product in products:
+        product["product_url"] = product.get("product_url") or owned_urls.get(str(product.get("id") or "")) or owned_urls.get(str(product.get("sku") or "")) or researched_urls.get(str(product.get("id") or "")) or ""
+    if any(product.get("product_url") for product in products):
+        inventory_db.upsert_products(data_dir, products, source="intelligence_enrichment")
     brand = inventory_db.fetch_brand_profile(data_dir)
     ideology = inventory_db.fetch_selling_ideology(data_dir)
     rows: list[dict[str, Any]] = []

@@ -9,6 +9,7 @@ sys.path.insert(0, os.path.join(_REPO, "scripts"))
 
 import intelligence_packages  # noqa: E402
 import inventory_db  # noqa: E402
+import generate_posts  # noqa: E402
 from content_operations import ensure_daily_slots  # noqa: E402
 from social.blocker_transformation_registry import registry, transformation_for  # noqa: E402
 
@@ -90,3 +91,32 @@ def test_blocker_registry_maps_old_vetoes_to_nonterminal_specialists():
     assert transformation_for("runtime quality below floor")["owner"] == "QUALITY_DOCTOR"
     assert transformation_for("packshot visual failure")["owner"] == "CREATIVE_RECOVERY_SPECIALIST"
     assert all(record["may_stop_content_creation"] is False for record in records)
+
+
+def test_owned_json_ld_supplies_canonical_product_destination():
+    row = {
+        "External URL": "",
+        "Description": '<script type="application/ld+json">{"offers":{"url":"https://infenergypower.com/product/powerpulse-pro-200/"}}</script>',
+    }
+    unsafe = {
+        "External URL": "https://example.com/product/not-owned",
+        "Description": "No owned product URL",
+    }
+
+    assert generate_posts._canonical_product_url_from_row(row) == "https://infenergypower.com/product/powerpulse-pro-200/"
+    assert generate_posts._canonical_product_url_from_row(unsafe) == ""
+
+
+def test_researched_product_pages_match_exact_identity_only():
+    products = [
+        {"id": "PPP-200", "sku": "PPP-200", "name": "PowerPulse Pro 200"},
+        {"id": "PF-1", "sku": "PF-1", "name": "PowerFlex"},
+    ]
+    pages = [
+        {"url": "https://infenergypower.com/product/powerpulse/", "sku": "PPP-200", "name": "PowerPulse Pro 200"},
+        {"url": "https://infenergypower.com/product/not-powerflex/", "sku": "OTHER", "name": "PowerFlex Extended"},
+    ]
+
+    matched = intelligence_packages._match_researched_urls(products, pages)
+
+    assert matched == {"PPP-200": "https://infenergypower.com/product/powerpulse/"}

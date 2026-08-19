@@ -1633,15 +1633,6 @@ def run_slot(
             heartbeat(_data_dir(), level="LIGHT_HEARTBEAT", website_url=os.environ.get("FIRST_PARTY_SITE_URL", ""))
         except Exception as exc:
             print(f"[INTELLIGENCE] heartbeat unavailable: {exc}")
-        try:
-            from social.candidate_pool import CandidatePool
-            from build_candidate_pool import build_pool
-            target_depth = int(os.environ.get("CANDIDATE_POOL_TARGET_DEPTH", "6"))
-            if CandidatePool(_data_dir()).depth() < target_depth:
-                result = build_pool(target_depth=target_depth)
-                print(f"[POOL] pre-slot refill depth={result.get('pool_depth', 0)} target={target_depth}")
-        except Exception as exc:
-            print(f"[POOL] pre-slot refill unavailable: {exc}")
         previous_dry_run = os.environ.get("SOCIAL_DRY_RUN", "true")
         previous_platforms = os.environ.get("POST_PLATFORMS", "")
         previous_duplicate_mode = os.environ.get("MANUAL_DUPLICATE_MODE", "")
@@ -1654,7 +1645,7 @@ def run_slot(
         previous_pool_runtime = os.environ.get("CANDIDATE_POOL_RUNTIME_ENABLED", "")
         os.environ["POST_SLOT"] = slot
         os.environ["POST_PLATFORMS"] = platforms_override
-        os.environ["CANDIDATE_POOL_RUNTIME_ENABLED"] = "true"
+        os.environ["CANDIDATE_POOL_RUNTIME_ENABLED"] = "false"
         if duplicate_mode:
             os.environ["MANUAL_DUPLICATE_MODE"] = duplicate_mode
         if readiness_block_override:

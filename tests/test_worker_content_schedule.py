@@ -43,4 +43,24 @@ def test_manual_no_product_override_is_scoped_to_one_run(monkeypatch):
 
     assert captured_env["CONTENT_BUCKET_OVERRIDE"] == "no_product"
     assert captured_env["POST_FUNNEL_STAGE_OVERRIDE"] == "ATTENTION"
+    assert captured_env["CANDIDATE_POOL_RUNTIME_ENABLED"] == "false"
     assert "CONTENT_BUCKET_OVERRIDE" not in os.environ
+
+
+def test_manual_run_never_refills_candidate_pool_before_seven_candidate_council(monkeypatch):
+    captured_env = {}
+
+    def fake_run(*args, **kwargs):
+        captured_env.update(kwargs["env"])
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(living_intelligence, "heartbeat", lambda *args, **kwargs: {})
+    monkeypatch.setattr(worker, "_auto_bootstrap_visual_repo", lambda: {})
+    monkeypatch.setattr(worker, "_auto_refresh_meta_if_due", lambda: (False, "not_due"))
+    monkeypatch.setattr(worker.subprocess, "run", fake_run)
+    monkeypatch.setattr(worker, "_last_run_outcome", lambda: {"slot": "midday", "status": "skipped_no_eligible_platforms"})
+
+    worker.run_slot("midday", force_live=True, product_id_override="CAMP-FAN-12K")
+
+    assert captured_env["CANDIDATE_POOL_RUNTIME_ENABLED"] == "false"
+    assert captured_env.get("POST_CANDIDATE_COUNT", "7") == "7"

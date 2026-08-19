@@ -1781,7 +1781,7 @@ def run_content_factory() -> None:
             snapshot = daily_status(data_dir, content_date)
             existing = {item["slot"]: item["status"] for item in snapshot.get("slots", [])}
             for slot in ("morning", "midday", "evening"):
-                if existing.get(slot) in {"READY", "DUE", "CLAIMED", "PUBLISHING", "PUBLISHED"}:
+                if existing.get(slot) in {"READY", "DUE", "CLAIMED", "PUBLISHING", "PUBLISHED", "EXTERNAL_ACTION_REQUIRED"}:
                     continue
                 env = os.environ.copy()
                 env.update({

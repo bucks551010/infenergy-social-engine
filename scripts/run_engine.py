@@ -37,6 +37,7 @@ from content_operations import (
     archive_candidate,
     create_council_session,
     ensure_daily_slots,
+    mark_slot_external_action,
     mark_ready,
 )
 
@@ -2004,6 +2005,23 @@ def main() -> None:
         recovery_exhausted=True,
     )
     content["publish_decision"] = final_decision
+    provider_failures = " ".join(
+        str(reason)
+        for reason in (content.get("generated_visuals") or {}).get("fallback_reasons", {}).values()
+    ).lower()
+    if (
+        factory_only
+        and not final_decision["publishable"]
+        and visual_gate_errors
+        and ("resource_exhausted" in provider_failures or "monthly spending cap" in provider_failures)
+    ):
+        mark_slot_external_action(
+            generate_posts.DATA_DIR,
+            content_date=content_date,
+            slot=slot,
+            decision_id=decision_id,
+            error="gemini_monthly_spend_cap",
+        )
     if not final_decision["publishable"] and not shadow_mode:
         print("[SKIP] Content did not pass validation/quality thresholds; recording skipped run")
         # Quarantine pooled candidates that failed so they won't be re-selected indefinitely

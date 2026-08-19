@@ -549,6 +549,37 @@ def finalize_outbox(
         connection.close()
 
 
+def mark_slot_external_action(
+    data_dir: str,
+    *,
+    content_date: str,
+    slot: str,
+    decision_id: str,
+    error: str,
+) -> None:
+    now = _now()
+    connection = _connect(data_dir)
+    try:
+        connection.execute("BEGIN IMMEDIATE")
+        connection.execute(
+            """
+            UPDATE daily_slots SET status='EXTERNAL_ACTION_REQUIRED', decision_id=?,
+                last_error=?, updated_at=? WHERE content_date=? AND slot=?
+            """,
+            (decision_id, error, now, content_date, slot),
+        )
+        connection.execute(
+            "UPDATE council_sessions SET status='EXTERNAL_ACTION_REQUIRED', updated_at=? WHERE decision_id=?",
+            (now, decision_id),
+        )
+        connection.commit()
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
+
+
 def daily_status(data_dir: str, content_date: str | date | None = None) -> dict[str, Any]:
     day = content_date.isoformat() if isinstance(content_date, date) else str(content_date or date.today().isoformat())
     connection = _connect(data_dir)

@@ -18,6 +18,7 @@ from content_operations import (  # noqa: E402
     ensure_daily_slots,
     init_content_operations,
     mark_ready,
+    mark_slot_external_action,
     reconcile_ready_inventory,
 )
 
@@ -162,3 +163,30 @@ def test_restart_reopens_ready_package_without_routed_platform(tmp_path):
 
     assert recovered == [{"outbox_id": outbox_id, "reason": "ready_package_has_no_routed_platforms"}]
     assert status["slots"][0]["status"] == "RECOVERING"
+
+
+def test_provider_outage_is_external_action_not_content_failure(tmp_path):
+    day = "2026-08-20"
+    data_dir = str(tmp_path)
+    ensure_daily_slots(data_dir, day, _schedule(day), {"mode": "owner_schedule"})
+    decision_id = create_council_session(
+        data_dir,
+        content_date=day,
+        slot="evening",
+        blackboard={"content_job": "TEACH", "final_copy": {"instagram": "Archived copy"}},
+    )
+
+    mark_slot_external_action(
+        data_dir,
+        content_date=day,
+        slot="evening",
+        decision_id=decision_id,
+        error="gemini_monthly_spend_cap",
+    )
+    status = daily_status(data_dir, day)
+    detail = content_detail(data_dir, decision_id)
+
+    evening = next(slot for slot in status["slots"] if slot["slot"] == "evening")
+    assert evening["status"] == "EXTERNAL_ACTION_REQUIRED"
+    assert evening["last_error"] == "gemini_monthly_spend_cap"
+    assert detail["status"] == "EXTERNAL_ACTION_REQUIRED"

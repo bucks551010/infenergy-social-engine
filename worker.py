@@ -1677,6 +1677,7 @@ def run_slot(
             scripts_dir = os.path.join(os.path.dirname(__file__), "scripts")
             run_engine_path = os.path.join(scripts_dir, "run_engine.py")
             env = os.environ.copy()
+            env["POST_TEXT_ONLY"] = "true"
 
             completed = subprocess.run(
                 [sys.executable, run_engine_path],
@@ -1829,6 +1830,7 @@ def run_content_factory() -> None:
                     "DATA_DIR": data_dir,
                     "POST_SLOT": slot,
                     "POST_CONTENT_DATE": content_date.isoformat(),
+                    "POST_TEXT_ONLY": "true",
                     "CONTENT_FACTORY_ONLY": "true",
                     "CONTENT_OPERATIONS_ENABLED": "true",
                     "SOCIAL_DRY_RUN": "false",

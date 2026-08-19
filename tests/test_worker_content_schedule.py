@@ -45,6 +45,7 @@ def test_manual_no_product_override_is_scoped_to_one_run(monkeypatch):
     assert captured_env["CONTENT_BUCKET_OVERRIDE"] == "no_product"
     assert captured_env["POST_FUNNEL_STAGE_OVERRIDE"] == "ATTENTION"
     assert captured_env["CANDIDATE_POOL_RUNTIME_ENABLED"] == "false"
+    assert captured_env["POST_TEXT_ONLY"] == "true"
     assert "CONTENT_BUCKET_OVERRIDE" not in os.environ
 
 
@@ -65,6 +66,7 @@ def test_manual_run_never_refills_candidate_pool_before_seven_candidate_council(
 
     assert captured_env["CANDIDATE_POOL_RUNTIME_ENABLED"] == "false"
     assert captured_env.get("POST_CANDIDATE_COUNT", "7") == "7"
+    assert captured_env["POST_TEXT_ONLY"] == "true"
 
 
 def test_run_slot_decodes_timeout_output_and_records_failure(monkeypatch):

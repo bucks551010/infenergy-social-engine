@@ -10,6 +10,7 @@ _REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(_REPO, "scripts"))
 
 import social_visuals  # noqa: E402
+import run_engine  # noqa: E402
 
 
 def _image(path, size=(1080, 1080)):
@@ -61,3 +62,30 @@ def test_product_free_editorial_source_is_not_misclassified_as_packshot(tmp_path
 
     assert review["creative_classification"] == "EDITORIAL_SOURCE_IMAGE"
     assert review["verdict"] == "PASS"
+
+
+def test_final_file_qa_preserves_packshot_only_rejection(tmp_path):
+    artifact = tmp_path / "powerpulse.png"
+    _image(artifact, social_visuals._platform_visual_spec("facebook")["target"])
+    content = {
+        "generated_visuals": {
+            "facebook": str(artifact),
+            "artifact_reviews": {
+                "facebook": {
+                    "verdict": "REGENERATE_VISUAL",
+                    "issues": ["packshot_only_without_explicit_route"],
+                    "creative_classification": "PACKSHOT_ONLY",
+                    "recovery_action": "CHANGE_CREATIVE_ROUTE",
+                }
+            },
+        }
+    }
+
+    reviews = run_engine._ensure_final_artifact_qa(
+        content,
+        {"facebook": True, "instagram": False, "linkedin": False},
+    )
+
+    assert reviews["facebook"]["verdict"] == "REGENERATE_VISUAL"
+    assert reviews["facebook"]["creative_classification"] == "PACKSHOT_ONLY"
+    assert "packshot_only_without_explicit_route" in reviews["facebook"]["issues"]

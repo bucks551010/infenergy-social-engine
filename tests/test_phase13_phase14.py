@@ -117,7 +117,9 @@ class PhaseThirteenFourteenTests(unittest.TestCase):
             result = run_engine._ensure_final_artifact_qa(content, {"facebook": True, "instagram": False, "linkedin": False, "wordpress": False})
 
         inspect.assert_called_once_with("C:/tmp/carried-forward.png", "facebook")
-        self.assertEqual(result["facebook"], review)
+        for key, value in review.items():
+            self.assertEqual(result["facebook"][key], value)
+        self.assertEqual(result["facebook"]["artifact_path"], "C:/tmp/carried-forward.png")
 
     def test_final_artifact_qa_reads_a_real_file_before_pass(self) -> None:
         from PIL import Image

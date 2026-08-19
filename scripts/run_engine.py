@@ -1150,7 +1150,14 @@ def _ensure_final_artifact_qa(content: dict, effective_channels: dict[str, bool]
         if effective_channels.get(platform):
             existing_review = reviews.get(platform) if isinstance(reviews.get(platform), dict) else {}
             artifact_path = str(visuals.get(platform) or existing_review.get("artifact_path") or "")
-            reviews[platform] = review_rendered_visual(artifact_path, platform)
+            file_review = review_rendered_visual(artifact_path, platform)
+            merged_review = {**existing_review, **file_review}
+            merged_review["issues"] = list(dict.fromkeys(
+                list(existing_review.get("issues") or []) + list(file_review.get("issues") or [])
+            ))
+            if existing_review.get("verdict") == "REGENERATE_VISUAL" or file_review.get("verdict") == "REGENERATE_VISUAL":
+                merged_review["verdict"] = "REGENERATE_VISUAL"
+            reviews[platform] = merged_review
     visuals["artifact_reviews"] = reviews
     content["artifact_visual_qa"] = reviews
     return reviews

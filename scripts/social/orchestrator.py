@@ -21,6 +21,7 @@ and image generators are plugged in via the ``VisualProvider`` and
 from __future__ import annotations
 
 import os
+import re
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -473,26 +474,35 @@ def _assemble_copy(*, brief: engines.EngineBrief, structure_beats: list[str]) ->
     gap = brief.information_gap or brief.curiosity or brief.angle
     gap_text = gap.strip().rstrip(".?!")
     curiosity_text = brief.curiosity.strip().rstrip(".?!")
+    angle_text = str(brief.angle or "the decision").strip().rstrip(".?!")
+    angle_is_question = bool(re.match(r"^(?:why|how|what|when|where|which|can|does|is|are|should)\b", angle_text, flags=re.IGNORECASE))
+    decision_guidance = (
+        "Compare the published facts with your actual priorities before choosing."
+        if angle_is_question
+        else f"Compare {angle_text.lower()} with your actual priorities before choosing."
+    )
+    safe_problem = "A common mistake is choosing a power option before naming what must stay available."
+    safe_reality = f"The useful question is: {angle_text}?" if angle_is_question else f"The useful distinction is {angle_text}."
 
     templates: dict[str, str] = {
         "hook": q if q.endswith("?") else f"{q}?",
         "answer": f"The published starting point is {gap_text}.",
         "explanation": f"Use {gap_text} to compare the product with the devices and job you need to support.",
         "example": f"Why this matters: {curiosity_text}.",
-        "takeaway": "Choose the setup that fits the devices you rely on and the way you actually move through the day.",
-        "problem": misc or f"Most people assume {brief.angle}.",
+        "takeaway": decision_guidance,
+        "problem": safe_problem,
         "why": f"Because {gap}.",
-        "what_happens": f"Which leads to {brief.curiosity}.",
-        "what_to_do": f"So the practical move is to {brief.angle.lower()}.",
-        "myth": misc or f"Common belief: {brief.angle}.",
-        "reality": f"Actually: {reality}.",
+        "what_happens": f"That is why your decision should begin with {curiosity_text or 'the need'}.",
+        "what_to_do": decision_guidance,
+        "myth": safe_problem,
+        "reality": safe_reality,
         "implication": f"So {gap}.",
         "scenario": f"Imagine {brief.curiosity}.",
         "consequence": f"The result: {gap}.",
-        "lesson": f"The takeaway: {brief.angle}.",
+        "lesson": decision_guidance,
         "question": q,
-        "surprising_answer": f"The answer: {brief.angle}.",
-        "application": f"How to use it: {brief.angle}.",
+        "surprising_answer": safe_reality,
+        "application": decision_guidance,
     }
     # Return only beats the caller asked for
     return {b: templates.get(b, "") for b in structure_beats}

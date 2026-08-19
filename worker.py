@@ -19,6 +19,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "scripts"))
 import run_engine
 import generate_posts
 import inventory_db
+from content_operations import content_detail, daily_index, daily_status, init_content_operations
 from campaign_runtime import eligible_channels_for_slot, load_channel_schedule, load_funnel_config, stage_for_slot
 
 RUN_LOCK = threading.Lock()
@@ -567,6 +568,9 @@ def _env_is_true(name: str, default: bool) -> bool:
 
 def _production_readiness_snapshot() -> dict:
     data_dir = _data_dir()
+    init_content_operations(data_dir)
+    today = datetime.now(timezone.utc).date()
+    tomorrow = today + timedelta(days=1)
     channel_flags = run_engine.get_channel_config()
     overrides = {
         name: str(os.environ.get(name, "")).strip()
@@ -609,6 +613,10 @@ def _production_readiness_snapshot() -> dict:
             "writable": os.access(data_dir, os.W_OK),
             "history_present": os.path.isfile(os.path.join(data_dir, "post_history.json")),
             "receipts_present": os.path.isfile(os.path.join(data_dir, "social", "publish_receipts.json")),
+        },
+        "content_supply": {
+            "today": daily_status(data_dir, today),
+            "tomorrow": daily_status(data_dir, tomorrow),
         },
         "overrides": overrides,
     }
@@ -764,9 +772,37 @@ class HealthHandler(BaseHTTPRequestHandler):
                 "recent_quality": _quality_summary(recent_posts),
                 "visual_repo_bootstrap": VISUAL_REPO_BOOTSTRAP,
                 "operational_intelligence": _operational_intelligence_snapshot(),
+                "production_readiness": _production_readiness_snapshot(),
             }
             body = json.dumps(payload).encode("utf-8")
             self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
+        if parsed.path in ("/content-operations/status", "/content-operations/detail"):
+            params = parse_qs(parsed.query)
+            authorized, status_code, error_payload = _authorized(params)
+            if not authorized:
+                body = json.dumps(error_payload).encode("utf-8")
+                self.send_response(status_code)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+                return
+            if parsed.path.endswith("/detail"):
+                decision_id = str(params.get("decision_id", [""])[0]).strip()
+                payload = content_detail(_data_dir(), decision_id) if decision_id else {"error": "decision_id_required"}
+                response_code = 200 if payload and "error" not in payload else 400
+            else:
+                requested_date = str(params.get("date", [""])[0]).strip() or None
+                payload = daily_index(_data_dir(), requested_date)
+                response_code = 200
+            body = json.dumps(payload, ensure_ascii=True, default=str).encode("utf-8")
+            self.send_response(response_code)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
@@ -1719,15 +1755,105 @@ def run_candidate_batch() -> None:
     status = "ok" if ok else "failed"
     print(f"[CANDIDATE_POOL] {status}: {output[-1000:]}")
 
-def main() -> None:
+
+def _scheduled_at(content_date, value: str) -> str:
+    normalized = value if len(value.split(":")) == 3 else f"{value}:00"
+    return f"{content_date.isoformat()}T{normalized}+00:00"
+
+
+def run_content_factory() -> None:
+    """Fill missing today/tomorrow slots independently from publication clocks."""
+    if not RUN_LOCK.acquire(blocking=False):
+        print("[FACTORY] Deferred because another content operation is active")
+        return
+    try:
+        data_dir = _data_dir()
+        init_content_operations(data_dir)
+        today = datetime.now(timezone.utc).date()
+        horizon = [today, today + timedelta(days=1)]
+        slot_times = {"morning": morning_utc, "midday": midday_utc, "evening": evening_utc}
+        scripts_dir = os.path.join(os.path.dirname(__file__), "scripts")
+        run_engine_path = os.path.join(scripts_dir, "run_engine.py")
+        for content_date in horizon:
+            snapshot = daily_status(data_dir, content_date)
+            existing = {item["slot"]: item["status"] for item in snapshot.get("slots", [])}
+            for slot in ("morning", "midday", "evening"):
+                if existing.get(slot) in {"READY", "DUE", "CLAIMED", "PUBLISHING", "PUBLISHED"}:
+                    continue
+                env = os.environ.copy()
+                env.update({
+                    "DATA_DIR": data_dir,
+                    "POST_SLOT": slot,
+                    "POST_CONTENT_DATE": content_date.isoformat(),
+                    "CONTENT_FACTORY_ONLY": "true",
+                    "CONTENT_OPERATIONS_ENABLED": "true",
+                    "SOCIAL_DRY_RUN": "false",
+                    "SOCIAL_SHADOW_MODE": "false",
+                    "POST_PLATFORMS": "",
+                })
+                completed = subprocess.run(
+                    [sys.executable, run_engine_path],
+                    cwd=os.path.dirname(__file__),
+                    capture_output=True,
+                    text=True,
+                    env=env,
+                    timeout=int(os.environ.get("CONTENT_FACTORY_SLOT_TIMEOUT_SEC", "900")),
+                    check=False,
+                )
+                output = ((completed.stdout or "") + "\n" + (completed.stderr or "")).strip()
+                print(f"[FACTORY] {content_date} {slot}: exit={completed.returncode} {output[-1000:]}")
+    except Exception as exc:
+        print(f"[FACTORY] error: {type(exc).__name__}: {exc}")
+        traceback.print_exc()
+    finally:
+        RUN_LOCK.release()
+
+
+def dispatch_scheduled_slot(slot: str) -> None:
+    """Run the boring dispatcher; it never generates or rewrites content."""
+    if not RUN_LOCK.acquire(blocking=False):
+        print(f"[DISPATCH] {slot} deferred because another content operation is active")
+        return
+    try:
+        scripts_dir = os.path.join(os.path.dirname(__file__), "scripts")
+        env = os.environ.copy()
+        env["DATA_DIR"] = _data_dir()
+        completed = subprocess.run(
+            [sys.executable, os.path.join(scripts_dir, "dispatch_outbox.py")],
+            cwd=os.path.dirname(__file__),
+            capture_output=True,
+            text=True,
+            env=env,
+            timeout=int(os.environ.get("DISPATCH_TIMEOUT_SEC", "360")),
+            check=False,
+        )
+        output = ((completed.stdout or "") + "\n" + (completed.stderr or "")).strip()
+        print(f"[DISPATCH] {slot}: exit={completed.returncode} {output[-2000:]}")
+    finally:
+        RUN_LOCK.release()
+
+
+def _start_factory_thread() -> None:
+    threading.Thread(target=run_content_factory, daemon=True, name="content-factory").start()
+
+
+def _start_dispatch_thread(slot: str) -> None:
+    threading.Thread(target=dispatch_scheduled_slot, args=(slot,), daemon=True, name=f"dispatch-{slot}").start()
+
+
+def register_scheduled_jobs() -> None:
     schedule.clear()
-    schedule.every().day.at(morning_utc).do(run_slot, "morning")
-    schedule.every().day.at(midday_utc).do(run_slot, "midday")
-    schedule.every().day.at(evening_utc).do(run_slot, "evening")
+    schedule.every().day.at(morning_utc).do(_start_dispatch_thread, "morning")
+    schedule.every().day.at(midday_utc).do(_start_dispatch_thread, "midday")
+    schedule.every().day.at(evening_utc).do(_start_dispatch_thread, "evening")
+    schedule.every(30).minutes.do(_start_factory_thread)
     schedule.every().day.at(intelligence_light_utc).do(run_intelligence_heartbeat, "LIGHT_HEARTBEAT")
     schedule.every().day.at("10:00").do(run_candidate_batch)
     schedule.every().monday.at(intelligence_standard_utc).do(run_intelligence_heartbeat, "STANDARD_HEARTBEAT")
     schedule.every().sunday.at(intelligence_deep_utc).do(run_intelligence_heartbeat, "DEEP_HEARTBEAT")
+
+def main() -> None:
+    register_scheduled_jobs()
 
     start_health_server()
 
@@ -1749,6 +1875,8 @@ def main() -> None:
     print("Manual run endpoint: /run-now?slot=morning&token=... (requires MANUAL_RUN_TOKEN)")
     print("Meta refresh endpoint: /refresh-meta?token=... (uses META_REFRESH_TOKEN or MANUAL_RUN_TOKEN)")
     print("Waiting for next scheduled run...\n")
+
+    _start_factory_thread()
 
     if os.environ.get("RUN_ON_STARTUP", "false").lower() == "true":
         print("RUN_ON_STARTUP=true, launching startup run for morning slot")

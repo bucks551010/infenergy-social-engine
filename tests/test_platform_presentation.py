@@ -90,10 +90,8 @@ def test_powerpulse_fixture_front_loads_value_without_losing_sales_depth():
     assert "outages and off-grid use" in improved
     assert "Invite a practical response" not in improved
     assert "Reader job" not in improved
-    assert len(presentation["selected_hashtags"]) == 20
+    assert len(presentation["selected_hashtags"]) == 5
     assert "#TravelPower" in presentation["selected_hashtags"]
-    assert "#MobileOffice" in presentation["selected_hashtags"]
-    assert "#RemoteWork" in presentation["selected_hashtags"]
     assert presentation["optional_depth_present"]
     assert improved.count("Review the verified product details.") == 1
     assert "👉 Review the verified product details." in improved
@@ -117,14 +115,19 @@ def test_dense_single_paragraph_becomes_readable_without_losing_approved_sentenc
     )
 
     for sentence in platform_presentation._sentences(dense.split("\n\n")[0]):
-        assert sentence in improved
+        if not platform_presentation._numeric_proof_tokens(sentence):
+            assert sentence in improved
+    assert improved.count("154Wh") == 1
+    assert improved.count("41,600mAh") == 1
+    assert improved.count("200W") == 1
+    assert improved.count("110V") == 1
     assert len(improved.split("\n\n")) >= 6
     assert improved.index("PowerPulse Pro 200") < improved.index("Mobile professionals")
     assert improved.index("⚡ Key specs") < improved.index("The deeper decision")
     hashtag_line = improved.split("\n\n")[-1]
     assert hashtag_line.startswith("#PortablePower #Preparedness")
-    assert len(hashtag_line.split()) == 20
-    assert len(set(hashtag_line.split())) == 20
+    assert len(hashtag_line.split()) == 5
+    assert len(set(hashtag_line.split())) == 5
 
 
 def test_benefit_opening_uses_only_approved_component_meaning():
@@ -217,14 +220,12 @@ def test_presentation_preserves_existing_hashtags_and_semantics_across_platforms
     assert original_tags.issubset(facebook["selected_hashtags"])
     assert original_tags.issubset(instagram["selected_hashtags"])
     assert original_tags.issubset(linkedin["selected_hashtags"])
-    assert len(facebook["selected_hashtags"]) == 20
-    assert len(instagram["selected_hashtags"]) == 20
-    assert len(linkedin["selected_hashtags"]) == 20
-    assert len(set(facebook["selected_hashtags"])) == 20
-    assert "#MobileOffice" in facebook_caption
+    assert len(facebook["selected_hashtags"]) == 5
+    assert len(instagram["selected_hashtags"]) == 8
+    assert len(linkedin["selected_hashtags"]) == 5
+    assert len(set(facebook["selected_hashtags"])) == 5
     assert "#TravelPower" in instagram_caption
-    assert "#RemoteWork" in linkedin_caption
-    assert "standard portable banks fall short" in facebook_caption.lower()
+    assert "when standard portable banks fall short" in facebook_caption.lower()
     assert facebook["platform_expression"] == "source_preserving_priority_editorial"
 
 
@@ -248,6 +249,33 @@ def test_final_render_preserves_content_metadata_and_places_existing_destination
     assert {key: facebook.get(key) for key in before} == before
     assert facebook["final_caption"].index("Review the verified product details.") < facebook["final_caption"].index("https://example.com/products/powerpulse")
     assert facebook["final_caption"].index("https://example.com/products/powerpulse") < facebook["final_caption"].index("#PortablePower")
+
+
+def test_powerpulse_specs_appear_once_and_unsupported_broad_claims_are_repaired():
+    source = POWERPULSE_ORIGINAL.replace(
+        "Standard power banks can fall short",
+        "Most compact batteries fail",
+    ) + "\n\nThis ensures real-world compatibility and keeps your laptop running mid-flight."
+    improved, _ = platform_presentation.refine_caption(source, components=_components(), platform="instagram")
+
+    assert improved.count("154Wh") == 1
+    assert improved.count("41,600mAh") == 1
+    assert improved.count("200W") == 1
+    assert improved.count("110V") == 1
+    assert "ensures real-world compatibility" not in improved.lower()
+    assert "most compact batteries fail" not in improved.lower()
+    assert "keeps your laptop running mid-flight" not in improved.lower()
+    assert "compare published specifications" in improved.lower()
+
+
+def test_long_useful_copy_passes_when_paragraphs_remain_readable():
+    paragraph = "Compare the published capability with the devices and responsibilities that must remain available before choosing a backup plan."
+    long_caption = "\n\n".join([paragraph for _ in range(20)])
+    metrics = platform_presentation.evaluate(long_caption, platform="instagram")
+
+    assert metrics["word_count"] > 200
+    assert metrics["reading_burden"] == "APPROPRIATE"
+    assert metrics["longest_paragraph_words"] < 80
 
 
 def test_instagram_package_persists_reel_caption_hierarchy_without_rendering():

@@ -1094,6 +1094,94 @@ def test_publish_decision_blocks_failed_validation_even_with_high_scores():
     assert "unsupported_claim" in result["reasons"]
 
 
+def test_quality_is_advisory_after_recovery_but_truth_remains_mandatory():
+    recovered = publish_decision.decide(
+        legacy_score={"total": 60, "platform_results": {}},
+        validation={"passed": True, "errors": []},
+        duplicates={"ok": True, "reasons": []},
+        orchestrator_quality={"overall": 65, "critic_findings": ["hook weak"]},
+        evidence_readiness={"ready": True, "status": "READY"},
+        recovery_exhausted=True,
+    )
+    unsafe = publish_decision.decide(
+        legacy_score={"total": 95, "platform_results": {}},
+        validation={"passed": False, "errors": ["unsupported_claim"]},
+        duplicates={"ok": True, "reasons": []},
+        evidence_readiness={"ready": True, "status": "READY"},
+        recovery_exhausted=True,
+    )
+
+    assert recovered["publishable"] is True
+    assert "quality_preference_unmet_after_recovery" in recovered["reasons"]
+    assert unsafe["publishable"] is False
+    assert "unsupported_claim" in unsafe["reasons"]
+
+
+def test_human_truth_gate_recognizes_reader_language_at_sentence_boundary():
+    result = quality_intelligence.human_truth_gate(
+        hook="Your priorities come before the purchase.",
+        body="Compare what must stay available and plan from that responsibility.",
+        takeaway="Check the plan before you need it.",
+        strategy={
+            "customer_moment": "an outage interrupts the household",
+            "human_need": "keep priority needs available",
+            "angle": "prioritize before buying",
+        },
+    )
+
+    assert result["reader_value"]["for_them"] == 1.0
+
+
+def test_decision_support_concept_changes_with_human_reality_and_angle():
+    first, _ = creative_cognition._copy_concepts(
+        strategy={"angle": "outage priorities", "benefit": "a clearer plan", "customer_moment": "an outage begins"},
+        grammar={},
+        recent={},
+        platform="linkedin",
+    )
+    second, _ = creative_cognition._copy_concepts(
+        strategy={"angle": "travel charging", "benefit": "a clearer plan", "customer_moment": "packing for remote travel"},
+        grammar={},
+        recent={},
+        platform="linkedin",
+    )
+
+    first_hook = next(item["opening"] for item in first if item["approach"] == "decision_support")
+    second_hook = next(item["opening"] for item in second if item["approach"] == "decision_support")
+    assert first_hook != second_hook
+    assert "outage priorities" in first_hook
+    assert "travel charging" in second_hook
+
+
+def test_deterministic_copy_turns_question_angle_into_safe_guidance():
+    brief = engines.EngineBrief(
+        engine="B",
+        pillar={},
+        genre={},
+        reader_job="HELP_ME_CHOOSE",
+        reader_job_config={},
+        audience_segment="household",
+        audience_segment_config={},
+        information_gap="verified product facts",
+        curiosity="a practical power decision",
+        misconception="Solar recharging is fast in most conditions",
+        question="What should your backup plan support?",
+        emotional_driver="clarity",
+        topic_path={"topic": "Outages"},
+        angle="How does this option fit your outage priorities?",
+        tone="calm",
+        opportunity_score=0.8,
+    )
+    copy = orchestrator._assemble_copy(
+        brief=brief,
+        structure_beats=["problem", "what_to_do", "takeaway"],
+    )
+
+    assert "solar recharging is fast" not in copy["problem"].lower()
+    assert "practical move is to how" not in " ".join(copy.values()).lower()
+    assert "your actual priorities" in copy["what_to_do"].lower()
+
+
 def test_quality_score_gives_reasonable_overall():
     ledger = claim_intelligence.ClaimLedger()
     q = quality_intelligence.score(

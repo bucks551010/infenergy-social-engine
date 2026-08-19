@@ -328,10 +328,14 @@ def _copy_concepts(*, strategy: dict[str, Any], grammar: dict[str, Any], recent:
         "A longer specification list does not automatically show whether a product "
         f"{benefit.rstrip('.?!')}."
     )
+    decision_opening = (
+        f"Before choosing for {customer_moment.lower()}, compare what must stay available "
+        f"and whether the option supports {question_angle.lower()}."
+    )
     options = [
         {"approach": "human_recognition", "opening": human_opening, "structure": "situation -> friction -> possibility", "fit": 0.78},
         {"approach": "educational_insight", "opening": educational_opening, "structure": "observation -> insight -> business connection", "fit": 0.8},
-        {"approach": "decision_support", "opening": f"Before choosing, compare the role a power solution needs to play.", "structure": "decision -> options -> tradeoff -> recommendation", "fit": 0.82},
+        {"approach": "decision_support", "opening": decision_opening, "structure": "decision -> options -> tradeoff -> recommendation", "fit": 0.82},
         {"approach": "misconception", "opening": misconception_opening, "structure": "misconception -> truth -> explanation", "fit": 0.75},
     ]
     used = " ".join(map(str, recent.get("hooks", []))).lower()

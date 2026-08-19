@@ -24,6 +24,7 @@ def decide(
     orchestrator_quality: dict[str, Any] | None = None,
     visual_errors: list[str] | None = None,
     evidence_readiness: dict[str, Any] | None = None,
+    recovery_exhausted: bool = False,
 ) -> dict[str, Any]:
     """Return the only publish decision consumed by the runtime."""
     legacy_total = float(legacy_score.get("total") or 0)
@@ -45,6 +46,15 @@ def decide(
     ]
     if reasons:
         decision = "do_not_publish"
+    elif recovery_exhausted:
+        decision = "publish"
+        if legacy_total < PUBLISH_SCORE:
+            reasons.append("quality_preference_unmet_after_recovery")
+        if conversion_quality_score is not None and conversion_quality_score < CONVERSION_SCORE:
+            reasons.append("conversion_quality_preference_unmet_after_recovery")
+        if critic_total is not None and critic_total < PUBLISH_SCORE:
+            reasons.extend(critic_findings)
+            reasons.append("critic_preference_unmet_after_recovery")
     elif legacy_total < REVISE_SCORE:
         decision = "do_not_publish"
         reasons.append("runtime_quality_below_regeneration_floor")

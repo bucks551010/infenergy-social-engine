@@ -440,7 +440,7 @@ class PhaseThirteenFourteenTests(unittest.TestCase):
         self.assertGreaterEqual(len(urls), 1)
         self.assertTrue(urls[0].startswith("https://"))
 
-    def test_run_engine_regeneration_limit_is_two_attempts(self) -> None:
+    def test_run_engine_quality_exhaustion_does_not_become_content_failure(self) -> None:
         save_calls: list[dict] = []
         first = deepcopy(_base_content())
         second = deepcopy(_base_content())
@@ -476,7 +476,7 @@ class PhaseThirteenFourteenTests(unittest.TestCase):
             run_engine.main()
 
         self.assertEqual(mock_generate.call_count, 2)
-        self.assertEqual(save_calls[-1]["posts"][-1]["status"], "skipped_validation_or_quality")
+        self.assertEqual(save_calls[-1]["posts"][-1]["status"], "skipped_no_eligible_platforms")
         self.assertEqual(len(save_calls[-1]["posts"][-1]["generation_attempts"]), 2)
 
     def test_run_engine_selects_highest_quality_candidate_from_seven(self) -> None:
@@ -517,7 +517,7 @@ class PhaseThirteenFourteenTests(unittest.TestCase):
             "candidate_count": 7,
             "publishable_count": 7,
             "selected_attempt": 4,
-            "selection_reason": "highest_compliant_quality_score",
+            "selection_reason": "highest_complete_content_package",
         })
         self.assertEqual(len(saved_post["generation_attempts"]), 7)
 

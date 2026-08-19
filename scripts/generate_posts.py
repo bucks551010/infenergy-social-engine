@@ -4258,10 +4258,10 @@ def _no_product_action_plan(topic: str, pillar: str) -> str:
     if "outage" in lowered_topic or pillar in ("preparedness_education", "home_resilience"):
         return (
             "24-hour outage plan:\n"
-            "1. Write down the three devices or needs that cannot wait until power returns.\n"
-            "2. Put lighting, phone charging, medical needs, and food-safety decisions in that order.\n"
-            "3. Check the power source, cables, batteries, and charging location before storm season.\n"
-            "4. Run a short household check so everyone knows what to use first and who needs help."
+            "1. Write down the people, tasks, and devices your household wants to keep available.\n"
+            "2. Note what each item needs to operate, using its published instructions where applicable.\n"
+            "3. Keep the matching cables, lighting, and charging supplies together in a known location.\n"
+            "4. Walk through the plan together and update it when your household needs change."
         )
     if "travel" in lowered_topic or pillar == "travel_and_outdoor_preparedness":
         return (

@@ -1,0 +1,137 @@
+from __future__ import annotations
+
+import os
+import sys
+from datetime import date
+
+_REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(_REPO, "scripts"))
+
+from content_operations import (  # noqa: E402
+    archive_candidate,
+    begin_platform_transaction,
+    claim_due,
+    complete_platform_transaction,
+    content_detail,
+    create_council_session,
+    daily_status,
+    ensure_daily_slots,
+    init_content_operations,
+    mark_ready,
+)
+
+
+def _schedule(day: str) -> dict[str, str]:
+    return {
+        "morning": f"{day}T13:00:00+00:00",
+        "midday": f"{day}T17:00:00+00:00",
+        "evening": f"{day}T23:00:00+00:00",
+    }
+
+
+def test_daily_slots_outbox_and_archive_survive_restart(tmp_path):
+    day = "2026-08-19"
+    data_dir = str(tmp_path)
+    init_content_operations(data_dir)
+    slots = ensure_daily_slots(data_dir, day, _schedule(day), {"mode": "owner_schedule"})
+    assert [slot["slot"] for slot in slots] == ["morning", "midday", "evening"]
+
+    decision_id = create_council_session(
+        data_dir,
+        content_date=day,
+        slot="morning",
+        blackboard={
+            "human_reality": "A household decides what must keep working first.",
+            "brain": {"before": "buy more", "movement": "prioritize", "after": "match needs"},
+            "heart": {"response": "clarity", "after": "calm capability"},
+            "content_job": "HELP_PLAN",
+        },
+        rationale=["Preparedness starts with priorities, not purchases."],
+    )
+    for ordinal in range(1, 8):
+        archive_candidate(
+            data_dir,
+            decision_id=decision_id,
+            ordinal=ordinal,
+            content={"post_id": f"candidate-{ordinal}", "master_copy": f"Draft {ordinal}"},
+            status="SELECTED" if ordinal == 4 else "NOT_SELECTED",
+            score=90 + ordinal,
+            loss_reasons=[] if ordinal == 4 else ["lower_ranked_compliant_candidate"],
+        )
+
+    package = {
+        "content_id": "candidate-4",
+        "master_copy": "Final copy",
+        "platform_presentations": {
+            "facebook": {"final_caption": "Facebook final\n\nSecond paragraph"},
+            "instagram": {"final_caption": "Instagram final\n\nSecond paragraph"},
+            "linkedin": {"final_caption": "LinkedIn final\n\nSecond paragraph"},
+        },
+        "media_asset": {"status": "READY", "role": "FINAL_SOCIAL_CREATIVE"},
+    }
+    outbox_id = mark_ready(
+        data_dir,
+        content_date=day,
+        slot="morning",
+        scheduled_at=_schedule(day)["morning"],
+        decision_id=decision_id,
+        package=package,
+    )
+
+    # Reinitialize against the same SQLite file to simulate a process restart.
+    init_content_operations(data_dir)
+    status = daily_status(data_dir, day)
+    assert status["required"] == 3
+    assert status["ready"] == 1
+    assert status["missing"] == 2
+    detail = content_detail(data_dir, decision_id)
+    assert len(detail["candidates"]) == 7
+    assert detail["candidates"][3]["status"] == "SELECTED"
+
+    claimed = claim_due(data_dir, "2026-08-19T13:00:01+00:00")
+    assert claimed and claimed["outbox_id"] == outbox_id
+    assert claimed["package"]["platform_presentations"]["instagram"]["final_caption"].count("\n\n") == 1
+    assert claim_due(data_dir, "2026-08-19T13:00:02+00:00") is None
+
+
+def test_platform_transaction_states_are_idempotent_and_persistent(tmp_path):
+    day = date(2026, 8, 19)
+    data_dir = str(tmp_path)
+    ensure_daily_slots(data_dir, day, _schedule(day.isoformat()), {"platforms": ["facebook"]})
+    decision_id = create_council_session(
+        data_dir,
+        content_date=day.isoformat(),
+        slot="morning",
+        blackboard={"content_job": "TEACH"},
+    )
+    outbox_id = mark_ready(
+        data_dir,
+        content_date=day.isoformat(),
+        slot="morning",
+        scheduled_at=_schedule(day.isoformat())["morning"],
+        decision_id=decision_id,
+        package={"content_id": "content-1"},
+    )
+    request_key = begin_platform_transaction(
+        data_dir,
+        outbox_id=outbox_id,
+        platform="facebook",
+        payload={"message": "Line one\n\nLine two"},
+    )
+    assert request_key == f"{outbox_id}:facebook"
+    complete_platform_transaction(
+        data_dir,
+        outbox_id=outbox_id,
+        platform="facebook",
+        state="CONFIRMED_SUCCESS",
+        external_id="fb-123",
+        provider_response={"id": "fb-123"},
+    )
+    init_content_operations(data_dir)
+    # A second begin reuses the same request key instead of creating another transaction.
+    assert begin_platform_transaction(
+        data_dir,
+        outbox_id=outbox_id,
+        platform="facebook",
+        payload={"message": "Line one\n\nLine two"},
+    ) == request_key

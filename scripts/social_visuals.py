@@ -1055,6 +1055,29 @@ def _save_product_photo_fallback(source: str, output_path: str, platform: str) -
         return False
 
 
+def _fallback_creative_review(content: dict[str, Any], plan: dict[str, Any], artifact_path: str, platform: str) -> dict[str, Any]:
+    """Classify raw fallback assets separately from final art-directed creative."""
+    product_led = bool(str(content.get("product_id") or "").strip())
+    route = str(plan.get("creative_route") or plan.get("visual_format") or "").strip().upper()
+    explicit_packshot = route in {"PACKSHOT", "PACKSHOT_ONLY", "PREMIUM_PRODUCT_HERO"}
+    review = review_rendered_visual(artifact_path, platform)
+    if product_led and not explicit_packshot:
+        review.update({
+            "verdict": "REGENERATE_VISUAL",
+            "creative_classification": "PACKSHOT_ONLY",
+            "creative_thesis": "MISSING",
+            "recovery_action": "CHANGE_CREATIVE_ROUTE",
+            "issues": list(review.get("issues") or []) + ["packshot_only_without_explicit_route"],
+        })
+    else:
+        review.update({
+            "creative_classification": "EXPLICIT_PRODUCT_HERO" if product_led else "EDITORIAL_SOURCE_IMAGE",
+            "creative_thesis": "EXPLICIT" if explicit_packshot else "SOURCE_CONTEXT",
+            "recovery_action": "NONE",
+        })
+    return review
+
+
 def generate_visuals(content: dict[str, Any], visual_plan: dict[str, Any] | None = None) -> dict[str, Any]:
     post_id = str(content.get("post_id") or "preview")
     visuals: dict[str, Any] = {}
@@ -1112,7 +1135,8 @@ def generate_visuals(content: dict[str, Any], visual_plan: dict[str, Any] | None
                 "fallback_source": "approved_product_photo",
             }
             visuals[platform] = file_path
-            artifact_reviews[platform] = review_rendered_visual(file_path, platform)
+            artifact_reviews[platform] = _fallback_creative_review(content, plan, file_path, platform)
+            visual_generation[platform]["creative_classification"] = artifact_reviews[platform].get("creative_classification")
         else:
             render_engines[platform] = "failed"
             product_overlay_applied[platform] = False

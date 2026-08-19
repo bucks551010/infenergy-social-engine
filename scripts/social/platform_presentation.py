@@ -18,6 +18,7 @@ _PLANNING_INSTRUCTION_PATTERNS = (
     r"\bencourage engagement\b",
     r"\badd (?:a )?practical question\b",
 )
+_HASHTAG_LIMITS = {"facebook": 5, "instagram": 8, "linkedin": 5}
 
 
 def _paragraphs(text: str) -> list[str]:
@@ -80,7 +81,21 @@ def _portfolio(components: dict[str, Any], platform: str, source: str) -> tuple[
         for value in values:
             if value and value not in tags:
                 tags.append(value)
-    return tags[:20], categories
+    return tags[:_HASHTAG_LIMITS.get(platform, 5)], categories
+
+
+def _repair_unsupported_broad_claims(value: str) -> str:
+    """Narrow common unsupported generalizations into safe decision guidance."""
+    repaired = str(value or "")
+    replacements = (
+        (r"\bensures? real-world compatibility\b", "helps you compare published specifications with the device requirements"),
+        (r"\bmost compact batteries fail\b", "compact batteries can miss the job when their published capacity or output does not match the device"),
+        (r"\bkeeps? (?:your )?laptop running mid-flight\b", "can be compared with the laptop's published power requirements before travel"),
+        (r"\bsustained energy for (?:your )?laptop mid-flight\b", "published capacity to compare with the laptop's requirements before travel"),
+    )
+    for pattern, replacement in replacements:
+        repaired = re.sub(pattern, replacement, repaired, flags=re.IGNORECASE)
+    return repaired
 
 
 def _above_fold(caption: str, components: dict[str, Any], platform: str) -> dict[str, Any]:
@@ -346,6 +361,7 @@ def refine_caption(
             tags.extend(re.findall(r"#[A-Za-z0-9_]+", source_part))
             continue
         sanitized = source_part if re.search(r"(?m)^\s*\d+\.\s+\S+", source_part) else _remove_internal_language(source_part)
+        sanitized = _repair_unsupported_broad_claims(sanitized)
         normalized = _normalized_paragraph(sanitized)
         if sanitized.startswith("⚡ Key specs"):
             continue
@@ -370,6 +386,16 @@ def refine_caption(
     spec_block = ""
     if approved_specs:
         spec_block = "⚡ Key specs\n" + "\n".join(f"• {spec}" for spec in approved_specs)
+        proof_deduped_body: list[str] = []
+        for part in body:
+            if not _numeric_proof_tokens(part):
+                proof_deduped_body.append(part)
+                continue
+            proof_deduped_body.extend(
+                sentence for sentence in _sentences(part)
+                if not _numeric_proof_tokens(sentence) and "key specs" not in sentence.lower()
+            )
+        body = proof_deduped_body
 
     cta_parts = [
         part for part in body
@@ -390,7 +416,7 @@ def refine_caption(
         ordered = benefit_opening + ([spec_block] if spec_block else [])
     ordered.extend(f"👉 {re.sub(r'^(?:\s*👉\s*)+', '', part).strip()}" for part in cta_parts)
     portfolio_tags, categories = _portfolio(components, platform, caption)
-    selected_tags = list(dict.fromkeys(tags + [f"#{tag}" for tag in portfolio_tags]))[:20]
+    selected_tags = list(dict.fromkeys(tags + [f"#{tag}" for tag in portfolio_tags]))[:_HASHTAG_LIMITS.get(platform, 5)]
     hashtag_line = " ".join(selected_tags)
     refined = "\n\n".join(ordered + ([hashtag_line] if hashtag_line else []))
     refined = re.sub(r"(?m)^\s+(👉)", r"\1", refined)
@@ -403,7 +429,7 @@ def refine_caption(
         "contrast_paragraph_count": 0,
         "selected_hashtags": selected_tags,
         "hashtag_categories": categories,
-        "hashtag_target_density": "20 grounded tags",
+        "hashtag_target_density": f"{_HASHTAG_LIMITS.get(platform, 5)} focused tags maximum",
         "hashtag_relevance_score": 1.0 if selected_tags else 0.0,
         "hashtag_reason": "existing tags plus brand, product, category, and stated copy context",
         "optional_depth_present": len(ordered) > 3,
@@ -515,12 +541,15 @@ def evaluate(
     benefit = str(components.get("benefit_fragment") or "")
     cta = str(components.get("cta") or "")
     leaks = _internal_instruction_leaks(text, planning_instructions)
-    density = "TOO_DENSE" if len(words) > {"facebook": 190, "instagram": 120, "linkedin": 260}.get(platform, 190) else "APPROPRIATE"
+    paragraph_word_counts = [len(re.findall(r"\b[\w'-]+\b", paragraph)) for paragraph in _paragraphs(text)]
+    longest_paragraph = max(paragraph_word_counts, default=0)
+    density = "TOO_DENSE" if longest_paragraph > 80 else "APPROPRIATE"
     return {
         "final_caption": text,
         "word_count": len(words),
         "sentence_count": len(sentences),
         "paragraph_count": len([line for line in text.split("\n\n") if line.strip()]),
+        "longest_paragraph_words": longest_paragraph,
         "average_sentence_length": round(len(words) / max(1, len(sentences)), 1),
         "hashtag_count": len(hashtags),
         "visual_information_load": specs,
@@ -575,6 +604,8 @@ def final_caption_qa(
         reasons.append("required_link_missing")
     if metrics["paragraph_count"] < 4:
         reasons.append("paragraph_structure_missing")
+    if metrics["reading_burden"] == "TOO_DENSE":
+        reasons.append("wall_of_text_paragraph")
     return {
         "status": "PRESENTATION_READY" if not reasons else "REVISE_PRESENTATION",
         "reasons": reasons,

@@ -1882,6 +1882,86 @@ def main() -> None:
                 score=visual_candidate["scoring"].get("total"),
                 loss_reasons=candidate_visual_errors,
             )
+    product_visual_exhausted = bool(visual_gate_errors) and any(
+        "packshot_only_without_explicit_route" in error for error in visual_gate_errors
+    )
+    if product_visual_exhausted:
+        previous_bucket_override = os.environ.get("CONTENT_BUCKET_OVERRIDE", "")
+        os.environ["CONTENT_BUCKET_OVERRIDE"] = "no_product"
+        try:
+            editorial_content = generate_posts.generate(
+                slot,
+                funnel_stage_override=funnel_stage_override or "EDUCATION",
+                product_id_override="",
+                pipeline_override="legacy",
+                revision_feedback=[
+                    "Use a product-free human reality and editorial visual route because exact product creative is unavailable."
+                ],
+            )
+        finally:
+            if previous_bucket_override:
+                os.environ["CONTENT_BUCKET_OVERRIDE"] = previous_bucket_override
+            else:
+                os.environ.pop("CONTENT_BUCKET_OVERRIDE", None)
+        editorial_validation = validate_generated_content(editorial_content)
+        editorial_scoring = score_content(editorial_content, requested_platforms=manual_platforms)
+        _attach_platform_quality(editorial_content, editorial_scoring)
+        editorial_duplicates = check_duplicates(editorial_content, generate_posts.load_history(), windows=windows)
+        editorial_content["validation_status"] = "passed" if editorial_validation.get("passed") else "failed"
+        editorial_content["validation_errors"] = editorial_validation.get("errors", [])
+        editorial_content["validation_warnings"] = editorial_validation.get("warnings", [])
+        editorial_content["quality_score"] = editorial_scoring.get("total")
+        editorial_content["quality_component_scores"] = editorial_scoring.get("component_scores", {})
+        editorial_content["duplicate_check"] = editorial_duplicates
+        editorial_content.update(editorial_duplicates.get("signatures", {}))
+        editorial_decision = decide_publication(
+            legacy_score=editorial_scoring,
+            validation=editorial_validation,
+            duplicates=editorial_duplicates,
+            conversion_quality_score=_conversion_quality_score(editorial_content),
+            orchestrator_quality=editorial_content.get("orchestrator_quality"),
+            evidence_readiness=_evidence_readiness(editorial_content),
+            recovery_exhausted=True,
+        )
+        editorial_content["publish_decision"] = editorial_decision
+        if editorial_decision["publishable"]:
+            editorial_content["generated_visuals"] = generate_posts.generate_visuals(
+                editorial_content,
+                visual_plan=editorial_content.get("visual_plan"),
+            )
+            editorial_content["image_generation_attempts"] = int(editorial_content.get("image_generation_attempts", 0) or 0) + 1
+            _ensure_final_artifact_qa(editorial_content, effective_channels)
+            editorial_artifact_errors = _artifact_visual_errors_by_platform(editorial_content, effective_channels)
+            editorial_visual_errors = [
+                f"{platform}_artifact:{issue}"
+                for platform, issues in editorial_artifact_errors.items()
+                for issue in issues
+            ]
+            editorial_visual_errors.extend(_live_visual_gate_errors(editorial_content, effective_channels, dry_run or shadow_mode))
+            editorial_visual_errors.extend(_strategy_integrity_errors(editorial_content))
+            editorial_visual_errors.extend(_v5_semantic_visual_errors(editorial_content, effective_channels))
+            editorial_visual_errors.extend(_final_presentation_errors(editorial_content, effective_channels))
+            if not editorial_visual_errors:
+                content = editorial_content
+                scoring = editorial_scoring
+                artifact_errors = editorial_artifact_errors
+                visual_gate_errors = []
+                content["candidate_selection"] = {
+                    "candidate_count": candidate_count,
+                    "publishable_count": len(publishable_candidates),
+                    "selected_attempt": len(attempts) + 1,
+                    "selection_reason": "product_free_editorial_visual_recovery",
+                }
+            elif decision_id:
+                archive_candidate(
+                    generate_posts.DATA_DIR,
+                    decision_id=decision_id,
+                    ordinal=len(attempts) + 1,
+                    content=editorial_content,
+                    status="VISUAL_RECOVERY_REQUIRED",
+                    score=editorial_scoring.get("total"),
+                    loss_reasons=editorial_visual_errors,
+                )
     if decision_id and not visual_gate_errors:
         archive_candidate(
             generate_posts.DATA_DIR,

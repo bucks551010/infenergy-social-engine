@@ -301,6 +301,24 @@ def test_product_caption_repairs_checklist_cta_when_no_checklist_exists():
     assert "promised_plan_missing_actionable_steps" not in qa["reasons"]
 
 
+def test_general_planning_language_does_not_promise_a_numbered_plan():
+    components = _components()
+    components["cta"] = "Review the verified product details."
+    caption = (
+        "Power planning becomes clearer when you compare published capability with the equipment you carry.\n\n"
+        "Travel and outage planning benefit from that comparison.\n\n"
+        "Review the verified product details.\n\n"
+        "https://www.infenergypower.com/product/powerpulse-pro-200/"
+    )
+    qa = platform_presentation.final_caption_qa(
+        caption,
+        platform="linkedin",
+        components=components,
+    )
+
+    assert "promised_plan_missing_actionable_steps" not in qa["reasons"]
+
+
 def test_instagram_package_persists_reel_caption_hierarchy_without_rendering():
     posts = generate_posts._build_platform_posts(
         "powerpulse-fixture",

@@ -693,6 +693,7 @@ def _start_slot_thread(
     duplicate_mode: str = "",
     readiness_block_override: str = "",
     product_id_override: str = "",
+    no_product: bool = False,
     funnel_stage_override: str = "",
     pipeline_override: str = "",
 ) -> bool:
@@ -710,6 +711,7 @@ def _start_slot_thread(
             "duplicate_mode": duplicate_mode,
             "readiness_block_override": readiness_block_override,
             "product_id_override": product_id_override,
+            "no_product": no_product,
             "funnel_stage_override": funnel_stage_override,
             "pipeline_override": pipeline_override,
         },
@@ -1421,6 +1423,7 @@ class HealthHandler(BaseHTTPRequestHandler):
             duplicate_mode = params.get("duplicate_mode", [""])[0].strip().lower()
             readiness_block_override = params.get("readiness_block", [""])[0].strip().lower()
             product_id_override = params.get("product_id", [""])[0].strip()
+            no_product = params.get("no_product", ["false"])[0].strip().lower() in ("1", "true", "yes")
             funnel_stage_override = params.get("funnel_stage", [""])[0].strip().upper()
             pipeline_override = params.get("pipeline", [""])[0].strip().lower()
             if duplicate_mode and duplicate_mode not in ("strict", "exact_only", "allow_all"):
@@ -1462,6 +1465,7 @@ class HealthHandler(BaseHTTPRequestHandler):
                 duplicate_mode=duplicate_mode,
                 readiness_block_override=readiness_block_override,
                 product_id_override=product_id_override,
+                no_product=no_product,
                 funnel_stage_override=funnel_stage_override,
                 pipeline_override=pipeline_override,
                 shadow_mode=shadow_mode,
@@ -1476,6 +1480,7 @@ class HealthHandler(BaseHTTPRequestHandler):
                 "duplicate_mode": duplicate_mode or "env_default",
                 "readiness_block": readiness_block_override or "env_default",
                 "product_id": product_id_override or "auto",
+                "no_product": no_product,
                 "funnel_stage": funnel_stage_override or "auto",
                 "pipeline": pipeline_override or "env_default",
                 "message": "run started" if started else "run already in progress",
@@ -1609,6 +1614,7 @@ def run_slot(
     duplicate_mode: str = "",
     readiness_block_override: str = "",
     product_id_override: str = "",
+    no_product: bool = False,
     funnel_stage_override: str = "",
     pipeline_override: str = "",
 ) -> None:
@@ -1641,6 +1647,7 @@ def run_slot(
         previous_duplicate_mode = os.environ.get("MANUAL_DUPLICATE_MODE", "")
         previous_readiness_block = os.environ.get("CHANNEL_READINESS_BLOCK_ON_RED", "")
         previous_product_override = os.environ.get("POST_PRODUCT_ID_OVERRIDE", "")
+        previous_bucket_override = os.environ.get("CONTENT_BUCKET_OVERRIDE", "")
         previous_funnel_stage_override = os.environ.get("POST_FUNNEL_STAGE_OVERRIDE", "")
         previous_pipeline_override = os.environ.get("POST_PIPELINE_OVERRIDE", "")
         previous_shadow_mode = os.environ.get("SOCIAL_SHADOW_MODE", "")
@@ -1654,6 +1661,8 @@ def run_slot(
             os.environ["CHANNEL_READINESS_BLOCK_ON_RED"] = "true" if readiness_block_override in ("1", "true", "yes") else "false"
         if product_id_override:
             os.environ["POST_PRODUCT_ID_OVERRIDE"] = product_id_override
+        if no_product:
+            os.environ["CONTENT_BUCKET_OVERRIDE"] = "no_product"
         if funnel_stage_override:
             os.environ["POST_FUNNEL_STAGE_OVERRIDE"] = funnel_stage_override
         if pipeline_override:
@@ -1734,6 +1743,10 @@ def run_slot(
                 os.environ["POST_PRODUCT_ID_OVERRIDE"] = previous_product_override
             elif "POST_PRODUCT_ID_OVERRIDE" in os.environ:
                 del os.environ["POST_PRODUCT_ID_OVERRIDE"]
+            if previous_bucket_override:
+                os.environ["CONTENT_BUCKET_OVERRIDE"] = previous_bucket_override
+            elif "CONTENT_BUCKET_OVERRIDE" in os.environ:
+                del os.environ["CONTENT_BUCKET_OVERRIDE"]
             if previous_funnel_stage_override:
                 os.environ["POST_FUNNEL_STAGE_OVERRIDE"] = previous_funnel_stage_override
             elif "POST_FUNNEL_STAGE_OVERRIDE" in os.environ:

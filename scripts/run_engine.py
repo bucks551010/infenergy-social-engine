@@ -382,6 +382,28 @@ def _evidence_readiness(content: dict) -> dict:
     return readiness
 
 
+def _final_channel_evidence_readiness(content: dict, effective_channels: dict[str, bool]) -> dict:
+    """Reassess only the exact final copy that can be published in this run."""
+    platform_posts = content.get("platform_posts") if isinstance(content.get("platform_posts"), dict) else {}
+    text_parts: list[str] = []
+    for platform in ("facebook", "instagram", "linkedin"):
+        if not effective_channels.get(platform):
+            continue
+        package = platform_posts.get(platform) if isinstance(platform_posts.get(platform), dict) else {}
+        text_parts.append(str(package.get("final_caption") or package.get("caption") or ""))
+    if effective_channels.get("wordpress"):
+        text_parts.append(str(content.get("wp_content") or ""))
+    verified_facts = list(content.get("product_metrics", []) or [])
+    product_facts = str(content.get("product_facts", "") or "")
+    if product_facts:
+        verified_facts.append(product_facts)
+    ledger = build_ledger(" ".join(text_parts), verified_facts=verified_facts)
+    readiness = claim_governance.assess(ledger, hook=str(content.get("selected_hook", "")))
+    content["final_channel_claim_ledger"] = ledger.as_dict()
+    content["final_channel_evidence_readiness"] = readiness
+    return readiness
+
+
 def _evidence_safe_remediation_feedback(content: dict) -> list[str]:
     """Request one verified-facts-only replacement after a governance block."""
     product = str(content.get("product_name") or content.get("product_id") or "the product")
@@ -2028,7 +2050,7 @@ def main() -> None:
         conversion_quality_score=final_cqs_total,
         orchestrator_quality=content.get("orchestrator_quality"),
         visual_errors=visual_gate_errors,
-        evidence_readiness=_evidence_readiness(content),
+        evidence_readiness=_final_channel_evidence_readiness(content, effective_channels),
         recovery_exhausted=True,
     )
     content["publish_decision"] = final_decision

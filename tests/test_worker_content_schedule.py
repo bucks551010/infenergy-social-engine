@@ -105,3 +105,24 @@ def test_followup_council_candidates_skip_repeated_phase2_enrichment(monkeypatch
     assert observed == ["false"]
     assert os.environ["ENABLE_PHASE2_CREATIVE_STACK"] == "true"
     assert result["product_id_override"] == "CAMP-FAN-12K"
+
+
+def test_final_evidence_ignores_out_of_scope_wordpress_copy():
+    content = {
+        "product_metrics": ["12000mAh"],
+        "wp_content": "This unverified safety claim prevents heat distress.",
+        "platform_posts": {
+            "facebook": {"final_caption": "Published 12000mAh capacity. Compare it with your actual needs."},
+            "instagram": {"final_caption": "Published 12000mAh capacity. Compare it with your actual needs."},
+            "linkedin": {"final_caption": "Published 12000mAh capacity. Compare it with your actual needs."},
+        },
+    }
+
+    readiness = run_engine._final_channel_evidence_readiness(
+        content,
+        {"wordpress": False, "facebook": True, "instagram": True, "linkedin": True},
+    )
+
+    claims = " ".join(item["claim"] for item in readiness["claims"])
+    assert "heat distress" not in claims
+    assert readiness["status"] != "HIGH_RISK_UNVERIFIED"

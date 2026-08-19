@@ -17,6 +17,7 @@ import inventory_db
 import requests
 from social.blocker_transformation_registry import registry as blocker_registry
 
+PACKAGED_DATA_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "data"))
 
 PACKAGE_TYPES = (
     "BUSINESS_CONSTITUTION",
@@ -43,6 +44,11 @@ def _load(path: str, fallback: Any) -> Any:
             return json.load(handle)
     except (OSError, ValueError):
         return fallback
+
+
+def _static_path(data_dir: str, *parts: str) -> str:
+    runtime_path = os.path.join(data_dir, *parts)
+    return runtime_path if os.path.exists(runtime_path) else os.path.join(PACKAGED_DATA_DIR, *parts)
 
 
 def _connect(data_dir: str) -> sqlite3.Connection:
@@ -159,7 +165,10 @@ def _owned_product_urls(data_dir: str) -> dict[str, str]:
     from generate_posts import _canonical_product_url_from_row
 
     urls: dict[str, str] = {}
-    for path in glob.glob(os.path.join(data_dir, "products", "*.csv")):
+    paths = glob.glob(os.path.join(data_dir, "products", "*.csv"))
+    if not paths:
+        paths = glob.glob(os.path.join(PACKAGED_DATA_DIR, "products", "*.csv"))
+    for path in paths:
         try:
             with open(path, encoding="utf-8", newline="") as handle:
                 for row in csv.DictReader(handle):
@@ -227,9 +236,9 @@ def _research_first_party_product_urls(products: list[dict[str, Any]]) -> dict[s
 
 def compile_packages(data_dir: str) -> dict[str, Any]:
     init_package_store(data_dir)
-    constitution_path = os.path.join(data_dir, "marketing", "human_truth", "constitution.json")
-    audience_path = os.path.join(data_dir, "social", "audience_world.json")
-    creative_path = os.path.join(data_dir, "social", "brand_design_tokens.json")
+    constitution_path = _static_path(data_dir, "marketing", "human_truth", "constitution.json")
+    audience_path = _static_path(data_dir, "social", "audience_world.json")
+    creative_path = _static_path(data_dir, "social", "brand_design_tokens.json")
     living_path = os.path.join(data_dir, "social", "living_intelligence.json")
     constitution = _load(constitution_path, {})
     audiences = (_load(audience_path, {}) or {}).get("segments", {})

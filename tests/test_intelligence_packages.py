@@ -120,3 +120,24 @@ def test_researched_product_pages_match_exact_identity_only():
     matched = intelligence_packages._match_researched_urls(products, pages)
 
     assert matched == {"PPP-200": "https://infenergypower.com/product/powerpulse/"}
+
+
+def test_compiler_reads_packaged_static_intelligence_when_runtime_volume_has_only_db(tmp_path, monkeypatch):
+    packaged = tmp_path / "packaged"
+    runtime = tmp_path / "runtime"
+    packaged.mkdir()
+    runtime.mkdir()
+    _seed_data(packaged)
+    inventory_db.init_inventory_db(str(runtime))
+    inventory_db.upsert_brand_profile(str(runtime), {"brand_name": "Infenergy Power", "mission": "Help people prepare", "positioning": "trusted guidance"})
+    inventory_db.upsert_products(str(runtime), [{
+        "id": "PPP-200", "name": "PowerPulse Pro 200", "product_url": "https://example.com/powerpulse",
+        "metrics": ["154Wh"], "image_url": "https://example.com/powerpulse.jpg",
+    }])
+    monkeypatch.setattr(intelligence_packages, "PACKAGED_DATA_DIR", str(packaged))
+
+    coverage = intelligence_packages.compile_packages(str(runtime))
+
+    assert "AUDIENCE_WORLD" in coverage["package_types"]
+    assert "CONTENT_READINESS" in coverage["package_types"]
+    assert coverage["ready_reserve_available"] >= 1

@@ -351,6 +351,9 @@ def refine_caption(
     source_parts = _paragraphs(caption)
     product = str(components.get("product_name") or "").strip()
     cta = str(components.get("cta") or "Learn more").strip()
+    source_has_steps = bool(re.search(r"(?m)^\s*\d+\.\s+\S+", caption))
+    if re.search(r"\b(?:checklist|plan|steps)\b", cta, flags=re.IGNORECASE) and not source_has_steps:
+        cta = "Review the verified product details." if product_led else "Save this guidance for your next planning session."
     benefit_opening = _benefit_opening(components, product_led=product_led)
     opening_keys = {_normalized_paragraph(part) for part in benefit_opening}
     tags: list[str] = []
@@ -415,6 +418,8 @@ def refine_caption(
     else:
         ordered = benefit_opening + ([spec_block] if spec_block else [])
     ordered.extend(f"👉 {re.sub(r'^(?:\s*👉\s*)+', '', part).strip()}" for part in cta_parts)
+    if cta and not cta_parts:
+        ordered.append(f"👉 {cta}")
     portfolio_tags, categories = _portfolio(components, platform, caption)
     selected_tags = list(dict.fromkeys(tags + [f"#{tag}" for tag in portfolio_tags]))[:_HASHTAG_LIMITS.get(platform, 5)]
     hashtag_line = " ".join(selected_tags)

@@ -1151,6 +1151,8 @@ def test_decision_support_concept_changes_with_human_reality_and_angle():
     assert first_hook != second_hook
     assert "outage priorities" in first_hook
     assert "travel charging" in second_hook
+    assert "for before" not in first_hook.lower()
+    assert "supports how does" not in first_hook.lower()
 
 
 def test_deterministic_copy_turns_question_angle_into_safe_guidance():

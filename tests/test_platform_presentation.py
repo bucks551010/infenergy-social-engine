@@ -184,7 +184,7 @@ def test_product_free_caption_is_idempotent_and_never_invents_a_product():
     assert "✨" not in twice
     assert "For you, that means" not in twice
     assert twice.startswith("Why is overnight charging not always the problem people assume?")
-    assert twice.count("👉 Save this checklist and compare your current setup.") == 1
+    assert twice.count("👉 Save this guidance for your next planning session.") == 1
     assert twice.count("⚡ Key specs") <= 1
     assert "this product" not in twice.lower()
     assert "supporting proof for that decision" not in twice.lower()
@@ -276,6 +276,29 @@ def test_long_useful_copy_passes_when_paragraphs_remain_readable():
     assert metrics["word_count"] > 200
     assert metrics["reading_burden"] == "APPROPRIATE"
     assert metrics["longest_paragraph_words"] < 80
+
+
+def test_product_caption_repairs_checklist_cta_when_no_checklist_exists():
+    components = _components()
+    components["cta"] = "Save this checklist and compare your current setup."
+    improved, _ = platform_presentation.refine_caption(
+        "Match the published capability with the equipment you carry.\n\n#PortablePower",
+        components=components,
+        platform="linkedin",
+    )
+
+    assert "Save this checklist" not in improved
+    assert "Review the verified product details." in improved
+    qa = platform_presentation.final_caption_qa(
+        platform_presentation.render_platform_caption(
+            improved,
+            destination_url="https://www.infenergypower.com/product/powerpulse-pro-200/",
+            platform="linkedin",
+        ),
+        platform="linkedin",
+        components={**components, "cta": "Review the verified product details."},
+    )
+    assert "promised_plan_missing_actionable_steps" not in qa["reasons"]
 
 
 def test_instagram_package_persists_reel_caption_hierarchy_without_rendering():

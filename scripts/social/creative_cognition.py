@@ -328,10 +328,14 @@ def _copy_concepts(*, strategy: dict[str, Any], grammar: dict[str, Any], recent:
         "A longer specification list does not automatically show whether a product "
         f"{benefit.rstrip('.?!')}."
     )
-    decision_opening = (
-        f"Before choosing for {customer_moment.lower()}, compare what must stay available "
-        f"and whether the option supports {question_angle.lower()}."
-    )
+    if customer_moment.lower().startswith(("before ", "after ", "during ", "when ", "while ")):
+        decision_context = customer_moment[:1].upper() + customer_moment[1:]
+    else:
+        decision_context = f"When {customer_moment.lower()}"
+    if question_angle.lower().startswith(("why ", "how ", "what ", "when ", "where ", "which ", "can ", "does ", "is ")):
+        decision_opening = f"{decision_context}, start with this question: {question_angle}?"
+    else:
+        decision_opening = f"{decision_context}, compare what must stay available with {question_angle.lower()}."
     options = [
         {"approach": "human_recognition", "opening": human_opening, "structure": "situation -> friction -> possibility", "fit": 0.78},
         {"approach": "educational_insight", "opening": educational_opening, "structure": "observation -> insight -> business connection", "fit": 0.8},

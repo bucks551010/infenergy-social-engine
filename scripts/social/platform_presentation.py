@@ -491,6 +491,37 @@ def _word_position(text: str, phrase: str) -> int | None:
     return None
 
 
+def mobile_first_screen(caption: str, *, width_chars: int = 38, visible_lines: int = 8) -> dict[str, Any]:
+    """Approximate the first phone viewport using deterministic text wrapping."""
+    paragraphs = _paragraphs(caption)
+    lines: list[str] = []
+    for paragraph_index, paragraph in enumerate(paragraphs):
+        words = paragraph.split()
+        current = ""
+        for word in words:
+            candidate = f"{current} {word}".strip()
+            if current and len(candidate) > width_chars:
+                lines.append(current)
+                current = word
+            else:
+                current = candidate
+        if current:
+            lines.append(current)
+        if paragraph_index < len(paragraphs) - 1:
+            lines.append("")
+    visible = lines[:visible_lines]
+    nonblank = [line for line in visible if line]
+    return {
+        "visible_lines": visible,
+        "visible_text": "\n".join(visible),
+        "entry_point": paragraphs[0] if paragraphs else "",
+        "entry_point_visible": bool(paragraphs and paragraphs[0].split() and paragraphs[0].split()[0] in " ".join(nonblank)),
+        "breathing_room": "" in visible,
+        "dense_first_screen": len(nonblank) >= visible_lines,
+        "central_idea_chars": len(paragraphs[0]) if paragraphs else 0,
+    }
+
+
 def _internal_instruction_leaks(text: str, planning_instructions: list[str] | None = None) -> list[str]:
     lowered = text.lower()
     leaks = [pattern for pattern in _INTERNAL_PUBLIC_COPY_PATTERNS if re.search(pattern, lowered)]
@@ -549,6 +580,7 @@ def evaluate(
     paragraph_word_counts = [len(re.findall(r"\b[\w'-]+\b", paragraph)) for paragraph in _paragraphs(text)]
     longest_paragraph = max(paragraph_word_counts, default=0)
     density = "TOO_DENSE" if longest_paragraph > 80 else "APPROPRIATE"
+    first_screen = mobile_first_screen(text)
     return {
         "final_caption": text,
         "word_count": len(words),
@@ -572,6 +604,7 @@ def evaluate(
         "internal_instruction_leaks": leaks,
         "specs_present": duplicate_specs,
         "optional_depth_present": len(_paragraphs(text)) >= 5,
+        "mobile_first_screen": first_screen,
     }
 
 
@@ -615,6 +648,10 @@ def final_caption_qa(
         reasons.append("paragraph_structure_missing")
     if metrics["reading_burden"] == "TOO_DENSE":
         reasons.append("wall_of_text_paragraph")
+    if not metrics["mobile_first_screen"]["entry_point_visible"]:
+        reasons.append("mobile_entry_point_missing")
+    if metrics["mobile_first_screen"]["dense_first_screen"]:
+        reasons.append("mobile_first_screen_too_dense")
     return {
         "status": "PRESENTATION_READY" if not reasons else "REVISE_PRESENTATION",
         "reasons": reasons,

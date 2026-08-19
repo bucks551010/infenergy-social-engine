@@ -17,6 +17,7 @@ from content_operations import (  # noqa: E402
     get_db_path,
     mark_ready,
     platform_transaction,
+    reconcile_confirmed_transactions,
 )
 
 
@@ -102,6 +103,9 @@ def test_external_success_remains_after_aggregate_persistence_error(tmp_path):
         except sqlite3.OperationalError:
             pass
     assert platform_transaction(data_dir, outbox_id, "facebook")["state"] == "CONFIRMED_SUCCESS"
+    assert reconcile_confirmed_transactions(data_dir) == [
+        {"outbox_id": outbox_id, "reason": "confirmed_transactions_reconciled"}
+    ]
 
 
 def test_dispatcher_recovers_packshot_only_package_before_publisher_call(tmp_path):

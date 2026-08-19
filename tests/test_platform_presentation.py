@@ -319,6 +319,28 @@ def test_general_planning_language_does_not_promise_a_numbered_plan():
     assert "promised_plan_missing_actionable_steps" not in qa["reasons"]
 
 
+def test_instagram_mobile_first_screen_has_entry_point_and_breathing_room():
+    improved, _ = platform_presentation.refine_caption(
+        POWERPULSE_ORIGINAL,
+        components=_components(),
+        platform="instagram",
+    )
+    preview = platform_presentation.mobile_first_screen(improved)
+
+    assert preview["entry_point_visible"] is True
+    assert preview["breathing_room"] is True
+    assert preview["dense_first_screen"] is False
+    assert "PowerPulse Pro 200" in preview["visible_text"]
+
+
+def test_mobile_first_screen_detects_dense_wall():
+    dense = " ".join(["unbroken"] * 120)
+    preview = platform_presentation.mobile_first_screen(dense)
+
+    assert preview["breathing_room"] is False
+    assert preview["dense_first_screen"] is True
+
+
 def test_instagram_package_persists_reel_caption_hierarchy_without_rendering():
     posts = generate_posts._build_platform_posts(
         "powerpulse-fixture",

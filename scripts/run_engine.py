@@ -12,6 +12,7 @@ import requests
 sys.path.insert(0, os.path.dirname(__file__))
 
 import generate_posts
+import intelligence_packages
 import publish_wordpress
 import publish_facebook
 import publish_instagram
@@ -1307,6 +1308,8 @@ def main() -> None:
             scheduled_slots,
             {"source": "owner_schedule", "routing": "campaign_runtime"},
         )
+    reserve_seeds = intelligence_packages.ready_reserve(generate_posts.DATA_DIR, limit=20) if content_operations_enabled else []
+    reserve_seed = reserve_seeds[sum(ord(char) for char in f"{content_date}:{slot}") % len(reserve_seeds)] if reserve_seeds else {}
     effective_channels = dict(channels)
     # WordPress is legacy-only and cannot participate in social readiness or publication.
     effective_channels["wordpress"] = False
@@ -1354,6 +1357,14 @@ def main() -> None:
         )
     council_blackboard = {
         "slot": slot,
+        "round_0_feasibility": {
+            "truth_feasible": bool(preview_content.get("evidence_readiness") or preview_content.get("product_metrics") or not preview_content.get("product_id")),
+            "product_feasible": bool(preview_content.get("product_id") and preview_content.get("product_metrics")) or not preview_content.get("product_id"),
+            "visual_feasible": bool(preview_content.get("visual_plan") or preview_content.get("category_image_candidates")),
+            "platform_feasible": True,
+            "claim_burden": "PRODUCT_VERIFIED_FACTS" if preview_content.get("product_id") else "LOW",
+            "ready_reserve_seed": reserve_seed.get("seed_id"),
+        },
         "business_truth": preview_content.get("business_truth_packet") or preview_content.get("marketing_strategy") or {},
         "human_reality": preview_content.get("human_reality") or preview_content.get("strategic_brief", {}).get("human_reality") or "",
         "audience": preview_content.get("audience_segment") or preview_content.get("audience") or "",
@@ -1372,6 +1383,7 @@ def main() -> None:
         "content_job": preview_content.get("content_job") or preview_content.get("funnel_stage") or "",
         "campaign": preview_content.get("campaign_id") or "",
         "freshness": preview_content.get("rotation_selected") or {},
+        "ready_reserve": reserve_seed,
     }
     decision_id = ""
     if content_operations_enabled:
@@ -1904,7 +1916,8 @@ def main() -> None:
                 product_id_override="",
                 pipeline_override="legacy",
                 revision_feedback=[
-                    "Use a product-free human reality and editorial visual route because exact product creative is unavailable."
+                    "Use a product-free human reality and editorial visual route because exact product creative is unavailable.",
+                    f"Ready reserve human reality: {reserve_seed.get('who') or reserve_seed.get('why_this_matters') or 'practical preparedness guidance'}",
                 ],
             )
         finally:

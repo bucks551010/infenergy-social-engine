@@ -6,7 +6,7 @@ import json
 import os
 import sqlite3
 import uuid
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
 from inventory_db import get_db_path, init_inventory_db
@@ -507,6 +507,79 @@ def reconcile_ready_inventory(data_dir: str) -> list[dict[str, str]]:
     return recovered
 
 
+def reconcile_stale_claims(
+    data_dir: str,
+    *,
+    now_utc: datetime | None = None,
+    stale_minutes: int = 15,
+) -> list[dict[str, str]]:
+    now = now_utc or datetime.now(timezone.utc)
+    cutoff = now - timedelta(minutes=max(1, stale_minutes))
+    connection = _connect(data_dir)
+    try:
+        rows = connection.execute(
+            "SELECT outbox_id, claimed_at FROM content_outbox WHERE status='CLAIMED'"
+        ).fetchall()
+    finally:
+        connection.close()
+    recovered: list[dict[str, str]] = []
+    for row in rows:
+        try:
+            claimed_at = datetime.fromisoformat(str(row["claimed_at"] or "").replace("Z", "+00:00"))
+        except ValueError:
+            claimed_at = datetime.min.replace(tzinfo=timezone.utc)
+        if claimed_at > cutoff:
+            continue
+        connection = _connect(data_dir)
+        try:
+            protected = connection.execute(
+                """
+                SELECT 1 FROM platform_transactions
+                WHERE outbox_id=? AND state IN ('CONFIRMED_SUCCESS', 'AMBIGUOUS', 'AUTH_ACTION_REQUIRED') LIMIT 1
+                """,
+                (row["outbox_id"],),
+            ).fetchone()
+        finally:
+            connection.close()
+        if protected:
+            continue
+        release_outbox(data_dir, str(row["outbox_id"]), "stale_claim_recovered_after_restart")
+        recovered.append({"outbox_id": str(row["outbox_id"]), "reason": "stale_claim_recovered_after_restart"})
+    return recovered
+
+
+def reconcile_confirmed_transactions(data_dir: str) -> list[dict[str, str]]:
+    connection = _connect(data_dir)
+    try:
+        rows = connection.execute(
+            "SELECT outbox_id, package_json, status FROM content_outbox WHERE status IN ('CLAIMED', 'PUBLISHING', 'READY')"
+        ).fetchall()
+    finally:
+        connection.close()
+    reconciled: list[dict[str, str]] = []
+    for row in rows:
+        package = _decode(row["package_json"], {})
+        routing = package.get("routing") if isinstance(package.get("routing"), dict) else {}
+        platforms = routing.get("platforms") if isinstance(routing.get("platforms"), list) else []
+        if not platforms:
+            continue
+        connection = _connect(data_dir)
+        try:
+            states = {
+                transaction["platform"]: transaction["state"]
+                for transaction in connection.execute(
+                    "SELECT platform, state FROM platform_transactions WHERE outbox_id=?",
+                    (row["outbox_id"],),
+                ).fetchall()
+            }
+        finally:
+            connection.close()
+        if all(states.get(platform) == "CONFIRMED_SUCCESS" for platform in platforms):
+            finalize_outbox(data_dir, str(row["outbox_id"]), status="PUBLISHED")
+            reconciled.append({"outbox_id": str(row["outbox_id"]), "reason": "confirmed_transactions_reconciled"})
+    return reconciled
+
+
 def finalize_outbox(
     data_dir: str,
     outbox_id: str,
@@ -661,3 +734,110 @@ def daily_index(data_dir: str, content_date: str | date | None = None) -> dict[s
         decision_id = str(slot.get("decision_id") or "")
         details.append(content_detail(data_dir, decision_id) if decision_id else {"slot": slot["slot"]})
     return {**summary, "details": details}
+
+
+def daily_markdown(data_dir: str, content_date: str | date | None = None) -> str:
+    index = daily_index(data_dir, content_date)
+    lines = [
+        f"INFENERGY CONTENT - {index['date']}",
+        "=" * 64,
+        f"REQUIRED: {index['required']}",
+        f"PUBLISHED: {index['published']}",
+        f"READY: {index['ready']}",
+        f"MISSING: {index['missing']}",
+        "",
+    ]
+    details_by_id = {detail.get("decision_id"): detail for detail in index["details"] if detail.get("decision_id")}
+    for number, slot in enumerate(index["slots"], start=1):
+        detail = details_by_id.get(slot.get("decision_id"), {})
+        blackboard = detail.get("blackboard") if isinstance(detail.get("blackboard"), dict) else {}
+        outbox = (detail.get("outbox") or [{}])[0]
+        package = outbox.get("package") if isinstance(outbox.get("package"), dict) else {}
+        routing = package.get("routing") if isinstance(package.get("routing"), dict) else {}
+        transactions = outbox.get("transactions") or []
+        lines.extend([
+            f"SLOT {number} - {slot['slot'].upper()}",
+            f"Time: {slot['scheduled_at']}",
+            f"Platform: {', '.join(routing.get('platforms') or []) or 'not assigned'}",
+            f"Product/Topic: {package.get('product_name') or package.get('topic') or blackboard.get('selected_opportunity') or 'not selected'}",
+            f"Human Reality: {blackboard.get('human_reality') or 'not recorded'}",
+            f"Brain: {json.dumps(blackboard.get('brain') or {}, ensure_ascii=True)}",
+            f"Heart: {json.dumps(blackboard.get('heart') or {}, ensure_ascii=True)}",
+            f"Content Job: {blackboard.get('content_job') or 'not recorded'}",
+            f"Status: {slot['status']}",
+            f"External ID: {', '.join(str(item.get('external_id')) for item in transactions if item.get('external_id')) or 'none'}",
+            "",
+        ])
+        candidates = detail.get("candidates") or []
+        if candidates:
+            lines.append("OTHER CONTENT GENERATED")
+            for candidate in candidates:
+                lines.append(
+                    f"- Candidate {candidate.get('ordinal')}: {candidate.get('status')}"
+                    f"; why not selected: {', '.join(candidate.get('loss_reasons') or []) or 'selected/retained'}"
+                )
+            lines.append("")
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def operations_readiness(
+    data_dir: str,
+    *,
+    now_utc: datetime | None = None,
+    lead_hours: int = 2,
+    publisher_ready: dict[str, bool] | None = None,
+    dispatcher_active: bool = True,
+) -> dict[str, Any]:
+    now = now_utc or datetime.now(timezone.utc)
+    today = daily_status(data_dir, now.date())
+    tomorrow = daily_status(data_dir, now.date() + timedelta(days=1))
+    publishers = publisher_ready or {}
+    actions: list[dict[str, str]] = []
+    slots: list[dict[str, Any]] = []
+    next_slot: dict[str, Any] | None = None
+    for row in today["slots"]:
+        try:
+            scheduled = datetime.fromisoformat(str(row["scheduled_at"]).replace("Z", "+00:00"))
+        except ValueError:
+            scheduled = now
+        deadline = scheduled - timedelta(hours=max(0, lead_hours))
+        accounted = row["status"] in {"READY", "DUE", "CLAIMED", "PUBLISHING", "PUBLISHED"}
+        late = now >= deadline and not accounted
+        slot_state = {
+            "slot": row["slot"],
+            "scheduled_at": row["scheduled_at"],
+            "readiness_deadline": deadline.isoformat(),
+            "status": row["status"],
+            "accounted_for": accounted,
+            "late_for_readiness": late,
+            "content_id": row.get("content_id"),
+            "outbox_id": row.get("outbox_id"),
+            "last_error": row.get("last_error"),
+        }
+        slots.append(slot_state)
+        if scheduled >= now and next_slot is None:
+            next_slot = slot_state
+        if late:
+            actions.append({"owner": "OPERATIONS_READINESS_SPECIALIST", "slot": row["slot"], "action": "RECOVER_OR_PULL_READY_RESERVE", "reason": row.get("last_error") or "readiness_deadline_missed"})
+    if tomorrow["ready"] < 3:
+        actions.append({"owner": "CONTENT_FACTORY", "slot": "tomorrow", "action": "REPLENISH", "reason": f"tomorrow_ready={tomorrow['ready']}"})
+    if not dispatcher_active:
+        actions.append({"owner": "OPERATIONS_READINESS_SPECIALIST", "slot": "all", "action": "RESTORE_DISPATCHER", "reason": "dispatcher_inactive"})
+    for platform, ready in publishers.items():
+        if not ready:
+            actions.append({"owner": "OPERATIONS_READINESS_SPECIALIST", "slot": "all", "action": "RESTORE_PUBLISHER", "reason": f"{platform}_not_ready"})
+    creative_blocked = any(row["status"] == "EXTERNAL_ACTION_REQUIRED" for row in today["slots"] + tomorrow["slots"])
+    content_supply_ready = today["missing"] == 0 and tomorrow["ready"] == 3
+    return {
+        "service_health": "HEALTHY",
+        "content_supply_health": "READY" if content_supply_ready else "ACTION_REQUIRED",
+        "creative_health": "EXTERNAL_ACTION_REQUIRED" if creative_blocked else "READY",
+        "publisher_health": "READY" if publishers and all(publishers.values()) else "ACTION_REQUIRED",
+        "dispatcher_health": "ACTIVE" if dispatcher_active else "INACTIVE",
+        "today": today,
+        "tomorrow": tomorrow,
+        "slots": slots,
+        "next_slot": next_slot,
+        "actions": actions,
+        "lead_hours": lead_hours,
+    }

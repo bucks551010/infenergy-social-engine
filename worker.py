@@ -19,7 +19,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "scripts"))
 import run_engine
 import generate_posts
 import inventory_db
-from content_operations import content_detail, daily_index, daily_status, init_content_operations, reconcile_ready_inventory
+import intelligence_packages
+from content_operations import content_detail, daily_index, daily_markdown, daily_status, init_content_operations, operations_readiness, reconcile_confirmed_transactions, reconcile_ready_inventory, reconcile_stale_claims
 from campaign_runtime import eligible_channels_for_slot, load_channel_schedule, load_funnel_config, stage_for_slot
 
 RUN_LOCK = threading.Lock()
@@ -572,6 +573,11 @@ def _production_readiness_snapshot() -> dict:
     today = datetime.now(timezone.utc).date()
     tomorrow = today + timedelta(days=1)
     channel_flags = run_engine.get_channel_config()
+    publisher_configuration = {
+        "facebook": bool(os.environ.get("META_PAGE_ID", "").strip() and os.environ.get("META_PAGE_ACCESS_TOKEN", "").strip()),
+        "instagram": bool(os.environ.get("META_IG_USER_ID", "").strip() and os.environ.get("META_PAGE_ACCESS_TOKEN", "").strip()),
+        "linkedin": bool(os.environ.get("LINKEDIN_ACCESS_TOKEN", "").strip()),
+    }
     overrides = {
         name: str(os.environ.get(name, "")).strip()
         for name in (
@@ -593,11 +599,7 @@ def _production_readiness_snapshot() -> dict:
             "scheduler_jobs_registered": len(schedule.jobs),
         },
         "channels": channel_flags,
-        "platform_configuration_present": {
-            "facebook": bool(os.environ.get("META_PAGE_ID", "").strip() and os.environ.get("META_PAGE_ACCESS_TOKEN", "").strip()),
-            "instagram": bool(os.environ.get("META_IG_USER_ID", "").strip() and os.environ.get("META_PAGE_ACCESS_TOKEN", "").strip()),
-            "linkedin": bool(os.environ.get("LINKEDIN_ACCESS_TOKEN", "").strip()),
-        },
+        "platform_configuration_present": publisher_configuration,
         "linkedin_target_configuration": {
             "explicit_target_present": bool(os.environ.get("LINKEDIN_ORGANIZATION_URN", "").strip() or os.environ.get("LINKEDIN_AUTHOR_URN", "").strip()),
             "automatic_resolution_available": bool(os.environ.get("LINKEDIN_ACCESS_TOKEN", "").strip()),
@@ -618,6 +620,16 @@ def _production_readiness_snapshot() -> dict:
             "today": daily_status(data_dir, today),
             "tomorrow": daily_status(data_dir, tomorrow),
         },
+        "intelligence_packages": intelligence_packages.package_coverage(data_dir),
+        "operations_readiness": operations_readiness(
+            data_dir,
+            lead_hours=int(os.environ.get("CONTENT_READINESS_LEAD_HOURS", "2")),
+            publisher_ready={platform: channel_flags.get(platform, False) and publisher_configuration[platform] for platform in publisher_configuration},
+            dispatcher_active=any(
+                getattr(job.job_func, "func", None) is _start_dispatch_thread
+                for job in schedule.jobs
+            ),
+        ),
         "overrides": overrides,
     }
 
@@ -782,13 +794,22 @@ class HealthHandler(BaseHTTPRequestHandler):
             self.wfile.write(body)
             return
 
-        if parsed.path in ("/content-operations/status", "/content-operations/detail"):
+        if parsed.path in ("/content-operations/status", "/content-operations/detail", "/content-operations/daily"):
             params = parse_qs(parsed.query)
             authorized, status_code, error_payload = _authorized(params)
             if not authorized:
                 body = json.dumps(error_payload).encode("utf-8")
                 self.send_response(status_code)
                 self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+                return
+            if parsed.path.endswith("/daily"):
+                requested_date = str(params.get("date", [""])[0]).strip() or None
+                body = daily_markdown(_data_dir(), requested_date).encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-Type", "text/plain; charset=utf-8")
                 self.send_header("Content-Length", str(len(body)))
                 self.end_headers()
                 self.wfile.write(body)
@@ -1756,6 +1777,14 @@ def run_candidate_batch() -> None:
     print(f"[CANDIDATE_POOL] {status}: {output[-1000:]}")
 
 
+def run_intelligence_enrichment() -> None:
+    try:
+        coverage = intelligence_packages.compile_packages(_data_dir())
+        print(f"[ENRICHMENT] packages={len(coverage['packages'])} reserve={coverage['ready_reserve_available']} counts={coverage['counts']}")
+    except Exception as exc:
+        print(f"[ENRICHMENT] failed: {type(exc).__name__}: {exc}")
+
+
 def _scheduled_at(content_date, value: str) -> str:
     normalized = value if len(value.split(":")) == 3 else f"{value}:00"
     return f"{content_date.isoformat()}T{normalized}+00:00"
@@ -1772,6 +1801,12 @@ def run_content_factory() -> None:
         reconciled = reconcile_ready_inventory(data_dir)
         if reconciled:
             print(f"[FACTORY] Reopened {len(reconciled)} stale ready packages: {reconciled}")
+        stale_claims = reconcile_stale_claims(data_dir)
+        if stale_claims:
+            print(f"[FACTORY] Recovered {len(stale_claims)} stale claims: {stale_claims}")
+        confirmed = reconcile_confirmed_transactions(data_dir)
+        if confirmed:
+            print(f"[FACTORY] Reconciled {len(confirmed)} confirmed transactions: {confirmed}")
         today = datetime.now(timezone.utc).date()
         horizon = [today, today + timedelta(days=1)]
         slot_times = {"morning": morning_utc, "midday": midday_utc, "evening": evening_utc}
@@ -1851,6 +1886,7 @@ def register_scheduled_jobs() -> None:
     schedule.every().day.at(evening_utc).do(_start_dispatch_thread, "evening")
     schedule.every(5).minutes.do(_start_dispatch_thread, "due_sweep")
     schedule.every(30).minutes.do(_start_factory_thread)
+    schedule.every(6).hours.do(run_intelligence_enrichment)
     schedule.every().day.at(intelligence_light_utc).do(run_intelligence_heartbeat, "LIGHT_HEARTBEAT")
     schedule.every().day.at("10:00").do(run_candidate_batch)
     schedule.every().monday.at(intelligence_standard_utc).do(run_intelligence_heartbeat, "STANDARD_HEARTBEAT")
@@ -1872,6 +1908,8 @@ def main() -> None:
         print(f"Visual repo bootstrap ok: {bootstrap.get('summary', {})}")
     else:
         print(f"Visual repo bootstrap failed: {bootstrap.get('error')}")
+
+    run_intelligence_enrichment()
 
     print("=== INF Energy Social Engine — Railway Worker ===")
     print(f"Scheduled (UTC): morning={morning_utc}  midday={midday_utc}  evening={evening_utc}")

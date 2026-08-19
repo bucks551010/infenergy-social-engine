@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 import sys
-from datetime import date
+from datetime import date, datetime, timezone
 
 _REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(_REPO, "scripts"))
@@ -15,11 +15,14 @@ from content_operations import (  # noqa: E402
     content_detail,
     create_council_session,
     daily_status,
+    daily_markdown,
     ensure_daily_slots,
     init_content_operations,
     mark_ready,
     mark_slot_external_action,
+    operations_readiness,
     reconcile_ready_inventory,
+    reconcile_stale_claims,
 )
 
 
@@ -190,3 +193,85 @@ def test_provider_outage_is_external_action_not_content_failure(tmp_path):
     assert evening["status"] == "EXTERNAL_ACTION_REQUIRED"
     assert evening["last_error"] == "gemini_monthly_spend_cap"
     assert detail["status"] == "EXTERNAL_ACTION_REQUIRED"
+
+
+def test_operations_readiness_detects_missing_package_before_clock(tmp_path):
+    day = "2026-08-20"
+    data_dir = str(tmp_path)
+    ensure_daily_slots(data_dir, day, _schedule(day), {"mode": "owner_schedule"})
+
+    readiness = operations_readiness(
+        data_dir,
+        now_utc=datetime(2026, 8, 20, 12, 30, tzinfo=timezone.utc),
+        lead_hours=2,
+        publisher_ready={"facebook": True, "instagram": True, "linkedin": True},
+        dispatcher_active=True,
+    )
+
+    morning = next(slot for slot in readiness["slots"] if slot["slot"] == "morning")
+    assert morning["late_for_readiness"] is True
+    assert readiness["service_health"] == "HEALTHY"
+    assert readiness["content_supply_health"] == "ACTION_REQUIRED"
+    assert any(action["action"] == "RECOVER_OR_PULL_READY_RESERVE" for action in readiness["actions"])
+
+
+def test_restart_recovers_stale_claim_without_external_transaction(tmp_path):
+    day = "2026-08-20"
+    data_dir = str(tmp_path)
+    ensure_daily_slots(data_dir, day, _schedule(day), {"mode": "owner_schedule"})
+    decision_id = create_council_session(data_dir, content_date=day, slot="morning", blackboard={"content_job": "TEACH"})
+    outbox_id = mark_ready(
+        data_dir,
+        content_date=day,
+        slot="morning",
+        scheduled_at=_schedule(day)["morning"],
+        decision_id=decision_id,
+        package={"content_id": "content-1", "routing": {"platforms": ["facebook"]}},
+    )
+    claim_due(data_dir, "2026-08-20T13:00:01+00:00")
+
+    recovered = reconcile_stale_claims(
+        data_dir,
+        now_utc=datetime(2026, 8, 20, 13, 30, tzinfo=timezone.utc),
+        stale_minutes=15,
+    )
+    status = daily_status(data_dir, day)
+
+    assert recovered == [{"outbox_id": outbox_id, "reason": "stale_claim_recovered_after_restart"}]
+    assert status["slots"][0]["status"] == "READY"
+
+
+def test_human_readable_daily_ledger_is_derived_from_canonical_records(tmp_path):
+    day = "2026-08-20"
+    data_dir = str(tmp_path)
+    ensure_daily_slots(data_dir, day, _schedule(day), {"mode": "owner_schedule"})
+    decision_id = create_council_session(
+        data_dir,
+        content_date=day,
+        slot="morning",
+        blackboard={"human_reality": "A household plans before pressure.", "brain": {"movement": "PRIORITIZE"}, "heart": {"after": "CLARITY"}, "content_job": "HELP_PLAN"},
+    )
+    archive_candidate(
+        data_dir,
+        decision_id=decision_id,
+        ordinal=1,
+        content={"post_id": "draft-1"},
+        status="NOT_SELECTED",
+        score=70,
+        loss_reasons=["weaker premise"],
+    )
+    mark_ready(
+        data_dir,
+        content_date=day,
+        slot="morning",
+        scheduled_at=_schedule(day)["morning"],
+        decision_id=decision_id,
+        package={"content_id": "final-1", "topic": "Outage priorities", "routing": {"platforms": ["facebook"]}},
+    )
+
+    ledger = daily_markdown(data_dir, day)
+
+    assert "INFENERGY CONTENT - 2026-08-20" in ledger
+    assert "SLOT 1 - MORNING" in ledger
+    assert "Human Reality: A household plans before pressure." in ledger
+    assert "Candidate 1: NOT_SELECTED; why not selected: weaker premise" in ledger

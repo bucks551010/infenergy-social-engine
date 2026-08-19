@@ -16,7 +16,7 @@ def test_publication_clocks_dispatch_and_never_generate():
     factory_jobs = [job for job in jobs if job.job_func.func is worker._start_factory_thread]
     legacy_clock_jobs = [job for job in jobs if job.job_func.func is worker.run_slot]
 
-    assert len(dispatch_jobs) == 3
+    assert len(dispatch_jobs) == 4
     assert len(factory_jobs) == 1
     assert legacy_clock_jobs == []
-    assert {job.job_func.args[0] for job in dispatch_jobs} == {"morning", "midday", "evening"}
+    assert {job.job_func.args[0] for job in dispatch_jobs} == {"morning", "midday", "evening", "due_sweep"}

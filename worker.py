@@ -1846,6 +1846,7 @@ def register_scheduled_jobs() -> None:
     schedule.every().day.at(morning_utc).do(_start_dispatch_thread, "morning")
     schedule.every().day.at(midday_utc).do(_start_dispatch_thread, "midday")
     schedule.every().day.at(evening_utc).do(_start_dispatch_thread, "evening")
+    schedule.every(5).minutes.do(_start_dispatch_thread, "due_sweep")
     schedule.every(30).minutes.do(_start_factory_thread)
     schedule.every().day.at(intelligence_light_utc).do(run_intelligence_heartbeat, "LIGHT_HEARTBEAT")
     schedule.every().day.at("10:00").do(run_candidate_batch)

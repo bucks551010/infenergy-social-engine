@@ -43,6 +43,20 @@ from content_operations import (
 )
 
 
+def _generate_followup_candidate(slot: str, **kwargs) -> dict:
+    """Generate independent council copy without repeating the lead candidate's strategy call."""
+    previous = os.environ.get("ENABLE_PHASE2_CREATIVE_STACK")
+    if os.environ.get("COUNCIL_ENRICH_FIRST_CANDIDATE_ONLY", "true").strip().lower() in {"1", "true", "yes", "on"}:
+        os.environ["ENABLE_PHASE2_CREATIVE_STACK"] = "false"
+    try:
+        return generate_posts.generate(slot, **kwargs)
+    finally:
+        if previous is None:
+            os.environ.pop("ENABLE_PHASE2_CREATIVE_STACK", None)
+        else:
+            os.environ["ENABLE_PHASE2_CREATIVE_STACK"] = previous
+
+
 def _stable_hash(text: str) -> str:
     import hashlib
 
@@ -1482,7 +1496,7 @@ def main() -> None:
     t_generation = time.perf_counter()
     for idx in range(candidate_count):
         if idx > 0:
-            content = generate_posts.generate(
+            content = _generate_followup_candidate(
                 slot,
                 funnel_stage_override=funnel_stage_override,
                 product_id_override=locked_product_id,

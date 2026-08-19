@@ -9,6 +9,7 @@ _REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, _REPO)
 
 import worker  # noqa: E402
+from scripts import run_engine  # noqa: E402
 from social import living_intelligence  # noqa: E402
 
 
@@ -87,3 +88,20 @@ def test_run_slot_decodes_timeout_output_and_records_failure(monkeypatch):
     assert worker.LAST_RUN["status"] == "generation_failed"
     assert worker.LAST_RUN["error"] == "run_timeout_after_900s"
     assert worker.LAST_RUN["finished_at_utc"]
+
+def test_followup_council_candidates_skip_repeated_phase2_enrichment(monkeypatch):
+    observed = []
+
+    def fake_generate(slot, **kwargs):
+        observed.append(os.environ.get("ENABLE_PHASE2_CREATIVE_STACK"))
+        return {"slot": slot, **kwargs}
+
+    monkeypatch.setenv("ENABLE_PHASE2_CREATIVE_STACK", "true")
+    monkeypatch.setenv("COUNCIL_ENRICH_FIRST_CANDIDATE_ONLY", "true")
+    monkeypatch.setattr(run_engine.generate_posts, "generate", fake_generate)
+
+    result = run_engine._generate_followup_candidate("midday", product_id_override="CAMP-FAN-12K")
+
+    assert observed == ["false"]
+    assert os.environ["ENABLE_PHASE2_CREATIVE_STACK"] == "true"
+    assert result["product_id_override"] == "CAMP-FAN-12K"

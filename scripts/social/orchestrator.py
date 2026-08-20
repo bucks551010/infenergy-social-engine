@@ -20,7 +20,9 @@ and image generators are plugged in via the ``VisualProvider`` and
 
 from __future__ import annotations
 
+import json
 import os
+import secrets
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -190,8 +192,36 @@ def _bi_brand_voice(ctx: dict[str, Any] | None) -> dict[str, Any] | None:
     return ctx.get("voice") or None
 
 
+def _recent_product_ids(data_dir: str | None, *, limit: int = 12) -> set[str]:
+    if not data_dir:
+        return set()
+    try:
+        with open(memory_intelligence.post_history_path(data_dir), "r", encoding="utf-8") as handle:
+            posts = json.load(handle).get("posts", [])
+    except (OSError, json.JSONDecodeError, AttributeError):
+        return set()
+    recent: list[str] = []
+    for post in reversed(posts):
+        if not isinstance(post, dict) or str(post.get("status", "")).lower().startswith("skipped"):
+            continue
+        product_id = str(post.get("product_id") or "").strip().lower()
+        if product_id and product_id not in recent:
+            recent.append(product_id)
+        if len(recent) >= limit:
+            break
+    return set(recent)
+
+
+def _choose_unused_offering(offerings: list[dict[str, Any]], recent_ids: set[str]) -> dict[str, Any] | None:
+    unused = [
+        offering for offering in offerings
+        if str(offering.get("offering_id") or offering.get("sku") or "").strip().lower() not in recent_ids
+    ]
+    return secrets.choice(unused or offerings) if offerings else None
+
+
 def _bi_pick_offering(rotation_index: int, data_dir: str | None = None) -> dict[str, Any] | None:
-    """Rotate through catalog offerings when BI is active."""
+    """Choose randomly from eligible offerings not used in recent published posts."""
     if not _bi_enabled():
         return None
     try:
@@ -207,7 +237,8 @@ def _bi_pick_offering(rotation_index: int, data_dir: str | None = None) -> dict[
             offerings, _ = filter_evidence_eligible_products(offerings, data_dir)
         if not offerings:
             return None
-        return offerings[rotation_index % len(offerings)]
+        recent_ids = _recent_product_ids(data_dir)
+        return _choose_unused_offering(offerings, recent_ids)
     except Exception:
         return None
 

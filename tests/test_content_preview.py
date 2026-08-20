@@ -9,6 +9,7 @@ sys.path.insert(0, _REPO)
 sys.path.insert(0, os.path.join(_REPO, "scripts"))
 
 import worker
+from social import orchestrator
 from social.platform_presentation import final_caption_qa, refine_caption
 
 
@@ -48,6 +49,23 @@ def test_content_preview_can_force_non_product_bucket(monkeypatch) -> None:
     assert "POST_TEXT_ONLY" not in os.environ
     assert "CONTENT_BUCKET_OVERRIDE" not in os.environ
     assert preview["preview_only"] is True
+
+
+def test_preview_params_parse_no_product() -> None:
+    parsed = worker._parse_preview_params({"no_product": ["true"], "slot": ["evening"]})
+
+    assert parsed["no_product"] is True
+    assert parsed["slot"] == "evening"
+
+
+def test_product_picker_excludes_recent_published_products(monkeypatch, tmp_path) -> None:
+    (tmp_path / "post_history.json").write_text(
+        '{"posts":[{"product_id":"used","status":"published"}]}', encoding="utf-8"
+    )
+    offerings = [{"offering_id": "used"}, {"offering_id": "fresh"}]
+    recent_ids = orchestrator._recent_product_ids(str(tmp_path))
+
+    assert orchestrator._choose_unused_offering(offerings, recent_ids)["offering_id"] == "fresh"
 
 
 def test_plan_caption_requires_actionable_steps() -> None:

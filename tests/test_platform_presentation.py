@@ -435,6 +435,23 @@ def test_product_sales_education_does_not_repeat_numeric_specs():
     assert "How to read those specs: Compare the published capacity and output" in caption
 
 
+def test_product_sales_repairs_fragmentary_framework_copy():
+    components = _components()
+    components["editorial_framework"] = {
+        "human_moment": "before a trip",
+        "desired_belief": "how does this fit the real job.",
+        "mechanism": "154Wh",
+        "functional_transformation": "more control control",
+    }
+
+    caption, _ = platform_presentation.format_caption(components, platform="facebook")
+
+    assert "\n\nbefore a trip\n\n" not in caption
+    assert "The better question: How does this fit the real job?" in caption
+    assert caption.count("154Wh") == 1
+    assert "control control" not in caption
+
+
 def test_product_sales_long_imported_detail_is_readable():
     components = _components()
     components["info"] = " ".join(["Source-backed product context"] * 30)

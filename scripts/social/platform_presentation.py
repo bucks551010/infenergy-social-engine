@@ -330,6 +330,11 @@ def _concise_public_detail(value: str, *, max_words: int = 35) -> str:
     return " ".join(words[:max_words]).rstrip(" ,;:")
 
 
+def _clean_public_fragment(value: str, *, max_words: int = 35) -> str:
+    text = _concise_public_detail(value, max_words=max_words)
+    return re.sub(r"\b(\w+)\s+\1\b", r"\1", text, flags=re.IGNORECASE).strip()
+
+
 def _engagement_safe_text(value: str) -> str:
     cleaned = _repair_unsupported_broad_claims(str(value or "").strip())
     if re.search(
@@ -385,15 +390,23 @@ def _product_sales_pyramid(
     )
     non_numeric_info = _concise_public_detail(non_numeric_info)
 
-    human_moment = _concise_public_detail(str(framework.get("human_moment") or situation), max_words=30)
+    human_moment = _clean_public_fragment(str(framework.get("human_moment") or situation), max_words=30)
+    if len(human_moment.split()) < 5:
+        human_moment = ""
     current_belief = _concise_public_detail(str(framework.get("current_belief") or situation), max_words=24)
     desired_belief = _concise_public_detail(str(framework.get("desired_belief") or non_numeric_info), max_words=28)
     proposition = _concise_public_detail(str(framework.get("dominant_proposition") or benefit), max_words=24)
     mechanism = _concise_public_detail(str(framework.get("mechanism") or non_numeric_info), max_words=24)
+    if specs and _numeric_proof_tokens(mechanism):
+        mechanism = ""
     functional_change = _concise_public_detail(str(framework.get("functional_transformation") or transformation), max_words=24)
     emotional_change = _concise_public_detail(str(framework.get("emotional_transformation") or after_state), max_words=20)
     future_state = _concise_public_detail(str(framework.get("ownership_future_pacing") or why_it_matters), max_words=20)
     hook = _concise_public_detail(str(components.get("logic_hook") or components.get("hook") or human_moment), max_words=26)
+    if desired_belief:
+        desired_belief = desired_belief[0].upper() + desired_belief[1:]
+        if desired_belief.lower().startswith(("how ", "what ", "why ", "when ", "where ", "which ", "who ")):
+            desired_belief = desired_belief.rstrip(".?!") + "?"
     belief_shift = " ".join(filter(None, [
         _sentence(f"The common assumption: {current_belief}") if current_belief else "",
         _sentence(f"The better question: {desired_belief}") if desired_belief else "",
@@ -412,7 +425,10 @@ def _product_sales_pyramid(
     source_tags = re.findall(r"#[A-Za-z0-9_]+", source_caption)
     selected_tags = list(dict.fromkeys(source_tags + [f"#{tag}" for tag in portfolio_tags]))[:_HASHTAG_LIMITS.get(platform, 5)]
     hashtag_line = " ".join(selected_tags)
-    transformation_line = _sentence(" ".join(filter(None, [functional_change, emotional_change, future_state])))
+    transformation_line = _sentence(_clean_public_fragment(
+        " ".join(filter(None, [functional_change, emotional_change, future_state])),
+        max_words=100,
+    ))
     platform_depth = {
         "facebook": [hook, human_moment, belief_shift, product_reveal, mechanism_line, spec_block, education, transformation_line],
         "instagram": [hook, belief_shift, product_reveal, spec_block, transformation_line],

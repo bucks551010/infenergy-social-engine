@@ -399,6 +399,7 @@ def _parse_preview_params(params: dict) -> dict:
     funnel_stage = str(params.get("funnel_stage", [""])[0]).strip().upper()
     product_id = str(params.get("product_id", [""])[0]).strip()
     pipeline = str(params.get("pipeline", [""])[0]).strip().lower()
+    no_product = str(params.get("no_product", ["false"])[0]).strip().lower() in ("1", "true", "yes")
     if slot not in ("morning", "midday", "evening"):
         slot = "morning"
     if platform and platform not in ("facebook", "instagram", "linkedin", "wordpress"):
@@ -413,6 +414,7 @@ def _parse_preview_params(params: dict) -> dict:
         "funnel_stage": funnel_stage,
         "product_id": product_id,
         "pipeline": pipeline,
+        "no_product": no_product,
     }
 
 

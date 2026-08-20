@@ -730,3 +730,36 @@ def test_final_platform_qa_uses_approved_rendered_proposition():
     for platform in ("facebook", "instagram", "linkedin"):
         assert finalized[platform]["final_caption_qa"]["status"] == "PRESENTATION_READY"
         assert finalized[platform]["presentation"]["primary_benefit_position"] is not None
+
+
+def test_product_education_does_not_combine_oversized_catalog_fragments():
+    components = _components()
+    imported_detail = (
+        "Uncompromising Purification for Any Adventure Equip yourself for any journey with the Wosfer "
+        "Portable Water Purifier Bottle. This powerful system features a high-performance hollow fiber "
+        "ultrafiltration membrane that removes contaminants for safer drinking water while traveling."
+    )
+    components.update({
+        "product_id": "WOSFER-DH-C10",
+        "product_name": "Wosfer Portable Water Purifier Bottle",
+        "benefit_fragment": "adds clean-water support to emergency and travel kits",
+        "info": imported_detail,
+        "product_connection": imported_detail,
+        "feature_bullets": [],
+    })
+
+    posts = generate_posts._build_platform_posts(
+        "wosfer-readable-education",
+        "fixture",
+        "outdoor_enthusiast",
+        "EDUCATION",
+        "https://example.com/wosfer",
+        components,
+        90.0,
+    )
+    finalized = generate_posts._apply_platform_presentation_priority(posts, components)
+
+    for platform in ("facebook", "instagram", "linkedin"):
+        qa = finalized[platform]["final_caption_qa"]
+        assert qa["status"] == "PRESENTATION_READY"
+        assert qa["metrics"]["longest_paragraph_words"] <= 80

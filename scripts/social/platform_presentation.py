@@ -466,10 +466,13 @@ def _product_sales_pyramid(
     spec_block = "⚡ Key specs\n" + "\n".join(f"• {spec}" for spec in specs) if specs else ""
     if specs and not non_numeric_info:
         non_numeric_info = "Compare the published capacity and output with the actual devices and job before choosing."
-    education = " ".join(filter(None, [
+    education_parts = list(filter(None, [
         _sentence(f"How to read those specs: {non_numeric_info}") if non_numeric_info else "",
         _sentence(product_connection) if product_connection else "",
     ]))
+    education = " ".join(education_parts)
+    if len(re.findall(r"\b[\w'-]+\b", education)) > 70:
+        education = education_parts[0] if education_parts else ""
     human_value = _sentence(transformation) if transformation else ""
     portfolio_tags, categories = _portfolio(components, platform, source_caption)
     source_tags = re.findall(r"#[A-Za-z0-9_]+", source_caption)

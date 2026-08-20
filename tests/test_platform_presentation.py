@@ -599,6 +599,39 @@ def test_product_sales_repairs_live_preview_fragments_and_long_hashtag():
     assert all(len(tag) <= 30 for tag in presentation["selected_hashtags"])
 
 
+def test_product_sales_preserves_long_complete_hook_and_dedupes_benefit_inflection():
+    components = _components()
+    components.update({
+        "product_id": "AF-S200",
+        "product_name": "Aferiy Solar Panels - 200W",
+        "logic_hook": (
+            "You set up camp deep in the backcountry, only to find your solar kit cannot plug into "
+            "your portable station because the connectors and voltage parameters do not match."
+        ),
+        "benefit_fragment": "add off-grid charging support for compatible equipment",
+        "editorial_framework": {
+            "dominant_proposition": "adds off-grid charging support for compatible equipment",
+            "functional_transformation": "adds off-grid charging support for compatible equipment",
+        },
+    })
+
+    caption, _ = platform_presentation.format_caption(components, platform="facebook")
+    rendered = platform_presentation.render_platform_caption(
+        caption,
+        destination_url="https://example.com/aferiy",
+        platform="facebook",
+    )
+    verdict = platform_presentation.final_caption_qa(
+        rendered,
+        platform="facebook",
+        components=components,
+    )
+
+    assert caption.split("\n\n")[0] == components["logic_hook"]
+    assert "\n\nadds off-grid charging support for compatible equipment.\n\n" not in caption.lower()
+    assert "primary_value_not_visible" not in verdict["reasons"]
+
+
 def test_non_product_live_preview_has_no_orphans_and_varies_by_platform():
     components = {
         "product_id": None,

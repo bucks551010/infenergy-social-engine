@@ -272,6 +272,19 @@ def _normalized_paragraph(paragraph: str) -> str:
     return re.sub(r"\s+", " ", paragraph).strip().lower()
 
 
+def _semantic_fragment(value: str) -> str:
+    tokens = re.findall(r"[a-z0-9]+", str(value or "").lower())
+    verb_roots = {
+        "adds": "add",
+        "keeps": "keep",
+        "supports": "support",
+        "provides": "provide",
+        "helps": "help",
+        "enables": "enable",
+    }
+    return " ".join(verb_roots.get(token, token) for token in tokens)
+
+
 def _is_hashtag_paragraph(paragraph: str) -> bool:
     return bool(re.fullmatch(r"(?:#[A-Za-z0-9_]+\s*)+", paragraph.strip()))
 
@@ -344,6 +357,8 @@ def _concise_public_detail(value: str, *, max_words: int = 35) -> str:
         selected_words += sentence_words
     if selected:
         return " ".join(selected).rstrip(" ,;:")
+    if complete_sentences and len(complete_sentences[0].split()) <= max_words * 2:
+        return complete_sentences[0].rstrip(" ,;:")
     return " ".join(words[:max_words]).rstrip(" ,;:")
 
 
@@ -464,9 +479,9 @@ def _product_sales_pyramid(
         " ".join(filter(None, [functional_change, emotional_change, future_state])),
         max_words=100,
     ))
-    if _normalized_paragraph(transformation_line) in {
-        _normalized_paragraph(proposition),
-        _normalized_paragraph(benefit),
+    if _semantic_fragment(transformation_line) in {
+        _semantic_fragment(proposition),
+        _semantic_fragment(benefit),
     }:
         transformation_line = ""
     linkedin_belief = _sentence(f"Decision lens: {desired_belief}") if desired_belief else belief_shift
@@ -849,7 +864,9 @@ def _benefit_position(text: str, benefit: str, product: str) -> int | None:
     normalized = str(benefit or "").strip()
     if product and normalized.lower().startswith(product.lower()):
         normalized = normalized[len(product):].lstrip(" :-")
-    return _word_position(text, normalized)
+    semantic_benefit = _semantic_fragment(normalized)
+    semantic_text = _semantic_fragment(text)
+    return _word_position(semantic_text, semantic_benefit)
 
 
 def mobile_first_screen(caption: str, *, width_chars: int = 38, visible_lines: int = 8) -> dict[str, Any]:

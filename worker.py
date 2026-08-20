@@ -595,6 +595,7 @@ def _production_readiness_snapshot() -> dict:
         "global": {
             "dry_run": str(os.environ.get("SOCIAL_DRY_RUN", "true")).lower() == "true",
             "shadow_mode": _env_is_true("SOCIAL_SHADOW_MODE", False),
+            "enforce_social_delivery": _env_is_true("ENFORCE_SOCIAL_DELIVERY", False),
             "run_lock_active": RUN_LOCK.locked(),
             "scheduler_jobs_registered": len(schedule.jobs),
         },

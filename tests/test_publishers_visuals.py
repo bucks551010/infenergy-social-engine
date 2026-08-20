@@ -293,6 +293,31 @@ class PublisherVisualTests(unittest.TestCase):
             self.assertEqual(visuals["visual_generation"]["instagram"]["reference_asset_role"], "SOURCE_PRODUCT_REFERENCE")
             self.assertTrue(visuals["visual_generation"]["instagram"]["reference_asset_used_for_conditioning"])
 
+    def test_enforced_delivery_uses_product_source_when_gemini_fails(self) -> None:
+        from PIL import Image
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source_path = os.path.join(temp_dir, "product.png")
+            Image.new("RGB", (800, 600), "#223344").save(source_path, format="PNG")
+            with patch.dict(
+                os.environ,
+                {"GEMINI_API_KEY": "", "ENFORCE_SOCIAL_DELIVERY": "true"},
+                clear=False,
+            ), patch("social_visuals.VISUAL_DIR", temp_dir):
+                visuals = generate_visuals(
+                    {
+                        "post_id": "unit_test_enforced_product_fallback",
+                        "product_id": "SM-PRO",
+                        "product_image_url": source_path,
+                    }
+                )
+
+            for platform in ("facebook", "instagram", "linkedin"):
+                self.assertTrue(os.path.isfile(visuals[platform]))
+                self.assertEqual("approved_source_fallback", visuals["render_engines"][platform])
+                self.assertTrue(visuals["visual_generation"][platform]["fallback_used"])
+            self.assertEqual(0, visuals["image_provider_call_count"])
+
     def test_live_visual_gate_rejects_local_render_and_missing_product(self) -> None:
         content = {
             "product_id": "SFT-20K",

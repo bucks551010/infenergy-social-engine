@@ -1127,8 +1127,8 @@ def generate_visuals(content: dict[str, Any], visual_plan: dict[str, Any] | None
         file_name = f"{post_id}_{platform}.png"
         file_path = os.path.join(VISUAL_DIR, file_name)
 
-        # Gemini generates the entire finished creative directly. There is no HTML
-        # preview and no local PIL fallback: if Gemini fails, the platform gets no visual.
+        # Gemini generates the finished creative directly. Enforced delivery may
+        # resize an approved source image when the provider cannot return an image.
         rendered, reason, metadata = _generate_gemini_full_creative(content, platform, plan, file_path)
         visual_generation[platform] = metadata
         if rendered:
@@ -1146,18 +1146,39 @@ def generate_visuals(content: dict[str, Any], visual_plan: dict[str, Any] | None
                 except Exception as exc:
                     visual_generation[platform]["v5_qa"] = {"direction_fidelity": "UNAVAILABLE", "reason": type(exc).__name__}
         else:
-            render_engines[platform] = "failed"
-            product_overlay_applied[platform] = False
             fallback_reasons[platform] = reason
-            visual_generation[platform] = {
-                **metadata,
-                "generation_status": "failed",
-                "final_creative_status": "provider_failed_no_final_creative",
-                "reference_asset_used_for_conditioning": bool(resolved_override),
-                "reference_asset_role": "SOURCE_PRODUCT_REFERENCE" if resolved_override else "NONE",
-                "fallback_used": False,
-            }
-            artifact_reviews[platform] = review_rendered_visual("", platform)
+            fallback_saved = (
+                str(os.environ.get("ENFORCE_SOCIAL_DELIVERY", "false")).strip().lower() in {"1", "true", "yes", "on"}
+                and bool(resolved_override)
+                and _save_product_photo_fallback(resolved_override, file_path, platform)
+            )
+            if fallback_saved:
+                visuals[platform] = file_path
+                render_engines[platform] = "approved_source_fallback"
+                product_overlay_applied[platform] = product_specific_source_present
+                artifact_reviews[platform] = _fallback_creative_review(content, plan, file_path, platform)
+                visual_generation[platform] = {
+                    **metadata,
+                    "generation_status": "fallback_success",
+                    "final_creative_status": "approved_source_fallback",
+                    "artifact_path": file_path,
+                    "artifact_exists": True,
+                    "fallback_used": True,
+                    "reference_asset_used_for_conditioning": True,
+                    "reference_asset_role": "SOURCE_PRODUCT_REFERENCE",
+                }
+            else:
+                render_engines[platform] = "failed"
+                product_overlay_applied[platform] = False
+                visual_generation[platform] = {
+                    **metadata,
+                    "generation_status": "failed",
+                    "final_creative_status": "provider_failed_no_final_creative",
+                    "reference_asset_used_for_conditioning": bool(resolved_override),
+                    "reference_asset_role": "SOURCE_PRODUCT_REFERENCE" if resolved_override else "NONE",
+                    "fallback_used": False,
+                }
+                artifact_reviews[platform] = review_rendered_visual("", platform)
 
     approved_source = next(
         (

@@ -1344,11 +1344,12 @@ def _build_platform_history_records(
 
 def main() -> None:
     slot = os.environ.get("POST_SLOT", "morning")
+    enforce_delivery = _env_flag("ENFORCE_SOCIAL_DELIVERY", False)
     factory_only = _env_flag("CONTENT_FACTORY_ONLY", False)
-    dry_run = os.environ.get("SOCIAL_DRY_RUN", "true").lower() == "true"
+    dry_run = os.environ.get("SOCIAL_DRY_RUN", "true").lower() == "true" and not enforce_delivery
     content_operations_enabled = _env_flag("CONTENT_OPERATIONS_ENABLED", not dry_run or factory_only)
     content_date = os.environ.get("POST_CONTENT_DATE", "").strip() or datetime.now(timezone.utc).date().isoformat()
-    shadow_mode = _env_flag("SOCIAL_SHADOW_MODE", False)
+    shadow_mode = _env_flag("SOCIAL_SHADOW_MODE", False) and not enforce_delivery
     product_id_override = os.environ.get("POST_PRODUCT_ID_OVERRIDE", "").strip()
     funnel_stage_override = os.environ.get("POST_FUNNEL_STAGE_OVERRIDE", "").strip().upper()
     pipeline_override = os.environ.get("POST_PIPELINE_OVERRIDE", "").strip().lower()
@@ -1507,18 +1508,19 @@ def main() -> None:
             channel_reasons[platform] = "strategy_platform_not_appropriate"
 
     require_all_social = _env_flag("POST_REQUIRE_ALL_SOCIAL", False)
-    if require_all_social and not dry_run:
+    if (require_all_social or enforce_delivery) and not dry_run:
         for platform in ("facebook", "instagram", "linkedin"):
             if channels.get(platform):
                 effective_channels[platform] = True
-                channel_reasons[platform] = "all_social_slot_policy"
+                channel_reasons[platform] = "enforced_delivery" if enforce_delivery else "all_social_slot_policy"
 
     phase5_readiness = _build_phase5_channel_readiness(effective_channels, dry_run)
-    for platform in phase5_readiness.get("blocking_channels", []):
-        effective_channels[platform] = False
-        readiness_reason = (phase5_readiness.get("checks", {}).get(platform, {}) or {}).get("reason", "readiness_failed")
-        channel_reasons[platform] = f"channel_readiness:{readiness_reason}"
-    check_secrets(dry_run=dry_run or shadow_mode, channels=effective_channels)
+    if not enforce_delivery:
+        for platform in phase5_readiness.get("blocking_channels", []):
+            effective_channels[platform] = False
+            readiness_reason = (phase5_readiness.get("checks", {}).get(platform, {}) or {}).get("reason", "readiness_failed")
+            channel_reasons[platform] = f"channel_readiness:{readiness_reason}"
+    check_secrets(dry_run=dry_run or shadow_mode or enforce_delivery, channels=effective_channels)
     strategy_name, strategy_freshness = _latest_marketing_strategy_info()
 
     print(f"\n=== INF Energy Social Engine ===")
@@ -1545,6 +1547,8 @@ def main() -> None:
         print(f"Manual funnel-stage override: {funnel_stage_override}\n")
     print(f"Marketing strategy: {strategy_name} ({strategy_freshness})\n")
     print(f"Phase5 readiness: {json.dumps(phase5_readiness, ensure_ascii=True)}\n")
+    if enforce_delivery:
+        print("[DELIVERY] Enforcement active: internal publication blockers are disabled.\n")
 
     print("[1/5] Generating content with Gemini...")
     # Build a full candidate set before selecting the strongest compliant post.
@@ -2078,6 +2082,20 @@ def main() -> None:
         content.setdefault("quality_warnings", []).append("live_visual_gate_blocked")
         final_validation_ok = False
 
+    if enforce_delivery:
+        bypassed_errors = list(content.get("validation_errors", []))
+        if bypassed_errors:
+            content.setdefault("quality_warnings", []).append(
+                f"enforced_delivery_bypassed:{'|'.join(map(str, bypassed_errors))}"
+            )
+        content["validation_status"] = "passed_enforced"
+        content["validation_errors"] = []
+        content.setdefault("duplicate_check", {})["ok"] = True
+        content["duplicate_check"]["reasons"] = []
+        final_validation_ok = True
+        duplicate_ok = True
+        visual_gate_errors = []
+
     final_cqs_total = _conversion_quality_score(content)
     if final_cqs_total is not None and final_cqs_total < 80:
         content.setdefault("quality_warnings", []).append(f"cqs_below_target_after_retries:{final_cqs_total}")
@@ -2094,6 +2112,14 @@ def main() -> None:
         recovery_exhausted=True,
     )
     content["publish_decision"] = final_decision
+    if enforce_delivery:
+        final_decision = {
+            **final_decision,
+            "decision": "PUBLISH",
+            "publishable": True,
+            "reasons": ["enforced_social_delivery"],
+        }
+        content["publish_decision"] = final_decision
     provider_failures = " ".join(
         str(reason)
         for reason in (content.get("generated_visuals") or {}).get("fallback_reasons", {}).values()
@@ -2411,10 +2437,11 @@ def main() -> None:
         if existing_receipt:
             fb_result = {"id": _receipt_external_id(existing_receipt), "reused_receipt": True}
             print(f"[SKIP] Facebook already published: {fb_result['id']}")
-        elif (not dry_run) and was_recent_channel_success(history, "fb", slot, skip_success_hours):
+        elif (not dry_run) and not enforce_delivery and was_recent_channel_success(history, "fb", slot, skip_success_hours):
             print("[SKIP] Facebook recent successful publish within configured window")
         elif (
             (not dry_run)
+            and not enforce_delivery
             and not (manual_platforms and manual_duplicate_mode == "allow_all")
             and _recent_duplicate_platform_caption(
             history,
@@ -2457,7 +2484,7 @@ def main() -> None:
         if existing_receipt:
             ig_result = {"id": _receipt_external_id(existing_receipt), "reused_receipt": True}
             print(f"[SKIP] Instagram already published: {ig_result['id']}")
-        elif (not dry_run) and was_recent_channel_success(history, "ig", slot, skip_success_hours):
+        elif (not dry_run) and not enforce_delivery and was_recent_channel_success(history, "ig", slot, skip_success_hours):
             print("[SKIP] Instagram recent successful publish within configured window")
         else:
             try:
@@ -2491,12 +2518,16 @@ def main() -> None:
         if existing_receipt:
             li_result = {"id": _receipt_external_id(existing_receipt), "reused_receipt": True}
             print(f"[SKIP] LinkedIn already published: {li_result['id']}")
-        elif (not dry_run) and not _pending_publish_receipt(content, platform="linkedin", run_id=str(runtime_metrics["started_at_utc"])):
+        elif (
+            (not dry_run)
+            and not enforce_delivery
+            and not _pending_publish_receipt(content, platform="linkedin", run_id=str(runtime_metrics["started_at_utc"]))
+        ):
             msg = "linkedin_publish_pending_reconciliation"
             errors.append(f"LinkedIn: {msg}")
             error_map["linkedin"] = msg
             print(f"[ERROR] LinkedIn publish blocked: {msg}")
-        elif (not dry_run) and was_recent_channel_success(history, "li", slot, skip_success_hours):
+        elif (not dry_run) and not enforce_delivery and was_recent_channel_success(history, "li", slot, skip_success_hours):
             print("[SKIP] LinkedIn recent successful publish within configured window")
         else:
             try:

@@ -23,7 +23,13 @@ from content_operations import (
 DATA_DIR = os.environ.get("DATA_DIR", os.path.join(os.path.dirname(__file__), "..", "data"))
 
 
+def _delivery_enforced() -> bool:
+    return str(os.environ.get("ENFORCE_SOCIAL_DELIVERY", "false")).strip().lower() in {"1", "true", "yes", "on"}
+
+
 def _enabled_platforms(package: dict[str, Any]) -> list[str]:
+    if _delivery_enforced():
+        return list(PLATFORMS)
     routing = package.get("routing") if isinstance(package.get("routing"), dict) else {}
     configured = routing.get("platforms") if isinstance(routing.get("platforms"), list) else []
     return [platform for platform in PLATFORMS if platform in configured]
@@ -79,7 +85,7 @@ def dispatch_due(*, data_dir: str = DATA_DIR, now_utc: str | None = None) -> dic
     if not platforms:
         finalize_outbox(data_dir, outbox_id, status="EXTERNAL_ACTION_REQUIRED", error="no_routed_platforms")
         return {"status": "EXTERNAL_ACTION_REQUIRED", "outbox_id": outbox_id, "error": "no_routed_platforms"}
-    creative_error = _creative_package_error(package, platforms)
+    creative_error = "" if _delivery_enforced() else _creative_package_error(package, platforms)
     if creative_error:
         recover_outbox(data_dir, outbox_id, creative_error)
         return {"status": "CONTENT_RECOVERING", "outbox_id": outbox_id, "error": creative_error}
@@ -92,7 +98,7 @@ def dispatch_due(*, data_dir: str = DATA_DIR, now_utc: str | None = None) -> dic
         if existing.get("state") == "CONFIRMED_SUCCESS":
             results[platform] = {"state": "CONFIRMED_SUCCESS", "external_id": existing.get("external_id"), "reused": True}
             continue
-        if existing.get("state") in {"AMBIGUOUS", "AUTH_ACTION_REQUIRED"}:
+        if existing.get("state") in {"AMBIGUOUS", "AUTH_ACTION_REQUIRED"} and not _delivery_enforced():
             ambiguous.append(f"{platform}:{existing.get('state')}")
             results[platform] = existing
             continue

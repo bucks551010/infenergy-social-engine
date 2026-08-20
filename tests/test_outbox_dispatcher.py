@@ -128,3 +128,30 @@ def test_dispatcher_recovers_packshot_only_package_before_publisher_call(tmp_pat
     assert result["status"] == "CONTENT_RECOVERING"
     assert "packshot_only" in result["error"]
     facebook.assert_not_called()
+
+
+def test_enforced_delivery_dispatches_package_that_creative_review_rejected(tmp_path):
+    data_dir = str(tmp_path)
+    outbox_id = _ready_package(data_dir, ["facebook"])
+    database = sqlite3.connect(get_db_path(data_dir))
+    row = database.execute("SELECT package_json FROM content_outbox WHERE outbox_id=?", (outbox_id,)).fetchone()
+    import json
+    package = json.loads(row[0])
+    package["generated_visuals"]["render_engines"] = {"facebook": "approved_product_photo"}
+    package["generated_visuals"]["artifact_reviews"] = {"facebook": {"verdict": "REGENERATE_VISUAL"}}
+    package["visual_plan"] = {"creative_route": "PRODUCT_IN_CONTEXT"}
+    database.execute("UPDATE content_outbox SET package_json=? WHERE outbox_id=?", (json.dumps(package), outbox_id))
+    database.commit()
+    database.close()
+
+    with patch.dict(os.environ, {"ENFORCE_SOCIAL_DELIVERY": "true"}, clear=False), \
+        patch.object(dispatch_outbox.publish_facebook, "publish", return_value={"id": "fb-enforced"}) as facebook, \
+        patch.object(dispatch_outbox.publish_instagram, "publish", return_value={"id": "ig-enforced"}) as instagram, \
+        patch.object(dispatch_outbox.publish_linkedin, "publish", return_value={"id": "li-enforced"}) as linkedin:
+        result = dispatch_outbox.dispatch_due(data_dir=data_dir, now_utc="2026-08-19T13:00:01+00:00")
+
+    assert result["status"] == "PUBLISHED"
+    facebook.assert_called_once()
+    instagram.assert_called_once()
+    linkedin.assert_called_once()
+    assert platform_transaction(data_dir, outbox_id, "facebook")["external_id"] == "fb-enforced"

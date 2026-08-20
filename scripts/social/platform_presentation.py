@@ -464,6 +464,11 @@ def _product_sales_pyramid(
         " ".join(filter(None, [functional_change, emotional_change, future_state])),
         max_words=100,
     ))
+    if _normalized_paragraph(transformation_line) in {
+        _normalized_paragraph(proposition),
+        _normalized_paragraph(benefit),
+    }:
+        transformation_line = ""
     linkedin_belief = _sentence(f"Decision lens: {desired_belief}") if desired_belief else belief_shift
     platform_depth = {
         "facebook": [hook, human_moment, belief_shift, product_reveal, mechanism_line, spec_block, education, transformation_line],
@@ -597,10 +602,10 @@ def _engagement_editorial(
         ideology = "teach_for_capability_without_forcing_a_sale"
         base_tags = ["#PowerKnowledge", "#Preparedness", "#EnergyLiteracy"]
     else:
-        if hook.endswith("?"):
+        if hook.endswith((".", "!", "?")):
             question = hook
         elif hook:
-            question = f"What changes when you take this seriously: {hook.rstrip('.')}?"
+            question = _sentence(hook)
         else:
             question = "When normal power disappears, what is the first part of daily life you would protect?"
         final_cta = cta if cta and not re.search(r"\b(?:shop|buy|product|specs?|link|tap|score|seconds?)\b", cta, flags=re.IGNORECASE) else "Share the first priority you would protect and why."
@@ -837,6 +842,16 @@ def _word_position(text: str, phrase: str) -> int | None:
     return None
 
 
+def _benefit_position(text: str, benefit: str, product: str) -> int | None:
+    direct = _word_position(text, benefit)
+    if direct:
+        return direct
+    normalized = str(benefit or "").strip()
+    if product and normalized.lower().startswith(product.lower()):
+        normalized = normalized[len(product):].lstrip(" :-")
+    return _word_position(text, normalized)
+
+
 def mobile_first_screen(caption: str, *, width_chars: int = 38, visible_lines: int = 8) -> dict[str, Any]:
     """Approximate the first phone viewport using deterministic text wrapping."""
     paragraphs = _paragraphs(caption)
@@ -943,7 +958,7 @@ def evaluate(
         "reading_burden": density,
         "generic_engagement_bait": generic_bait,
         "product_intro_position": _word_position(text, product),
-        "primary_benefit_position": _word_position(text, benefit),
+        "primary_benefit_position": _benefit_position(text, benefit, product),
         "cta_position": _word_position(text, cta),
         "link_present": bool(re.search(r"https?://\S+", text)),
         "internal_instruction_leak": bool(leaks),

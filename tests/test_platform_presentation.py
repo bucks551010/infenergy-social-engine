@@ -595,6 +595,7 @@ def test_product_sales_repairs_live_preview_fragments_and_long_hashtag():
     assert "matching your essential\n\n" not in caption
     assert "help adds" not in caption.lower()
     assert "system control" not in caption.lower()
+    assert "\n\nadds stored-energy capacity to a compatible modular system.\n\n" not in caption.lower()
     assert all(len(tag) <= 30 for tag in presentation["selected_hashtags"])
 
 
@@ -628,6 +629,7 @@ def test_non_product_live_preview_has_no_orphans_and_varies_by_platform():
         ]
         assert all(len(re.findall(r"\b[\w'-]+\b", paragraph)) >= 4 for paragraph in public_paragraphs)
         assert "panic?" not in caption
+        assert caption.split("\n\n")[0].endswith(".")
         assert "a practical power decision" not in caption.lower()
     assert len(set(captions.values())) == 3
 
@@ -648,3 +650,23 @@ def test_final_caption_qa_rejects_orphan_public_paragraph():
 
     assert verdict["status"] == "REVISE_PRESENTATION"
     assert "orphan_public_paragraph" in verdict["reasons"]
+
+
+def test_final_caption_qa_normalizes_product_prefixed_benefit_metadata():
+    components = _components()
+    components["benefit_fragment"] = "PowerPulse Pro 200: keeps compatible daily devices charged away from outlets"
+    caption = (
+        "Match portable power to the job.\n\n"
+        "PowerPulse Pro 200 keeps compatible daily devices charged away from outlets.\n\n"
+        "⚡ Key specs\n• 154Wh and 41,600mAh for stored power\n• 200W AC and 110V output.\n\n"
+        "Compare published capability with the devices you carry.\n\n"
+        "https://example.com/products/powerpulse"
+    )
+
+    verdict = platform_presentation.final_caption_qa(
+        caption,
+        platform="facebook",
+        components=components,
+    )
+
+    assert "primary_value_not_visible" not in verdict["reasons"]

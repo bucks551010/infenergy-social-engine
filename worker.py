@@ -1824,7 +1824,10 @@ def run_content_factory() -> None:
             snapshot = daily_status(data_dir, content_date)
             existing = {item["slot"]: item["status"] for item in snapshot.get("slots", [])}
             for slot in ("morning", "midday", "evening"):
-                if existing.get(slot) in {"READY", "DUE", "CLAIMED", "PUBLISHING", "PUBLISHED", "EXTERNAL_ACTION_REQUIRED"}:
+                completed_states = {"READY", "DUE", "CLAIMED", "PUBLISHING", "PUBLISHED"}
+                if not _env_is_true("ENFORCE_SOCIAL_DELIVERY", False):
+                    completed_states.add("EXTERNAL_ACTION_REQUIRED")
+                if existing.get(slot) in completed_states:
                     continue
                 env = os.environ.copy()
                 env.update({

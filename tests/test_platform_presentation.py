@@ -566,3 +566,85 @@ def test_final_caption_qa_rejects_internal_sales_process_language():
 
     assert verdict["status"] == "REVISE_PRESENTATION"
     assert "internal_instruction_leak" in verdict["reasons"]
+
+
+def test_product_sales_repairs_live_preview_fragments_and_long_hashtag():
+    components = _components()
+    components.update({
+        "product_id": "INF-9792-U2B",
+        "product_name": 'Infenergy 9792 - "Infenergy 9792 Unit + 2 - 9792Wh Expansion Battery"',
+        "logic_hook": (
+            "When a sudden grid failure darkens your storefront, expecting commercial insurance "
+            "to cover lost sales is a costly misconception. True operational continuity requires "
+            "matching your essential loads with verified capacity."
+        ),
+        "benefit_fragment": "adds stored-energy capacity to a compatible modular system",
+        "editorial_framework": {
+            "desired_belief": (
+                'How does Infenergy 9792 - "Infenergy 9792 Unit + 2 - 9792Wh Expansion Battery" '
+                "help adds stored-energy capacity to a compatible modular system?"
+            ),
+            "functional_transformation": "adds stored-energy capacity to a compatible modular system",
+            "emotional_transformation": "control",
+        },
+    })
+
+    caption, presentation = platform_presentation.format_caption(components, platform="facebook")
+
+    assert caption.split("\n\n")[0].endswith((".", "!", "?"))
+    assert "matching your essential\n\n" not in caption
+    assert "help adds" not in caption.lower()
+    assert "system control" not in caption.lower()
+    assert all(len(tag) <= 30 for tag in presentation["selected_hashtags"])
+
+
+def test_non_product_live_preview_has_no_orphans_and_varies_by_platform():
+    components = {
+        "product_id": None,
+        "funnel_stage": "ATTENTION",
+        "product_name": "",
+        "logic_hook": (
+            "When a neighborhood grid drops, the four-hour safety timer on your refrigerator begins "
+            "immediately. Knowing the exact window before perishable food spoils allows you to make "
+            "calm, calculated power decisions instead of opening the door out of panic."
+        ),
+        "situation": "choosing portable backup power.",
+        "logic_bridge": "the exact window before food starts spoiling.",
+        "why_it_matters": "a practical power decision.",
+        "transformation": "Outages.",
+        "feature_bullets": [],
+        "cta": "Save this guidance for your next planning session.",
+    }
+
+    captions = {
+        platform: platform_presentation.format_caption(components, platform=platform)[0]
+        for platform in ("facebook", "instagram", "linkedin")
+    }
+
+    for caption in captions.values():
+        public_paragraphs = [
+            paragraph for paragraph in caption.split("\n\n")
+            if not paragraph.startswith(("#", "👉", "http"))
+        ]
+        assert all(len(re.findall(r"\b[\w'-]+\b", paragraph)) >= 4 for paragraph in public_paragraphs)
+        assert "panic?" not in caption
+        assert "a practical power decision" not in caption.lower()
+    assert len(set(captions.values())) == 3
+
+
+def test_final_caption_qa_rejects_orphan_public_paragraph():
+    caption = (
+        "Power planning starts with the responsibilities that cannot pause.\n\n"
+        "Outages.\n\n"
+        "Compare requirements with verified information before choosing.\n\n"
+        "👉 Save this guidance for your next planning session."
+    )
+
+    verdict = platform_presentation.final_caption_qa(
+        caption,
+        platform="instagram",
+        components={"product_id": None, "feature_bullets": []},
+    )
+
+    assert verdict["status"] == "REVISE_PRESENTATION"
+    assert "orphan_public_paragraph" in verdict["reasons"]

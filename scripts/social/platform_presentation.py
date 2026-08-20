@@ -37,6 +37,8 @@ def _is_contrast(paragraph: str) -> bool:
 def _portfolio(components: dict[str, Any], platform: str, source: str) -> tuple[list[str], dict[str, list[str]]]:
     """Build only tags that are grounded in the product and stated use context."""
     product = _tag(str(components.get("product_name") or ""))
+    if len(product) > 24:
+        product = ""
     text = " ".join((source, str(components.get("use_case_line") or ""))).lower()
     categories: dict[str, list[str]] = {
         "brand": ["InfenergyPower"],
@@ -327,22 +329,55 @@ def _concise_public_detail(value: str, *, max_words: int = 35) -> str:
     cleaned = re.sub(r"&(?:amp|nbsp|quot|#39);", " ", str(value or ""), flags=re.IGNORECASE)
     cleaned = re.sub(r"\s+", " ", cleaned).strip()
     words = cleaned.split()
+    if len(words) <= max_words:
+        return cleaned.rstrip(" ,;:")
+    complete_sentences = _sentences(cleaned)
+    selected: list[str] = []
+    selected_words = 0
+    for sentence in complete_sentences:
+        sentence_words = len(sentence.split())
+        if selected and selected_words + sentence_words > max_words:
+            break
+        if not selected and sentence_words > max_words:
+            break
+        selected.append(sentence)
+        selected_words += sentence_words
+    if selected:
+        return " ".join(selected).rstrip(" ,;:")
     return " ".join(words[:max_words]).rstrip(" ,;:")
 
 
 def _clean_public_fragment(value: str, *, max_words: int = 35) -> str:
     text = _concise_public_detail(value, max_words=max_words)
-    return re.sub(r"\b(\w+)\s+\1\b", r"\1", text, flags=re.IGNORECASE).strip()
+    text = re.sub(r"\b(\w+)\s+\1\b", r"\1", text, flags=re.IGNORECASE)
+    text = re.sub(
+        r"\bhelp\s+(adds|supports|provides|keeps|powers|enables)\b",
+        lambda match: f"help {match.group(1)[:-1]}",
+        text,
+        flags=re.IGNORECASE,
+    )
+    return text.strip()
+
+
+def _usable_public_fragment(value: str, *, max_words: int = 35, min_words: int = 5) -> str:
+    text = _clean_public_fragment(value, max_words=max_words)
+    if len(re.findall(r"\b[\w'-]+\b", text)) < min_words:
+        return ""
+    if any(re.search(pattern, text, flags=re.IGNORECASE) for pattern in _INTERNAL_PUBLIC_COPY_PATTERNS):
+        return ""
+    return text
 
 
 def _engagement_safe_text(value: str) -> str:
-    cleaned = _repair_unsupported_broad_claims(str(value or "").strip())
+    cleaned = _repair_unsupported_broad_claims(_usable_public_fragment(value))
     if re.search(
         r"\b(?:product|infenergy|shop|buy|purchase|specs?|compatibility|selected|link|risk score)\b",
         cleaned,
         flags=re.IGNORECASE,
     ):
         return ""
+    if cleaned.lower().startswith("what changes when you take this seriously:") and cleaned.endswith("?"):
+        cleaned = f"{cleaned[:-1]}."
     return cleaned
 
 
@@ -393,16 +428,16 @@ def _product_sales_pyramid(
     human_moment = _clean_public_fragment(str(framework.get("human_moment") or situation), max_words=30)
     if len(human_moment.split()) < 5:
         human_moment = ""
-    current_belief = _concise_public_detail(str(framework.get("current_belief") or situation), max_words=24)
-    desired_belief = _concise_public_detail(str(framework.get("desired_belief") or non_numeric_info), max_words=28)
-    proposition = _concise_public_detail(str(framework.get("dominant_proposition") or benefit), max_words=24)
-    mechanism = _concise_public_detail(str(framework.get("mechanism") or non_numeric_info), max_words=24)
+    current_belief = _clean_public_fragment(str(framework.get("current_belief") or situation), max_words=24)
+    desired_belief = _clean_public_fragment(str(framework.get("desired_belief") or non_numeric_info), max_words=28)
+    proposition = _clean_public_fragment(str(framework.get("dominant_proposition") or benefit), max_words=24)
+    mechanism = _clean_public_fragment(str(framework.get("mechanism") or non_numeric_info), max_words=24)
     if specs and _numeric_proof_tokens(mechanism):
         mechanism = ""
-    functional_change = _concise_public_detail(str(framework.get("functional_transformation") or transformation), max_words=24)
-    emotional_change = _concise_public_detail(str(framework.get("emotional_transformation") or after_state), max_words=20)
-    future_state = _concise_public_detail(str(framework.get("ownership_future_pacing") or why_it_matters), max_words=20)
-    hook = _concise_public_detail(str(components.get("logic_hook") or components.get("hook") or human_moment), max_words=26)
+    functional_change = _usable_public_fragment(str(framework.get("functional_transformation") or transformation), max_words=24)
+    emotional_change = _usable_public_fragment(str(framework.get("emotional_transformation") or after_state), max_words=20)
+    future_state = _usable_public_fragment(str(framework.get("ownership_future_pacing") or why_it_matters), max_words=20)
+    hook = _clean_public_fragment(str(components.get("logic_hook") or components.get("hook") or human_moment), max_words=26)
     if desired_belief:
         desired_belief = desired_belief[0].upper() + desired_belief[1:]
         if desired_belief.lower().startswith(("how ", "what ", "why ", "when ", "where ", "which ", "who ")):
@@ -429,10 +464,11 @@ def _product_sales_pyramid(
         " ".join(filter(None, [functional_change, emotional_change, future_state])),
         max_words=100,
     ))
+    linkedin_belief = _sentence(f"Decision lens: {desired_belief}") if desired_belief else belief_shift
     platform_depth = {
         "facebook": [hook, human_moment, belief_shift, product_reveal, mechanism_line, spec_block, education, transformation_line],
         "instagram": [hook, belief_shift, product_reveal, spec_block, transformation_line],
-        "linkedin": [hook, human_moment, belief_shift, product_reveal, mechanism_line, education, spec_block, transformation_line],
+        "linkedin": [hook, linkedin_belief, product_reveal, mechanism_line, education, spec_block, transformation_line],
     }
     paragraphs = platform_depth.get(platform, platform_depth["facebook"]) + [
         f"👉 {cta}" if cta else "",
@@ -522,7 +558,7 @@ def _engagement_editorial(
                 )
                 actions.append(_sentence(f"{len(actions) + 1}. {defaults[len(actions)]}"))
         final_cta = cta if cta and not re.search(r"\b(?:shop|buy|product|specs?|link|tap|score|seconds?)\b", cta, flags=re.IGNORECASE) else "Save this framework for your next planning check."
-        paragraphs = [
+        facebook_paragraphs = [
             curiosity or hook,
             _sentence(situation),
             _sentence(f"The tension: {why}"),
@@ -531,6 +567,25 @@ def _engagement_editorial(
             "" if re.search(r"\bremember:", source_caption, flags=re.IGNORECASE) else _sentence(f"Remember: {transformation}"),
             f"👉 {final_cta}",
         ]
+        instagram_paragraphs = [
+            curiosity or hook,
+            "Try this three-part check:\n" + "\n".join(actions),
+            _sentence(f"Keep in mind: {transformation}"),
+            f"👉 {final_cta}",
+        ]
+        linkedin_paragraphs = [
+            curiosity or hook,
+            _sentence(f"Planning context: {situation}"),
+            "A practical framework:\n" + "\n".join(actions),
+            _sentence(f"Decision principle: {perspective or insight}"),
+            _sentence(f"Operational takeaway: {transformation}"),
+            f"👉 {final_cta}",
+        ]
+        paragraphs = {
+            "facebook": facebook_paragraphs,
+            "instagram": instagram_paragraphs,
+            "linkedin": linkedin_paragraphs,
+        }.get(platform, facebook_paragraphs)
         structure = [
             "useful_knowledge_hook",
             "why_the_lesson_matters",
@@ -549,7 +604,7 @@ def _engagement_editorial(
         else:
             question = "When normal power disappears, what is the first part of daily life you would protect?"
         final_cta = cta if cta and not re.search(r"\b(?:shop|buy|product|specs?|link|tap|score|seconds?)\b", cta, flags=re.IGNORECASE) else "Share the first priority you would protect and why."
-        paragraphs = [
+        facebook_paragraphs = [
             curiosity or question,
             _sentence(situation),
             _sentence(f"The real tension: {why}"),
@@ -558,6 +613,24 @@ def _engagement_editorial(
             "" if re.search(r"\bremember:", source_caption, flags=re.IGNORECASE) else _sentence(f"Remember: {transformation}"),
             f"👉 {final_cta}",
         ]
+        instagram_paragraphs = [
+            curiosity or question,
+            _sentence(f"A useful reframe: {insight}"),
+            _sentence(f"Keep in mind: {transformation}"),
+            f"👉 {final_cta}",
+        ]
+        linkedin_paragraphs = [
+            curiosity or question,
+            _sentence(f"Planning context: {situation}"),
+            _sentence(f"Decision principle: {insight}"),
+            _sentence(f"Operational takeaway: {transformation}"),
+            f"👉 {final_cta}",
+        ]
+        paragraphs = {
+            "facebook": facebook_paragraphs,
+            "instagram": instagram_paragraphs,
+            "linkedin": linkedin_paragraphs,
+        }.get(platform, facebook_paragraphs)
         structure = [
             "human_pattern_interrupt",
             "relatable_tension",
@@ -919,6 +992,12 @@ def final_caption_qa(
         reasons.append("required_link_missing")
     if metrics["paragraph_count"] < 4:
         reasons.append("paragraph_structure_missing")
+    public_paragraphs = [
+        paragraph for paragraph in _paragraphs(caption)
+        if not paragraph.startswith(("#", "👉", "http"))
+    ]
+    if any(len(re.findall(r"\b[\w'-]+\b", paragraph)) < 4 for paragraph in public_paragraphs):
+        reasons.append("orphan_public_paragraph")
     if metrics["reading_burden"] == "TOO_DENSE":
         reasons.append("wall_of_text_paragraph")
     if not metrics["mobile_first_screen"]["entry_point_visible"]:

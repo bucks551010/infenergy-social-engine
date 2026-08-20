@@ -511,7 +511,7 @@ _CONSUMER_STAGE_LABELS = {
 
 def _build_gemini_image_prompt(content: dict[str, Any], platform: str, visual_plan: dict[str, Any]) -> str:
     v5_direction = _safe_json_dict(visual_plan.get("v5_direction"))
-    v5_prompt = str(visual_plan.get("gemini_image_prompt") or "").strip()
+    v5_prompt = str(visual_plan.get("positive_prompt") or visual_plan.get("gemini_image_prompt") or "").strip()
     if v5_direction and v5_prompt:
         return v5_prompt[:3200]
     spec = _platform_visual_spec(platform)

@@ -60,6 +60,33 @@ class PublisherVisualTests(unittest.TestCase):
         self.assertNotIn("ABSOLUTE EXCLUSIONS", prompt)
         self.assertIn("subordinate to every rule", prompt)
 
+    def test_governed_v5_prompt_owns_scene_and_typography_contract(self) -> None:
+        positive_prompt = (
+            "Photograph a practical outage-planning moment in a Gulf Coast kitchen. "
+            "No readable text, signs, logos, badges, watermarks, or rendered typography."
+        )
+        prompt = _build_gemini_image_prompt(
+            {
+                "funnel_stage": "DESIRE",
+                "product_name": "SolarMax Pro",
+                "selected_hook": "Prepare before the outage",
+                "selected_cta": "Compare the verified specs.",
+            },
+            "instagram",
+            {
+                "v5_direction": {
+                    "scene": "a Gulf Coast kitchen",
+                    "text_overlay": {"enabled": False},
+                    "must_not_appear": ["rendered text", "logos"],
+                },
+                "positive_prompt": positive_prompt,
+            },
+        )
+        self.assertEqual(positive_prompt, prompt)
+        self.assertNotIn("Render exactly this on-image copy", prompt)
+        self.assertNotIn("Spec badge row", prompt)
+        self.assertNotIn("Compare the verified specs.", prompt)
+
     def test_gemini_plate_quality_rejects_wrong_aspect_ratio(self) -> None:
         from PIL import Image
 

@@ -703,3 +703,30 @@ def test_final_caption_qa_normalizes_product_prefixed_benefit_metadata():
     )
 
     assert "primary_value_not_visible" not in verdict["reasons"]
+
+
+def test_final_platform_qa_uses_approved_rendered_proposition():
+    components = _components()
+    components.update({
+        "product_id": "AF-S200",
+        "product_name": "Aferiy Solar Panels - 200W",
+        "benefit_fragment": "raw catalog benefit that is not public copy",
+        "editorial_framework": {
+            "dominant_proposition": "adds off-grid charging support for compatible equipment",
+        },
+    })
+    posts = generate_posts._build_platform_posts(
+        "aferiy-benefit-wiring",
+        "fixture",
+        "outdoor_enthusiast",
+        "EDUCATION",
+        "https://example.com/aferiy",
+        components,
+        90.0,
+    )
+
+    finalized = generate_posts._apply_platform_presentation_priority(posts, components)
+
+    for platform in ("facebook", "instagram", "linkedin"):
+        assert finalized[platform]["final_caption_qa"]["status"] == "PRESENTATION_READY"
+        assert finalized[platform]["presentation"]["primary_benefit_position"] is not None

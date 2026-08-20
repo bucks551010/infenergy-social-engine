@@ -4042,10 +4042,15 @@ def _apply_platform_presentation_priority(platform_posts: dict, components: dict
             destination_url=str(package.get("utm_url") or package.get("destination_url") or ""),
             platform=platform,
         )
+        semantic_evidence = priority.get("semantic_layer_evidence", {})
+        qa_components = dict(components)
+        approved_benefit = str(semantic_evidence.get("primary_benefit") or "").strip()
+        if approved_benefit:
+            qa_components["benefit_fragment"] = approved_benefit
         final_qa = platform_presentation.final_caption_qa(
             final_caption,
             platform=platform,
-            components=components,
+            components=qa_components,
             planning_instructions=list(package.get("planning_instructions") or []),
         )
         metrics = final_qa["metrics"]
@@ -4061,9 +4066,9 @@ def _apply_platform_presentation_priority(platform_posts: dict, components: dict
                 "product_intro_position": metrics["product_intro_position"],
                 "primary_benefit_position": metrics["primary_benefit_position"],
             },
-            "commercial_layers": priority.get("semantic_layer_evidence", {}),
-            "device_use_case_intelligence": priority.get("semantic_layer_evidence", {}).get("device_use_case", ""),
-            "optional_depth": priority.get("semantic_layer_evidence", {}).get("optional_depth", []),
+            "commercial_layers": semantic_evidence,
+            "device_use_case_intelligence": semantic_evidence.get("device_use_case", ""),
+            "optional_depth": semantic_evidence.get("optional_depth", []),
             "presentation_density": metrics["reading_burden"],
             "hashtag_portfolio": priority.get("selected_hashtags", []),
             "copy_visual_complementarity": {

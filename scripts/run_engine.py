@@ -4,7 +4,6 @@ import time
 import json
 import shutil
 import hashlib
-from copy import deepcopy
 from datetime import datetime, timezone
 
 import requests
@@ -12,7 +11,6 @@ import requests
 sys.path.insert(0, os.path.dirname(__file__))
 
 import generate_posts
-import intelligence_packages
 import publish_wordpress
 import publish_facebook
 import publish_instagram
@@ -34,27 +32,6 @@ from campaign_runtime import (
     load_channel_schedule,
     was_recent_channel_success,
 )
-from content_operations import (
-    archive_candidate,
-    create_council_session,
-    ensure_daily_slots,
-    mark_slot_external_action,
-    mark_ready,
-)
-
-
-def _generate_followup_candidate(slot: str, **kwargs) -> dict:
-    """Generate independent council copy without repeating the lead candidate's strategy call."""
-    previous = os.environ.get("ENABLE_PHASE2_CREATIVE_STACK")
-    if os.environ.get("COUNCIL_ENRICH_FIRST_CANDIDATE_ONLY", "true").strip().lower() in {"1", "true", "yes", "on"}:
-        os.environ["ENABLE_PHASE2_CREATIVE_STACK"] = "false"
-    try:
-        return generate_posts.generate(slot, **kwargs)
-    finally:
-        if previous is None:
-            os.environ.pop("ENABLE_PHASE2_CREATIVE_STACK", None)
-        else:
-            os.environ["ENABLE_PHASE2_CREATIVE_STACK"] = previous
 
 
 def _stable_hash(text: str) -> str:
@@ -62,13 +39,6 @@ def _stable_hash(text: str) -> str:
 
     normalized = " ".join((text or "").strip().lower().split())
     return hashlib.sha256(normalized.encode("utf-8")).hexdigest() if normalized else ""
-
-
-def _routing_datetime(content_date: str, fallback: datetime) -> datetime:
-    try:
-        return datetime.fromisoformat(f"{content_date}T12:00:00+00:00")
-    except ValueError:
-        return fallback
 
 
 def _recent_duplicate_platform_caption(
@@ -379,28 +349,6 @@ def _evidence_readiness(content: dict) -> dict:
     readiness = claim_governance.assess(ledger, hook=str(content.get("selected_hook", "")))
     content["claim_ledger"] = ledger.as_dict()
     content["evidence_readiness"] = readiness
-    return readiness
-
-
-def _final_channel_evidence_readiness(content: dict, effective_channels: dict[str, bool]) -> dict:
-    """Reassess only the exact final copy that can be published in this run."""
-    platform_posts = content.get("platform_posts") if isinstance(content.get("platform_posts"), dict) else {}
-    text_parts: list[str] = []
-    for platform in ("facebook", "instagram", "linkedin"):
-        if not effective_channels.get(platform):
-            continue
-        package = platform_posts.get(platform) if isinstance(platform_posts.get(platform), dict) else {}
-        text_parts.append(str(package.get("final_caption") or package.get("caption") or ""))
-    if effective_channels.get("wordpress"):
-        text_parts.append(str(content.get("wp_content") or ""))
-    verified_facts = list(content.get("product_metrics", []) or [])
-    product_facts = str(content.get("product_facts", "") or "")
-    if product_facts:
-        verified_facts.append(product_facts)
-    ledger = build_ledger(" ".join(text_parts), verified_facts=verified_facts)
-    readiness = claim_governance.assess(ledger, hook=str(content.get("selected_hook", "")))
-    content["final_channel_claim_ledger"] = ledger.as_dict()
-    content["final_channel_evidence_readiness"] = readiness
     return readiness
 
 
@@ -1098,7 +1046,7 @@ def _live_visual_gate_errors(content: dict, effective_channels: dict[str, bool],
     render_engines = visuals.get("render_engines") if isinstance(visuals.get("render_engines"), dict) else {}
     overlays = visuals.get("product_overlay_applied") if isinstance(visuals.get("product_overlay_applied"), dict) else {}
     require_gemini = os.environ.get("LIVE_REQUIRE_GEMINI_VISUAL", "true").strip().lower() in {"1", "true", "yes", "on"}
-    approved_render_engines = {"gemini"}
+    approved_render_engines = {"gemini", "approved_product_photo"}
     has_anchored_product = bool(str(content.get("product_id") or "").strip())
     require_product = has_anchored_product and os.environ.get("LIVE_REQUIRE_PRODUCT_VISUAL", "true").strip().lower() in {"1", "true", "yes", "on"}
 
@@ -1182,6 +1130,12 @@ def _v5_semantic_visual_errors(content: dict, effective_channels: dict[str, bool
     return errors
 
 
+def _routing_datetime(content_date: str, fallback: datetime) -> datetime:
+    try:
+        return datetime.fromisoformat(f"{content_date}T12:00:00+00:00")
+    except ValueError:
+        return fallback
+
 def _render_selected_visuals(content: dict) -> dict:
     """Render only the selected package while preserving council text-only mode."""
     previous_text_only = os.environ.pop("POST_TEXT_ONLY", None)
@@ -1245,25 +1199,18 @@ def _record_publication_gate_lessons(content: dict, findings: list[str]) -> list
     if not product_id:
         return []
     material_prefixes = (
-        "capacity_not_verified:",
-        "wattage_not_verified:",
-        "runtime_not_verified:",
-        "product_url_missing",
-        "product_unavailable_or_out_of_stock",
-        "image_candidate_mismatch",
-        "compatibility_not_verified",
-        "facebook_v5_semantic_qa:",
-        "instagram_v5_semantic_qa:",
+        "capacity_not_verified:", "wattage_not_verified:", "runtime_not_verified:",
+        "product_url_missing", "product_unavailable_or_out_of_stock", "image_candidate_mismatch",
+        "compatibility_not_verified", "facebook_v5_semantic_qa:", "instagram_v5_semantic_qa:",
         "linkedin_v5_semantic_qa:",
     )
     records: list[dict] = []
     for finding in dict.fromkeys(str(item) for item in findings if str(item)):
         if not finding.startswith(material_prefixes):
             continue
-        condition = f"publication_gate:{finding.split(':', 1)[0]}"
         lesson = {
             "product_id": product_id,
-            "condition": condition,
+            "condition": f"publication_gate:{finding.split(':', 1)[0]}",
             "action": "resolve_or_avoid_failed_evidence_path_before_render",
             "evidence": [finding],
             "source_decision": "DO_NOT_PUBLISH",
@@ -1342,17 +1289,49 @@ def _build_platform_history_records(
     return records
 
 
+def _generate_followup_candidate(slot: str, **kwargs) -> dict:
+    """Generate independent council copy without repeating the lead candidate's strategy call."""
+    previous = os.environ.get("ENABLE_PHASE2_CREATIVE_STACK")
+    if os.environ.get("COUNCIL_ENRICH_FIRST_CANDIDATE_ONLY", "true").strip().lower() in {"1", "true", "yes", "on"}:
+        os.environ["ENABLE_PHASE2_CREATIVE_STACK"] = "false"
+    try:
+        return generate_posts.generate(slot, **kwargs)
+    finally:
+        if previous is None:
+            os.environ.pop("ENABLE_PHASE2_CREATIVE_STACK", None)
+        else:
+            os.environ["ENABLE_PHASE2_CREATIVE_STACK"] = previous
+
+
+def _final_channel_evidence_readiness(content: dict, effective_channels: dict[str, bool]) -> dict:
+    """Reassess only the exact final copy that can be published in this run."""
+    platform_posts = content.get("platform_posts") if isinstance(content.get("platform_posts"), dict) else {}
+    text_parts: list[str] = []
+    for platform in ("facebook", "instagram", "linkedin"):
+        if effective_channels.get(platform):
+            package = platform_posts.get(platform) if isinstance(platform_posts.get(platform), dict) else {}
+            text_parts.append(str(package.get("final_caption") or package.get("caption") or ""))
+    if effective_channels.get("wordpress"):
+        text_parts.append(str(content.get("wp_content") or ""))
+    verified_facts = list(content.get("product_metrics", []) or [])
+    product_facts = str(content.get("product_facts", "") or "")
+    if product_facts:
+        verified_facts.append(product_facts)
+    ledger = build_ledger(" ".join(text_parts), verified_facts=verified_facts)
+    readiness = claim_governance.assess(ledger, hook=str(content.get("selected_hook", "")))
+    content["final_channel_claim_ledger"] = ledger.as_dict()
+    content["final_channel_evidence_readiness"] = readiness
+    return readiness
+
+
 def main() -> None:
     slot = os.environ.get("POST_SLOT", "morning")
-    enforce_delivery = _env_flag("ENFORCE_SOCIAL_DELIVERY", False)
-    factory_only = _env_flag("CONTENT_FACTORY_ONLY", False)
-    dry_run = os.environ.get("SOCIAL_DRY_RUN", "true").lower() == "true" and not enforce_delivery
-    content_operations_enabled = _env_flag("CONTENT_OPERATIONS_ENABLED", not dry_run or factory_only)
-    content_date = os.environ.get("POST_CONTENT_DATE", "").strip() or datetime.now(timezone.utc).date().isoformat()
-    shadow_mode = _env_flag("SOCIAL_SHADOW_MODE", False) and not enforce_delivery
+    dry_run = os.environ.get("SOCIAL_DRY_RUN", "true").lower() == "true"
+    shadow_mode = _env_flag("SOCIAL_SHADOW_MODE", False)
     product_id_override = os.environ.get("POST_PRODUCT_ID_OVERRIDE", "").strip()
     funnel_stage_override = os.environ.get("POST_FUNNEL_STAGE_OVERRIDE", "").strip().upper()
     pipeline_override = os.environ.get("POST_PIPELINE_OVERRIDE", "").strip().lower()
+    no_product = os.environ.get("CONTENT_BUCKET_OVERRIDE", "").strip().lower() == "no_product"
     manual_platforms = [
         x.strip().lower()
         for x in os.environ.get("POST_PLATFORMS", "").split(",")
@@ -1361,37 +1340,9 @@ def main() -> None:
     manual_duplicate_mode = os.environ.get("MANUAL_DUPLICATE_MODE", "exact_only").strip().lower()
     channels = get_channel_config()
     schedule = load_channel_schedule()
-    if factory_only and not funnel_stage_override and isinstance(schedule, dict):
-        try:
-            target_day = datetime.fromisoformat(content_date).strftime("%A").lower()
-            slot_rules = ((schedule.get(target_day) or {}).get(slot) or [])
-            for rule in slot_rules:
-                allowed = rule.get("allowed_funnel_stages") if isinstance(rule, dict) else None
-                if isinstance(allowed, list) and allowed:
-                    funnel_stage_override = str(allowed[0]).strip().upper()
-                    break
-        except (TypeError, ValueError):
-            pass
     now_utc = datetime.now(timezone.utc)
-    routing_now_utc = _routing_datetime(content_date, now_utc)
-    slot_times = {
-        "morning": os.environ.get("POST_SCHEDULE_MORNING", "13:00"),
-        "midday": os.environ.get("POST_SCHEDULE_MIDDAY", "17:00"),
-        "evening": os.environ.get("POST_SCHEDULE_EVENING", "23:00"),
-    }
-    scheduled_slots = {
-        name: f"{content_date}T{value}:00+00:00" if len(value.split(":")) == 2 else f"{content_date}T{value}+00:00"
-        for name, value in slot_times.items()
-    }
-    if content_operations_enabled:
-        ensure_daily_slots(
-            generate_posts.DATA_DIR,
-            content_date,
-            scheduled_slots,
-            {"source": "owner_schedule", "routing": "campaign_runtime"},
-        )
-    reserve_seeds = intelligence_packages.ready_reserve(generate_posts.DATA_DIR, limit=20) if content_operations_enabled else []
-    reserve_seed = reserve_seeds[sum(ord(char) for char in f"{content_date}:{slot}") % len(reserve_seeds)] if reserve_seeds else {}
+    content_date = os.environ.get("POST_CONTENT_DATE", "").strip()
+    routing_now_utc = _routing_datetime(content_date, now_utc) if content_date else now_utc
     effective_channels = dict(channels)
     # WordPress is legacy-only and cannot participate in social readiness or publication.
     effective_channels["wordpress"] = False
@@ -1409,16 +1360,9 @@ def main() -> None:
     # Compute a stage first so schedule rules can enforce stage eligibility.
     generate_posts.ensure_runtime_data()
     candidate_pool = CandidatePool(generate_posts.DATA_DIR)
-    pool_enabled = _env_flag("CANDIDATE_POOL_RUNTIME_ENABLED", False)
-    pooled_candidate: dict | None = None
-    pool_selection: dict = {"selection_reason": "runtime_pool_disabled"}
-    if pool_enabled:
-        pool_floor = max(1, int(os.environ.get("CANDIDATE_POOL_MIN_DEPTH", "2")))
-        if candidate_pool.depth() < pool_floor:
-            from build_candidate_pool import build_pool
-
-            refill = build_pool(target_depth=max(pool_floor, int(os.environ.get("CANDIDATE_POOL_TARGET_DEPTH", "6"))))
-            runtime_metrics["candidate_pool_refill"] = refill
+    pool_runtime_enabled = _env_flag("CANDIDATE_POOL_RUNTIME_ENABLED", False)
+    pooled_candidate, pool_selection = (None, {"reason": "runtime_disabled"})
+    if pool_runtime_enabled:
         pooled_candidate, pool_selection = candidate_pool.select_for_publication(
             exploration_floor=float(os.environ.get("CANDIDATE_POOL_EXPLORATION_FLOOR", "0.25")),
         )
@@ -1436,45 +1380,7 @@ def main() -> None:
             funnel_stage_override=funnel_stage_override,
             product_id_override=product_id_override,
             pipeline_override=pipeline_override,
-        )
-    council_blackboard = {
-        "slot": slot,
-        "round_0_feasibility": {
-            "truth_feasible": bool(preview_content.get("evidence_readiness") or preview_content.get("product_metrics") or not preview_content.get("product_id")),
-            "product_feasible": bool(preview_content.get("product_id") and preview_content.get("product_metrics")) or not preview_content.get("product_id"),
-            "visual_feasible": bool(preview_content.get("visual_plan") or preview_content.get("category_image_candidates")),
-            "platform_feasible": True,
-            "claim_burden": "PRODUCT_VERIFIED_FACTS" if preview_content.get("product_id") else "LOW",
-            "ready_reserve_seed": reserve_seed.get("seed_id"),
-        },
-        "business_truth": preview_content.get("business_truth_packet") or preview_content.get("marketing_strategy") or {},
-        "human_reality": preview_content.get("human_reality") or preview_content.get("strategic_brief", {}).get("human_reality") or "",
-        "audience": preview_content.get("audience_segment") or preview_content.get("audience") or "",
-        "brain": preview_content.get("brain") or preview_content.get("human_truth", {}).get("brain") or {},
-        "heart": preview_content.get("heart") or preview_content.get("human_truth", {}).get("heart") or {},
-        "opportunity_field": preview_content.get("opportunity_field") or [],
-        "selected_opportunity": preview_content.get("topic") or "",
-        "product_role": "PRIMARY" if preview_content.get("product_id") else "NONE",
-        "product_packet": {
-            "product_id": preview_content.get("product_id"),
-            "product_name": preview_content.get("product_name"),
-            "verified_facts": preview_content.get("product_metrics") or [],
-        },
-        "claim_envelope": preview_content.get("claim_ledger") or preview_content.get("evidence_readiness") or {},
-        "story": preview_content.get("story") or {},
-        "content_job": preview_content.get("content_job") or preview_content.get("funnel_stage") or "",
-        "campaign": preview_content.get("campaign_id") or "",
-        "freshness": preview_content.get("rotation_selected") or {},
-        "ready_reserve": reserve_seed,
-    }
-    decision_id = ""
-    if content_operations_enabled:
-        decision_id = create_council_session(
-            generate_posts.DATA_DIR,
-            content_date=content_date,
-            slot=slot,
-            blackboard=council_blackboard,
-            rationale=["Build truth, human value, and platform readiness before publication."],
+            no_product=no_product,
         )
     _apply_phase8_budget(runtime_metrics, "preview_generation", time.perf_counter() - t_preview, generation_budget)
     funnel_stage = str(preview_content.get("funnel_stage", "EDUCATION"))
@@ -1507,20 +1413,12 @@ def main() -> None:
             effective_channels[platform] = False
             channel_reasons[platform] = "strategy_platform_not_appropriate"
 
-    require_all_social = _env_flag("POST_REQUIRE_ALL_SOCIAL", False)
-    if (require_all_social or enforce_delivery) and not dry_run:
-        for platform in ("facebook", "instagram", "linkedin"):
-            if channels.get(platform):
-                effective_channels[platform] = True
-                channel_reasons[platform] = "enforced_delivery" if enforce_delivery else "all_social_slot_policy"
-
     phase5_readiness = _build_phase5_channel_readiness(effective_channels, dry_run)
-    if not enforce_delivery:
-        for platform in phase5_readiness.get("blocking_channels", []):
-            effective_channels[platform] = False
-            readiness_reason = (phase5_readiness.get("checks", {}).get(platform, {}) or {}).get("reason", "readiness_failed")
-            channel_reasons[platform] = f"channel_readiness:{readiness_reason}"
-    check_secrets(dry_run=dry_run or shadow_mode or enforce_delivery, channels=effective_channels)
+    for platform in phase5_readiness.get("blocking_channels", []):
+        effective_channels[platform] = False
+        readiness_reason = (phase5_readiness.get("checks", {}).get(platform, {}) or {}).get("reason", "readiness_failed")
+        channel_reasons[platform] = f"channel_readiness:{readiness_reason}"
+    check_secrets(dry_run=dry_run or shadow_mode, channels=effective_channels)
     strategy_name, strategy_freshness = _latest_marketing_strategy_info()
 
     print(f"\n=== INF Energy Social Engine ===")
@@ -1547,11 +1445,9 @@ def main() -> None:
         print(f"Manual funnel-stage override: {funnel_stage_override}\n")
     print(f"Marketing strategy: {strategy_name} ({strategy_freshness})\n")
     print(f"Phase5 readiness: {json.dumps(phase5_readiness, ensure_ascii=True)}\n")
-    if enforce_delivery:
-        print("[DELIVERY] Enforcement active: internal publication blockers are disabled.\n")
 
     print("[1/5] Generating content with Gemini...")
-    # Build a full candidate set before selecting the strongest compliant post.
+    # Generate the full text council before selecting one complete package.
     attempts: list[dict] = []
     publishable_candidates: list[dict] = []
     candidate_count = max(1, int(os.environ.get("POST_CANDIDATE_COUNT", "7")))
@@ -1574,6 +1470,7 @@ def main() -> None:
                 pipeline_override=pipeline_override,
                 approved_strategy=locked_strategy or None,
                 revision_feedback=pending_feedback,
+                no_product=no_product,
             )
             if pending_scope == "copy" and _can_carry_forward_visuals(prior_generated_visuals, content, effective_channels):
                 content["generated_visuals"] = prior_generated_visuals
@@ -1665,7 +1562,7 @@ def main() -> None:
             removed_claims=claim_corrections,
             findings=critic_feedback,
         )
-        diagnosis["metacognition"]["attempt_budget_remaining"] = candidate_count - idx - 1
+        diagnosis["metacognition"]["attempt_budget_remaining"] = 2 - idx
 
         attempts.append(
             {
@@ -1693,16 +1590,6 @@ def main() -> None:
                 "candidate": _candidate_audit(content),
             }
         )
-        if decision_id:
-            archive_candidate(
-                generate_posts.DATA_DIR,
-                decision_id=decision_id,
-                ordinal=idx + 1,
-                content=content,
-                status="COMPLIANT" if publish_decision["publishable"] else "RECOVERY_REQUIRED",
-                score=scoring.get("total"),
-                loss_reasons=list(publish_decision.get("reasons") or []),
-            )
 
         metacognitive_review = creative_intelligence.metacognitive_review(attempts)
         diagnosis["metacognition"].update(metacognitive_review)
@@ -1711,17 +1598,16 @@ def main() -> None:
 
         if publish_decision["publishable"]:
             publishable_candidates.append({
-                "content": deepcopy(content),
-                "scoring": deepcopy(scoring),
-                "decision": deepcopy(publish_decision),
+                "content": content,
+                "score": float(scoring.get("total") or 0),
+                "scoring": scoring,
+                "publish_decision": publish_decision,
                 "attempt": idx + 1,
             })
             if idx < candidate_count - 1:
-                locked_strategy = {}
-                locked_product_id = product_id_override
                 pending_feedback = []
-                prior_generated_visuals = {}
-                previous_decision = "publishable_candidate_retained"
+                pending_scope = "copy"
+                previous_decision = str(publish_decision["decision"])
                 previous_current_findings = []
                 continue
             break
@@ -1747,6 +1633,7 @@ def main() -> None:
                 funnel_stage_override="ATTENTION",
                 product_id_override="INF-9792",
                 pipeline_override=pipeline_override,
+                no_product=no_product,
             )
             validation = validate_generated_content(content)
             strict_runtime_claims = str(os.environ.get("STRICT_RUNTIME_CLAIMS", "false")).strip().lower() in {"1", "true", "yes", "on"}
@@ -1825,255 +1712,42 @@ def main() -> None:
             previous_current_findings = list(critic_feedback)
             continue
 
-        if idx == candidate_count - 1:
+        if publish_decision["decision"] == "do_not_publish":
             break
 
-        # Terminal claims, product availability, and score rejections invalidate
-        # this candidate only. Start the next candidate from a fresh strategy.
-        locked_strategy = {}
-        locked_product_id = product_id_override
-        pending_feedback = [
-            "Create a materially different candidate that satisfies all claim, quality, duplicate, and platform requirements."
-        ]
-        pending_scope = "strategy"
-        prior_generated_visuals = {}
-        previous_decision = str(publish_decision["decision"])
-        previous_current_findings = list(critic_feedback)
+        # Otherwise stop on final attempt or hard rejection.
+        if idx == candidate_count - 1 or scoring.get("decision") == "reject":
+            break
     _apply_phase8_budget(runtime_metrics, "generation", time.perf_counter() - t_generation, generation_budget)
 
-    duplicate_exhausted = (
-        not publishable_candidates
-        and attempts
-        and any(
-            str(reason).startswith("duplicate_")
-            for attempt in attempts
-            for reason in attempt.get("duplicate_reasons", [])
-        )
-    )
-    if duplicate_exhausted:
-        previous_bucket_override = os.environ.get("CONTENT_BUCKET_OVERRIDE", "")
-        os.environ["CONTENT_BUCKET_OVERRIDE"] = "no_product"
-        try:
-            recovery_content = generate_posts.generate(
-                slot,
-                funnel_stage_override=funnel_stage_override or "EDUCATION",
-                product_id_override="",
-                pipeline_override="legacy",
-                revision_feedback=[
-                    "Use a product-free, low-claim-burden premise with a topic-specific action plan and a materially different opening."
-                ],
-            )
-        finally:
-            if previous_bucket_override:
-                os.environ["CONTENT_BUCKET_OVERRIDE"] = previous_bucket_override
-            else:
-                os.environ.pop("CONTENT_BUCKET_OVERRIDE", None)
-        claim_corrections = _enforce_candidate_claim_boundary(recovery_content)
-        recovery_validation = validate_generated_content(recovery_content)
-        recovery_scoring = score_content(recovery_content, requested_platforms=manual_platforms)
-        _attach_platform_quality(recovery_content, recovery_scoring)
-        recovery_duplicates = check_duplicates(recovery_content, generate_posts.load_history(), windows=windows)
-        recovery_content["validation_status"] = "passed" if recovery_validation.get("passed") else "failed"
-        recovery_content["validation_errors"] = recovery_validation.get("errors", [])
-        recovery_content["validation_warnings"] = recovery_validation.get("warnings", [])
-        recovery_content["quality_score"] = recovery_scoring.get("total")
-        recovery_content["quality_component_scores"] = recovery_scoring.get("component_scores", {})
-        recovery_content["duplicate_check"] = recovery_duplicates
-        recovery_content.update(recovery_duplicates.get("signatures", {}))
-        recovery_decision = decide_publication(
-            legacy_score=recovery_scoring,
-            validation=recovery_validation,
-            duplicates=recovery_duplicates,
-            conversion_quality_score=_conversion_quality_score(recovery_content),
-            orchestrator_quality=recovery_content.get("orchestrator_quality"),
-            evidence_readiness=_evidence_readiness(recovery_content),
-            recovery_exhausted=True,
-        )
-        recovery_content["publish_decision"] = recovery_decision
-        attempts.append({
-            "attempt": len(attempts) + 1,
-            "score": recovery_scoring.get("total"),
-            "decision": recovery_decision["decision"],
-            "validation_passed": recovery_validation.get("passed"),
-            "validation_errors": recovery_validation.get("errors", []),
-            "duplicates_ok": recovery_duplicates.get("ok"),
-            "duplicate_reasons": recovery_duplicates.get("reasons", []),
-            "claim_corrections": claim_corrections,
-            "retryability_classification": "PRODUCT_FREE_ESCALATION",
-            "candidate": _candidate_audit(recovery_content),
-        })
-        if decision_id:
-            archive_candidate(
-                generate_posts.DATA_DIR,
-                decision_id=decision_id,
-                ordinal=len(attempts),
-                content=recovery_content,
-                status="COMPLIANT" if recovery_decision["publishable"] else "RECOVERY_REQUIRED",
-                score=recovery_scoring.get("total"),
-                loss_reasons=list(recovery_decision.get("reasons") or []),
-            )
-        if recovery_decision["publishable"]:
-            publishable_candidates.append({
-                "content": deepcopy(recovery_content),
-                "scoring": deepcopy(recovery_scoring),
-                "decision": deepcopy(recovery_decision),
-                "attempt": len(attempts),
-            })
-
-    ranked_publishable = sorted(
-        publishable_candidates,
-        key=lambda candidate: (
-            float(candidate["scoring"].get("total") or 0),
-            float(candidate["decision"].get("orchestrator_critic_score") or 0),
-        ),
-        reverse=True,
-    )
-    if ranked_publishable:
-        selected = ranked_publishable[0]
+    if publishable_candidates:
+        selected = max(publishable_candidates, key=lambda candidate: candidate["score"])
         content = selected["content"]
         scoring = selected["scoring"]
+        publish_decision = selected["publish_decision"]
         content["candidate_selection"] = {
-            "candidate_count": candidate_count,
+            "candidate_count": len(attempts),
             "publishable_count": len(publishable_candidates),
             "selected_attempt": selected["attempt"],
-            "selection_reason": "highest_compliant_quality_score",
+            "selection_reason": "highest_complete_content_package",
         }
 
     final_validation_ok = content.get("validation_status") == "passed"
     final_score = float(content.get("quality_score") or 0)
     duplicate_ok = bool(content.get("duplicate_check", {}).get("ok", True))
-    visual_gate_errors: list[str] = []
-    artifact_errors: dict[str, list[str]] = {}
-    visual_candidates = ranked_publishable or [{"content": content, "scoring": scoring, "attempt": len(attempts)}]
-    for visual_candidate in visual_candidates:
-        candidate_content = deepcopy(visual_candidate["content"])
-        deferred_visuals = candidate_content.get("generated_visuals") if isinstance(candidate_content.get("generated_visuals"), dict) else {}
-        if deferred_visuals.get("deferred"):
-            candidate_content["generated_visuals"] = _render_selected_visuals(candidate_content)
-            candidate_content["image_generation_attempts"] = int(candidate_content.get("image_generation_attempts", 0) or 0) + 1
-        _ensure_final_artifact_qa(candidate_content, effective_channels)
-        candidate_artifact_errors = _artifact_visual_errors_by_platform(candidate_content, effective_channels)
-        candidate_visual_errors = [
-            f"{platform}_artifact:{issue}"
-            for platform, issues in candidate_artifact_errors.items()
-            for issue in issues
-        ]
-        candidate_visual_errors.extend(_live_visual_gate_errors(candidate_content, effective_channels, dry_run or shadow_mode))
-        candidate_visual_errors.extend(_strategy_integrity_errors(candidate_content))
-        candidate_visual_errors.extend(_v5_semantic_visual_errors(candidate_content, effective_channels))
-        candidate_visual_errors.extend(_final_presentation_errors(candidate_content, effective_channels))
-        if not candidate_visual_errors:
-            content = candidate_content
-            scoring = visual_candidate["scoring"]
-            artifact_errors = candidate_artifact_errors
-            visual_gate_errors = []
-            content["candidate_selection"] = {
-                "candidate_count": candidate_count,
-                "publishable_count": len(publishable_candidates),
-                "selected_attempt": visual_candidate["attempt"],
-                "selection_reason": "highest_complete_content_package",
-            }
-            break
-        artifact_errors = candidate_artifact_errors
-        visual_gate_errors = candidate_visual_errors
-        if decision_id:
-            archive_candidate(
-                generate_posts.DATA_DIR,
-                decision_id=decision_id,
-                ordinal=int(visual_candidate["attempt"]),
-                content=candidate_content,
-                status="VISUAL_RECOVERY_REQUIRED",
-                score=visual_candidate["scoring"].get("total"),
-                loss_reasons=candidate_visual_errors,
-            )
-    product_visual_exhausted = bool(visual_gate_errors) and any(
-        "packshot_only_without_explicit_route" in error for error in visual_gate_errors
-    )
-    if product_visual_exhausted:
-        previous_bucket_override = os.environ.get("CONTENT_BUCKET_OVERRIDE", "")
-        os.environ["CONTENT_BUCKET_OVERRIDE"] = "no_product"
-        try:
-            editorial_content = generate_posts.generate(
-                slot,
-                funnel_stage_override=funnel_stage_override or "EDUCATION",
-                product_id_override="",
-                pipeline_override="legacy",
-                revision_feedback=[
-                    "Use a product-free human reality and editorial visual route because exact product creative is unavailable.",
-                    f"Ready reserve human reality: {reserve_seed.get('who') or reserve_seed.get('why_this_matters') or 'practical preparedness guidance'}",
-                ],
-            )
-        finally:
-            if previous_bucket_override:
-                os.environ["CONTENT_BUCKET_OVERRIDE"] = previous_bucket_override
-            else:
-                os.environ.pop("CONTENT_BUCKET_OVERRIDE", None)
-        editorial_validation = validate_generated_content(editorial_content)
-        editorial_scoring = score_content(editorial_content, requested_platforms=manual_platforms)
-        _attach_platform_quality(editorial_content, editorial_scoring)
-        editorial_duplicates = check_duplicates(editorial_content, generate_posts.load_history(), windows=windows)
-        editorial_content["validation_status"] = "passed" if editorial_validation.get("passed") else "failed"
-        editorial_content["validation_errors"] = editorial_validation.get("errors", [])
-        editorial_content["validation_warnings"] = editorial_validation.get("warnings", [])
-        editorial_content["quality_score"] = editorial_scoring.get("total")
-        editorial_content["quality_component_scores"] = editorial_scoring.get("component_scores", {})
-        editorial_content["duplicate_check"] = editorial_duplicates
-        editorial_content.update(editorial_duplicates.get("signatures", {}))
-        editorial_decision = decide_publication(
-            legacy_score=editorial_scoring,
-            validation=editorial_validation,
-            duplicates=editorial_duplicates,
-            conversion_quality_score=_conversion_quality_score(editorial_content),
-            orchestrator_quality=editorial_content.get("orchestrator_quality"),
-            evidence_readiness=_evidence_readiness(editorial_content),
-            recovery_exhausted=True,
-        )
-        editorial_content["publish_decision"] = editorial_decision
-        if editorial_decision["publishable"]:
-            editorial_content["generated_visuals"] = _render_selected_visuals(editorial_content)
-            editorial_content["image_generation_attempts"] = int(editorial_content.get("image_generation_attempts", 0) or 0) + 1
-            _ensure_final_artifact_qa(editorial_content, effective_channels)
-            editorial_artifact_errors = _artifact_visual_errors_by_platform(editorial_content, effective_channels)
-            editorial_visual_errors = [
-                f"{platform}_artifact:{issue}"
-                for platform, issues in editorial_artifact_errors.items()
-                for issue in issues
-            ]
-            editorial_visual_errors.extend(_live_visual_gate_errors(editorial_content, effective_channels, dry_run or shadow_mode))
-            editorial_visual_errors.extend(_strategy_integrity_errors(editorial_content))
-            editorial_visual_errors.extend(_v5_semantic_visual_errors(editorial_content, effective_channels))
-            editorial_visual_errors.extend(_final_presentation_errors(editorial_content, effective_channels))
-            if not editorial_visual_errors:
-                content = editorial_content
-                scoring = editorial_scoring
-                artifact_errors = editorial_artifact_errors
-                visual_gate_errors = []
-                content["candidate_selection"] = {
-                    "candidate_count": candidate_count,
-                    "publishable_count": len(publishable_candidates),
-                    "selected_attempt": len(attempts) + 1,
-                    "selection_reason": "product_free_editorial_visual_recovery",
-                }
-            elif decision_id:
-                archive_candidate(
-                    generate_posts.DATA_DIR,
-                    decision_id=decision_id,
-                    ordinal=len(attempts) + 1,
-                    content=editorial_content,
-                    status="VISUAL_RECOVERY_REQUIRED",
-                    score=editorial_scoring.get("total"),
-                    loss_reasons=editorial_visual_errors,
-                )
-    if decision_id and not visual_gate_errors:
-        archive_candidate(
-            generate_posts.DATA_DIR,
-            decision_id=decision_id,
-            ordinal=int(content.get("candidate_selection", {}).get("selected_attempt") or 1),
-            content=content,
-            status="SELECTED",
-            score=scoring.get("total"),
-            loss_reasons=[],
-        )
+    deferred_visuals = content.get("generated_visuals") if isinstance(content.get("generated_visuals"), dict) else {}
+    if deferred_visuals.get("deferred"):
+        content["generated_visuals"] = _render_selected_visuals(content)
+        content["image_generation_attempts"] = int(content.get("image_generation_attempts", 0) or 0) + 1
+    _ensure_final_artifact_qa(content, effective_channels)
+    artifact_errors = _artifact_visual_errors_by_platform(content, effective_channels)
+    for platform, issues in artifact_errors.items():
+        effective_channels[platform] = False
+        channel_reasons[platform] = f"artifact_visual_qa:{','.join(issues)}"
+    visual_gate_errors = _live_visual_gate_errors(content, effective_channels, dry_run or shadow_mode)
+    visual_gate_errors.extend(_strategy_integrity_errors(content))
+    visual_gate_errors.extend(_v5_semantic_visual_errors(content, effective_channels))
+    visual_gate_errors.extend(_final_presentation_errors(content, effective_channels))
     content["artifact_visual_qa"] = (content.get("generated_visuals") or {}).get("artifact_reviews", {})
     content["artifact_visual_qa_failures"] = artifact_errors
     if visual_gate_errors:
@@ -2081,20 +1755,6 @@ def main() -> None:
         content["validation_errors"] = list(content.get("validation_errors", [])) + visual_gate_errors
         content.setdefault("quality_warnings", []).append("live_visual_gate_blocked")
         final_validation_ok = False
-
-    if enforce_delivery:
-        bypassed_errors = list(content.get("validation_errors", []))
-        if bypassed_errors:
-            content.setdefault("quality_warnings", []).append(
-                f"enforced_delivery_bypassed:{'|'.join(map(str, bypassed_errors))}"
-            )
-        content["validation_status"] = "passed_enforced"
-        content["validation_errors"] = []
-        content.setdefault("duplicate_check", {})["ok"] = True
-        content["duplicate_check"]["reasons"] = []
-        final_validation_ok = True
-        duplicate_ok = True
-        visual_gate_errors = []
 
     final_cqs_total = _conversion_quality_score(content)
     if final_cqs_total is not None and final_cqs_total < 80:
@@ -2108,36 +1768,12 @@ def main() -> None:
         conversion_quality_score=final_cqs_total,
         orchestrator_quality=content.get("orchestrator_quality"),
         visual_errors=visual_gate_errors,
-        evidence_readiness=_final_channel_evidence_readiness(content, effective_channels),
-        recovery_exhausted=True,
+        evidence_readiness=_evidence_readiness(content),
     )
     content["publish_decision"] = final_decision
-    if enforce_delivery:
-        final_decision = {
-            **final_decision,
-            "decision": "PUBLISH",
-            "publishable": True,
-            "reasons": ["enforced_social_delivery"],
-        }
-        content["publish_decision"] = final_decision
-    provider_failures = " ".join(
-        str(reason)
-        for reason in (content.get("generated_visuals") or {}).get("fallback_reasons", {}).values()
-    ).lower()
-    if (
-        factory_only
-        and not final_decision["publishable"]
-        and visual_gate_errors
-        and ("resource_exhausted" in provider_failures or "monthly spending cap" in provider_failures)
-    ):
-        mark_slot_external_action(
-            generate_posts.DATA_DIR,
-            content_date=content_date,
-            slot=slot,
-            decision_id=decision_id,
-            error="gemini_monthly_spend_cap",
-        )
-    if not final_decision["publishable"] and not shadow_mode:
+    has_eligible_social_channel = any(effective_channels.get(platform) for platform in ("facebook", "instagram", "linkedin"))
+    hard_orchestration_block = content.get("orchestration_blocked") and os.getenv("ORCHESTRATION_HARD_BLOCK", "false").lower() == "true"
+    if not final_decision["publishable"] and not shadow_mode and (has_eligible_social_channel or hard_orchestration_block):
         print("[SKIP] Content did not pass validation/quality thresholds; recording skipped run")
         # Quarantine pooled candidates that failed so they won't be re-selected indefinitely
         candidate_id = str(content.get("candidate_id") or "")
@@ -2226,30 +1862,6 @@ def main() -> None:
         print("\n=== Done (skipped) ===\n")
         return
 
-    if factory_only and not shadow_mode:
-        routed_platforms = [
-            platform for platform in ("facebook", "instagram", "linkedin")
-            if effective_channels.get(platform)
-        ]
-        content["decision_id"] = decision_id
-        content["content_id"] = str(content.get("post_id") or content.get("candidate_id") or "")
-        content["routing"] = {
-            "platforms": routed_platforms,
-            "channel_reasons": channel_reasons,
-            "policy": "owner_schedule",
-        }
-        outbox_id = mark_ready(
-            generate_posts.DATA_DIR,
-            content_date=content_date,
-            slot=slot,
-            scheduled_at=scheduled_slots[slot],
-            decision_id=decision_id,
-            package=content,
-        )
-        _write_run_outcome("ready", slot=slot, detail=f"outbox_id={outbox_id}")
-        print(f"[FACTORY] Ready package persisted: {outbox_id}")
-        return
-
     if shadow_mode:
         history = generate_posts.load_history()
         run_started = datetime.now(timezone.utc).isoformat()
@@ -2265,7 +1877,7 @@ def main() -> None:
             **_generation_diagnostics(content), **_conversion_learning_fields(content),
             "validation_status": content.get("validation_status"), "validation_errors": content.get("validation_errors", []),
             "duplicate_reasons": content.get("duplicate_check", {}).get("reasons", []),
-            "generation_attempts": attempts, "candidate_selection": content.get("candidate_selection", {}), "dry_run": dry_run, "shadow_mode": True,
+            "generation_attempts": attempts, "dry_run": dry_run, "shadow_mode": True,
             "artifact_visual_qa": content.get("artifact_visual_qa", {}),
             "status": "shadow_completed", "decision_record": _shadow_decision_record(content),
             "channel_reasons": channel_reasons, "phase5_channel_readiness": phase5_readiness,
@@ -2437,11 +2049,10 @@ def main() -> None:
         if existing_receipt:
             fb_result = {"id": _receipt_external_id(existing_receipt), "reused_receipt": True}
             print(f"[SKIP] Facebook already published: {fb_result['id']}")
-        elif (not dry_run) and not enforce_delivery and was_recent_channel_success(history, "fb", slot, skip_success_hours):
+        elif (not dry_run) and was_recent_channel_success(history, "fb", slot, skip_success_hours):
             print("[SKIP] Facebook recent successful publish within configured window")
         elif (
             (not dry_run)
-            and not enforce_delivery
             and not (manual_platforms and manual_duplicate_mode == "allow_all")
             and _recent_duplicate_platform_caption(
             history,
@@ -2484,7 +2095,7 @@ def main() -> None:
         if existing_receipt:
             ig_result = {"id": _receipt_external_id(existing_receipt), "reused_receipt": True}
             print(f"[SKIP] Instagram already published: {ig_result['id']}")
-        elif (not dry_run) and not enforce_delivery and was_recent_channel_success(history, "ig", slot, skip_success_hours):
+        elif (not dry_run) and was_recent_channel_success(history, "ig", slot, skip_success_hours):
             print("[SKIP] Instagram recent successful publish within configured window")
         else:
             try:
@@ -2518,16 +2129,12 @@ def main() -> None:
         if existing_receipt:
             li_result = {"id": _receipt_external_id(existing_receipt), "reused_receipt": True}
             print(f"[SKIP] LinkedIn already published: {li_result['id']}")
-        elif (
-            (not dry_run)
-            and not enforce_delivery
-            and not _pending_publish_receipt(content, platform="linkedin", run_id=str(runtime_metrics["started_at_utc"]))
-        ):
+        elif (not dry_run) and not _pending_publish_receipt(content, platform="linkedin", run_id=str(runtime_metrics["started_at_utc"])):
             msg = "linkedin_publish_pending_reconciliation"
             errors.append(f"LinkedIn: {msg}")
             error_map["linkedin"] = msg
             print(f"[ERROR] LinkedIn publish blocked: {msg}")
-        elif (not dry_run) and not enforce_delivery and was_recent_channel_success(history, "li", slot, skip_success_hours):
+        elif (not dry_run) and was_recent_channel_success(history, "li", slot, skip_success_hours):
             print("[SKIP] LinkedIn recent successful publish within configured window")
         else:
             try:

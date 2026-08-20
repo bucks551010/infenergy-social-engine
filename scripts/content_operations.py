@@ -309,7 +309,7 @@ def claim_due(data_dir: str, now_utc: str | None = None) -> dict[str, Any] | Non
         if not row:
             connection.commit()
             return None
-        claimed_at = _now()
+        claimed_at = now
         changed = connection.execute(
             """
             UPDATE content_outbox SET status='CLAIMED', claimed_at=?, attempt_count=attempt_count+1

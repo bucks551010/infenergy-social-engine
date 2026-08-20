@@ -716,6 +716,35 @@ def test_platform_interpretation_changes_outbound_payload_fields():
     assert posts["facebook"]["creative_interpretation"] != posts["linkedin"]["creative_interpretation"]
 
 
+def test_editorial_frameworks_keep_commercial_and_organic_reasoning_separate():
+    strategy = {
+        "audience": "traveler", "customer_moment": "packing for a long travel day",
+        "human_need": "confidence that essential devices can stay available",
+        "angle": "choose around the devices that matter",
+        "benefit": "supports compatible daily devices away from an outlet",
+        "positioning": "verified product-fit guidance", "important_capability": "154Wh published capacity",
+        "proof": ["154Wh", "200W AC output"], "human_outcome": "less charging anxiety",
+        "human_value": "freedom to keep moving", "claim_limits": "fit depends on each device's published requirements",
+        "CTA_strategy": "Review the verified fit", "topic": "travel charging",
+        "hook_promise": "What deserves a place in your carry-on?",
+        "desired_memory": "Plan around the devices that cannot pause.",
+    }
+
+    commercial = orchestrator._editorial_framework(strategy, {"name": "PowerPulse Pro 200"})
+    organic = orchestrator._editorial_framework(strategy, None)
+
+    assert commercial["mode"] == "commercial"
+    assert commercial["structure"][0] == "human_moment"
+    assert commercial["structure"].index("product_fit") < commercial["structure"].index("verified_proof")
+    assert commercial["verified_proof"] == ["154Wh", "200W AC output"]
+    assert organic["mode"] == "organic"
+    assert organic["structure"] == [
+        "person_world", "human_reality", "tension", "curiosity", "insight",
+        "infenergy_perspective", "story", "participation", "memory",
+    ]
+    assert "product_fit" not in organic["structure"]
+
+
 def test_performance_signal_remains_cautious_and_provenanced():
     signal = performance_learning.observe(strategy={"audience": "household", "angle": "prioritize essentials"}, metrics={"saves": 2}, platform="instagram")
     assert signal["type"] == "PERFORMANCE_EVIDENCE"

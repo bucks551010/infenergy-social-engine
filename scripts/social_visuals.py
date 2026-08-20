@@ -471,7 +471,7 @@ def _gemini_semantic_plate_quality(
     )
     model_candidates = [
         str(os.environ.get("GEMINI_VISUAL_QA_MODEL", "")).strip(),
-        "gemini-3.6-flash",
+        "gemini-2.5-flash",
     ]
     for model_name in model_candidates:
         if not model_name:
@@ -511,7 +511,7 @@ _CONSUMER_STAGE_LABELS = {
 
 def _build_gemini_image_prompt(content: dict[str, Any], platform: str, visual_plan: dict[str, Any]) -> str:
     v5_direction = _safe_json_dict(visual_plan.get("v5_direction"))
-    v5_prompt = str(visual_plan.get("positive_prompt") or visual_plan.get("gemini_image_prompt") or "").strip()
+    v5_prompt = str(visual_plan.get("gemini_image_prompt") or "").strip()
     if v5_direction and v5_prompt:
         return v5_prompt[:3200]
     spec = _platform_visual_spec(platform)
@@ -759,7 +759,6 @@ def _generate_gemini_full_creative(content: dict[str, Any], platform: str, visua
         "final_post_id": str(content.get("post_id") or ""),
         "generation_started_at": started_at,
         "retry_count": 0,
-        "image_provider_call_count": 0,
         "fallback_used": False,
     }
 
@@ -830,8 +829,7 @@ def _generate_gemini_full_creative(content: dict[str, Any], platform: str, visua
         from google.genai import types  # type: ignore
 
         client = genai.Client(api_key=api_key)
-        model_candidates = [str(os.environ.get("GEMINI_IMAGE_MODEL", "")).strip() or "gemini-2.5-flash-image"]
-        seen_models: set[str] = set()
+        model_name = str(os.environ.get("GEMINI_IMAGE_MODEL", "")).strip() or "gemini-2.5-flash-image"
         spec = _platform_visual_spec(platform)
         reference_parts: list[Any] = []
         for reference in repo_refs[:3] if isinstance(repo_refs, list) else []:
@@ -856,62 +854,55 @@ def _generate_gemini_full_creative(content: dict[str, Any], platform: str, visua
                 except Exception:
                     pass
 
-        for model_name in model_candidates:
-            if not model_name or model_name in seen_models:
-                continue
-            seen_models.add(model_name)
-            for attempt in range(1):
-                contents: Any = [prompt, *reference_parts] if reference_parts else prompt
-                try:
-                    config_kwargs: dict[str, Any] = {"response_modalities": ["TEXT", "IMAGE"]}
-                    try:
-                        config_kwargs["image_config"] = types.ImageConfig(aspect_ratio=spec["aspect_ratio"])
-                    except Exception:
-                        pass
-                    metadata["image_provider_call_count"] = int(metadata.get("image_provider_call_count", 0)) + 1
-                    response = client.models.generate_content(
-                        model=model_name,
-                        contents=contents,
-                        config=types.GenerateContentConfig(**config_kwargs),
-                    )
-                    raw = _extract_inline_image_bytes(response)
-                    if not raw:
-                        reasons_by_model[model_name] = "no_image_bytes"
-                        continue
+        contents: Any = [prompt, *reference_parts] if reference_parts else prompt
+        metadata["image_provider_call_count"] = 1
+        try:
+            config_kwargs: dict[str, Any] = {"response_modalities": ["TEXT", "IMAGE"]}
+            try:
+                config_kwargs["image_config"] = types.ImageConfig(aspect_ratio=spec["aspect_ratio"])
+            except Exception:
+                pass
+            response = client.models.generate_content(
+                model=model_name,
+                contents=contents,
+                config=types.GenerateContentConfig(**config_kwargs),
+            )
+            raw = _extract_inline_image_bytes(response)
+            if not raw:
+                reasons_by_model[model_name] = "no_image_bytes"
+            else:
+                image_module, _, _ = _load_pillow()
+                if image_module is None:
+                    return completed(False, "pillow_unavailable", model=model_name)
 
-                    image_module, _, _ = _load_pillow()
-                    if image_module is None:
-                        return False, "pillow_unavailable"
-
-                    generated = image_module.open(io.BytesIO(raw)).convert("RGB")
-                    accepted, plate_reasons = _gemini_plate_quality(generated, platform)
-                    if not accepted:
-                        reasons_by_model[model_name] = f"plate_quality_rejected:{','.join(plate_reasons)}"
-                        continue
+                generated = image_module.open(io.BytesIO(raw)).convert("RGB")
+                accepted, plate_reasons = _gemini_plate_quality(generated, platform)
+                if not accepted:
+                    reasons_by_model[model_name] = f"plate_quality_rejected:{','.join(plate_reasons)}"
+                else:
                     accepted, semantic_reasons = _gemini_semantic_plate_quality(client, types, raw, platform, expected_headline, expected_cta)
                     if not accepted:
                         reasons_by_model[model_name] = f"semantic_quality_rejected:{','.join(semantic_reasons)}"
-                        continue
-                    generated = _resize_cover(generated, spec["target"], image_module)
-                    if generated.size != spec["target"]:
-                        reasons_by_model[model_name] = "resize_mismatch"
-                        continue
-                    generated, overlay_error = _apply_v5_text_overlay(generated, v5_direction)
-                    if overlay_error:
-                        reasons_by_model[model_name] = overlay_error
-                        continue
-                    os.makedirs(os.path.dirname(output_path), exist_ok=True)
-                    generated.save(output_path, format="PNG", optimize=True)
-                    return completed(True, "ok", model=model_name, retry_count=attempt)
-                except Exception as e:
-                    error = f"api_exception:{type(e).__name__}:{str(e)[:160]}"
-                    reasons_by_model[model_name] = error
-                    if "RESOURCE_EXHAUSTED" in str(e).upper() or "monthly spending cap" in str(e).lower():
-                        _GEMINI_IMAGE_UNAVAILABLE_REASON = error
-                        return completed(False, error, model=model_name, retry_count=attempt)
-                    continue
+                    else:
+                        generated = _resize_cover(generated, spec["target"], image_module)
+                        if generated.size != spec["target"]:
+                            reasons_by_model[model_name] = "resize_mismatch"
+                        else:
+                            generated, overlay_error = _apply_v5_text_overlay(generated, v5_direction)
+                            if overlay_error:
+                                reasons_by_model[model_name] = overlay_error
+                            else:
+                                os.makedirs(os.path.dirname(output_path), exist_ok=True)
+                                generated.save(output_path, format="PNG", optimize=True)
+                                return completed(True, "ok", model=model_name)
+        except Exception as e:
+            error = f"api_exception:{type(e).__name__}:{str(e)[:160]}"
+            reasons_by_model[model_name] = error
+            if "RESOURCE_EXHAUSTED" in str(e).upper() or "monthly spending cap" in str(e).lower():
+                _GEMINI_IMAGE_UNAVAILABLE_REASON = error
+                return completed(False, error, model=model_name)
         summary = "; ".join(f"{model}={reason}" for model, reason in reasons_by_model.items()) or "no_attempts_made"
-        return completed(False, summary, model=next(reversed(reasons_by_model), ""), retry_count=0)
+        return completed(False, summary, model=model_name)
     except Exception as e:
         return completed(False, f"setup_exception:{type(e).__name__}:{str(e)[:160]}")
 
@@ -1044,21 +1035,6 @@ def review_rendered_visual(path: str, platform: str) -> dict[str, Any]:
     }
 
 
-def _syndicate_approved_gemini_creative(source_path: str, output_path: str, platform: str) -> bool:
-    image_module, _, _ = _load_pillow()
-    if image_module is None:
-        return False
-    try:
-        from PIL import ImageOps  # type: ignore
-
-        with image_module.open(source_path) as source:
-            fitted = ImageOps.fit(source.convert("RGB"), _platform_visual_spec(platform)["target"])
-            fitted.save(output_path, format="PNG", optimize=True)
-        return True
-    except Exception:
-        return False
-
-
 def _save_product_photo_fallback(source: str, output_path: str, platform: str) -> bool:
     """Create a publishable platform artifact from an approved product source."""
     image_module, _, _ = _load_pillow()
@@ -1079,7 +1055,7 @@ def _save_product_photo_fallback(source: str, output_path: str, platform: str) -
 
 
 def _fallback_creative_review(content: dict[str, Any], plan: dict[str, Any], artifact_path: str, platform: str) -> dict[str, Any]:
-    """Classify raw fallback assets separately from final art-directed creative."""
+    """Classify source assets for review without making them publishable fallbacks."""
     product_led = bool(str(content.get("product_id") or "").strip())
     route = str(plan.get("creative_route") or plan.get("visual_format") or "").strip().upper()
     explicit_packshot = route in {"PACKSHOT", "PACKSHOT_ONLY", "PREMIUM_PRODUCT_HERO"}
@@ -1127,8 +1103,8 @@ def generate_visuals(content: dict[str, Any], visual_plan: dict[str, Any] | None
         file_name = f"{post_id}_{platform}.png"
         file_path = os.path.join(VISUAL_DIR, file_name)
 
-        # Gemini generates the finished creative directly. Enforced delivery may
-        # resize an approved source image when the provider cannot return an image.
+        # Gemini generates the entire finished creative directly. There is no HTML
+        # preview and no local PIL fallback: if Gemini fails, the platform gets no visual.
         rendered, reason, metadata = _generate_gemini_full_creative(content, platform, plan, file_path)
         visual_generation[platform] = metadata
         if rendered:
@@ -1146,74 +1122,10 @@ def generate_visuals(content: dict[str, Any], visual_plan: dict[str, Any] | None
                 except Exception as exc:
                     visual_generation[platform]["v5_qa"] = {"direction_fidelity": "UNAVAILABLE", "reason": type(exc).__name__}
         else:
+            render_engines[platform] = "failed"
+            product_overlay_applied[platform] = False
             fallback_reasons[platform] = reason
-            fallback_saved = (
-                str(os.environ.get("ENFORCE_SOCIAL_DELIVERY", "false")).strip().lower() in {"1", "true", "yes", "on"}
-                and bool(resolved_override)
-                and _save_product_photo_fallback(resolved_override, file_path, platform)
-            )
-            if fallback_saved:
-                visuals[platform] = file_path
-                render_engines[platform] = "approved_source_fallback"
-                product_overlay_applied[platform] = product_specific_source_present
-                artifact_reviews[platform] = _fallback_creative_review(content, plan, file_path, platform)
-                visual_generation[platform] = {
-                    **metadata,
-                    "generation_status": "fallback_success",
-                    "final_creative_status": "approved_source_fallback",
-                    "artifact_path": file_path,
-                    "artifact_exists": True,
-                    "fallback_used": True,
-                    "reference_asset_used_for_conditioning": True,
-                    "reference_asset_role": "SOURCE_PRODUCT_REFERENCE",
-                }
-            else:
-                render_engines[platform] = "failed"
-                product_overlay_applied[platform] = False
-                visual_generation[platform] = {
-                    **metadata,
-                    "generation_status": "failed",
-                    "final_creative_status": "provider_failed_no_final_creative",
-                    "reference_asset_used_for_conditioning": bool(resolved_override),
-                    "reference_asset_role": "SOURCE_PRODUCT_REFERENCE" if resolved_override else "NONE",
-                    "fallback_used": False,
-                }
-                artifact_reviews[platform] = review_rendered_visual("", platform)
-
-    approved_source = next(
-        (
-            platform for platform in ("facebook", "instagram", "linkedin")
-            if render_engines.get(platform) == "gemini"
-            and visuals.get(platform)
-            and artifact_reviews.get(platform, {}).get("verdict") == "PASS"
-        ),
-        "",
-    )
-    if approved_source:
-        for platform in ("facebook", "instagram", "linkedin"):
-            if render_engines.get(platform) == "gemini":
-                continue
-            file_path = os.path.join(VISUAL_DIR, f"{post_id}_{platform}.png")
-            if not _syndicate_approved_gemini_creative(str(visuals[approved_source]), file_path, platform):
-                continue
-            syndicated_review = review_rendered_visual(file_path, platform)
-            if syndicated_review.get("verdict") != "PASS":
-                continue
-            visuals[platform] = file_path
-            render_engines[platform] = "gemini"
-            product_overlay_applied[platform] = product_specific_source_present
-            artifact_reviews[platform] = syndicated_review
-            fallback_reasons.pop(platform, None)
-            visual_generation[platform] = {
-                **visual_generation.get(platform, {}),
-                "generation_status": "success",
-                "final_creative_status": "approved_gemini_creative_syndicated",
-                "artifact_path": file_path,
-                "artifact_exists": True,
-                "fallback_used": False,
-                "syndicated_from_platform": approved_source,
-                "reference_asset_role": "SOURCE_PRODUCT_REFERENCE" if resolved_override else "NONE",
-            }
+            artifact_reviews[platform] = review_rendered_visual("", platform)
 
     visuals["template"] = template_name
     visuals["image_strategy"] = image_strategy
@@ -1224,8 +1136,8 @@ def generate_visuals(content: dict[str, Any], visual_plan: dict[str, Any] | None
     visuals["fallback_reasons"] = fallback_reasons
     visuals["visual_generation"] = visual_generation
     visuals["image_provider_call_count"] = sum(
-        int((visual_generation.get(platform, {}) or {}).get("image_provider_call_count", 0) or 0)
-        for platform in ("facebook", "instagram", "linkedin")
+        int(metadata.get("image_provider_call_count") or 0)
+        for metadata in visual_generation.values()
     )
     visuals["image_provider_call_budget"] = 3
     visuals["artifact_reviews"] = artifact_reviews

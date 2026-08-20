@@ -21,7 +21,6 @@ and image generators are plugged in via the ``VisualProvider`` and
 from __future__ import annotations
 
 import os
-import re
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -357,7 +356,18 @@ def _llm_copy_beats(
     if offering and offering.get("name"):
         prompt_parts.append(
             f"This post must be specifically about this anchored product: {offering.get('name')}. "
-            "Ground the angle/hook/body in this product, not a generic category topic."
+            "Ground the angle/hook/body in this product, not a generic category topic. "
+            "Use this commercial progression: lived human moment, current belief, desired belief, "
+            "dominant proposition, product fit, mechanism, verified proof, functional transformation, "
+            "emotional transformation, ownership or future pacing, honest objection handling, then one CTA. "
+            "Do not lead with the product name or a specification list."
+        )
+    else:
+        prompt_parts.append(
+            "This is non-product editorial content. Use this organic progression: the person's world, "
+            "human reality, tension, curiosity, useful insight, Infenergy perspective, a concrete story or "
+            "example, specific participation, and one memorable closing idea. Do not introduce a product, "
+            "shopping language, specifications, or a sales CTA."
         )
     if benefits:
         prompt_parts.append("Core benefits to draw from: " + "; ".join(benefits) + ".")
@@ -409,6 +419,48 @@ def _llm_copy_beats(
     if not all(str(result.get(b, "")).strip() for b in structure_beats):
         return None
     return {b: str(result[b]).strip() for b in structure_beats}
+
+
+def _editorial_framework(strategy: dict[str, Any], offering: dict[str, Any] | None) -> dict[str, Any]:
+    """Expose the locked reasoning sequence that downstream platform editors must preserve."""
+    if offering:
+        proof = [str(item).strip() for item in (strategy.get("proof") or []) if str(item).strip()]
+        return {
+            "mode": "commercial",
+            "structure": [
+                "human_moment", "current_belief", "desired_belief", "dominant_proposition",
+                "product_fit", "mechanism", "verified_proof", "functional_transformation",
+                "emotional_transformation", "ownership_future_pacing", "objection", "cta",
+            ],
+            "human_moment": str(strategy.get("customer_moment") or ""),
+            "current_belief": str(strategy.get("human_need") or ""),
+            "desired_belief": str(strategy.get("angle") or ""),
+            "dominant_proposition": str(strategy.get("benefit") or ""),
+            "product_fit": str(strategy.get("positioning") or ""),
+            "mechanism": str(strategy.get("important_capability") or ""),
+            "verified_proof": proof,
+            "functional_transformation": str(strategy.get("benefit") or ""),
+            "emotional_transformation": str(strategy.get("human_outcome") or ""),
+            "ownership_future_pacing": str(strategy.get("human_value") or ""),
+            "objection": str(strategy.get("claim_limits") or ""),
+            "cta": str(strategy.get("CTA_strategy") or ""),
+        }
+    return {
+        "mode": "organic",
+        "structure": [
+            "person_world", "human_reality", "tension", "curiosity", "insight",
+            "infenergy_perspective", "story", "participation", "memory",
+        ],
+        "person_world": str(strategy.get("audience") or ""),
+        "human_reality": str(strategy.get("customer_moment") or ""),
+        "tension": str(strategy.get("human_need") or ""),
+        "curiosity": str(strategy.get("hook_promise") or strategy.get("angle") or ""),
+        "insight": str(strategy.get("angle") or ""),
+        "infenergy_perspective": str(strategy.get("positioning") or ""),
+        "story": str(strategy.get("topic") or ""),
+        "participation": str(strategy.get("CTA_strategy") or ""),
+        "memory": str(strategy.get("desired_memory") or strategy.get("human_outcome") or ""),
+    }
 
 
 def _revision_objectives(feedback: list[str] | None, strategy: dict[str, Any]) -> list[str]:
@@ -474,35 +526,26 @@ def _assemble_copy(*, brief: engines.EngineBrief, structure_beats: list[str]) ->
     gap = brief.information_gap or brief.curiosity or brief.angle
     gap_text = gap.strip().rstrip(".?!")
     curiosity_text = brief.curiosity.strip().rstrip(".?!")
-    angle_text = str(brief.angle or "the decision").strip().rstrip(".?!")
-    angle_is_question = bool(re.match(r"^(?:why|how|what|when|where|which|can|does|is|are|should)\b", angle_text, flags=re.IGNORECASE))
-    decision_guidance = (
-        "Compare the published facts with your actual priorities before choosing."
-        if angle_is_question
-        else f"Compare {angle_text.lower()} with your actual priorities before choosing."
-    )
-    safe_problem = "A common mistake is choosing a power option before naming what must stay available."
-    safe_reality = f"The useful question is: {angle_text}?" if angle_is_question else f"The useful distinction is {angle_text}."
 
     templates: dict[str, str] = {
         "hook": q if q.endswith("?") else f"{q}?",
         "answer": f"The published starting point is {gap_text}.",
         "explanation": f"Use {gap_text} to compare the product with the devices and job you need to support.",
         "example": f"Why this matters: {curiosity_text}.",
-        "takeaway": decision_guidance,
-        "problem": safe_problem,
+        "takeaway": "Choose the setup that fits the devices you rely on and the way you actually move through the day.",
+        "problem": "Start by checking the assumption against verified product facts." if misc else f"Most people assume {brief.angle}.",
         "why": f"Because {gap}.",
-        "what_happens": f"That is why your decision should begin with {curiosity_text or 'the need'}.",
-        "what_to_do": decision_guidance,
-        "myth": safe_problem,
-        "reality": safe_reality,
+        "what_happens": f"Which leads to {brief.curiosity}.",
+        "what_to_do": f"So the practical move is to compare your actual priorities with {gap_text.lower()}.",
+        "myth": "A familiar assumption can still be the wrong basis for the decision." if misc else f"Common belief: {brief.angle}.",
+        "reality": f"Actually: {reality}.",
         "implication": f"So {gap}.",
         "scenario": f"Imagine {brief.curiosity}.",
         "consequence": f"The result: {gap}.",
-        "lesson": decision_guidance,
+        "lesson": f"The takeaway: {brief.angle}.",
         "question": q,
-        "surprising_answer": safe_reality,
-        "application": decision_guidance,
+        "surprising_answer": f"The answer: {brief.angle}.",
+        "application": f"How to use it: {brief.angle}.",
     }
     # Return only beats the caller asked for
     return {b: templates.get(b, "") for b in structure_beats}
@@ -579,9 +622,9 @@ class SocialIntelligenceOrchestrator:
         verified_facts: list[str] | None = None,
         record_memory: bool = True,
         product_id_override: str = "",
-        no_product: bool = False,
         approved_strategy: dict[str, Any] | None = None,
         revision_feedback: list[str] | None = None,
+        no_product: bool = False,
     ) -> PostPackage:
         # 0. Recent state → recency-aware decisions
         recent = memory_intelligence.recent(self.data_dir, limit=20)
@@ -589,9 +632,7 @@ class SocialIntelligenceOrchestrator:
         # 0b. Optional BI Foundation hydration — only when the caller
         # didn't already specify a value and the flag is on.
         bi_offering = None if no_product else (
-            _bi_get_offering(product_id_override)
-            if product_id_override
-            else _bi_pick_offering(rotation_index, self.data_dir)
+            _bi_get_offering(product_id_override) if product_id_override else _bi_pick_offering(rotation_index, self.data_dir)
         )
         bi_ctx = _load_bi_creative_context(
             str((bi_offering or {}).get("offering_id") or (bi_offering or {}).get("sku") or "")
@@ -952,6 +993,7 @@ class SocialIntelligenceOrchestrator:
                 "revision_objectives": revision_objectives,
                 "removed_unsupported_numeric_claims": removed_numeric_claims,
                 "strategy_lock": locked,
+                "editorial_framework": _editorial_framework(locked, bi_offering),
             },
             visual={
                 "semantic_role": semantic_role,

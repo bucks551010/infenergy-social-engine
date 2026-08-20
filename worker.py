@@ -20,7 +20,7 @@ import run_engine
 import generate_posts
 import inventory_db
 import intelligence_packages
-from content_operations import content_detail, daily_index, daily_markdown, daily_status, init_content_operations, operations_readiness, reconcile_confirmed_transactions, reconcile_ready_inventory, reconcile_stale_claims
+from content_operations import daily_status, init_content_operations, reconcile_confirmed_transactions, reconcile_ready_inventory, reconcile_stale_claims
 from campaign_runtime import eligible_channels_for_slot, load_channel_schedule, load_funnel_config, stage_for_slot
 
 RUN_LOCK = threading.Lock()
@@ -399,7 +399,6 @@ def _parse_preview_params(params: dict) -> dict:
     funnel_stage = str(params.get("funnel_stage", [""])[0]).strip().upper()
     product_id = str(params.get("product_id", [""])[0]).strip()
     pipeline = str(params.get("pipeline", [""])[0]).strip().lower()
-    no_product = str(params.get("no_product", ["false"])[0]).strip().lower() in ("1", "true", "yes")
     if slot not in ("morning", "midday", "evening"):
         slot = "morning"
     if platform and platform not in ("facebook", "instagram", "linkedin", "wordpress"):
@@ -414,32 +413,33 @@ def _parse_preview_params(params: dict) -> dict:
         "funnel_stage": funnel_stage,
         "product_id": product_id,
         "pipeline": pipeline,
-        "no_product": no_product,
     }
 
 
 def _content_preview(preview_params: dict) -> dict:
     previous_text_only = os.environ.get("POST_TEXT_ONLY")
-    previous_bucket_override = os.environ.get("CONTENT_BUCKET_OVERRIDE")
+    previous_bucket = os.environ.get("CONTENT_BUCKET_OVERRIDE")
     os.environ["POST_TEXT_ONLY"] = "true"
     if preview_params.get("no_product"):
         os.environ["CONTENT_BUCKET_OVERRIDE"] = "no_product"
     try:
-        content = generate_posts.generate(
-            preview_params["slot"],
-            funnel_stage_override=str(preview_params.get("funnel_stage", "")),
-            product_id_override=str(preview_params.get("product_id", "")),
-            pipeline_override=str(preview_params.get("pipeline", "")),
-        )
+        generation_kwargs = {
+            "funnel_stage_override": str(preview_params.get("funnel_stage", "")),
+            "product_id_override": str(preview_params.get("product_id", "")),
+            "pipeline_override": str(preview_params.get("pipeline", "")),
+        }
+        if preview_params.get("no_product"):
+            generation_kwargs["no_product"] = True
+        content = generate_posts.generate(preview_params["slot"], **generation_kwargs)
     finally:
         if previous_text_only is None:
             os.environ.pop("POST_TEXT_ONLY", None)
         else:
             os.environ["POST_TEXT_ONLY"] = previous_text_only
-        if previous_bucket_override is None:
+        if previous_bucket is None:
             os.environ.pop("CONTENT_BUCKET_OVERRIDE", None)
         else:
-            os.environ["CONTENT_BUCKET_OVERRIDE"] = previous_bucket_override
+            os.environ["CONTENT_BUCKET_OVERRIDE"] = previous_bucket
     platform = preview_params.get("platform", "")
     requested_stage = preview_params.get("funnel_stage", "")
     requested_product_id = preview_params.get("product_id", "")
@@ -569,15 +569,7 @@ def _env_is_true(name: str, default: bool) -> bool:
 
 def _production_readiness_snapshot() -> dict:
     data_dir = _data_dir()
-    init_content_operations(data_dir)
-    today = datetime.now(timezone.utc).date()
-    tomorrow = today + timedelta(days=1)
     channel_flags = run_engine.get_channel_config()
-    publisher_configuration = {
-        "facebook": bool(os.environ.get("META_PAGE_ID", "").strip() and os.environ.get("META_PAGE_ACCESS_TOKEN", "").strip()),
-        "instagram": bool(os.environ.get("META_IG_USER_ID", "").strip() and os.environ.get("META_PAGE_ACCESS_TOKEN", "").strip()),
-        "linkedin": bool(os.environ.get("LINKEDIN_ACCESS_TOKEN", "").strip()),
-    }
     overrides = {
         name: str(os.environ.get(name, "")).strip()
         for name in (
@@ -595,12 +587,15 @@ def _production_readiness_snapshot() -> dict:
         "global": {
             "dry_run": str(os.environ.get("SOCIAL_DRY_RUN", "true")).lower() == "true",
             "shadow_mode": _env_is_true("SOCIAL_SHADOW_MODE", False),
-            "enforce_social_delivery": _env_is_true("ENFORCE_SOCIAL_DELIVERY", False),
             "run_lock_active": RUN_LOCK.locked(),
             "scheduler_jobs_registered": len(schedule.jobs),
         },
         "channels": channel_flags,
-        "platform_configuration_present": publisher_configuration,
+        "platform_configuration_present": {
+            "facebook": bool(os.environ.get("META_PAGE_ID", "").strip() and os.environ.get("META_PAGE_ACCESS_TOKEN", "").strip()),
+            "instagram": bool(os.environ.get("META_IG_USER_ID", "").strip() and os.environ.get("META_PAGE_ACCESS_TOKEN", "").strip()),
+            "linkedin": bool(os.environ.get("LINKEDIN_ACCESS_TOKEN", "").strip()),
+        },
         "linkedin_target_configuration": {
             "explicit_target_present": bool(os.environ.get("LINKEDIN_ORGANIZATION_URN", "").strip() or os.environ.get("LINKEDIN_AUTHOR_URN", "").strip()),
             "automatic_resolution_available": bool(os.environ.get("LINKEDIN_ACCESS_TOKEN", "").strip()),
@@ -617,20 +612,6 @@ def _production_readiness_snapshot() -> dict:
             "history_present": os.path.isfile(os.path.join(data_dir, "post_history.json")),
             "receipts_present": os.path.isfile(os.path.join(data_dir, "social", "publish_receipts.json")),
         },
-        "content_supply": {
-            "today": daily_status(data_dir, today),
-            "tomorrow": daily_status(data_dir, tomorrow),
-        },
-        "intelligence_packages": intelligence_packages.package_coverage(data_dir),
-        "operations_readiness": operations_readiness(
-            data_dir,
-            lead_hours=int(os.environ.get("CONTENT_READINESS_LEAD_HOURS", "2")),
-            publisher_ready={platform: channel_flags.get(platform, False) and publisher_configuration[platform] for platform in publisher_configuration},
-            dispatcher_active=any(
-                getattr(job.job_func, "func", None) is _start_dispatch_thread
-                for job in schedule.jobs
-            ),
-        ),
         "overrides": overrides,
     }
 
@@ -787,46 +768,9 @@ class HealthHandler(BaseHTTPRequestHandler):
                 "recent_quality": _quality_summary(recent_posts),
                 "visual_repo_bootstrap": VISUAL_REPO_BOOTSTRAP,
                 "operational_intelligence": _operational_intelligence_snapshot(),
-                "production_readiness": _production_readiness_snapshot(),
             }
             body = json.dumps(payload).encode("utf-8")
             self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
-            return
-
-        if parsed.path in ("/content-operations/status", "/content-operations/detail", "/content-operations/daily"):
-            params = parse_qs(parsed.query)
-            authorized, status_code, error_payload = _authorized(params)
-            if not authorized:
-                body = json.dumps(error_payload).encode("utf-8")
-                self.send_response(status_code)
-                self.send_header("Content-Type", "application/json")
-                self.send_header("Content-Length", str(len(body)))
-                self.end_headers()
-                self.wfile.write(body)
-                return
-            if parsed.path.endswith("/daily"):
-                requested_date = str(params.get("date", [""])[0]).strip() or None
-                body = daily_markdown(_data_dir(), requested_date).encode("utf-8")
-                self.send_response(200)
-                self.send_header("Content-Type", "text/plain; charset=utf-8")
-                self.send_header("Content-Length", str(len(body)))
-                self.end_headers()
-                self.wfile.write(body)
-                return
-            if parsed.path.endswith("/detail"):
-                decision_id = str(params.get("decision_id", [""])[0]).strip()
-                payload = content_detail(_data_dir(), decision_id) if decision_id else {"error": "decision_id_required"}
-                response_code = 200 if payload and "error" not in payload else 400
-            else:
-                requested_date = str(params.get("date", [""])[0]).strip() or None
-                payload = daily_index(_data_dir(), requested_date)
-                response_code = 200
-            body = json.dumps(payload, ensure_ascii=True, default=str).encode("utf-8")
-            self.send_response(response_code)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
@@ -1793,11 +1737,6 @@ def run_intelligence_enrichment() -> None:
         print(f"[ENRICHMENT] failed: {type(exc).__name__}: {exc}")
 
 
-def _scheduled_at(content_date, value: str) -> str:
-    normalized = value if len(value.split(":")) == 3 else f"{value}:00"
-    return f"{content_date.isoformat()}T{normalized}+00:00"
-
-
 def run_content_factory() -> None:
     """Fill missing today/tomorrow slots independently from publication clocks."""
     if not RUN_LOCK.acquire(blocking=False):
@@ -1806,23 +1745,12 @@ def run_content_factory() -> None:
     try:
         data_dir = _data_dir()
         init_content_operations(data_dir)
-        reconciled = reconcile_ready_inventory(data_dir)
-        if reconciled:
-            print(f"[FACTORY] Reopened {len(reconciled)} stale ready packages: {reconciled}")
-        stale_claims = reconcile_stale_claims(data_dir)
-        if stale_claims:
-            print(f"[FACTORY] Recovered {len(stale_claims)} stale claims: {stale_claims}")
-        confirmed = reconcile_confirmed_transactions(data_dir)
-        if confirmed:
-            print(f"[FACTORY] Reconciled {len(confirmed)} confirmed transactions: {confirmed}")
+        reconcile_ready_inventory(data_dir)
+        reconcile_stale_claims(data_dir)
+        reconcile_confirmed_transactions(data_dir)
         today = datetime.now(timezone.utc).date()
-        horizon = [today, today + timedelta(days=1)]
-        slot_times = {"morning": morning_utc, "midday": midday_utc, "evening": evening_utc}
-        scripts_dir = os.path.join(os.path.dirname(__file__), "scripts")
-        run_engine_path = os.path.join(scripts_dir, "run_engine.py")
-        for content_date in horizon:
-            snapshot = daily_status(data_dir, content_date)
-            existing = {item["slot"]: item["status"] for item in snapshot.get("slots", [])}
+        for content_date in (today, today + timedelta(days=1)):
+            existing = {item["slot"]: item["status"] for item in daily_status(data_dir, content_date).get("slots", [])}
             for slot in ("morning", "midday", "evening"):
                 completed_states = {"READY", "DUE", "CLAIMED", "PUBLISHING", "PUBLISHED"}
                 if not _env_is_true("ENFORCE_SOCIAL_DELIVERY", False):
@@ -1831,24 +1759,15 @@ def run_content_factory() -> None:
                     continue
                 env = os.environ.copy()
                 env.update({
-                    "DATA_DIR": data_dir,
-                    "POST_SLOT": slot,
-                    "POST_CONTENT_DATE": content_date.isoformat(),
-                    "POST_TEXT_ONLY": "true",
-                    "CONTENT_FACTORY_ONLY": "true",
-                    "CONTENT_OPERATIONS_ENABLED": "true",
-                    "SOCIAL_DRY_RUN": "false",
-                    "SOCIAL_SHADOW_MODE": "false",
+                    "DATA_DIR": data_dir, "POST_SLOT": slot, "POST_CONTENT_DATE": content_date.isoformat(),
+                    "POST_TEXT_ONLY": "true", "CONTENT_FACTORY_ONLY": "true", "CONTENT_OPERATIONS_ENABLED": "true",
+                    "CANDIDATE_POOL_RUNTIME_ENABLED": "false", "SOCIAL_DRY_RUN": "false", "SOCIAL_SHADOW_MODE": "false",
                     "POST_PLATFORMS": "",
                 })
                 completed = subprocess.run(
-                    [sys.executable, run_engine_path],
-                    cwd=os.path.dirname(__file__),
-                    capture_output=True,
-                    text=True,
-                    env=env,
-                    timeout=int(os.environ.get("CONTENT_FACTORY_SLOT_TIMEOUT_SEC", "900")),
-                    check=False,
+                    [sys.executable, os.path.join(os.path.dirname(__file__), "scripts", "run_engine.py")],
+                    cwd=os.path.dirname(__file__), capture_output=True, text=True, env=env,
+                    timeout=int(os.environ.get("CONTENT_FACTORY_SLOT_TIMEOUT_SEC", "900")), check=False,
                 )
                 output = ((completed.stdout or "") + "\n" + (completed.stderr or "")).strip()
                 print(f"[FACTORY] {content_date} {slot}: exit={completed.returncode} {output[-1000:]}")
@@ -1860,22 +1779,17 @@ def run_content_factory() -> None:
 
 
 def dispatch_scheduled_slot(slot: str) -> None:
-    """Run the boring dispatcher; it never generates or rewrites content."""
+    """Publish due prepared content without generating or rewriting it."""
     if not RUN_LOCK.acquire(blocking=False):
         print(f"[DISPATCH] {slot} deferred because another content operation is active")
         return
     try:
-        scripts_dir = os.path.join(os.path.dirname(__file__), "scripts")
         env = os.environ.copy()
         env["DATA_DIR"] = _data_dir()
         completed = subprocess.run(
-            [sys.executable, os.path.join(scripts_dir, "dispatch_outbox.py")],
-            cwd=os.path.dirname(__file__),
-            capture_output=True,
-            text=True,
-            env=env,
-            timeout=int(os.environ.get("DISPATCH_TIMEOUT_SEC", "360")),
-            check=False,
+            [sys.executable, os.path.join(os.path.dirname(__file__), "scripts", "dispatch_outbox.py")],
+            cwd=os.path.dirname(__file__), capture_output=True, text=True, env=env,
+            timeout=int(os.environ.get("DISPATCH_TIMEOUT_SEC", "360")), check=False,
         )
         output = ((completed.stdout or "") + "\n" + (completed.stderr or "")).strip()
         print(f"[DISPATCH] {slot}: exit={completed.returncode} {output[-2000:]}")

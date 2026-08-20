@@ -17,7 +17,7 @@ import social_visuals  # noqa: E402
 import run_engine  # noqa: E402
 
 
-def test_approved_gemini_creative_recovers_failed_platform_variants(tmp_path, monkeypatch):
+def test_failed_gemini_variants_never_publish_a_reference_photo(tmp_path, monkeypatch):
     monkeypatch.setattr(social_visuals, "VISUAL_DIR", str(tmp_path))
 
     def fake_generate(content, platform, plan, file_path):
@@ -32,13 +32,19 @@ def test_approved_gemini_creative_recovers_failed_platform_variants(tmp_path, mo
 
     visuals = social_visuals.generate_visuals({"post_id": "winner", "product_id": "CAMP-FAN-12K"}, {})
 
-    assert visuals["render_engine"] == "gemini"
-    assert all(Path(visuals[platform]).is_file() for platform in ("facebook", "instagram", "linkedin"))
-    assert Image.open(visuals["instagram"]).size == social_visuals._platform_visual_spec("instagram")["target"]
-    assert Image.open(visuals["linkedin"]).size == social_visuals._platform_visual_spec("linkedin")["target"]
-    assert visuals["visual_generation"]["instagram"]["final_creative_status"] == "approved_gemini_creative_syndicated"
-    assert visuals["visual_generation"]["linkedin"]["syndicated_from_platform"] == "facebook"
-    assert visuals["visual_generation"]["instagram"]["fallback_used"] is False
+    assert visuals["render_engine"] == "mixed"
+    assert Path(visuals["facebook"]).is_file()
+    assert "instagram" not in visuals
+    assert "linkedin" not in visuals
+    assert visuals["render_engines"] == {
+        "facebook": "gemini",
+        "instagram": "failed",
+        "linkedin": "failed",
+    }
+    assert all(
+        generation.get("fallback_source") != "approved_product_photo"
+        for generation in visuals["visual_generation"].values()
+    )
 
 
 def test_final_creative_budget_is_exactly_one_image_call_per_platform(tmp_path, monkeypatch):

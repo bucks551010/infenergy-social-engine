@@ -83,7 +83,7 @@ def human_truth_gate(*, hook: str, body: str, takeaway: str, strategy: dict[str,
     useful = bool(takeaway) and any(token in lower for token in _CAPABILITY_LANGUAGE)
     captivating = len(hook.split()) >= 4 and not fear_terms
     caring = bool(moment and need and recognition)
-    for_them = bool(re.search(r"\b(?:you|your|yours)\b", lower) or "?" in lower)
+    for_them = any(token in lower for token in (" you ", " your ", "?"))
     trust_building = not fear_terms and (not strategy.get("important_capability") or any(token in lower for token in _CAPABILITY_LANGUAGE))
     reader_value = {
         "useful": float(useful),

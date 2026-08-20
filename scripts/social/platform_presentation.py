@@ -366,6 +366,7 @@ def _product_sales_pyramid(
 ) -> tuple[str, dict[str, Any]]:
     """Build product sales copy from approved component meaning in a fixed editorial hierarchy."""
     product = str(components.get("product_name") or "").strip()
+    framework = components.get("editorial_framework") if isinstance(components.get("editorial_framework"), dict) else {}
     benefit = _repair_unsupported_broad_claims(str(components.get("benefit_fragment") or "").strip().rstrip("."))
     situation = _repair_unsupported_broad_claims(str(components.get("situation") or "").strip().rstrip("."))
     after_state = _repair_unsupported_broad_claims(str(components.get("after_state") or components.get("emotional_outcome") or "").strip().rstrip("."))
@@ -378,26 +379,28 @@ def _product_sales_pyramid(
         str(spec).strip() for spec in (components.get("feature_bullets") or [])
         if _numeric_proof_tokens(str(spec))
     ]
-
-    benefit_tagline = benefit[:1].upper() + benefit[1:] if benefit else ""
-    tagline = _sentence(f"✨ {product}: {benefit_tagline}")
-    contrast_lines = []
-    if situation:
-        contrast_lines.append(_sentence(f"Now: {situation}"))
-    if after_state:
-        contrast_lines.append(_sentence(f"With {product} matched to the job: {after_state}"))
-    contrast = "\n".join(contrast_lines)
-    need_and_use = " ".join(filter(None, [
-        _sentence(f"Why it matters: {why_it_matters}") if why_it_matters else "",
-        _sentence(f"Use it for: {use_case}") if use_case else "",
-    ]))
-    spec_lead = "The buying decision gets concrete in the published capability:"
-    spec_block = "⚡ Key specs\n" + "\n".join(f"• {spec}" for spec in specs) if specs else ""
     non_numeric_info = " ".join(
         sentence for sentence in _sentences(info)
         if not _numeric_proof_tokens(sentence)
     )
     non_numeric_info = _concise_public_detail(non_numeric_info)
+
+    human_moment = _concise_public_detail(str(framework.get("human_moment") or situation), max_words=30)
+    current_belief = _concise_public_detail(str(framework.get("current_belief") or situation), max_words=24)
+    desired_belief = _concise_public_detail(str(framework.get("desired_belief") or non_numeric_info), max_words=28)
+    proposition = _concise_public_detail(str(framework.get("dominant_proposition") or benefit), max_words=24)
+    mechanism = _concise_public_detail(str(framework.get("mechanism") or non_numeric_info), max_words=24)
+    functional_change = _concise_public_detail(str(framework.get("functional_transformation") or transformation), max_words=24)
+    emotional_change = _concise_public_detail(str(framework.get("emotional_transformation") or after_state), max_words=20)
+    future_state = _concise_public_detail(str(framework.get("ownership_future_pacing") or why_it_matters), max_words=20)
+    hook = _concise_public_detail(str(components.get("logic_hook") or components.get("hook") or human_moment), max_words=26)
+    belief_shift = " ".join(filter(None, [
+        _sentence(f"The common assumption: {current_belief}") if current_belief else "",
+        _sentence(f"The better question: {desired_belief}") if desired_belief else "",
+    ]))
+    product_reveal = _sentence(f"That is where {product} fits: {proposition or benefit}")
+    mechanism_line = _sentence(f"How it supports that shift: {mechanism}") if mechanism else ""
+    spec_block = "⚡ Key specs\n" + "\n".join(f"• {spec}" for spec in specs) if specs else ""
     if specs and not non_numeric_info:
         non_numeric_info = "Compare the published capacity and output with the actual devices and job before choosing."
     education = " ".join(filter(None, [
@@ -409,14 +412,13 @@ def _product_sales_pyramid(
     source_tags = re.findall(r"#[A-Za-z0-9_]+", source_caption)
     selected_tags = list(dict.fromkeys(source_tags + [f"#{tag}" for tag in portfolio_tags]))[:_HASHTAG_LIMITS.get(platform, 5)]
     hashtag_line = " ".join(selected_tags)
-    paragraphs = [
-        tagline,
-        contrast,
-        need_and_use,
-        spec_lead if spec_block else "",
-        spec_block,
-        education,
-        human_value,
+    transformation_line = _sentence(" ".join(filter(None, [functional_change, emotional_change, future_state])))
+    platform_depth = {
+        "facebook": [hook, human_moment, belief_shift, product_reveal, mechanism_line, spec_block, education, transformation_line],
+        "instagram": [hook, belief_shift, product_reveal, spec_block, transformation_line],
+        "linkedin": [hook, human_moment, belief_shift, product_reveal, mechanism_line, education, spec_block, transformation_line],
+    }
+    paragraphs = platform_depth.get(platform, platform_depth["facebook"]) + [
         f"👉 {cta}" if cta else "",
         hashtag_line,
     ]
@@ -424,15 +426,9 @@ def _product_sales_pyramid(
     presentation = _above_fold(refined, components, platform)
     presentation.update({
         "sales_structure": [
-            "strongest_real_world_benefit",
-            "current_state_vs_product_supported_state",
-            "why_needed_and_use_cases",
-            "sales_transition_to_specs",
-            "single_key_spec_block",
-            "post_spec_education",
-            "human_value",
-            "natural_response",
-            "focused_hashtags",
+            "human_moment", "current_belief", "desired_belief", "dominant_proposition",
+            "product_fit", "mechanism", "verified_proof", "functional_transformation",
+            "emotional_transformation", "ownership_future_pacing", "natural_response",
         ],
         "selected_hashtags": selected_tags,
         "hashtag_categories": categories,
@@ -441,12 +437,13 @@ def _product_sales_pyramid(
         "optional_depth_present": bool(education or human_value),
         "optional_depth_start_word": len(re.findall(r"\b[\w'-]+\b", "\n\n".join(paragraphs[:5]))) + 1 if education or human_value else None,
         "semantic_layer_evidence": {
-            "tagline": tagline,
+            "hook": hook,
+            "human_moment": human_moment,
+            "belief_shift": belief_shift,
             "product": product,
-            "primary_benefit": str(components.get("benefit_fragment") or ""),
-            "human_outcome": str(components.get("emotional_outcome") or components.get("after_state") or ""),
-            "contrast": contrast,
-            "why_and_use": need_and_use,
+            "primary_benefit": proposition or str(components.get("benefit_fragment") or ""),
+            "mechanism": mechanism,
+            "human_outcome": transformation_line,
             "selected_proof": [spec_block] if spec_block else [],
             "education": education,
             "cta": cta,
@@ -466,6 +463,7 @@ def _engagement_editorial(
 ) -> tuple[str, dict[str, Any]]:
     """Build product-free content around participation or useful teaching, never sales."""
     source_has_steps = bool(re.search(r"(?m)^\s*\d+\.\s+\S+", source_caption))
+    framework = components.get("editorial_framework") if isinstance(components.get("editorial_framework"), dict) else {}
     stage = str(components.get("funnel_stage") or ("EDUCATION" if source_has_steps else "ATTENTION")).strip().upper()
     hook = _engagement_safe_text(
         str(components.get("logic_hook") or components.get("hook") or "").strip()
@@ -478,10 +476,15 @@ def _engagement_editorial(
         str(components.get("why_it_matters") or components.get("why") or "").strip()
     )
     transformation = _engagement_safe_text(str(components.get("transformation") or "").strip())
-    situation = situation or "Most households know preparation matters, but priorities often remain unranked until normal routines are interrupted."
-    insight = insight or "Start with the people and daily responsibilities that cannot simply pause, then name the first need you would protect."
-    why = why or "A specific answer turns a vague concern into a decision you can discuss and improve."
-    transformation = transformation or "One clear priority is the beginning of a plan the household can actually use."
+    situation = _engagement_safe_text(str(framework.get("human_reality") or situation)) or "Most households know preparation matters, but priorities often remain unranked until normal routines are interrupted."
+    tension = _engagement_safe_text(str(framework.get("tension") or why))
+    curiosity = _engagement_safe_text(str(framework.get("curiosity") or hook))
+    insight = _engagement_safe_text(str(framework.get("insight") or insight)) or "Start with the people and daily responsibilities that cannot simply pause, then name the first need you would protect."
+    perspective = _engagement_safe_text(str(framework.get("infenergy_perspective") or why))
+    story = _engagement_safe_text(str(framework.get("story") or ""))
+    memory = _engagement_safe_text(str(framework.get("memory") or transformation)) or "One clear priority is the beginning of a plan the household can actually use."
+    why = tension or perspective or "A specific answer turns a vague concern into a decision you can discuss and improve."
+    transformation = memory
 
     if stage == "EDUCATION":
         if source_has_steps:
@@ -504,10 +507,12 @@ def _engagement_editorial(
                 actions.append(_sentence(f"{len(actions) + 1}. {defaults[len(actions)]}"))
         final_cta = cta if cta and not re.search(r"\b(?:shop|buy|product|specs?|link|tap|score|seconds?)\b", cta, flags=re.IGNORECASE) else "Save this framework for your next planning check."
         paragraphs = [
-            hook,
-            _sentence(f"Why this matters: {why or situation}"),
+            curiosity or hook,
+            _sentence(situation),
+            _sentence(f"The tension: {why}"),
             "A practical way to use this:\n" + "\n".join(actions),
-            _sentence(f"The takeaway: {transformation or insight}"),
+            _sentence(f"Infenergy's perspective: {perspective or insight}"),
+            "" if re.search(r"\bremember:", source_caption, flags=re.IGNORECASE) else _sentence(f"Remember: {transformation}"),
             f"👉 {final_cta}",
         ]
         structure = [
@@ -529,10 +534,12 @@ def _engagement_editorial(
             question = "When normal power disappears, what is the first part of daily life you would protect?"
         final_cta = cta if cta and not re.search(r"\b(?:shop|buy|product|specs?|link|tap|score|seconds?)\b", cta, flags=re.IGNORECASE) else "Share the first priority you would protect and why."
         paragraphs = [
-            question,
-            _sentence(f"The real tension: {situation or insight}"),
-            _sentence(f"A better way to frame it: {insight or why}"),
-            _sentence(f"Why your answer matters: {why or transformation}"),
+            curiosity or question,
+            _sentence(situation),
+            _sentence(f"The real tension: {why}"),
+            _sentence(f"A better way to frame it: {insight}"),
+            _sentence(story) if story else "",
+            "" if re.search(r"\bremember:", source_caption, flags=re.IGNORECASE) else _sentence(f"Remember: {transformation}"),
             f"👉 {final_cta}",
         ]
         structure = [
@@ -560,10 +567,13 @@ def _engagement_editorial(
         "optional_depth_present": True,
         "spec_sales_intelligence": "NOT_APPLICABLE",
         "semantic_layer_evidence": {
-            "hook": hook,
+            "hook": curiosity or hook,
             "human_context": situation,
+            "tension": tension,
             "insight": insight,
-            "why_it_matters": why,
+            "perspective": perspective,
+            "story": story,
+            "memory": memory,
             "cta": final_cta,
         },
         "platform_expression": f"{platform}_{stage.lower()}_engagement_editorial",

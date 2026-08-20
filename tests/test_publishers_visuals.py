@@ -60,33 +60,6 @@ class PublisherVisualTests(unittest.TestCase):
         self.assertNotIn("ABSOLUTE EXCLUSIONS", prompt)
         self.assertIn("subordinate to every rule", prompt)
 
-    def test_governed_v5_prompt_owns_scene_and_typography_contract(self) -> None:
-        positive_prompt = (
-            "Photograph a practical outage-planning moment in a Gulf Coast kitchen. "
-            "No readable text, signs, logos, badges, watermarks, or rendered typography."
-        )
-        prompt = _build_gemini_image_prompt(
-            {
-                "funnel_stage": "DESIRE",
-                "product_name": "SolarMax Pro",
-                "selected_hook": "Prepare before the outage",
-                "selected_cta": "Compare the verified specs.",
-            },
-            "instagram",
-            {
-                "v5_direction": {
-                    "scene": "a Gulf Coast kitchen",
-                    "text_overlay": {"enabled": False},
-                    "must_not_appear": ["rendered text", "logos"],
-                },
-                "positive_prompt": positive_prompt,
-            },
-        )
-        self.assertEqual(positive_prompt, prompt)
-        self.assertNotIn("Render exactly this on-image copy", prompt)
-        self.assertNotIn("Spec badge row", prompt)
-        self.assertNotIn("Compare the verified specs.", prompt)
-
     def test_gemini_plate_quality_rejects_wrong_aspect_ratio(self) -> None:
         from PIL import Image
 
@@ -273,7 +246,7 @@ class PublisherVisualTests(unittest.TestCase):
         self.assertEqual(render["artifact_path"], "")
         self.assertFalse(render["artifact_exists"])
 
-    def test_generate_visuals_keeps_product_photo_as_reference_when_gemini_fails(self) -> None:
+    def test_generate_visuals_never_uses_approved_product_photo_when_gemini_fails(self) -> None:
         from PIL import Image
 
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -289,34 +262,11 @@ class PublisherVisualTests(unittest.TestCase):
 
             self.assertEqual(visuals["render_engines"]["instagram"], "failed")
             self.assertNotIn("instagram", visuals)
+            self.assertNotEqual(
+                visuals["visual_generation"]["instagram"].get("fallback_source"),
+                "approved_product_photo",
+            )
             self.assertEqual(visuals["artifact_reviews"]["instagram"]["verdict"], "REGENERATE_VISUAL")
-            self.assertEqual(visuals["visual_generation"]["instagram"]["reference_asset_role"], "SOURCE_PRODUCT_REFERENCE")
-            self.assertTrue(visuals["visual_generation"]["instagram"]["reference_asset_used_for_conditioning"])
-
-    def test_enforced_delivery_uses_product_source_when_gemini_fails(self) -> None:
-        from PIL import Image
-
-        with tempfile.TemporaryDirectory() as temp_dir:
-            source_path = os.path.join(temp_dir, "product.png")
-            Image.new("RGB", (800, 600), "#223344").save(source_path, format="PNG")
-            with patch.dict(
-                os.environ,
-                {"GEMINI_API_KEY": "", "ENFORCE_SOCIAL_DELIVERY": "true"},
-                clear=False,
-            ), patch("social_visuals.VISUAL_DIR", temp_dir):
-                visuals = generate_visuals(
-                    {
-                        "post_id": "unit_test_enforced_product_fallback",
-                        "product_id": "SM-PRO",
-                        "product_image_url": source_path,
-                    }
-                )
-
-            for platform in ("facebook", "instagram", "linkedin"):
-                self.assertTrue(os.path.isfile(visuals[platform]))
-                self.assertEqual("approved_source_fallback", visuals["render_engines"][platform])
-                self.assertTrue(visuals["visual_generation"][platform]["fallback_used"])
-            self.assertEqual(0, visuals["image_provider_call_count"])
 
     def test_live_visual_gate_rejects_local_render_and_missing_product(self) -> None:
         content = {
@@ -333,7 +283,7 @@ class PublisherVisualTests(unittest.TestCase):
         self.assertIn("facebook_visual_not_gemini", errors)
         self.assertIn("facebook_product_overlay_missing", errors)
 
-    def test_live_visual_gate_rejects_product_photo_as_final_creative(self) -> None:
+    def test_live_visual_gate_accepts_approved_product_photo_fallback(self) -> None:
         content = {
             "product_id": "SFT-20K",
             "generated_visuals": {
@@ -344,7 +294,7 @@ class PublisherVisualTests(unittest.TestCase):
             },
         }
 
-        assert "facebook_visual_not_gemini" in _live_visual_gate_errors(content, {"facebook": True}, dry_run=False)
+        assert _live_visual_gate_errors(content, {"facebook": True}, dry_run=False) == []
 
     def test_live_visual_gate_skips_product_checks_when_no_product_anchored(self) -> None:
         # Educational/pillar content with no product_id must not be blocked by

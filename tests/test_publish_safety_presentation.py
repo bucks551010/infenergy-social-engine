@@ -116,6 +116,63 @@ def test_platform_expressions_are_native_and_reject_generic_engagement_bait():
     assert bait["generic_engagement_bait"]
 
 
+def test_commercial_caption_starts_with_human_moment_before_product_and_varies_by_platform():
+    components = {
+        "product_id": "PPP-200", "product_name": "PowerPulse Pro 200",
+        "hook": "A long travel day changes what staying charged really means.",
+        "logic_hook": "A long travel day changes what staying charged really means.",
+        "benefit_fragment": "supports compatible daily devices away from an outlet",
+        "feature_bullets": ["154Wh", "200W"], "cta": "Review the verified fit.",
+        "editorial_framework": {
+            "mode": "commercial",
+            "human_moment": "You are packing for a long travel day with no reliable outlet in sight.",
+            "current_belief": "one battery is much like another",
+            "desired_belief": "the right choice starts with the devices that cannot pause",
+            "dominant_proposition": "supports compatible daily devices away from an outlet",
+            "mechanism": "154Wh published capacity",
+            "functional_transformation": "a charging plan matched to the work",
+            "emotional_transformation": "less charging anxiety",
+            "ownership_future_pacing": "freedom to keep moving",
+        },
+    }
+
+    facebook, _ = platform_presentation.format_caption(components, platform="facebook")
+    instagram, _ = platform_presentation.format_caption(components, platform="instagram")
+    linkedin, _ = platform_presentation.format_caption(components, platform="linkedin")
+
+    assert facebook.index("long travel day") < facebook.index("PowerPulse Pro 200")
+    assert "The common assumption:" in facebook
+    assert "The better question:" in facebook
+    assert "154Wh" in facebook
+    assert len({facebook, instagram, linkedin}) == 3
+
+
+def test_organic_caption_uses_human_reality_without_product_language():
+    components = {
+        "product_id": None, "product_name": "",
+        "hook": "What part of your morning cannot simply pause?",
+        "logic_hook": "What part of your morning cannot simply pause?",
+        "cta": "Name the first routine you would protect.",
+        "editorial_framework": {
+            "mode": "organic",
+            "human_reality": "Morning routines depend on small devices people rarely think about until power is gone.",
+            "tension": "everything feels equally urgent when priorities were never named",
+            "curiosity": "What part of your morning cannot simply pause?",
+            "insight": "rank the routine before ranking equipment",
+            "infenergy_perspective": "preparedness begins with people and responsibilities",
+            "story": "the first dark morning reveals which routine mattered most",
+            "memory": "Name the life you are protecting before the gear.",
+        },
+    }
+
+    caption, presentation = platform_presentation.format_caption(components, platform="facebook")
+
+    assert presentation["content_ideology"] == "earn_participation_through_relevance_not_bait"
+    assert "PowerPulse" not in caption
+    assert "Key specs" not in caption
+    assert "Name the life you are protecting before the gear." in caption
+
+
 def test_final_presentation_gate_blocks_non_ready_facebook_copy():
     errors = run_engine._final_presentation_errors(
         {

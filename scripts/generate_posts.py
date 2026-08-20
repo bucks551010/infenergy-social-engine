@@ -166,12 +166,12 @@ def _route_generate_orchestrator(
 ) -> dict[str, Any]:
     """Return the first orchestrated post package in the legacy payload shape used by the runtime."""
     social_platform = _social_platform_key(platform)
-    council_decision: dict[str, Any] = {}
     no_product = bool(kw.get("no_product")) or os.environ.get("CONTENT_BUCKET_OVERRIDE", "").strip().lower() == "no_product"
+    kw["no_product"] = no_product
+    council_decision: dict[str, Any] = {}
     if no_product:
-        kw["no_product"] = True
-        kw.pop("approved_strategy", None)
-        council_decision = {"decision": "engagement_strategy", "source": "no_product_override"}
+        kw.pop("product_id_override", None)
+        council_decision = {"decision": "organic_strategy", "source": "product_free_override"}
     elif not isinstance(kw.get("approved_strategy"), dict):
         approved_strategy, council_decision = _living_strategy_for_generation()
         if approved_strategy:
@@ -200,8 +200,6 @@ def _route_generate_orchestrator(
         except Exception:
             catalog_product = None
 
-    offering_images = [str(image).strip() for image in (offering.get("images") or []) if str(image).strip()]
-
     brief = first.get("brief") or {}
     copy_body = str(copy_pkg.get("body_text") or "").strip()
     takeaway = str(copy_pkg.get("takeaway") or copy_pkg.get("memory_anchor") or "").strip()
@@ -223,6 +221,7 @@ def _route_generate_orchestrator(
         selected_cta=selected_cta,
         product=product_for_adaptation,
         funnel_stage=funnel_stage,
+        editorial_framework=copy_pkg.get("editorial_framework") if isinstance(copy_pkg.get("editorial_framework"), dict) else {},
     )
     components.update({
         "logic_hook": selected_hook,
@@ -272,8 +271,8 @@ def _route_generate_orchestrator(
         "product_id": offering.get("offering_id") or offering.get("sku") or None,
         "product_name": offering.get("name", ""),
         "product_sku": offering.get("sku", ""),
-        "product_image_url": offering_images[0] if offering_images else "",
-        "product_image_candidates": offering_images,
+        "product_image_url": (offering.get("images") or [""])[0],
+        "product_image_candidates": (offering.get("images") or [])[1:],
         "product_url": (catalog_product or {}).get("product_url", ""),
         "destination_url": SITE_URL,
         "product_price": (catalog_product or {}).get("price", ""),
@@ -353,14 +352,11 @@ def _route_generate_orchestrator(
     )
     from social import reels
 
-    if _text_only_generation():
-        instagram_decision = {"selected_format": "DEFERRED", "reason": "text_only_generation"}
-    else:
-        instagram_decision = reels.choose_instagram_media(
-            strategy_lock=legacy["strategy_lock"],
-            components=components,
-            visual_plan=visual_pkg,
-        )
+    instagram_decision = reels.choose_instagram_media(
+        strategy_lock=legacy["strategy_lock"],
+        components=components,
+        visual_plan=visual_pkg,
+    )
     legacy["instagram_media_decision"] = instagram_decision
     platform_posts["instagram"]["media_type"] = instagram_decision["selected_format"]
     platform_posts["instagram"]["instagram_media_decision"] = instagram_decision
@@ -2093,11 +2089,7 @@ def _canonical_product_url_from_row(row: dict) -> str:
 
 
 def _destination_url_for_content(product_url: str, structured_campaign: dict) -> str:
-    return (
-        str(product_url).strip()
-        or str(structured_campaign.get("destination_url", SITE_URL)).strip()
-        or SITE_URL
-    )
+    return str(product_url).strip() or str(structured_campaign.get("destination_url", SITE_URL)).strip() or SITE_URL
 
 
 def _load_products_from_csv() -> list[dict]:
@@ -2141,7 +2133,7 @@ def _load_products_from_csv() -> list[dict]:
                         "sale_price": (row.get("Sale price") or "").strip(),
                         "in_stock": (row.get("In stock?") or "").strip(),
                         "stock": (row.get("Stock") or "").strip(),
-                        "product_url": _canonical_product_url_from_row(row),
+                        "product_url": (row.get("External URL") or "").strip(),
                         "categories": categories[:4],
                         "metrics": metrics,
                         "fact_snippet": merged_text[:500],
@@ -2440,10 +2432,6 @@ def _decide_content_bucket(history: dict) -> str:
     10-15% direct conversion) and the max-2-consecutive-product-posts guardrail, favoring
     whichever bucket is furthest below its target given recent history.
     """
-    override = os.environ.get("CONTENT_BUCKET_OVERRIDE", "").strip().lower()
-    if override in ("no_product", "product_education", "conversion"):
-        return override
-
     if _consecutive_product_posts(history) >= MAX_CONSECUTIVE_PRODUCT_POSTS:
         return "no_product"
 
@@ -3751,6 +3739,7 @@ def _build_post_components(
     funnel_stage: str,
     product_intelligence: dict | None = None,
     logical_strategy: dict | None = None,
+    editorial_framework: dict | None = None,
 ) -> dict:
     product_name = (product or {}).get("name", "Infenergy preparedness solution")
     product_id = (product or {}).get("id", "")
@@ -3801,9 +3790,9 @@ def _build_post_components(
         cta = "Build your backup-power setup."
 
     strategy = logical_strategy if isinstance(logical_strategy, dict) else {}
+    framework = editorial_framework if isinstance(editorial_framework, dict) else {}
     return {
         "product_id": product_id or None,
-        "funnel_stage": stage,
         "hook": selected_hook,
         "situation": situation,
         "info": info,
@@ -3822,6 +3811,7 @@ def _build_post_components(
         "cta": cta,
         "topic": topic,
         "logical_emotional_strategy": strategy,
+        "editorial_framework": framework,
         "logic_hook": str(strategy.get("logic_hook") or selected_hook),
         "logic_bridge": str(strategy.get("logic_bridge") or info),
         "emotional_outcome": str(strategy.get("emotional_outcome") or profile["after_state"]),
@@ -4282,31 +4272,6 @@ _PILLAR_HASHTAGS = {
 }
 
 
-def _no_product_action_plan(topic: str, pillar: str) -> str:
-    lowered_topic = topic.lower()
-    if "outage" in lowered_topic or pillar in ("preparedness_education", "home_resilience"):
-        return (
-            "24-hour outage plan:\n"
-            "1. Write down the people, tasks, and devices your household wants to keep available.\n"
-            "2. Note what each item needs to operate, using its published instructions where applicable.\n"
-            "3. Keep the matching cables, lighting, and charging supplies together in a known location.\n"
-            "4. Walk through the plan together and update it when your household needs change."
-        )
-    if "travel" in lowered_topic or pillar == "travel_and_outdoor_preparedness":
-        return (
-            "Practical travel-power checklist:\n"
-            "1. List the devices you must charge away from an outlet.\n"
-            "2. Check each device's charging method before packing.\n"
-            "3. Pack cables, backup power, and lighting together in one easy-to-reach place."
-        )
-    return (
-        "Practical readiness steps:\n"
-        "1. Name the need that would create the biggest problem during an outage.\n"
-        "2. Decide what must stay available first.\n"
-        "3. Test the plan before you need it."
-    )
-
-
 def _build_fallback_content_no_product(
     slot: str,
     topic: str,
@@ -4328,7 +4293,6 @@ def _build_fallback_content_no_product(
     angle = str(talking_point.get("angle") or topic).strip()
     first_step = str(talking_point.get("first_step") or "Comment below, we read every reply.").strip()
     hashtag_line = _PILLAR_HASHTAGS.get(pillar, "#Preparedness #InfenergyPower")
-    action_plan = _no_product_action_plan(topic, pillar)
     transformation_from = str(persuasion.get("transformation_from", "") or "").strip()
     transformation_to = str(persuasion.get("transformation_to", "") or "").strip()
     transformation_line = (
@@ -4345,14 +4309,13 @@ def _build_fallback_content_no_product(
         f"<h2>Next Step</h2><p>{first_step}</p>"
     )
 
-    fb_caption = _join_paragraphs(pain_point, topic, angle, action_plan, transformation_line, f"{first_step}\n{hashtag_line}")
+    fb_caption = _join_paragraphs(pain_point, topic, angle, transformation_line, f"{first_step}\n{hashtag_line}")
 
-    ig_caption = _join_paragraphs(topic, pain_point, angle, action_plan, transformation_line, f"{first_step}\n{hashtag_line}")
+    ig_caption = _join_paragraphs(topic, pain_point, angle, transformation_line, f"{first_step}\n{hashtag_line}")
 
     li_text = _join_paragraphs(
         pain_point,
         angle,
-        action_plan,
         transformation_line,
         "For households, caregivers, travelers, and small operators, this kind of practical clarity is what actually reduces risk.",
         first_step,
@@ -5037,9 +5000,11 @@ def generate(
     pipeline_override: str = "",
     approved_strategy: dict[str, Any] | None = None,
     revision_feedback: list[str] | None = None,
+    no_product: bool = False,
 ) -> dict:
     mode = _pipeline_mode(pipeline_override)
     platform = os.environ.get("POST_PLATFORMS", "instagram_feed").split(",")[0].strip() or "instagram_feed"
+    no_product = no_product or os.environ.get("CONTENT_BUCKET_OVERRIDE", "").strip().lower() == "no_product"
 
     if mode == "best_of":
         return _generate_best_of(slot, funnel_stage_override=funnel_stage_override, product_id_override=product_id_override)
@@ -5051,6 +5016,7 @@ def generate(
             funnel_stage_override=funnel_stage_override,
             approved_strategy=approved_strategy,
             revision_feedback=revision_feedback,
+            no_product=no_product,
         )
     if mode != "legacy" and _social_intelligence_enabled():
         return _route_generate_orchestrator(
@@ -5060,19 +5026,23 @@ def generate(
             funnel_stage_override=funnel_stage_override,
             approved_strategy=approved_strategy,
             revision_feedback=revision_feedback,
+            no_product=no_product,
         )
 
     ensure_runtime_data()
     preferred_model = os.environ.get("GEMINI_MODEL", "").strip()
     model_candidates = [
         preferred_model,
-        "gemini-3.6-flash",
+        "gemini-2.5-flash",
+        "gemini-2.0-flash",
+        "gemini-1.5-flash",
     ]
     model_candidates = [m for m in model_candidates if m]
     preferred_visual_director_model = os.environ.get("GEMINI_VISUAL_DIRECTOR_MODEL", "").strip()
     visual_director_candidates = [
         preferred_visual_director_model,
-        "gemini-3.6-flash",
+        "gemini-2.5-pro",
+        "gemini-2.5-flash",
     ]
     visual_director_candidates = [m for m in visual_director_candidates if m]
 
@@ -5158,7 +5128,7 @@ def generate(
     selected_cta = (weekly_sequence.get("primary_cta") or "").strip()
     audience_segment = (weekly_sequence.get("segment") or structured_campaign.get("audience_segment") or "Prepared Buyer").strip()
     campaign_id = str(structured_campaign.get("campaign_id", "")).strip()
-    destination_url = _destination_url_for_content(product_url, structured_campaign)
+    destination_url = str(structured_campaign.get("destination_url", SITE_URL)).strip() or SITE_URL
 
     brand_name = str(brand_profile.get("brand_name") or "Infenergy Power").strip() or "Infenergy Power"
     brand_positioning = str(brand_profile.get("positioning") or INFENERGY_BUSINESS_GOALS["positioning"]).strip()
@@ -5403,7 +5373,7 @@ def generate(
         funnel_stage=funnel_stage,
     )
     if phase2_enabled:
-        phase2_candidates = [preferred_model, conference_model if "conference_model" in locals() else "", "gemini-3.6-flash"]
+        phase2_candidates = [preferred_model, conference_model if "conference_model" in locals() else "", "gemini-2.5-pro", "gemini-2.5-flash"]
         phase2_candidates = [m for m in phase2_candidates if m]
         phase2_raw = _run_phase2_creative_stack(
             phase2_candidates,
@@ -5563,7 +5533,7 @@ def generate(
     run_context["draft_direction"]["selected_cta"] = selected_cta
     run_context["audience_segment"] = audience_segment
 
-    conference_candidates = [conference_model, preferred_visual_director_model, preferred_model, "gemini-3.6-flash"]
+    conference_candidates = [conference_model, preferred_visual_director_model, preferred_model, "gemini-2.5-pro", "gemini-2.5-flash"]
     conference_candidates = [m for m in conference_candidates if m]
 
     phase3_enabled = os.environ.get("ENABLE_PHASE3_SAFETY_STACK", "true").strip().lower() not in {"0", "false", "no"}
@@ -5573,7 +5543,7 @@ def generate(
         recent_topics=recent_topics,
     )
     if phase3_enabled:
-        phase3_candidates = [preferred_model, conference_model, "gemini-3.6-flash"]
+        phase3_candidates = [preferred_model, conference_model, "gemini-2.5-pro", "gemini-2.5-flash"]
         phase3_candidates = [m for m in phase3_candidates if m]
         preview_for_safety = (
             f"Topic: {topic}\n"
@@ -5653,7 +5623,7 @@ def generate(
         funnel_stage=funnel_stage,
     )
     if phase4_enabled:
-        phase4_candidates = [preferred_model, conference_model, preferred_visual_director_model, "gemini-3.6-flash"]
+        phase4_candidates = [preferred_model, conference_model, preferred_visual_director_model, "gemini-2.5-pro", "gemini-2.5-flash"]
         phase4_candidates = [m for m in phase4_candidates if m]
         phase4_raw = _run_phase4_optimization_stack(
             phase4_candidates,
@@ -6240,14 +6210,11 @@ Return ONLY valid JSON with these exact keys (no markdown, no code fences):
         from social import reels
 
         strategy_lock = content.get("strategy_lock") if isinstance(content.get("strategy_lock"), dict) else {}
-        if _text_only_generation():
-            instagram_decision = {"selected_format": "DEFERRED", "reason": "text_only_generation"}
-        else:
-            instagram_decision = reels.choose_instagram_media(
-                strategy_lock=strategy_lock,
-                components=components,
-                visual_plan=visual_plan,
-            )
+        instagram_decision = reels.choose_instagram_media(
+            strategy_lock=strategy_lock,
+            components=components,
+            visual_plan=visual_plan,
+        )
         content["instagram_media_decision"] = instagram_decision
         platform_posts["instagram"]["media_type"] = instagram_decision["selected_format"]
         platform_posts["instagram"]["instagram_media_decision"] = instagram_decision

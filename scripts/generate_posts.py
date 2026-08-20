@@ -200,6 +200,8 @@ def _route_generate_orchestrator(
         except Exception:
             catalog_product = None
 
+    offering_images = [str(image).strip() for image in (offering.get("images") or []) if str(image).strip()]
+
     brief = first.get("brief") or {}
     copy_body = str(copy_pkg.get("body_text") or "").strip()
     takeaway = str(copy_pkg.get("takeaway") or copy_pkg.get("memory_anchor") or "").strip()
@@ -270,8 +272,8 @@ def _route_generate_orchestrator(
         "product_id": offering.get("offering_id") or offering.get("sku") or None,
         "product_name": offering.get("name", ""),
         "product_sku": offering.get("sku", ""),
-        "product_image_url": (offering.get("images") or [""])[0],
-        "product_image_candidates": (offering.get("images") or [])[1:],
+        "product_image_url": offering_images[0] if offering_images else "",
+        "product_image_candidates": offering_images,
         "product_url": (catalog_product or {}).get("product_url", ""),
         "destination_url": SITE_URL,
         "product_price": (catalog_product or {}).get("price", ""),

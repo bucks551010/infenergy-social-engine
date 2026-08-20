@@ -104,6 +104,37 @@ class PhaseThirteenFourteenTests(unittest.TestCase):
         self.assertEqual(matching[0]["source_decision"], "CHANGE_ANGLE")
         self.assertIn("reconsider", matching[0]["revalidation"])
 
+    def test_publication_gate_failure_becomes_scoped_product_intelligence(self) -> None:
+        with tempfile.TemporaryDirectory() as data_dir, patch.dict(os.environ, {"DATA_DIR": data_dir}, clear=False):
+            lessons = run_engine._record_publication_gate_lessons(
+                {"product_id": "SM-PRO"},
+                ["wattage_not_verified:5kw", "novelty_angle_weak"],
+            )
+            matching = memory_intelligence.strategy_lessons(
+                product_id="SM-PRO", condition="publication_gate:wattage_not_verified", data_dir=data_dir
+            )
+
+        self.assertEqual(len(lessons), 1)
+        self.assertEqual(len(matching), 1)
+        self.assertEqual(matching[0]["evidence"], ["wattage_not_verified:5kw"])
+
+    def test_selected_visual_render_temporarily_lifts_text_only_mode(self) -> None:
+        observed = []
+
+        def fake_generate_visuals(content, visual_plan=None):
+            observed.append(os.environ.get("POST_TEXT_ONLY"))
+            return {"facebook": "final.png"}
+
+        with patch.dict(os.environ, {"POST_TEXT_ONLY": "true"}, clear=False), patch.object(
+            run_engine.generate_posts, "generate_visuals", side_effect=fake_generate_visuals
+        ):
+            result = run_engine._render_selected_visuals({"visual_plan": {"route": "gemini"}})
+            restored = os.environ.get("POST_TEXT_ONLY")
+
+        self.assertEqual(observed, [None])
+        self.assertEqual(restored, "true")
+        self.assertEqual(result["facebook"], "final.png")
+
     def test_final_artifact_qa_is_persistable_for_active_facebook_only(self) -> None:
         content = {"generated_visuals": {"facebook": "C:/tmp/final.png"}}
         review = {"verdict": "PASS", "issues": [], "inspected_path": "C:/tmp/final.png", "dimensions": [1080, 1080]}

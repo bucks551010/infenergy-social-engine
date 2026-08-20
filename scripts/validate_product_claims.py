@@ -59,6 +59,7 @@ def validate_generated_content(content: dict[str, Any]) -> ValidationResult:
     product_name = str(content.get("product_name", "")).strip()
     product_metrics = {str(x).strip().lower() for x in (content.get("product_metrics", []) or []) if str(x).strip()}
     product_facts = str(content.get("product_facts", "") or "")
+    verified_product_text = f"{product_name} {product_facts}".lower()
     product_price = str(content.get("product_price", "") or "").strip()
     product_sale_price = str(content.get("product_sale_price", "") or "").strip()
     product_url = str(content.get("product_url", "") or content.get("destination_url", "")).strip()
@@ -73,7 +74,7 @@ def validate_generated_content(content: dict[str, Any]) -> ValidationResult:
 
         generated_metrics = _parse_numeric_tokens(text)
         for token in generated_metrics:
-            if token not in product_metrics and token not in (product_facts or "").lower():
+            if token not in product_metrics and token not in verified_product_text:
                 if "wh" in token or "mah" in token:
                     errors.append(f"capacity_not_verified:{token}")
                 elif "w" in token or "kw" in token:
@@ -83,7 +84,7 @@ def validate_generated_content(content: dict[str, Any]) -> ValidationResult:
                 else:
                     warnings.append(f"numeric_claim_not_verified:{token}")
 
-        if _RUNTIME_PATTERN.search(text) and "hour" not in (product_facts or "").lower():
+        if _RUNTIME_PATTERN.search(text) and "hour" not in verified_product_text:
             errors.append("runtime_claim_not_supported")
 
         prices_mentioned = _PRICE_PATTERN.findall(text)
@@ -101,7 +102,7 @@ def validate_generated_content(content: dict[str, Any]) -> ValidationResult:
                     errors.append(f"price_mismatch:{p}")
 
         low_text = text.lower()
-        if "compatible with" in low_text and "compat" not in (product_facts or "").lower():
+        if "compatible with" in low_text and "compat" not in verified_product_text:
             errors.append("compatibility_not_verified")
 
         if _contains_testimonial_like_claim(text):

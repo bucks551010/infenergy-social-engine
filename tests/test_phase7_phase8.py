@@ -50,6 +50,23 @@ class PhaseSevenEightTests(unittest.TestCase):
         self.assertFalse(result["passed"])
         self.assertIn("product_url_missing", result["errors"])
 
+    def test_claim_validator_accepts_numeric_tokens_in_official_product_name(self) -> None:
+        content = {
+            "product_name": "SolarMax Pro 5kW-10kW",
+            "product_metrics": ["240W"],
+            "product_facts": "Published specifications include 240W.",
+            "product_url": "https://example.com/solarmax",
+            "product_in_stock": "1",
+            "wp_content": "SolarMax Pro 5kW-10kW includes a published 240W option.",
+            "fb_caption": "SolarMax Pro 5kW-10kW with 240W.",
+            "ig_caption": "SolarMax Pro 5kW-10kW with 240W.",
+            "li_text": "SolarMax Pro 5kW-10kW with 240W.",
+        }
+
+        result = validate_generated_content(content)
+
+        self.assertTrue(result["passed"], result["errors"])
+
     def test_score_content_threshold_logic(self) -> None:
         content = {
             "selected_hook": "Most buyers miss this outage planning mistake?",

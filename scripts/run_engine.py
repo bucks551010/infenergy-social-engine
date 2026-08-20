@@ -1182,13 +1182,23 @@ def _v5_semantic_visual_errors(content: dict, effective_channels: dict[str, bool
     return errors
 
 
+def _render_selected_visuals(content: dict) -> dict:
+    """Render only the selected package while preserving council text-only mode."""
+    previous_text_only = os.environ.pop("POST_TEXT_ONLY", None)
+    try:
+        return generate_posts.generate_visuals(content, visual_plan=content.get("visual_plan"))
+    finally:
+        if previous_text_only is not None:
+            os.environ["POST_TEXT_ONLY"] = previous_text_only
+
+
 def _ensure_final_artifact_qa(content: dict, effective_channels: dict[str, bool]) -> dict[str, dict]:
     """Inspect the actual generated artifact before either governance or shadow stop."""
     if not any(effective_channels.get(platform) for platform in ("facebook", "instagram", "linkedin")):
         return {}
     visuals = content.get("generated_visuals") if isinstance(content.get("generated_visuals"), dict) else {}
     if not visuals:
-        visuals = generate_posts.generate_visuals(content, visual_plan=content.get("visual_plan"))
+        visuals = _render_selected_visuals(content)
         content["generated_visuals"] = visuals
     reviews = visuals.get("artifact_reviews") if isinstance(visuals.get("artifact_reviews"), dict) else {}
     for platform in ("facebook", "instagram", "linkedin"):
@@ -1223,6 +1233,41 @@ def _record_material_strategy_lessons(content: dict, strategy: dict) -> list[dic
             "source_decision": "CHANGE_ANGLE",
             "source_strategy_version": strategy.get("strategy_version"),
             "lesson": f"Require verified {requirement} evidence or choose a different angle.",
+        }
+        memory_intelligence.append_strategy_lesson(lesson)
+        records.append(lesson)
+    return records
+
+
+def _record_publication_gate_lessons(content: dict, findings: list[str]) -> list[dict]:
+    """Convert material product gate failures into bounded, scoped intelligence."""
+    product_id = str(content.get("product_id") or "").strip()
+    if not product_id:
+        return []
+    material_prefixes = (
+        "capacity_not_verified:",
+        "wattage_not_verified:",
+        "runtime_not_verified:",
+        "product_url_missing",
+        "product_unavailable_or_out_of_stock",
+        "image_candidate_mismatch",
+        "compatibility_not_verified",
+        "facebook_v5_semantic_qa:",
+        "instagram_v5_semantic_qa:",
+        "linkedin_v5_semantic_qa:",
+    )
+    records: list[dict] = []
+    for finding in dict.fromkeys(str(item) for item in findings if str(item)):
+        if not finding.startswith(material_prefixes):
+            continue
+        condition = f"publication_gate:{finding.split(':', 1)[0]}"
+        lesson = {
+            "product_id": product_id,
+            "condition": condition,
+            "action": "resolve_or_avoid_failed_evidence_path_before_render",
+            "evidence": [finding],
+            "source_decision": "DO_NOT_PUBLISH",
+            "lesson": f"Resolve {finding} before this product can consume final rendering budget.",
         }
         memory_intelligence.append_strategy_lesson(lesson)
         records.append(lesson)
@@ -1605,6 +1650,7 @@ def main() -> None:
             locked_product_id = str(content.get("product_id") or "")
         material_lessons = _record_material_strategy_lessons(content, current_strategy or locked_strategy)
         critic_feedback = _revision_feedback(content, publish_decision)
+        material_lessons.extend(_record_publication_gate_lessons(content, critic_feedback))
         revision_scope = _revision_scope(content)
         historical_feedback = list(pending_feedback)
         issue_closure = _issue_closure(historical_feedback, critic_feedback)
@@ -1899,10 +1945,7 @@ def main() -> None:
         candidate_content = deepcopy(visual_candidate["content"])
         deferred_visuals = candidate_content.get("generated_visuals") if isinstance(candidate_content.get("generated_visuals"), dict) else {}
         if deferred_visuals.get("deferred"):
-            candidate_content["generated_visuals"] = generate_posts.generate_visuals(
-                candidate_content,
-                visual_plan=candidate_content.get("visual_plan"),
-            )
+            candidate_content["generated_visuals"] = _render_selected_visuals(candidate_content)
             candidate_content["image_generation_attempts"] = int(candidate_content.get("image_generation_attempts", 0) or 0) + 1
         _ensure_final_artifact_qa(candidate_content, effective_channels)
         candidate_artifact_errors = _artifact_visual_errors_by_platform(candidate_content, effective_channels)
@@ -1983,10 +2026,7 @@ def main() -> None:
         )
         editorial_content["publish_decision"] = editorial_decision
         if editorial_decision["publishable"]:
-            editorial_content["generated_visuals"] = generate_posts.generate_visuals(
-                editorial_content,
-                visual_plan=editorial_content.get("visual_plan"),
-            )
+            editorial_content["generated_visuals"] = _render_selected_visuals(editorial_content)
             editorial_content["image_generation_attempts"] = int(editorial_content.get("image_generation_attempts", 0) or 0) + 1
             _ensure_final_artifact_qa(editorial_content, effective_channels)
             editorial_artifact_errors = _artifact_visual_errors_by_platform(editorial_content, effective_channels)

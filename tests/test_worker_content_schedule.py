@@ -13,6 +13,11 @@ from scripts import run_engine  # noqa: E402
 from social import living_intelligence  # noqa: E402
 
 
+def test_monthly_api_summary_exposes_knowledge_refresh_audit():
+    assert "knowledge_refresh" in worker.MONTHLY_SUMMARY_KEYS
+    assert len(worker.MONTHLY_SUMMARY_KEYS) == len(set(worker.MONTHLY_SUMMARY_KEYS))
+
+
 def test_post_requests_reach_the_existing_endpoint_handler():
     handler = object.__new__(worker.HealthHandler)
     calls = []

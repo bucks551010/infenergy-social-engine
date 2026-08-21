@@ -39,6 +39,11 @@ VISUAL_REPO_BOOTSTRAP = {
     "summary": {},
     "error": None,
 }
+MONTHLY_SUMMARY_KEYS = (
+    "status", "created_at_utc", "knowledge_id", "knowledge_version",
+    "knowledge_digest", "knowledge_refresh", "start_date", "end_date", "days", "queued",
+    "skipped_existing", "cancelled_legacy_outbox", "single_image_posts", "carousel_posts", "calendar_path",
+)
 
 
 def _data_dir() -> str:
@@ -1385,11 +1390,7 @@ class HealthHandler(BaseHTTPRequestHandler):
                 )
                 payload = {
                     key: result.get(key)
-                    for key in (
-                        "status", "created_at_utc", "knowledge_id", "knowledge_version",
-                        "knowledge_digest", "start_date", "end_date", "days", "queued",
-                        "skipped_existing", "cancelled_legacy_outbox", "single_image_posts", "carousel_posts", "calendar_path",
-                    )
+                    for key in MONTHLY_SUMMARY_KEYS
                 }
                 body = json.dumps(payload, default=str).encode("utf-8")
                 self.send_response(201)
@@ -1422,11 +1423,7 @@ class HealthHandler(BaseHTTPRequestHandler):
                 entries = calendar.get("entries", []) if isinstance(calendar.get("entries"), list) else []
                 payload = {
                     key: calendar.get(key)
-                    for key in (
-                        "status", "created_at_utc", "knowledge_id", "knowledge_version",
-                        "knowledge_digest", "start_date", "end_date", "days", "queued",
-                        "skipped_existing", "cancelled_legacy_outbox", "single_image_posts", "carousel_posts", "calendar_path",
-                    )
+                    for key in MONTHLY_SUMMARY_KEYS
                 }
                 payload["entries"] = entries if include_packages else [
                     {key: entry.get(key) for key in ("date", "scheduled_at", "slot", "content_id", "thought_id", "format", "statement", "outbox_id")}

@@ -706,6 +706,9 @@ def _start_slot_thread(
 
 
 class HealthHandler(BaseHTTPRequestHandler):
+    def do_POST(self):
+        self.do_GET()
+
     def do_GET(self):
         parsed = urlparse(self.path)
 

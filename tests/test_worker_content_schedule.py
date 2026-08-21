@@ -13,6 +13,16 @@ from scripts import run_engine  # noqa: E402
 from social import living_intelligence  # noqa: E402
 
 
+def test_post_requests_reach_the_existing_endpoint_handler():
+    handler = object.__new__(worker.HealthHandler)
+    calls = []
+    handler.do_GET = lambda: calls.append("handled")
+
+    handler.do_POST()
+
+    assert calls == ["handled"]
+
+
 def test_publication_clocks_dispatch_and_never_generate():
     worker.register_scheduled_jobs()
     jobs = worker.schedule.jobs

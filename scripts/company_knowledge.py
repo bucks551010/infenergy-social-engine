@@ -29,6 +29,7 @@ def knowledge_path(data_dir: str) -> str:
         return persistent_path
     return os.path.abspath(
         os.path.join(os.path.dirname(__file__), "..", "data", "marketing", "infenergy_company_knowledge.json")
+    )
 
 
 def load_company_knowledge(data_dir: str) -> dict[str, Any]:

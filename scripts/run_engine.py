@@ -1324,6 +1324,20 @@ def _final_channel_evidence_readiness(content: dict, effective_channels: dict[st
     return readiness
 
 
+def _apply_manual_platform_override(
+    effective_channels: dict[str, bool],
+    channel_reasons: dict[str, str],
+    manual_platforms: list[str],
+) -> None:
+    if not manual_platforms:
+        return
+    requested = set(manual_platforms)
+    for platform in ("facebook", "instagram", "linkedin"):
+        if platform not in requested:
+            effective_channels[platform] = False
+            channel_reasons[platform] = "excluded_by_manual_override"
+
+
 def main() -> None:
     slot = os.environ.get("POST_SLOT", "morning")
     dry_run = os.environ.get("SOCIAL_DRY_RUN", "true").lower() == "true"
@@ -1397,6 +1411,7 @@ def main() -> None:
         effective_channels[name] = True
         channel_reasons[name] = "enabled_for_run"
 
+    _apply_manual_platform_override(effective_channels, channel_reasons, manual_platforms)
     phase5_readiness = _build_phase5_channel_readiness(effective_channels, dry_run)
     for platform in phase5_readiness.get("blocking_channels", []):
         effective_channels[platform] = False
@@ -1756,7 +1771,7 @@ def main() -> None:
         conversion_quality_score=final_cqs_total,
         orchestrator_quality=content.get("orchestrator_quality"),
         visual_errors=visual_gate_errors,
-        evidence_readiness=_evidence_readiness(content),
+        evidence_readiness=_final_channel_evidence_readiness(content, effective_channels),
     )
     content["publish_decision"] = final_decision
     has_eligible_social_channel = any(effective_channels.get(platform) for platform in ("facebook", "instagram", "linkedin"))

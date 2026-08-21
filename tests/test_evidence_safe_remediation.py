@@ -67,3 +67,35 @@ def test_remediation_attempt_is_bounded_and_research_findings_stay_terminal_afte
 
     assert run_engine._retryability_classification(decision, []) == "TERMINAL"
     assert "RESEARCH_REQUIRED" not in run_engine._evidence_safe_remediation_feedback({"product_id": "PPP-200"})[-1]
+
+
+def test_manual_platform_override_enables_only_requested_platform():
+    channels = {"wordpress": False, "facebook": True, "instagram": True, "linkedin": True}
+    reasons = {platform: "enabled_for_run" for platform in channels}
+
+    run_engine._apply_manual_platform_override(channels, reasons, ["linkedin"])
+
+    assert channels == {"wordpress": False, "facebook": False, "instagram": False, "linkedin": True}
+    assert reasons["facebook"] == "excluded_by_manual_override"
+    assert reasons["instagram"] == "excluded_by_manual_override"
+    assert reasons["linkedin"] == "enabled_for_run"
+
+
+def test_final_channel_evidence_excludes_out_of_scope_wordpress_copy():
+    content = {
+        "selected_hook": "Review the published specification.",
+        "product_metrics": ["100W"],
+        "wp_content": "This device guarantees medical equipment during a prolonged outage.",
+        "platform_posts": {
+            "linkedin": {"final_caption": "Review the published 100W specification before choosing."},
+        },
+    }
+
+    readiness = run_engine._final_channel_evidence_readiness(
+        content,
+        {"wordpress": False, "facebook": False, "instagram": False, "linkedin": True},
+    )
+
+    claims = content["final_channel_claim_ledger"]["claims"]
+    assert all("medical equipment" not in str(claim) for claim in claims)
+    assert readiness["status"] != "HIGH_RISK_UNVERIFIED"

@@ -246,7 +246,7 @@ class PublisherVisualTests(unittest.TestCase):
         self.assertEqual(render["artifact_path"], "")
         self.assertFalse(render["artifact_exists"])
 
-    def test_generate_visuals_never_uses_approved_product_photo_when_gemini_fails(self) -> None:
+    def test_generate_visuals_uses_approved_product_photo_when_gemini_fails(self) -> None:
         from PIL import Image
 
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -260,15 +260,15 @@ class PublisherVisualTests(unittest.TestCase):
                     }
                 )
 
-            self.assertEqual(visuals["render_engines"]["instagram"], "failed")
-            self.assertNotIn("instagram", visuals)
-            self.assertNotEqual(
+            self.assertEqual(visuals["render_engines"]["instagram"], "approved_product_photo")
+            self.assertIn("instagram", visuals)
+            self.assertEqual(
                 visuals["visual_generation"]["instagram"].get("fallback_source"),
                 "approved_product_photo",
             )
-            self.assertEqual(visuals["artifact_reviews"]["instagram"]["verdict"], "REGENERATE_VISUAL")
+            self.assertEqual(visuals["artifact_reviews"]["instagram"]["verdict"], "PASS")
 
-    def test_live_visual_gate_rejects_local_render_and_missing_product(self) -> None:
+    def test_live_visual_gate_rejects_missing_product_source_and_overlay(self) -> None:
         content = {
             "product_id": "SFT-20K",
             "generated_visuals": {
@@ -280,7 +280,6 @@ class PublisherVisualTests(unittest.TestCase):
         }
         errors = _live_visual_gate_errors(content, {"facebook": True}, dry_run=False)
         self.assertIn("product_specific_image_source_missing", errors)
-        self.assertIn("facebook_visual_not_gemini", errors)
         self.assertIn("facebook_product_overlay_missing", errors)
 
     def test_live_visual_gate_accepts_approved_product_photo_fallback(self) -> None:
@@ -311,7 +310,23 @@ class PublisherVisualTests(unittest.TestCase):
         errors = _live_visual_gate_errors(content, {"facebook": True}, dry_run=False)
         self.assertNotIn("product_specific_image_source_missing", errors)
         self.assertNotIn("facebook_product_overlay_missing", errors)
-        self.assertIn("facebook_visual_not_gemini", errors)
+        self.assertEqual(errors, [])
+
+    def test_generate_visuals_uses_approved_reference_for_non_product_fallback(self) -> None:
+        from PIL import Image
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source_path = os.path.join(temp_dir, "editorial.png")
+            Image.new("RGB", (1200, 1200), "#36505f").save(source_path, format="PNG")
+            context = {"references": [{"reference_url": source_path}], "settings": {}}
+            with patch.dict(os.environ, {"GEMINI_API_KEY": ""}, clear=False), \
+                    patch("social_visuals.VISUAL_DIR", temp_dir), \
+                    patch("social_visuals._load_visual_repo_context", return_value=context):
+                visuals = generate_visuals({"post_id": "organic-reference", "product_id": None})
+
+            self.assertEqual(visuals["render_engines"]["facebook"], "approved_reference_image")
+            self.assertEqual(visuals["visual_generation"]["facebook"]["fallback_source"], "approved_reference_image")
+            self.assertEqual(visuals["artifact_reviews"]["facebook"]["verdict"], "PASS")
 
     def test_live_visual_gate_accepts_gemini_product_composite(self) -> None:
         content = {

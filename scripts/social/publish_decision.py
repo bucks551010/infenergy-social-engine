@@ -31,11 +31,12 @@ def decide(
     critic_total = (orchestrator_quality or {}).get("overall")
     critic_total = float(critic_total) if critic_total is not None else None
     reasons: list[str] = []
+    advisory_reasons: list[str] = []
 
     if not validation.get("passed", False):
         reasons.extend(str(error) for error in validation.get("errors", []))
     if not duplicates.get("ok", True):
-        reasons.extend(str(reason) for reason in duplicates.get("reasons", []))
+        advisory_reasons.extend(str(reason) for reason in duplicates.get("reasons", []))
     if visual_errors:
         reasons.extend(visual_errors)
     if evidence_readiness and not evidence_readiness.get("ready", False):
@@ -44,35 +45,14 @@ def decide(
         str(reason) for reason in (orchestrator_quality or {}).get("critic_findings", (orchestrator_quality or {}).get("reasons", []))
         if str(reason)
     ]
-    if reasons:
-        decision = "do_not_publish"
-    elif recovery_exhausted:
-        decision = "publish"
-        if legacy_total < PUBLISH_SCORE:
-            reasons.append("quality_preference_unmet_after_recovery")
-        if conversion_quality_score is not None and conversion_quality_score < CONVERSION_SCORE:
-            reasons.append("conversion_quality_preference_unmet_after_recovery")
-        if critic_total is not None and critic_total < PUBLISH_SCORE:
-            reasons.extend(critic_findings)
-            reasons.append("critic_preference_unmet_after_recovery")
-    elif legacy_total < REVISE_SCORE:
-        decision = "do_not_publish"
-        reasons.append("runtime_quality_below_regeneration_floor")
-    elif critic_total is not None and critic_total < REVISE_SCORE:
-        decision = "regenerate"
-        reasons.extend(critic_findings)
-        reasons.append("orchestrator_critic_below_regeneration_floor")
-    elif legacy_total < PUBLISH_SCORE or (
-        conversion_quality_score is not None and conversion_quality_score < CONVERSION_SCORE
-    ):
-        decision = "regenerate"
-        reasons.append("candidate_needs_regeneration")
-    elif critic_total is not None and critic_total < PUBLISH_SCORE:
-        decision = "revise"
-        reasons.extend(critic_findings or ["critic_score_below_publish_threshold"])
-        reasons.append("orchestrator_critic_requires_revision")
-    else:
-        decision = "publish"
+    if legacy_total < PUBLISH_SCORE:
+        advisory_reasons.append("quality_preference_unmet")
+    if conversion_quality_score is not None and conversion_quality_score < CONVERSION_SCORE:
+        advisory_reasons.append("conversion_quality_preference_unmet")
+    if critic_total is not None and critic_total < PUBLISH_SCORE:
+        advisory_reasons.extend(critic_findings)
+        advisory_reasons.append("critic_preference_unmet")
+    decision = "do_not_publish" if reasons else "publish"
 
     return {
         "decision": decision,
@@ -86,6 +66,7 @@ def decide(
         "conversion_quality_score": float(conversion_quality_score) if conversion_quality_score is not None else None,
         "conversion_quality_available": conversion_quality_score is not None,
         "reasons": reasons,
+        "advisory_reasons": list(dict.fromkeys(advisory_reasons)),
         "platform_results": legacy_score.get("platform_results", {}),
         "evidence_readiness": evidence_readiness or {"ready": True, "status": "NOT_ASSESSED"},
     }

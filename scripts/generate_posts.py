@@ -53,11 +53,11 @@ def _pipeline_mode(explicit: str = "") -> str:
 
     Precedence: explicit ``pipeline_override`` kwarg > ``CONTENT_PIPELINE``/
     ``POST_PIPELINE_OVERRIDE`` env vars > legacy ``ENABLE_SOCIAL_INTELLIGENCE``
-    flag. Normal production defaults to the orchestrator; ``legacy`` remains
-    an explicit operational fallback instead of an implicit second brain.
+    flag. Normal production uses the Conversion Strategist pipeline, which owns
+    the required copy framework and business-profile grounding.
     """
     raw = (explicit or os.environ.get("CONTENT_PIPELINE", "") or os.environ.get("POST_PIPELINE_OVERRIDE", "")).strip().lower()
-    return _PIPELINE_ALIASES.get(raw, "orchestrator")
+    return _PIPELINE_ALIASES.get(raw, "legacy")
 
 
 def run_social_intelligence(count: int = 1, platform: str = "instagram_feed", **kw: Any) -> list[dict[str, Any]]:
@@ -2184,14 +2184,38 @@ def _pick_product(products: list[dict], history: dict) -> dict | None:
         candidate["_rotation_product_id"] = str(product.get("id") or product.get("sku") or product.get("name") or "")
         if candidate["_rotation_product_id"]:
             candidates.append(candidate)
-    selected, decision = select_least_recently_used(
-        candidates,
-        "product_id",
-        ledger,
-        value_key="_rotation_product_id",
-    )
-    if not selected:
+    last_used = ledger.get("last_used_at", {}).get("product_id", {})
+    cooldown_days = int(ledger.get("cooldown_days", {}).get("product_id", 0) or 0)
+    cutoff = datetime.now(timezone.utc) - timedelta(days=max(0, cooldown_days))
+
+    def recently_used(product_id: str) -> bool:
+        raw = str(last_used.get(product_id) or "").strip()
+        if not raw:
+            return False
+        try:
+            used_at = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+            if used_at.tzinfo is None:
+                used_at = used_at.replace(tzinfo=timezone.utc)
+            return used_at >= cutoff
+        except ValueError:
+            return False
+
+    eligible = [
+        candidate for candidate in candidates
+        if not recently_used(candidate["_rotation_product_id"])
+    ]
+    pool = eligible or candidates
+    if not pool:
         return None
+    selected = random.choice(pool)
+    decision = {
+        "dimension": "product_id",
+        "pool_size": len(candidates),
+        "excluded_count": len(candidates) - len(eligible),
+        "selected": selected["_rotation_product_id"],
+        "selection_reason": "random_recent_exclusion" if eligible else "random_rotation_exhausted",
+        "rotation_exhausted": bool(candidates and not eligible),
+    }
     selected.pop("_rotation_product_id", None)
     selected["_rotation_decision"] = decision
     return selected

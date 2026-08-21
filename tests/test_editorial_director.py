@@ -3,6 +3,8 @@ from __future__ import annotations
 import os
 import sys
 import unittest
+from datetime import datetime, timezone
+from unittest.mock import patch
 
 ROOT = os.path.dirname(os.path.dirname(__file__))
 SCRIPTS = os.path.join(ROOT, "scripts")
@@ -27,6 +29,21 @@ def _history(posts: list[dict]) -> dict:
 
 
 class EditorialDirectorTests(unittest.TestCase):
+    def test_product_selection_randomizes_after_excluding_recent_product(self) -> None:
+        history = _history([{
+            "product_id": "PF-1",
+            "product_name": "PowerFlex",
+            "published_at": datetime.now(timezone.utc).isoformat(),
+            "status": "published",
+        }])
+
+        with patch("generate_posts.random.choice", side_effect=lambda pool: pool[-1]) as choose:
+            selected = generate_posts._pick_product(PRODUCTS, history)
+
+        self.assertEqual(selected["id"], "PF-2")
+        self.assertEqual(selected["_rotation_decision"]["selection_reason"], "random_recent_exclusion")
+        self.assertEqual(len(choose.call_args.args[0]), 1)
+
     def test_bootstrap_history_biases_to_no_product(self) -> None:
         # Fewer than 3 recent posts: bucket should default to no_product to seed a healthy mix.
         history = _history([_post("PowerFlex"), _post("PowerFlex")])

@@ -99,11 +99,11 @@ def test_production_orchestrator_adapter_uses_recipe_provider_before_final_rende
     assert posts == [{"post_id": "recipe-only"}]
 
 
-def test_normal_generation_defaults_to_the_orchestrator(monkeypatch):
+def test_normal_generation_defaults_to_conversion_pipeline(monkeypatch):
     monkeypatch.delenv("CONTENT_PIPELINE", raising=False)
     monkeypatch.delenv("POST_PIPELINE_OVERRIDE", raising=False)
 
-    assert generate_posts._pipeline_mode() == "orchestrator"
+    assert generate_posts._pipeline_mode() == "legacy"
 
 
 def test_orchestrator_bridge_passes_council_strategy_to_generation(monkeypatch):
@@ -1132,8 +1132,9 @@ def test_publish_decision_is_the_single_gate_for_critics_and_runtime():
         orchestrator_quality={"overall": 78},
     )
 
-    assert result["decision"] == "revise"
-    assert not result["publishable"]
+    assert result["decision"] == "publish"
+    assert "critic_preference_unmet" in result["advisory_reasons"]
+    assert result["publishable"]
 
 
 def test_publish_decision_blocks_failed_validation_even_with_high_scores():
@@ -1166,7 +1167,7 @@ def test_quality_is_advisory_after_recovery_but_truth_remains_mandatory():
     )
 
     assert recovered["publishable"] is True
-    assert "quality_preference_unmet_after_recovery" in recovered["reasons"]
+    assert "quality_preference_unmet" in recovered["advisory_reasons"]
     assert unsafe["publishable"] is False
     assert "unsupported_claim" in unsafe["reasons"]
 

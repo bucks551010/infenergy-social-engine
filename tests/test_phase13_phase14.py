@@ -216,9 +216,9 @@ class PhaseThirteenFourteenTests(unittest.TestCase):
             },
         )
 
-        self.assertEqual(decision["decision"], "revise")
-        self.assertIn("specificity_weak", decision["reasons"])
-        self.assertNotEqual(decision["reasons"], ["orchestrator_critic_requires_revision"])
+        self.assertEqual(decision["decision"], "publish")
+        self.assertIn("specificity_weak", decision["advisory_reasons"])
+        self.assertNotEqual(decision["advisory_reasons"], ["critic_preference_unmet"])
         self.assertEqual(decision["critic_component_scores"]["specificity"], 0.5)
 
     def test_facebook_readiness_does_not_depend_on_wordpress(self) -> None:

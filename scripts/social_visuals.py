@@ -360,6 +360,10 @@ def _resolve_product_source(content: dict[str, Any], repo_context: dict[str, Any
             candidate = str(ref.get("visual_product_image_override_url") or "").strip()
             if candidate:
                 return candidate
+            if not str(content.get("product_id") or "").strip():
+                candidate = str(ref.get("reference_url") or "").strip()
+                if candidate:
+                    return candidate
 
     return ""
 
@@ -1103,8 +1107,8 @@ def generate_visuals(content: dict[str, Any], visual_plan: dict[str, Any] | None
         file_name = f"{post_id}_{platform}.png"
         file_path = os.path.join(VISUAL_DIR, file_name)
 
-        # Gemini generates the entire finished creative directly. There is no HTML
-        # preview and no local PIL fallback: if Gemini fails, the platform gets no visual.
+        # Prefer Gemini, then keep publishing viable with the selected product's
+        # verified catalog image when the provider is unavailable.
         rendered, reason, metadata = _generate_gemini_full_creative(content, platform, plan, file_path)
         visual_generation[platform] = metadata
         if rendered:
@@ -1121,6 +1125,20 @@ def generate_visuals(content: dict[str, Any], visual_plan: dict[str, Any] | None
                     )
                 except Exception as exc:
                     visual_generation[platform]["v5_qa"] = {"direction_fidelity": "UNAVAILABLE", "reason": type(exc).__name__}
+        elif resolved_override and _save_product_photo_fallback(resolved_override, file_path, platform):
+            fallback_engine = "approved_product_photo" if product_specific_source_present else "approved_reference_image"
+            render_engines[platform] = fallback_engine
+            product_overlay_applied[platform] = product_specific_source_present
+            visuals[platform] = file_path
+            fallback_reasons[platform] = reason
+            artifact_reviews[platform] = review_rendered_visual(file_path, platform)
+            metadata.update({
+                "fallback_used": True,
+                "fallback_source": fallback_engine,
+                "artifact_path": file_path,
+                "artifact_exists": True,
+                "generation_status": "fallback_success",
+            })
         else:
             render_engines[platform] = "failed"
             product_overlay_applied[platform] = False

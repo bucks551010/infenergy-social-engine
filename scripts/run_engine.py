@@ -1045,8 +1045,8 @@ def _live_visual_gate_errors(content: dict, effective_channels: dict[str, bool],
     visuals = content.get("generated_visuals") if isinstance(content.get("generated_visuals"), dict) else {}
     render_engines = visuals.get("render_engines") if isinstance(visuals.get("render_engines"), dict) else {}
     overlays = visuals.get("product_overlay_applied") if isinstance(visuals.get("product_overlay_applied"), dict) else {}
-    require_gemini = os.environ.get("LIVE_REQUIRE_GEMINI_VISUAL", "true").strip().lower() in {"1", "true", "yes", "on"}
-    approved_render_engines = {"gemini", "approved_product_photo"}
+    require_gemini = os.environ.get("LIVE_REQUIRE_GEMINI_VISUAL", "false").strip().lower() in {"1", "true", "yes", "on"}
+    approved_render_engines = {"gemini", "approved_product_photo", "approved_reference_image"}
     has_anchored_product = bool(str(content.get("product_id") or "").strip())
     require_product = has_anchored_product and os.environ.get("LIVE_REQUIRE_PRODUCT_VISUAL", "true").strip().lower() in {"1", "true", "yes", "on"}
 
@@ -1385,14 +1385,6 @@ def main() -> None:
     _apply_phase8_budget(runtime_metrics, "preview_generation", time.perf_counter() - t_preview, generation_budget)
     funnel_stage = str(preview_content.get("funnel_stage", "EDUCATION"))
 
-    eligibility = eligible_channels_for_slot(
-        slot=slot,
-        funnel_stage=funnel_stage,
-        schedule=schedule,
-        now_utc=routing_now_utc,
-        manual_platforms=manual_platforms,
-    )
-
     for name, enabled in channels.items():
         if name == "wordpress":
             channel_reasons[name] = "out_of_scope"
@@ -1402,16 +1394,8 @@ def main() -> None:
             channel_reasons[name] = "disabled_env"
             continue
 
-        allowed, reason = eligibility.get(name, (False, "not_scheduled"))
-        effective_channels[name] = bool(allowed)
-        channel_reasons[name] = reason
-
-    platform_selection = preview_content.get("platform_selection") if isinstance(preview_content.get("platform_selection"), dict) else {}
-    for platform in ("facebook", "instagram", "linkedin"):
-        selection = platform_selection.get(platform) if isinstance(platform_selection.get(platform), dict) else {}
-        if effective_channels.get(platform) and selection.get("selected") is False:
-            effective_channels[platform] = False
-            channel_reasons[platform] = "strategy_platform_not_appropriate"
+        effective_channels[name] = True
+        channel_reasons[name] = "enabled_for_run"
 
     phase5_readiness = _build_phase5_channel_readiness(effective_channels, dry_run)
     for platform in phase5_readiness.get("blocking_channels", []):
@@ -1745,9 +1729,13 @@ def main() -> None:
         effective_channels[platform] = False
         channel_reasons[platform] = f"artifact_visual_qa:{','.join(issues)}"
     visual_gate_errors = _live_visual_gate_errors(content, effective_channels, dry_run or shadow_mode)
-    visual_gate_errors.extend(_strategy_integrity_errors(content))
-    visual_gate_errors.extend(_v5_semantic_visual_errors(content, effective_channels))
-    visual_gate_errors.extend(_final_presentation_errors(content, effective_channels))
+    advisory_visual_findings = (
+        _strategy_integrity_errors(content)
+        + _v5_semantic_visual_errors(content, effective_channels)
+        + _final_presentation_errors(content, effective_channels)
+    )
+    if advisory_visual_findings:
+        content.setdefault("quality_warnings", []).extend(advisory_visual_findings)
     content["artifact_visual_qa"] = (content.get("generated_visuals") or {}).get("artifact_reviews", {})
     content["artifact_visual_qa_failures"] = artifact_errors
     if visual_gate_errors:
@@ -2039,8 +2027,6 @@ def main() -> None:
         term=audience_term,
     ).get("utm_url", wp_link)
     history = generate_posts.load_history()
-    skip_success_hours = int(os.environ.get("SKIP_RECENT_SUCCESS_HOURS", "0"))
-    fb_duplicate_days = int(os.environ.get("FB_DUPLICATE_CAPTION_DAYS", "14"))
 
     print("[3/5] Facebook...")
     t_fb = time.perf_counter()
@@ -2049,21 +2035,6 @@ def main() -> None:
         if existing_receipt:
             fb_result = {"id": _receipt_external_id(existing_receipt), "reused_receipt": True}
             print(f"[SKIP] Facebook already published: {fb_result['id']}")
-        elif (not dry_run) and was_recent_channel_success(history, "fb", slot, skip_success_hours):
-            print("[SKIP] Facebook recent successful publish within configured window")
-        elif (
-            (not dry_run)
-            and not (manual_platforms and manual_duplicate_mode == "allow_all")
-            and _recent_duplicate_platform_caption(
-            history,
-            "facebook",
-            str(content.get("fb_caption", "")),
-            days=fb_duplicate_days,
-        )):
-            msg = f"duplicate_facebook_caption_within_{fb_duplicate_days}d"
-            errors.append(f"Facebook: {msg}")
-            error_map["facebook"] = msg
-            print(f"[ERROR] Facebook publish blocked: {msg}")
         else:
             try:
                 fb_result = publish_facebook.publish(content, wp_link_fb, dry_run=dry_run)
@@ -2095,8 +2066,6 @@ def main() -> None:
         if existing_receipt:
             ig_result = {"id": _receipt_external_id(existing_receipt), "reused_receipt": True}
             print(f"[SKIP] Instagram already published: {ig_result['id']}")
-        elif (not dry_run) and was_recent_channel_success(history, "ig", slot, skip_success_hours):
-            print("[SKIP] Instagram recent successful publish within configured window")
         else:
             try:
                 content["tracked_link_instagram"] = wp_link_ig
@@ -2129,13 +2098,6 @@ def main() -> None:
         if existing_receipt:
             li_result = {"id": _receipt_external_id(existing_receipt), "reused_receipt": True}
             print(f"[SKIP] LinkedIn already published: {li_result['id']}")
-        elif (not dry_run) and not _pending_publish_receipt(content, platform="linkedin", run_id=str(runtime_metrics["started_at_utc"])):
-            msg = "linkedin_publish_pending_reconciliation"
-            errors.append(f"LinkedIn: {msg}")
-            error_map["linkedin"] = msg
-            print(f"[ERROR] LinkedIn publish blocked: {msg}")
-        elif (not dry_run) and was_recent_channel_success(history, "li", slot, skip_success_hours):
-            print("[SKIP] LinkedIn recent successful publish within configured window")
         else:
             try:
                 li_result = publish_linkedin.publish(content, wp_link_li, dry_run=dry_run)

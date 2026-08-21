@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import json
 import os
+from datetime import datetime, timezone
 from typing import Any
 
 import publish_facebook
 import publish_instagram
 import publish_linkedin
+from social_visuals import generate_strict_gemini_image
 from content_operations import (
     PLATFORMS,
     begin_platform_transaction,
@@ -18,6 +20,7 @@ from content_operations import (
     platform_transaction,
     recover_outbox,
     release_outbox,
+    update_claimed_package,
 )
 
 DATA_DIR = os.environ.get("DATA_DIR", os.path.join(os.path.dirname(__file__), "..", "data"))
@@ -64,6 +67,89 @@ def _publish(package: dict[str, Any], platform: str) -> dict[str, Any]:
     raise ValueError(f"unsupported platform: {platform}")
 
 
+def _public_media_url(file_name: str) -> str:
+    base = str(os.environ.get("PUBLIC_BASE_URL") or os.environ.get("RAILWAY_PUBLIC_DOMAIN") or "").strip().rstrip("/")
+    if base and not base.startswith("http"):
+        base = f"https://{base}"
+    if not base:
+        raise RuntimeError("public_media_base_url_missing")
+    return f"{base}/media/{file_name}"
+
+
+def _gemini_assets_ready(package: dict[str, Any], required_count: int) -> bool:
+    generation = package.get("gemini_generation") if isinstance(package.get("gemini_generation"), dict) else {}
+    assets = generation.get("assets") if isinstance(generation.get("assets"), list) else []
+    return (
+        generation.get("status") == "COMPLETE"
+        and len(assets) == required_count
+        and all(
+            isinstance(asset, dict)
+            and asset.get("render_engine") == "gemini"
+            and os.path.isfile(str(asset.get("local_path") or ""))
+            and str(asset.get("public_url") or "").startswith("http")
+            for asset in assets
+        )
+    )
+
+
+def _prepare_gemini_assets(package: dict[str, Any], data_dir: str) -> dict[str, Any]:
+    generation = package.get("gemini_generation") if isinstance(package.get("gemini_generation"), dict) else {}
+    prompts = generation.get("prompts") if isinstance(generation.get("prompts"), list) else []
+    required_count = int(generation.get("required_image_count") or 0)
+    if generation.get("provider") != "gemini" or generation.get("fallback_allowed") is not False:
+        raise RuntimeError("strict_gemini_generation_contract_missing")
+    if required_count < 1 or len(prompts) != required_count:
+        raise RuntimeError("gemini_prompt_count_mismatch")
+    if _gemini_assets_ready(package, required_count):
+        return package
+
+    public_dir = os.path.join(data_dir, "public_media")
+    os.makedirs(public_dir, exist_ok=True)
+    post_id = str(package.get("post_id") or package.get("content_id") or "monthly")
+    assets: list[dict[str, Any]] = []
+    for prompt_plan in prompts:
+        if not isinstance(prompt_plan, dict):
+            raise RuntimeError("gemini_prompt_invalid")
+        slide_index = int(prompt_plan.get("slide_index") or len(assets) + 1)
+        file_name = f"{post_id}_gemini_{slide_index}.png"
+        output_path = os.path.abspath(os.path.join(public_dir, file_name))
+        result = generate_strict_gemini_image(
+            package,
+            prompt_plan=prompt_plan,
+            output_path=output_path,
+            platform="instagram",
+        )
+        result.update({
+            "slide_index": slide_index,
+            "role": str(prompt_plan.get("role") or "image"),
+            "public_url": _public_media_url(file_name),
+        })
+        assets.append(result)
+
+    if len(assets) != required_count or any(asset.get("render_engine") != "gemini" for asset in assets):
+        raise RuntimeError("strict_gemini_generation_incomplete")
+    generation.update({
+        "status": "COMPLETE",
+        "generated_at_utc": datetime.now(timezone.utc).isoformat(),
+        "actual_image_count": len(assets),
+        "assets": assets,
+    })
+    package["gemini_generation"] = generation
+    package["carousel_assets"] = assets if len(assets) > 1 else []
+    first = assets[0]
+    package["primary_publish_image_url"] = first["public_url"]
+    package["generated_visuals"] = {
+        "facebook": first["local_path"],
+        "instagram": first["local_path"],
+        "linkedin": first["local_path"],
+        "render_engine": "gemini",
+        "render_engines": {platform: "gemini" for platform in PLATFORMS},
+        "artifact_reviews": {platform: first["review"] for platform in PLATFORMS},
+        "gemini_generated_at_utc": generation["generated_at_utc"],
+    }
+    return package
+
+
 def _creative_package_error(package: dict[str, Any], platforms: list[str]) -> str:
     visuals = package.get("generated_visuals") if isinstance(package.get("generated_visuals"), dict) else {}
     engines = visuals.get("render_engines") if isinstance(visuals.get("render_engines"), dict) else {}
@@ -95,6 +181,15 @@ def dispatch_due(*, data_dir: str = DATA_DIR, now_utc: str | None = None) -> dic
     if creative_error:
         recover_outbox(data_dir, outbox_id, creative_error)
         return {"status": "CONTENT_RECOVERING", "outbox_id": outbox_id, "error": creative_error}
+    generation = package.get("gemini_generation") if isinstance(package.get("gemini_generation"), dict) else {}
+    if generation.get("strict_provider") is True:
+        try:
+            package = _prepare_gemini_assets(package, data_dir)
+            update_claimed_package(data_dir, outbox_id, package)
+        except Exception as exc:
+            error = f"{type(exc).__name__}:{exc}"
+            recover_outbox(data_dir, outbox_id, error)
+            return {"status": "CONTENT_RECOVERING", "outbox_id": outbox_id, "error": error}
 
     results: dict[str, Any] = {}
     retry_errors: list[str] = []

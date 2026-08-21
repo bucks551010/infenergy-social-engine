@@ -11,9 +11,10 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
 from agents import carousel_slide_writer  # noqa: E402
-from build_monthly_content import build_monthly_calendar, latest_monthly_calendar  # noqa: E402
+from build_monthly_content import build_monthly_calendar, latest_monthly_calendar, prepare_monthly_gemini_prompts  # noqa: E402
 from company_knowledge import compact_generation_context, load_company_knowledge  # noqa: E402
 from content_operations import daily_status  # noqa: E402
+from social_visuals import _apply_v5_text_overlay  # noqa: E402
 
 
 def _seed_knowledge(data_dir: Path) -> None:
@@ -87,6 +88,13 @@ def test_month_builder_persists_ready_assets_and_is_idempotent(tmp_path, monkeyp
     assert len(carousel["carousel_assets"]) == 4
     assert all(os.path.exists(asset["local_path"]) for asset in carousel["carousel_assets"])
     assert carousel["platform_posts"]["linkedin"]["final_caption_qa"]["status"] == "PRESENTATION_READY"
+    assert single["gemini_generation"]["required_image_count"] == 1
+    assert carousel["gemini_generation"]["required_image_count"] == 4
+    assert not carousel["gemini_generation"]["fallback_allowed"]
+    prompts = carousel["gemini_generation"]["prompts"]
+    assert len({prompt["prompt_sha256"] for prompt in prompts}) == 4
+    assert all("Do not render words" in prompt["gemini_image_prompt"] for prompt in prompts)
+    assert all(prompt["v5_direction"]["text_overlay"]["enabled"] for prompt in prompts)
 
     second = build_monthly_calendar(
         data_dir=str(tmp_path),
@@ -135,3 +143,37 @@ def test_month_builder_can_cancel_unpublished_legacy_inventory(tmp_path, monkeyp
     assert replacement["cancelled_legacy_outbox"] == 1
     assert daily_status(str(tmp_path), "2026-10-01")["ready"] == 0
     assert daily_status(str(tmp_path), "2026-11-01")["ready"] == 1
+
+
+def test_existing_month_can_be_prepared_for_strict_gemini_without_rebuilding(tmp_path, monkeypatch):
+    _seed_knowledge(tmp_path)
+    monkeypatch.setenv("PUBLIC_BASE_URL", "https://example.test")
+    original = build_monthly_calendar(data_dir=str(tmp_path), start_date="2026-12-01", days=2, enqueue=True)
+
+    result = prepare_monthly_gemini_prompts(str(tmp_path))
+    saved = latest_monthly_calendar(str(tmp_path))
+
+    assert result["prepared_entries"] == 2
+    assert result["prepared_prompts"] == 5
+    assert saved["gemini_prompt_status"] == "READY"
+    assert saved["entries"][0]["outbox_id"] == original["entries"][0]["outbox_id"]
+    assert saved["entries"][0]["package"]["gemini_generation"]["status"] == "PROMPTS_READY"
+
+
+def test_all_monthly_gemini_prompts_are_unique_and_overlay_ready():
+    from PIL import Image
+    from build_monthly_content import _gemini_generation_plan
+
+    knowledge = load_company_knowledge(str(ROOT / "data"))
+    prompts = [
+        prompt
+        for thought in knowledge["thought_library"][:30]
+        for prompt in _gemini_generation_plan(thought)["prompts"]
+    ]
+
+    assert len(prompts) == 66
+    assert len({prompt["prompt_sha256"] for prompt in prompts}) == 66
+    for prompt in prompts:
+        image = Image.new("RGB", (1080, 1080), "#20313a")
+        _, overlay_error = _apply_v5_text_overlay(image, prompt["v5_direction"])
+        assert overlay_error == "", f"slide overlay failed: {prompt['prompt_sha256']} {overlay_error}"

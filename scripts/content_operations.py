@@ -418,6 +418,20 @@ def claim_due(data_dir: str, now_utc: str | None = None) -> dict[str, Any] | Non
         connection.close()
 
 
+def update_claimed_package(data_dir: str, outbox_id: str, package: dict[str, Any]) -> None:
+    connection = _connect(data_dir)
+    try:
+        changed = connection.execute(
+            "UPDATE content_outbox SET package_json=? WHERE outbox_id=? AND status='CLAIMED'",
+            (_json(package), outbox_id),
+        ).rowcount
+        if changed != 1:
+            raise RuntimeError("claimed_outbox_package_update_failed")
+        connection.commit()
+    finally:
+        connection.close()
+
+
 def begin_platform_transaction(
     data_dir: str,
     *,

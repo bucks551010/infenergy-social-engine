@@ -1039,6 +1039,39 @@ def review_rendered_visual(path: str, platform: str) -> dict[str, Any]:
     }
 
 
+def generate_strict_gemini_image(
+    content: dict[str, Any],
+    *,
+    prompt_plan: dict[str, Any],
+    output_path: str,
+    platform: str = "instagram",
+) -> dict[str, Any]:
+    """Generate one Gemini artifact with no provider or source-image fallback."""
+    prompt = str(prompt_plan.get("gemini_image_prompt") or "").strip()
+    expected_hash = str(prompt_plan.get("prompt_sha256") or "").strip()
+    actual_hash = hashlib.sha256(prompt.encode("utf-8")).hexdigest() if prompt else ""
+    if not prompt or not expected_hash or actual_hash != expected_hash:
+        raise RuntimeError("gemini_prompt_contract_invalid")
+    plan = {
+        "gemini_image_prompt": prompt,
+        "v5_direction": _safe_json_dict(prompt_plan.get("v5_direction")),
+        "image_strategy": "gemini_generated",
+    }
+    rendered, reason, metadata = _generate_gemini_full_creative(content, platform, plan, output_path)
+    if not rendered or metadata.get("generation_status") != "success":
+        raise RuntimeError(f"gemini_generation_failed:{reason}")
+    review = review_rendered_visual(output_path, platform)
+    if review.get("verdict") != "PASS":
+        raise RuntimeError(f"gemini_artifact_qa_failed:{','.join(review.get('issues') or [])}")
+    return {
+        "render_engine": "gemini",
+        "prompt_sha256": actual_hash,
+        "local_path": output_path,
+        "review": review,
+        "generation": metadata,
+    }
+
+
 def _save_product_photo_fallback(source: str, output_path: str, platform: str) -> bool:
     """Create a publishable platform artifact from an approved product source."""
     image_module, _, _ = _load_pillow()

@@ -20,7 +20,7 @@ import run_engine
 import generate_posts
 import inventory_db
 import intelligence_packages
-from build_monthly_content import build_monthly_calendar, latest_monthly_calendar
+from build_monthly_content import build_monthly_calendar, latest_monthly_calendar, prepare_monthly_gemini_prompts
 from content_operations import daily_status, init_content_operations, reconcile_confirmed_transactions, reconcile_ready_inventory, reconcile_stale_claims
 from campaign_runtime import eligible_channels_for_slot, load_channel_schedule, load_funnel_config, stage_for_slot
 
@@ -1435,6 +1435,26 @@ class HealthHandler(BaseHTTPRequestHandler):
                 ]
                 body = json.dumps(payload, default=str).encode("utf-8")
                 self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
+        if parsed.path == "/prepare-monthly-gemini":
+            params = parse_qs(parsed.query)
+            authorized, status_code, error_payload = _authorized(params)
+            if not authorized:
+                body = json.dumps(error_payload).encode("utf-8")
+                self.send_response(status_code)
+            else:
+                try:
+                    payload = prepare_monthly_gemini_prompts(_data_dir())
+                    body = json.dumps(payload, default=str).encode("utf-8")
+                    self.send_response(200)
+                except Exception as exc:
+                    body = json.dumps({"error": f"{type(exc).__name__}:{exc}"}).encode("utf-8")
+                    self.send_response(500)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()

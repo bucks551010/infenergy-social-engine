@@ -86,6 +86,52 @@ def _carousel_slides(thought: dict[str, Any]) -> list[dict[str, str]]:
     ]
 
 
+def _gemini_generation_plan(thought: dict[str, Any]) -> dict[str, Any]:
+    slides = _carousel_slides(thought) if thought.get("format") == "carousel" else [
+        {"role": "thought", "headline": thought["statement"], "supporting": thought["expansion"]}
+    ]
+    prompts: list[dict[str, Any]] = []
+    for slide_index, slide in enumerate(slides, start=1):
+        overlay_copy = str(slide.get("supporting") or slide.get("headline") or "").strip()
+        scene_prompt = (
+            "Create one premium, photorealistic square editorial image for Infenergy Power about practical energy readiness. "
+            f"Core thought: {thought['statement']} Scene meaning: {slide.get('headline', '')}. "
+            f"Visual motif: {thought['visual_motif']}. Pillar: {str(thought['pillar']).replace('_', ' ')}. "
+            f"This is slide {slide_index} of {len(slides)} with the role {slide['role']}. "
+            "Show a believable real-life environment, natural human stakes, physically credible portable-energy context, "
+            "cinematic directional light, rich material detail, and generous protected negative space in the upper third for an editorial overlay. "
+            "Use a restrained palette of charcoal, deep navy, warm amber, clean white, and natural environmental colors. "
+            "Do not render words, letters, logos, numbers, labels, watermarks, UI, badges, product claims, or fake specifications. "
+            "Avoid generic stock-photo smiles, disaster sensationalism, dominant purple, floating devices, visual clutter, and synthetic poster styling. "
+            "Output one finished 1:1 image only."
+        )
+        prompts.append({
+            "slide_index": slide_index,
+            "slide_count": len(slides),
+            "role": slide["role"],
+            "gemini_image_prompt": scene_prompt,
+            "prompt_sha256": hashlib.sha256(scene_prompt.encode("utf-8")).hexdigest(),
+            "v5_direction": {
+                "text_overlay": {
+                    "enabled": True,
+                    "text": f"Infenergy | {overlay_copy}",
+                    "placement": "upper third",
+                    "safe_margin_ratio": 0.08,
+                }
+            },
+        })
+    return {
+        "provider": "gemini",
+        "model_env": "GEMINI_IMAGE_MODEL",
+        "generation_timing": "post_time_before_any_platform_publish",
+        "strict_provider": True,
+        "fallback_allowed": False,
+        "reuse_across_platforms": True,
+        "required_image_count": len(prompts),
+        "prompts": prompts,
+    }
+
+
 def _application_for(pillar: str) -> str:
     return {
         "preparedness_mindset": "Choose one small readiness action and make it repeatable.",
@@ -195,6 +241,7 @@ def _package(knowledge: dict[str, Any], thought: dict[str, Any], content_date: s
             "copy_visual_alignment": thought["statement"],
             "carousel_slides": _carousel_slides(thought) if thought.get("format") == "carousel" else [],
         },
+        "gemini_generation": _gemini_generation_plan(thought),
         "carousel_assets": assets["slides"] if thought.get("format") == "carousel" else [],
         "generated_visuals": {
             "facebook": primary_path,
@@ -252,6 +299,68 @@ def latest_monthly_calendar(data_dir: str = DATA_DIR) -> dict[str, Any]:
         payload["calendar_path"] = paths[0]
         return payload
     return {}
+
+
+def prepare_monthly_gemini_prompts(data_dir: str = DATA_DIR) -> dict[str, Any]:
+    calendar = latest_monthly_calendar(data_dir)
+    entries = calendar.get("entries") if isinstance(calendar.get("entries"), list) else []
+    if not entries:
+        raise RuntimeError("monthly_content_not_found")
+    knowledge = load_company_knowledge(data_dir)
+    thoughts = {
+        str(thought.get("id") or ""): thought
+        for thought in knowledge.get("thought_library", [])
+        if isinstance(thought, dict)
+    }
+    connection = sqlite3.connect(get_db_path(data_dir), timeout=30)
+    prepared_entries = 0
+    prepared_prompts = 0
+    prepared_at = datetime.now(timezone.utc).isoformat()
+    try:
+        connection.execute("BEGIN IMMEDIATE")
+        for entry in entries:
+            if not isinstance(entry, dict):
+                continue
+            thought = thoughts.get(str(entry.get("thought_id") or ""))
+            package = entry.get("package") if isinstance(entry.get("package"), dict) else {}
+            outbox_id = str(entry.get("outbox_id") or "")
+            if not thought or not package or not outbox_id:
+                continue
+            generation = _gemini_generation_plan(thought)
+            generation["status"] = "PROMPTS_READY"
+            generation["prompts_prepared_at_utc"] = prepared_at
+            package["gemini_generation"] = generation
+            linkedin = ((package.get("platform_posts") or {}).get("linkedin") or {})
+            if isinstance(linkedin, dict):
+                linkedin["content_format"] = "single_image_thought"
+            changed = connection.execute(
+                "UPDATE content_outbox SET package_json=? WHERE outbox_id=? AND status IN ('READY', 'DUE')",
+                (json.dumps(package, ensure_ascii=True, separators=(",", ":"), default=str), outbox_id),
+            ).rowcount
+            if changed != 1:
+                continue
+            entry["package"] = package
+            prepared_entries += 1
+            prepared_prompts += int(generation["required_image_count"])
+        if prepared_entries != len(entries):
+            raise RuntimeError(f"monthly_prompt_preparation_incomplete:{prepared_entries}/{len(entries)}")
+        connection.commit()
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
+    calendar["gemini_prompt_status"] = "READY"
+    calendar["gemini_prompts_prepared_at_utc"] = prepared_at
+    calendar["gemini_prompt_count"] = prepared_prompts
+    calendar_path = _save_calendar(data_dir, calendar)
+    return {
+        "status": "READY",
+        "prepared_entries": prepared_entries,
+        "prepared_prompts": prepared_prompts,
+        "calendar_path": calendar_path,
+        "prepared_at_utc": prepared_at,
+    }
 
 
 def build_monthly_calendar(

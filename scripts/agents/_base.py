@@ -23,6 +23,13 @@ def agent_dir(data_dir: str, agent_name: str) -> str:
 
 
 def write_snapshot(data_dir: str, agent_name: str, payload: dict) -> str:
+    try:
+        from company_knowledge import agent_specialization, load_company_knowledge
+
+        knowledge = load_company_knowledge(data_dir)
+        payload.setdefault("company_knowledge_contract", agent_specialization(knowledge, agent_name))
+    except (OSError, ValueError):
+        pass
     path = os.path.join(agent_dir(data_dir, agent_name), f"{agent_name}_{utc_stamp()}.json")
     with open(path, "w", encoding="utf-8") as f:
         json.dump(payload, f, ensure_ascii=False, indent=2, default=str)

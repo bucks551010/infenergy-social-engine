@@ -25,6 +25,7 @@ from conversion import objections as objections_mod
 from conversion import awareness as awareness_mod
 from conversion import emotions as emotions_mod
 from conversion import performance_memory as performance_memory_mod
+from company_knowledge import agent_specialization, compact_generation_context, load_company_knowledge
 
 AGENT_NAME = "conversion_strategist"
 
@@ -107,6 +108,19 @@ def plan(
             "variables": dict(brief.experiment.variables),
         },
     }
+
+    if data_dir:
+        try:
+            company_knowledge = load_company_knowledge(data_dir)
+            payload["company_knowledge_context"] = compact_generation_context(company_knowledge)
+            payload["company_knowledge_contract"] = agent_specialization(company_knowledge, AGENT_NAME)
+            payload["downstream_instructions"]["company_truth_rules"] = [
+                "Derive the customer benefit from the canonical mission, central human truth, and lifestyle transformations.",
+                "Preserve Calm Strength and make the customer the capable person in the story.",
+                "Do not invent a company promise, consumer benefit, or product fact outside the knowledge contract.",
+            ]
+        except (OSError, ValueError):
+            pass
 
     if data_dir:
         try:

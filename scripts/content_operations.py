@@ -163,6 +163,45 @@ def ensure_daily_slots(
         connection.close()
 
 
+def replace_unpublished_slot(data_dir: str, content_date: str, slot: str) -> bool:
+    """Cancel an unpublished package so a planned replacement is the only due item."""
+    if slot not in SLOTS:
+        raise ValueError(f"unsupported slot: {slot}")
+    connection = _connect(data_dir)
+    try:
+        connection.execute("BEGIN IMMEDIATE")
+        row = connection.execute(
+            "SELECT outbox_id, status FROM daily_slots WHERE content_date=? AND slot=?",
+            (content_date, slot),
+        ).fetchone()
+        if not row or not row["outbox_id"]:
+            connection.commit()
+            return True
+        if str(row["status"] or "") in {"CLAIMED", "PUBLISHING", "PUBLISHED"}:
+            connection.rollback()
+            return False
+        now = _now()
+        connection.execute(
+            "UPDATE content_outbox SET status='CANCELLED', last_error='replaced_by_monthly_company_truth_calendar' WHERE outbox_id=? AND status NOT IN ('CLAIMED', 'PUBLISHING', 'PUBLISHED')",
+            (row["outbox_id"],),
+        )
+        connection.execute(
+            """
+            UPDATE daily_slots SET content_id=NULL, decision_id=NULL, outbox_id=NULL,
+                status='UNPLANNED', ready_at=NULL, claimed_at=NULL, published_at=NULL,
+                last_error=NULL, updated_at=? WHERE content_date=? AND slot=?
+            """,
+            (now, content_date, slot),
+        )
+        connection.commit()
+        return True
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
+
+
 def create_council_session(
     data_dir: str,
     *,

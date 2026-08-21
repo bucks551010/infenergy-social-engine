@@ -1,0 +1,169 @@
+{
+  "schema_version": "1.0.0",
+  "knowledge_id": "infenergy-company-truth",
+  "brand": {
+    "name": "Infenergy Power",
+    "short_name": "Infenergy",
+    "category": "preparedness-first portable power",
+    "mission": "Help families and everyday people stay powered, prepared, safe, and connected when normal systems fail.",
+    "vision": "Make practical energy readiness a normal part of everyday life, with Infenergy trusted in homes, backpacks, vehicles, workplaces, and emergency kits.",
+    "core_purpose": "Replace power uncertainty with practical control.",
+    "community_identity": "People who prepare calmly, choose by fit, and protect the routines and relationships that matter.",
+    "central_human_truth": "Losing power can make ordinary people feel helpless. A clear, right-sized plan restores agency before an outage, trip, or demanding day tests it.",
+    "brand_promise": "Infenergy helps people understand what must stay powered, choose a practical setup, and build readiness without hype or panic.",
+    "trust_close": "We do not just sell products. We help people stay calm, connected, and prepared when it matters most."
+  },
+  "origin_and_conviction": {
+    "origin": "A severe winter storm left the founder's home without power and exposed how quickly normal routines, communication, and confidence can disappear.",
+    "conviction": "Power is not only convenience. In the moments people depend on it, power supports connection, continuity, safety, comfort, mobility, and control.",
+    "enemy": "Avoidable helplessness caused by no plan, unclear information, or buying by hype instead of fit.",
+    "change_we_seek": "Preparedness becomes an everyday habit instead of a last-minute reaction."
+  },
+  "values": [
+    {"name": "Protection", "behavior": "Start with the people, devices, and routines the customer is trying to protect."},
+    {"name": "Preparedness", "behavior": "Turn concern into a clear next step before urgency arrives."},
+    {"name": "Reliability", "behavior": "Use verified specifications and honest limits."},
+    {"name": "Integrity", "behavior": "Never promise an outcome the available evidence cannot support."},
+    {"name": "Service", "behavior": "Teach first and reduce the customer's decision burden."},
+    {"name": "Commitment", "behavior": "Stay useful before, during, and after the purchase."},
+    {"name": "Practical guidance", "behavior": "Translate technical details into choices people can use."}
+  ],
+  "consumer_benefits": {
+    "functional": [
+      "Keep compatible everyday devices available away from a fixed outlet.",
+      "Create backup options for communication, lighting, work, travel, and recreation.",
+      "Match published capacity and output to the devices and duration that matter.",
+      "Add portable solar where compatible to extend a prepared setup beyond stored energy.",
+      "Build readiness in stages instead of guessing at one oversized purchase."
+    ],
+    "emotional": [
+      "Feel prepared instead of caught off guard.",
+      "Replace panic with a practiced plan.",
+      "Feel confident explaining the household power plan to loved ones.",
+      "Enjoy travel and outdoor time with less battery anxiety.",
+      "Know the purchase was based on fit rather than hype."
+    ],
+    "social": [
+      "Be the calm person who brought a plan.",
+      "Help family, coworkers, and travel companions stay connected.",
+      "Model responsible preparedness without fear-driven behavior.",
+      "Share useful energy knowledge with the community."
+    ],
+    "lifestyle_transformations": [
+      "Reactive scrambling to proactive readiness.",
+      "Outlet dependence to portable options.",
+      "Spec confusion to informed choice.",
+      "Single-event thinking to an everyday resilience habit.",
+      "Buying isolated gadgets to building a coherent power plan."
+    ]
+  },
+  "audiences": [
+    {"id": "working_family", "identity": "Working families", "moments": ["storm warnings", "overnight outages", "school and work continuity"], "desired_state": "calm household continuity", "benefit_priority": "connection, lighting, routines"},
+    {"id": "mobile_professional", "identity": "Mobile professionals and small business operators", "moments": ["travel days", "field work", "temporary workspaces"], "desired_state": "productive mobility", "benefit_priority": "device availability and less downtime"},
+    {"id": "traveler", "identity": "Commuters and frequent travelers", "moments": ["airports", "road trips", "long event days"], "desired_state": "daily travel confidence", "benefit_priority": "portable charging and compact readiness"},
+    {"id": "outdoor", "identity": "Campers, RV users, and outdoor households", "moments": ["campsites", "trailheads", "remote weekends"], "desired_state": "off-grid freedom with practical limits", "benefit_priority": "portable and solar-supported options"},
+    {"id": "caregiver", "identity": "Caregivers and seniors", "moments": ["weather disruptions", "communication planning", "routine continuity"], "desired_state": "reassurance through a clear plan", "benefit_priority": "simple guidance and honest fit"},
+    {"id": "preparedness_builder", "identity": "Preparedness-minded households", "moments": ["seasonal kit reviews", "vehicle kit checks", "load mapping"], "desired_state": "measured resilience", "benefit_priority": "scalable systems and verified facts"}
+  ],
+  "life_moments": [
+    "The lights flicker during a storm warning.",
+    "A phone reaches ten percent before a long commute home.",
+    "A family checks emergency kits at the start of storm season.",
+    "A traveler has a full day between reliable outlets.",
+    "A remote workday moves to a temporary location.",
+    "A campsite needs light and communication after sunset.",
+    "A vehicle kit is reviewed before a road trip.",
+    "A household decides which devices matter first during an outage.",
+    "A customer compares watt-hours, watts, ports, weight, and recharge options.",
+    "A family wants readiness without turning the home into a warehouse of unused gear."
+  ],
+  "product_truth_policy": {
+    "source_of_truth": "Only published catalog specifications, approved product dossiers, verified support policy, and approved first-party references are product facts.",
+    "translation_pattern": "verified feature -> practical function -> conditional use case -> human benefit",
+    "required_qualifiers": ["compatible", "published", "when properly matched", "based on actual device needs"],
+    "never_claim": ["guaranteed runtime without a measured load", "medical-device suitability without explicit verification", "whole-home coverage without verified system design", "absolute safety", "unlimited power", "fear-based catastrophe outcomes"]
+  },
+  "content_pillars": [
+    {"id": "preparedness_mindset", "purpose": "Normalize calm preparation", "share": 20},
+    {"id": "everyday_power", "purpose": "Show power readiness beyond emergencies", "share": 20},
+    {"id": "outage_readiness", "purpose": "Help households make an outage plan", "share": 20},
+    {"id": "travel_and_outdoors", "purpose": "Connect portable power to movement and freedom", "share": 15},
+    {"id": "power_literacy", "purpose": "Make specifications and fit understandable", "share": 15},
+    {"id": "community_resilience", "purpose": "Build a useful, prepared community identity", "share": 10}
+  ],
+  "voice": {
+    "name": "Calm Strength",
+    "traits": ["protective", "practical", "empathetic", "clear", "confident", "coach-like"],
+    "rules": [
+      "Lead with a recognizable human moment or useful truth.",
+      "Use plain language and concrete nouns.",
+      "Teach one idea at a time.",
+      "Make the customer the capable person in the story.",
+      "Use urgency only when a real date or condition creates it.",
+      "State limits when they help the customer choose correctly.",
+      "End with one useful reflection, question, or next step."
+    ],
+    "avoid": ["fear mongering", "generic inspiration", "invented testimonials", "unsupported guarantees", "technical jargon without translation", "constant selling", "manufactured scarcity"],
+    "signature_phrases": ["Preparedness over panic", "Power is protection", "Practical power for real life", "Choose by fit, not hype", "From uncertainty to a clear plan", "Stay powered. Stay connected. Stay ready."]
+  },
+  "visual_language": {
+    "principle": "Show the life that practical power protects, then make the thought legible in one glance.",
+    "palette": {"ink": "#10212B", "energy": "#F2C94C", "signal": "#E45B3A", "sky": "#DCEEF2", "paper": "#F7F4EC", "leaf": "#4F7658"},
+    "single_image": "One strong statement, generous breathing room, restrained INFENERGY signature, and a relevant everyday environment or abstract energy motif.",
+    "carousel": "Four slides: thought, meaning, practical application, community question. Each slide must stand alone and advance one idea.",
+    "match_rules": [
+      "Outage thoughts use warm interior light against a calm dark environment.",
+      "Travel thoughts use movement, compact carry, roads, transit, or a mobile workspace.",
+      "Preparedness thoughts use checklists, organized kits, and quiet readiness rather than disaster imagery.",
+      "Power-literacy thoughts use clean diagrams, labels, and measured visual structure.",
+      "Community thoughts show cooperation, shared light, or people planning together without staged heroism."
+    ]
+  },
+  "thought_library": [
+    {"id":"T01","pillar":"preparedness_mindset","kind":"slogan","statement":"Preparedness over panic.","expansion":"A simple power plan made before the urgent moment creates room to think clearly.","prompt":"What is one device your plan should protect first?","visual_motif":"organized readiness kit in warm morning light","format":"single"},
+    {"id":"T02","pillar":"outage_readiness","kind":"statement","statement":"Infenergy helps keep the devices that connect your day within reach during outages.","expansion":"Start with communication, light, and the routines your household depends on, then match the setup to the real load.","prompt":"Which connection matters most in your home?","visual_motif":"phone and lamp glowing during a calm home outage","format":"carousel"},
+    {"id":"T03","pillar":"everyday_power","kind":"question","statement":"Do you have daily travel power? Infenergy does.","expansion":"Readiness belongs in commutes, airports, field work, and long days away from a dependable outlet.","prompt":"Where does your battery usually run low?","visual_motif":"compact travel power beside a bag and transit ticket","format":"single"},
+    {"id":"T04","pillar":"power_literacy","kind":"advice","statement":"Choose power by fit, not by the biggest number.","expansion":"List the devices, check their demand, decide the duration, and compare those needs with published specifications.","prompt":"What are you actually trying to keep running?","visual_motif":"clean load map with device icons and measured labels","format":"carousel"},
+    {"id":"T05","pillar":"community_resilience","kind":"statement","statement":"A prepared community begins with one calm household sharing what it knows.","expansion":"Useful knowledge travels: a checklist, a charged light, a tested cable, and a plan everyone understands.","prompt":"Who needs to know your household power plan?","visual_motif":"neighbors sharing a checklist at a kitchen table","format":"single"},
+    {"id":"T06","pillar":"outage_readiness","kind":"advice","statement":"Test the plan before the lights test you.","expansion":"Charge the equipment, label the cables, practice the first steps, and keep verified instructions nearby.","prompt":"When did you last test your backup routine?","visual_motif":"hands calmly checking labeled charging cables","format":"carousel"},
+    {"id":"T07","pillar":"travel_and_outdoors","kind":"slogan","statement":"Freedom travels better with a power plan.","expansion":"Portable energy cannot replace preparation, but the right fit can keep compatible essentials available beyond a fixed outlet.","prompt":"What comes with you on every trip?","visual_motif":"open road with compact organized travel kit","format":"single"},
+    {"id":"T08","pillar":"preparedness_mindset","kind":"statement","statement":"Readiness is not fear. It is a decision made early.","expansion":"The goal is not to expect the worst. It is to remove avoidable confusion from an uncertain moment.","prompt":"What decision can you make before the next warning?","visual_motif":"calendar, checklist, and soft sunlight","format":"single"},
+    {"id":"T09","pillar":"everyday_power","kind":"statement","statement":"Power protects momentum on ordinary days too.","expansion":"A charged phone, working tablet, available light, or powered workspace can keep a day moving when the outlet is elsewhere.","prompt":"What device carries your day?","visual_motif":"mobile workspace in a bright public setting","format":"carousel"},
+    {"id":"T10","pillar":"power_literacy","kind":"advice","statement":"Watts describe demand. Watt-hours describe stored energy. Your plan needs both.","expansion":"Compare device demand with supported output, then compare expected use with available capacity.","prompt":"Have you mapped both sides of your power need?","visual_motif":"simple watts versus watt-hours comparison board","format":"carousel"},
+    {"id":"T11","pillar":"outage_readiness","kind":"question","statement":"When the power stops, what must not stop with it?","expansion":"Name the essential routine first. The product decision should follow that answer, not lead it.","prompt":"Write down your top three must-run needs.","visual_motif":"three-item household priority list beside a lantern","format":"single"},
+    {"id":"T12","pillar":"community_resilience","kind":"slogan","statement":"Stay powered. Stay connected. Stay ready.","expansion":"Practical readiness supports the communication and routines that hold people together.","prompt":"Share this with the person who helps your household prepare.","visual_motif":"shared warm light connecting two rooms","format":"single"},
+    {"id":"T13","pillar":"preparedness_mindset","kind":"advice","statement":"Build readiness in layers, not in one rushed purchase.","expansion":"Begin with everyday charging and light, add outage priorities, then expand only when the next verified need is clear.","prompt":"Which layer are you building now?","visual_motif":"three neatly organized levels of a preparedness kit","format":"carousel"},
+    {"id":"T14","pillar":"travel_and_outdoors","kind":"question","statement":"How far can your day go without a wall outlet?","expansion":"Travel power starts by understanding the devices, duration, size, and recharge options the day actually requires.","prompt":"Map your longest outlet-free day.","visual_motif":"day-trip timeline from sunrise to evening","format":"single"},
+    {"id":"T15","pillar":"everyday_power","kind":"slogan","statement":"Practical power for real life.","expansion":"The best setup is not the loudest one. It is the one that fits the way you work, travel, rest, and prepare.","prompt":"What would practical power make easier today?","visual_motif":"collage of home, commute, and campsite moments","format":"single"},
+    {"id":"T16","pillar":"power_literacy","kind":"statement","statement":"A specification becomes useful when it answers a real-life question.","expansion":"Capacity, output, weight, ports, and recharge options matter because each one changes where and how a product fits.","prompt":"Which specification changes your decision most?","visual_motif":"spec labels connected to real devices","format":"carousel"},
+    {"id":"T17","pillar":"outage_readiness","kind":"advice","statement":"Charge early. Label clearly. Store accessibly.","expansion":"A backup option only helps when the household can find it, connect it correctly, and understand the plan.","prompt":"Could someone else follow your setup without you?","visual_motif":"labeled shelf with charged emergency essentials","format":"single"},
+    {"id":"T18","pillar":"community_resilience","kind":"statement","statement":"Prepared people create calmer rooms.","expansion":"Confidence is not pretending nothing can go wrong. It is knowing the next useful step when something does.","prompt":"What is the first step in your household plan?","visual_motif":"family calmly gathering around a lit table","format":"single"},
+    {"id":"T19","pillar":"travel_and_outdoors","kind":"advice","statement":"Pack for the power you will use, not the anxiety you feel.","expansion":"Match the trip, devices, duration, weather, and recharge access before adding weight to the bag.","prompt":"What can stay home on your next trip?","visual_motif":"minimal travel packing layout","format":"carousel"},
+    {"id":"T20","pillar":"preparedness_mindset","kind":"statement","statement":"Control begins with clarity.","expansion":"A short list of must-run devices is more useful than a vague goal to buy backup power.","prompt":"Can you name your first three priorities?","visual_motif":"clear handwritten three-item list","format":"single"},
+    {"id":"T21","pillar":"everyday_power","kind":"question","statement":"What would you finish if battery anxiety left the room?","expansion":"Portable power can support focus and mobility when it is matched honestly to the devices doing the work.","prompt":"Where would reliable access give you more freedom?","visual_motif":"focused creator working away from a wall outlet","format":"single"},
+    {"id":"T22","pillar":"power_literacy","kind":"advice","statement":"Runtime estimates begin with a measured load, not a wish.","expansion":"Device demand, conversion losses, usage patterns, and conditions all influence real results.","prompt":"What can you measure before you choose?","visual_motif":"power meter and notebook with clean calculations","format":"carousel"},
+    {"id":"T23","pillar":"outage_readiness","kind":"slogan","statement":"Power is protection when it supports a real plan.","expansion":"The value is not stored energy alone. It is the communication, light, work, and routine that a compatible setup can support.","prompt":"What does power protect in your life?","visual_motif":"warm light protecting an ordinary evening routine","format":"single"},
+    {"id":"T24","pillar":"community_resilience","kind":"advice","statement":"Share the plan, not just the equipment.","expansion":"Make sure the people around you know priorities, locations, connections, limits, and who to contact.","prompt":"Who should practice the plan with you?","visual_motif":"two people reviewing a simple power map","format":"carousel"},
+    {"id":"T25","pillar":"travel_and_outdoors","kind":"statement","statement":"Off-grid confidence starts before the trailhead.","expansion":"Check charge levels, weather, cables, compatibility, and the realistic demands of the trip before leaving.","prompt":"What is on your pre-trip power checklist?","visual_motif":"trailhead preparation with organized gear","format":"single"},
+    {"id":"T26","pillar":"preparedness_mindset","kind":"slogan","statement":"From uncertainty to a clear plan.","expansion":"Infenergy exists to make the next power decision understandable, practical, and grounded in real needs.","prompt":"What part of your plan still feels unclear?","visual_motif":"path moving from shadow into clear daylight","format":"single"},
+    {"id":"T27","pillar":"everyday_power","kind":"advice","statement":"Your everyday carry can be part of your emergency plan.","expansion":"A familiar, maintained charging habit is easier to use under pressure than equipment no one has practiced with.","prompt":"Which everyday item already supports your readiness?","visual_motif":"everyday carry items arranged beside an emergency checklist","format":"carousel"},
+    {"id":"T28","pillar":"power_literacy","kind":"statement","statement":"More capacity is not automatically more useful.","expansion":"Weight, supported output, recharge time, portability, and actual use determine whether added capacity improves the fit.","prompt":"Which tradeoff matters most to you?","visual_motif":"balanced scale of capacity and portability","format":"single"},
+    {"id":"T29","pillar":"outage_readiness","kind":"question","statement":"Could your household find light and communication in sixty seconds?","expansion":"Accessible storage and a shared first-step routine can matter as much as owning the equipment.","prompt":"Try the sixty-second readiness check tonight.","visual_motif":"timer beside accessible lantern and phone kit","format":"carousel"},
+    {"id":"T30","pillar":"community_resilience","kind":"statement","statement":"Resilience is a lifestyle built from small, repeatable choices.","expansion":"Charge, check, learn, share, and improve the plan one practical step at a time.","prompt":"What small readiness habit will you repeat this month?","visual_motif":"monthly habit tracker with simple energy symbols","format":"single"}
+  ],
+  "agent_specializations": {
+    "market_research_agent": "Protect canonical company truth while identifying real customer moments, cultural shifts, and category opportunities.",
+    "audience_psychology_agent": "Translate company purpose into lived tensions, desired identities, and respectful motivation for each audience.",
+    "brand_voice_agent": "Enforce Calm Strength, useful specificity, and continuity of worldview across every channel.",
+    "offer_strategy_agent": "Build offers around right-sized customer progress, guidance, and verified fit rather than pressure.",
+    "copywriter_agent": "Turn one company truth into one human moment, one useful idea, and one natural next step.",
+    "creative_director_agent": "Make the image express the same human truth as the copy and protect instant legibility.",
+    "channel_editor_agent": "Preserve the core idea while adapting cadence, length, and interaction to each platform.",
+    "seo_content_agent": "Connect search intent to useful energy literacy and honest preparedness guidance.",
+    "lifecycle_email_agent": "Build trust over time through progressive education, not repeated urgency.",
+    "growth_experimentation_agent": "Test expression and format without changing canonical truths or factual boundaries.",
+    "qa_agent": "Check truth fidelity, audience usefulness, claim support, voice, and visual-copy alignment.",
+    "conversion_strategist": "Select the strongest truthful path from customer tension to practical agency.",
+    "carousel_slide_writer": "Advance one coherent thought across slides without repetition or filler."
+  }
+}

@@ -38,12 +38,22 @@ def test_publication_clocks_dispatch_and_never_generate():
 
 def test_factory_remains_scheduled_without_being_required_on_startup(monkeypatch):
     monkeypatch.delenv("RUN_FACTORY_ON_STARTUP", raising=False)
+    monkeypatch.delenv("CONTENT_FACTORY_ENABLED", raising=False)
     worker.register_scheduled_jobs()
 
     factory_jobs = [job for job in worker.schedule.jobs if job.job_func.func is worker._start_factory_thread]
 
     assert len(factory_jobs) == 1
     assert os.environ.get("RUN_FACTORY_ON_STARTUP", "false") == "false"
+
+
+def test_factory_schedule_can_be_disabled_when_month_is_prebuilt(monkeypatch):
+    monkeypatch.setenv("CONTENT_FACTORY_ENABLED", "false")
+
+    worker.register_scheduled_jobs()
+
+    factory_jobs = [job for job in worker.schedule.jobs if job.job_func.func is worker._start_factory_thread]
+    assert factory_jobs == []
 
 
 def test_manual_no_product_override_is_scoped_to_one_run(monkeypatch):

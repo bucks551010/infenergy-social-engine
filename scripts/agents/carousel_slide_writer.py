@@ -18,6 +18,18 @@ from ._base import utc_now, write_snapshot
 SLIDE_ROLES = ("hook", "logical_contrast", "product_and_verified_proof", "emotional_result", "single_next_step")
 
 
+def _thought_slides(thought: dict[str, Any]) -> list[dict]:
+    statement = str(thought.get("statement") or "Preparedness over panic.").strip()
+    expansion = str(thought.get("expansion") or "Make one clear decision before the urgent moment.").strip()
+    prompt = str(thought.get("prompt") or "What will you prepare first?").strip()
+    return [
+        {"slide_role": "thought", "on_image_headline": statement, "on_image_subline": ""},
+        {"slide_role": "meaning", "on_image_headline": "Why this matters", "on_image_subline": expansion},
+        {"slide_role": "practical_application", "on_image_headline": "Make it practical", "on_image_subline": "Choose one useful action and make it repeatable."},
+        {"slide_role": "community_question", "on_image_headline": prompt, "on_image_subline": "Bring one clear answer into your power plan."},
+    ]
+
+
 def _fallback(principle_key: str, archetype_key: str, product: dict) -> list[dict]:
     name = str((product or {}).get("name", "") or "your backup power kit").strip()
     metrics = [str(m).strip() for m in (product or {}).get("metrics", []) if str(m).strip()]
@@ -102,15 +114,24 @@ def _gemini_slides(principle_key: str, archetype_key: str, product: dict) -> lis
         return None
 
 
-def run(data_dir: str, principle_key: str = "", archetype_key: str = "", product: dict | None = None) -> dict:
+def run(
+    data_dir: str,
+    principle_key: str = "",
+    archetype_key: str = "",
+    product: dict | None = None,
+    thought: dict | None = None,
+) -> dict:
     product = product or {}
-    slides = _gemini_slides(principle_key, archetype_key, product) or _fallback(principle_key, archetype_key, product)
+    slides = _thought_slides(thought) if thought else (
+        _gemini_slides(principle_key, archetype_key, product) or _fallback(principle_key, archetype_key, product)
+    )
     payload = {
         "agent": "carousel_slide_writer",
         "time_utc": utc_now(),
         "principle_key": principle_key,
         "archetype_key": archetype_key,
         "product_name": str(product.get("name", "")),
+        "content_mode": "company_thought" if thought else "product",
         "slides": slides,
     }
     write_snapshot(data_dir, "carousel_slide_writer", payload)

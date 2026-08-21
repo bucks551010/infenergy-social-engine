@@ -20,6 +20,7 @@ import run_engine
 import generate_posts
 import inventory_db
 import intelligence_packages
+from build_monthly_content import build_monthly_calendar, latest_monthly_calendar
 from content_operations import daily_status, init_content_operations, reconcile_confirmed_transactions, reconcile_ready_inventory, reconcile_stale_claims
 from campaign_runtime import eligible_channels_for_slot, load_channel_schedule, load_funnel_config, stage_for_slot
 
@@ -1361,6 +1362,84 @@ class HealthHandler(BaseHTTPRequestHandler):
             self.wfile.write(body)
             return
 
+        if parsed.path == "/build-monthly-content":
+            params = parse_qs(parsed.query)
+            authorized, status_code, error_payload = _authorized(params)
+            if not authorized:
+                body = json.dumps(error_payload).encode("utf-8")
+                self.send_response(status_code)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+                return
+            try:
+                days = max(1, min(62, int(params.get("days", ["30"])[0])))
+                start_date = str(params.get("start_date", [""])[0]).strip() or None
+                result = build_monthly_calendar(
+                    data_dir=_data_dir(),
+                    start_date=start_date,
+                    days=days,
+                    enqueue=True,
+                )
+                payload = {
+                    key: result.get(key)
+                    for key in (
+                        "status", "created_at_utc", "knowledge_id", "knowledge_version",
+                        "knowledge_digest", "start_date", "end_date", "days", "queued",
+                        "skipped_existing", "single_image_posts", "carousel_posts", "calendar_path",
+                    )
+                }
+                body = json.dumps(payload, default=str).encode("utf-8")
+                self.send_response(201)
+            except Exception as exc:
+                body = json.dumps({"error": f"{type(exc).__name__}:{exc}"}).encode("utf-8")
+                self.send_response(500)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
+        if parsed.path == "/monthly-content":
+            params = parse_qs(parsed.query)
+            authorized, status_code, error_payload = _authorized(params)
+            if not authorized:
+                body = json.dumps(error_payload).encode("utf-8")
+                self.send_response(status_code)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+                return
+            calendar = latest_monthly_calendar(_data_dir())
+            if not calendar:
+                body = b'{"error":"monthly content not found"}'
+                self.send_response(404)
+            else:
+                include_packages = str(params.get("detail", ["false"])[0]).lower() in ("1", "true", "yes")
+                entries = calendar.get("entries", []) if isinstance(calendar.get("entries"), list) else []
+                payload = {
+                    key: calendar.get(key)
+                    for key in (
+                        "status", "created_at_utc", "knowledge_id", "knowledge_version",
+                        "knowledge_digest", "start_date", "end_date", "days", "queued",
+                        "skipped_existing", "single_image_posts", "carousel_posts", "calendar_path",
+                    )
+                }
+                payload["entries"] = entries if include_packages else [
+                    {key: entry.get(key) for key in ("date", "scheduled_at", "slot", "content_id", "thought_id", "format", "statement", "outbox_id")}
+                    for entry in entries
+                    if isinstance(entry, dict)
+                ]
+                body = json.dumps(payload, default=str).encode("utf-8")
+                self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
         if parsed.path == "/run-now":
             token = os.environ.get("MANUAL_RUN_TOKEN", "")
             params = parse_qs(parsed.query)
@@ -1816,7 +1895,8 @@ def register_scheduled_jobs() -> None:
     schedule.every().day.at(midday_utc).do(_start_dispatch_thread, "midday")
     schedule.every().day.at(evening_utc).do(_start_dispatch_thread, "evening")
     schedule.every(5).minutes.do(_start_dispatch_thread, "due_sweep")
-    schedule.every(30).minutes.do(_start_factory_thread)
+    if os.environ.get("CONTENT_FACTORY_ENABLED", "true").lower() in {"1", "true", "yes", "on"}:
+        schedule.every(30).minutes.do(_start_factory_thread)
     schedule.every(6).hours.do(run_intelligence_enrichment)
     schedule.every().day.at(intelligence_light_utc).do(run_intelligence_heartbeat, "LIGHT_HEARTBEAT")
     schedule.every().day.at("10:00").do(run_candidate_batch)

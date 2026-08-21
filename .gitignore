@@ -8,6 +8,7 @@ data/marketing/*.json
 data/marketing/*.md
 data/marketing/campaigns/*.json
 !data/marketing/founder_brand_manifesto.json
+!data/marketing/infenergy_company_knowledge.json
 data/agents/**/*.json
 data/post_history.json
 data/business_intelligence/compiled/

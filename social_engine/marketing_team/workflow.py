@@ -19,6 +19,7 @@ from .agents import (
     voice_agent,
 )
 from .brand_intel import infer_brand_profile, save_brand_profile
+from company_knowledge import agent_specialization, compact_generation_context, load_company_knowledge
 
 
 def _utc_stamp() -> str:
@@ -105,6 +106,8 @@ def _build_execution_pack(strategy: dict[str, Any]) -> dict[str, Any]:
         "hero": copy.get("hero", ""),
         "subhero": copy.get("subhero", ""),
         "mission": manifesto.get("mission", ""),
+        "company_knowledge": strategy.get("company_knowledge", {}),
+        "agent_specializations": strategy.get("agent_specializations", {}),
         "core_values": manifesto.get("core_values", []),
         "value_narrative": copy.get("value_narrative", {}),
         "top_hooks": copy.get("social_hooks", [])[:5],
@@ -135,6 +138,8 @@ def run_marketing_team(
     manifesto = _load_founder_manifesto(output_dir)
     if manifesto:
         profile["founder_manifesto"] = manifesto
+    company_knowledge = load_company_knowledge(os.path.dirname(output_dir))
+    profile["company_knowledge"] = compact_generation_context(company_knowledge)
     research = research_agent(profile)
     audience = audience_agent(profile, research)
     voice = voice_agent(profile)
@@ -147,6 +152,7 @@ def run_marketing_team(
 
     strategy = {
         "generated_at_utc": datetime.now(timezone.utc).isoformat(),
+        "company_knowledge": compact_generation_context(company_knowledge),
         "brand_profile": profile,
         "research": research,
         "audience": audience,
@@ -160,6 +166,24 @@ def run_marketing_team(
     }
     strategy["experiments"] = experimentation_agent(strategy)
     strategy["qa"] = qa_agent(strategy)
+    agent_outputs = {
+        "market_research_agent": strategy["research"],
+        "audience_psychology_agent": strategy["audience"],
+        "brand_voice_agent": strategy["voice"],
+        "offer_strategy_agent": strategy["offer"],
+        "copywriter_agent": strategy["copy"],
+        "creative_director_agent": strategy["creative"],
+        "channel_editor_agent": strategy["channel_ops"],
+        "seo_content_agent": strategy["seo"],
+        "lifecycle_email_agent": strategy["lifecycle"],
+        "growth_experimentation_agent": strategy["experiments"],
+        "qa_agent": strategy["qa"],
+    }
+    strategy["agent_specializations"] = {}
+    for agent_name, output in agent_outputs.items():
+        specialization = agent_specialization(company_knowledge, agent_name)
+        output["company_knowledge_contract"] = specialization
+        strategy["agent_specializations"][agent_name] = specialization
     strategy["execution_pack"] = _build_execution_pack(strategy)
 
     stamp = _utc_stamp()

@@ -291,6 +291,11 @@ def publish(content: dict, dry_run: bool = False) -> dict:
         }
 
     caption = _bounded_caption(content["ig_caption"])
+    carousel_urls = [
+        str(asset.get("public_url") or "").strip()
+        for asset in content.get("carousel_assets", []) or []
+        if isinstance(asset, dict) and _is_valid_public_image(str(asset.get("public_url") or "").strip())
+    ]
 
     if dry_run:
         print(f"[DRY RUN] Instagram: would post:\n{caption[:150]}...\n")
@@ -299,6 +304,50 @@ def publish(content: dict, dry_run: bool = False) -> dict:
     # Step 1: create media container
     ig_user_id = _required_env("META_IG_USER_ID")
     access_token = _required_env("META_PAGE_ACCESS_TOKEN")
+    if len(carousel_urls) >= 2:
+        child_ids: list[str] = []
+        for carousel_url in carousel_urls:
+            child = _post_with_retry(
+                f"{GRAPH_BASE}/{ig_user_id}/media",
+                {"image_url": carousel_url, "is_carousel_item": "true", "access_token": access_token},
+                timeout=30,
+            )
+            if not child.ok:
+                raise RuntimeError(f"instagram_carousel_child_create_failed_http_{child.status_code}: {_graph_error_text(child)}")
+            child_id = str(child.json().get("id") or "").strip()
+            if not child_id:
+                raise RuntimeError("instagram_carousel_child_missing_id")
+            ready, ready_reason = _wait_for_media_container(ig_user_id, child_id, access_token)
+            if not ready:
+                raise RuntimeError(f"instagram_carousel_child_not_ready:{ready_reason}")
+            child_ids.append(child_id)
+        parent = _post_with_retry(
+            f"{GRAPH_BASE}/{ig_user_id}/media",
+            {
+                "media_type": "CAROUSEL",
+                "children": ",".join(child_ids),
+                "caption": caption,
+                "access_token": access_token,
+            },
+            timeout=30,
+        )
+        if not parent.ok:
+            raise RuntimeError(f"instagram_carousel_create_failed_http_{parent.status_code}: {_graph_error_text(parent)}")
+        creation_id = str(parent.json().get("id") or "").strip()
+        ready, ready_reason = _wait_for_media_container(ig_user_id, creation_id, access_token)
+        if not ready:
+            raise RuntimeError(f"instagram_carousel_not_ready:{ready_reason}")
+        published = _post_with_retry(
+            f"{GRAPH_BASE}/{ig_user_id}/media_publish",
+            {"creation_id": creation_id, "access_token": access_token},
+            timeout=30,
+        )
+        if not published.ok:
+            raise RuntimeError(f"instagram_carousel_publish_failed_http_{published.status_code}: {_graph_error_text(published)}")
+        data = published.json()
+        print(f"[Instagram] Posted carousel: {data['id']}")
+        return {"id": data["id"]}
+
     resp = _post_with_retry(
         f"{GRAPH_BASE}/{ig_user_id}/media",
         {

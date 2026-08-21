@@ -131,6 +131,30 @@ def _publish_feed_with_photo(
     return feed.json()
 
 
+def _publish_feed_with_photos(*, page_id: str, token: str, message: str, image_paths: list[str]) -> dict:
+    media: list[dict[str, str]] = []
+    for image_path in image_paths:
+        with open(image_path, "rb") as image_file:
+            upload = requests.post(
+                f"{GRAPH_BASE}/{page_id}/photos",
+                data={"published": "false", "access_token": token},
+                files={"source": (os.path.basename(image_path), image_file, "image/png")},
+                timeout=60,
+            )
+        _raise_with_body(upload)
+        media_id = str(upload.json().get("id") or "").strip()
+        if not media_id:
+            raise RuntimeError("facebook_unpublished_photo_missing_id")
+        media.append({"media_fbid": media_id})
+    feed = _post_with_retry(
+        f"{GRAPH_BASE}/{page_id}/feed",
+        {"message": message, "attached_media": json.dumps(media), "access_token": token},
+        timeout=30,
+    )
+    _raise_with_body(feed)
+    return feed.json()
+
+
 def publish(content: dict, wp_link: str, dry_run: bool = False) -> dict:
     facebook_package = (content.get("platform_posts") or {}).get("facebook") or {}
     message = str(facebook_package.get("final_caption") or content["fb_caption"])
@@ -148,8 +172,20 @@ def publish(content: dict, wp_link: str, dry_run: bool = False) -> dict:
 
     page_id = _required_env("META_PAGE_ID")
     token = _resolve_page_access_token(_required_env("META_PAGE_ACCESS_TOKEN"), page_id)
+    carousel_paths = [
+        str(asset.get("local_path") or "").strip()
+        for asset in content.get("carousel_assets", []) or []
+        if isinstance(asset, dict) and os.path.exists(str(asset.get("local_path") or "").strip())
+    ]
 
-    if image_path and os.path.exists(image_path):
+    if len(carousel_paths) >= 2:
+        data = _publish_feed_with_photos(
+            page_id=page_id,
+            token=token,
+            message=message,
+            image_paths=carousel_paths,
+        )
+    elif image_path and os.path.exists(image_path):
         data = _publish_feed_with_photo(
             page_id=page_id,
             token=token,

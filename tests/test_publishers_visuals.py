@@ -167,6 +167,43 @@ class PublisherVisualTests(unittest.TestCase):
         self.assertIn("/feed", mock_post.call_args_list[1].args[0])
         self.assertIn('"media_fbid": "photo_url_123"', mock_post.call_args_list[1].kwargs["data"]["attached_media"])
 
+    def test_facebook_attaches_all_carousel_slides(self) -> None:
+        paths = []
+        try:
+            for _ in range(4):
+                tmp = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
+                tmp.write(b"fakepng")
+                tmp.close()
+                paths.append(tmp.name)
+            uploads = []
+            for index in range(4):
+                response = Mock(ok=True)
+                response.json.return_value = {"id": f"photo_{index}"}
+                uploads.append(response)
+            feed = Mock(ok=True)
+            feed.json.return_value = {"id": "carousel_post"}
+            with patch.dict(os.environ, {"META_PAGE_ID": "page123", "META_PAGE_ACCESS_TOKEN": "token123"}, clear=False), patch.object(
+                publish_facebook, "_resolve_page_access_token", return_value="page_token"
+            ), patch.object(publish_facebook.requests, "post", side_effect=[*uploads, feed]) as mock_post:
+                result = publish_facebook.publish(
+                    {
+                        "fb_caption": "Carousel caption",
+                        "carousel_assets": [{"local_path": path} for path in paths],
+                        "generated_visuals": {"facebook": paths[0]},
+                    },
+                    "",
+                )
+            attached = mock_post.call_args_list[-1].kwargs["data"]["attached_media"]
+            self.assertEqual(result["id"], "carousel_post")
+            self.assertEqual(mock_post.call_count, 5)
+            self.assertEqual(attached.count("media_fbid"), 4)
+        finally:
+            for path in paths:
+                try:
+                    os.remove(path)
+                except OSError:
+                    pass
+
     def test_facebook_raises_when_image_required_but_missing(self) -> None:
         with patch.dict(
             os.environ,
@@ -219,6 +256,37 @@ class PublisherVisualTests(unittest.TestCase):
         caption = mock_post.call_args_list[0].args[1]["caption"]
         self.assertLessEqual(len(caption), publish_instagram.INSTAGRAM_CAPTION_MAX_LENGTH)
         self.assertTrue(caption.endswith("..."))
+
+    def test_instagram_creates_native_carousel(self) -> None:
+        responses = []
+        for index in range(4):
+            child = Mock(ok=True)
+            child.json.return_value = {"id": f"child_{index}"}
+            responses.append(child)
+        parent = Mock(ok=True)
+        parent.json.return_value = {"id": "parent_1"}
+        published = Mock(ok=True)
+        published.json.return_value = {"id": "instagram_carousel_1"}
+        with patch.dict(
+            os.environ,
+            {"META_IG_USER_ID": "ig123", "META_PAGE_ACCESS_TOKEN": "token123", "IG_VALIDATE_IMAGE_URLS": "false"},
+            clear=False,
+        ), patch.object(publish_instagram, "_wait_for_media_container", return_value=(True, "finished")), patch.object(
+            publish_instagram, "_post_with_retry", side_effect=[*responses, parent, published]
+        ) as mock_post:
+            result = publish_instagram.publish(
+                {
+                    "ig_caption": "Carousel caption",
+                    "primary_publish_image_url": "https://example.com/slide-1.png",
+                    "carousel_assets": [
+                        {"public_url": f"https://example.com/slide-{index}.png"} for index in range(1, 5)
+                    ],
+                }
+            )
+        parent_data = mock_post.call_args_list[4].args[1]
+        self.assertEqual(result["id"], "instagram_carousel_1")
+        self.assertEqual(parent_data["media_type"], "CAROUSEL")
+        self.assertEqual(parent_data["children"], "child_0,child_1,child_2,child_3")
 
     def test_generate_visuals_has_no_fallback_when_gemini_unavailable(self) -> None:
         with patch.dict(os.environ, {"GEMINI_API_KEY": ""}, clear=False):

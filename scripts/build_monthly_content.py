@@ -149,7 +149,10 @@ def _package(knowledge: dict[str, Any], thought: dict[str, Any], content_date: s
             "final_caption": captions[platform],
             "caption": captions[platform],
             "destination_url": "https://www.infenergypower.com",
-            "content_format": "carousel" if thought.get("format") == "carousel" else "single_image_thought",
+            "content_format": (
+                "carousel" if thought.get("format") == "carousel" and platform in ("facebook", "instagram")
+                else "single_image_thought"
+            ),
             "final_caption_qa": {"status": "PRESENTATION_READY", "reasons": []},
         }
         for platform in PLATFORMS

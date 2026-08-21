@@ -38,11 +38,17 @@ def _enabled_platforms(package: dict[str, Any]) -> list[str]:
 def _payload(package: dict[str, Any], platform: str) -> dict[str, Any]:
     platform_posts = package.get("platform_posts") if isinstance(package.get("platform_posts"), dict) else {}
     post = platform_posts.get(platform) if isinstance(platform_posts.get(platform), dict) else {}
+    carousel_media = [
+        str(asset.get("local_path") if platform == "facebook" else asset.get("public_url") or "").strip()
+        for asset in package.get("carousel_assets", []) or []
+        if isinstance(asset, dict)
+    ]
     return {
         "final_caption": str(post.get("final_caption") or post.get("caption") or ""),
         "destination_url": str(post.get("destination_url") or package.get("destination_url") or ""),
         "utm_url": str(post.get("utm_url") or post.get("destination_url") or package.get("destination_url") or ""),
         "media": str((package.get("generated_visuals") or {}).get(platform) or ""),
+        "carousel_media": [media for media in carousel_media if media] if platform in {"facebook", "instagram"} else [],
     }
 
 

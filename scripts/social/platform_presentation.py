@@ -1029,7 +1029,7 @@ def final_caption_qa(
         reasons.append("paragraph_structure_missing")
     public_paragraphs = [
         paragraph for paragraph in _paragraphs(caption)
-        if not paragraph.startswith(("#", "👉", "http"))
+        if not paragraph.startswith(("#", "👉", "http", "⚡ Key specs"))
     ]
     if any(len(re.findall(r"\b[\w'-]+\b", paragraph)) < 4 for paragraph in public_paragraphs):
         reasons.append("orphan_public_paragraph")

@@ -6122,6 +6122,7 @@ Return ONLY valid JSON with these exact keys (no markdown, no code fences):
         content["product_image_url"] = product.get("image_url", "") if product else ""
         content["product_image_candidates"] = product.get("image_candidates", []) if product else []
         content["category_image_candidates"] = product.get("category_image_candidates", []) if product else []
+        content["product_selection_decision"] = product.get("_rotation_decision", {}) if product else {}
         content["marketing_strategy_used"] = bool(marketing_strategy)
         content["marketing_bundle_used"] = bool(marketing_strategy)
         content["business_profile"] = business_profile
@@ -6369,6 +6370,7 @@ Return ONLY valid JSON with these exact keys (no markdown, no code fences):
     content["product_image_url"] = product.get("image_url", "") if product else ""
     content["product_image_candidates"] = product.get("image_candidates", []) if product else []
     content["category_image_candidates"] = product.get("category_image_candidates", []) if product else []
+    content["product_selection_decision"] = product.get("_rotation_decision", {}) if product else {}
     content["marketing_strategy_used"] = bool(marketing_strategy)
     content["marketing_bundle_used"] = bool(marketing_strategy)
     content["business_profile"] = business_profile

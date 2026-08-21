@@ -763,3 +763,25 @@ def test_product_education_does_not_combine_oversized_catalog_fragments():
         qa = finalized[platform]["final_caption_qa"]
         assert qa["status"] == "PRESENTATION_READY"
         assert qa["metrics"]["longest_paragraph_words"] <= 80
+
+
+def test_single_spec_block_is_not_an_orphan_paragraph():
+    caption = (
+        "A practical problem needs a specific answer.\n\n"
+        "That is where Portable Solar-Powered Light Bulb fits: adds portable lighting support.\n\n"
+        "⚡ Key specs\n• 240V\n\n"
+        "👉 Review the verified product details."
+    )
+
+    verdict = platform_presentation.final_caption_qa(
+        caption,
+        platform="facebook",
+        components={
+            "product_id": "SGL-BULB",
+            "product_name": "Portable Solar-Powered Light Bulb",
+            "benefit_fragment": "adds portable lighting support",
+            "feature_bullets": ["240V"],
+        },
+    )
+
+    assert "orphan_public_paragraph" not in verdict["reasons"]

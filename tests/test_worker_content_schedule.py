@@ -24,6 +24,7 @@ def test_post_requests_reach_the_existing_endpoint_handler():
 
 
 def test_publication_clocks_dispatch_and_never_generate():
+    os.environ.pop("CONTENT_DISPATCH_ENABLED", None)
     worker.register_scheduled_jobs()
     jobs = worker.schedule.jobs
     dispatch_jobs = [job for job in jobs if job.job_func.func is worker._start_dispatch_thread]
@@ -34,6 +35,15 @@ def test_publication_clocks_dispatch_and_never_generate():
     assert len(factory_jobs) == 1
     assert legacy_clock_jobs == []
     assert {job.job_func.args[0] for job in dispatch_jobs} == {"morning", "midday", "evening", "due_sweep"}
+
+
+def test_dispatch_schedule_can_be_paused_while_month_is_built(monkeypatch):
+    monkeypatch.setenv("CONTENT_DISPATCH_ENABLED", "false")
+
+    worker.register_scheduled_jobs()
+
+    dispatch_jobs = [job for job in worker.schedule.jobs if job.job_func.func is worker._start_dispatch_thread]
+    assert dispatch_jobs == []
 
 
 def test_factory_remains_scheduled_without_being_required_on_startup(monkeypatch):

@@ -1381,13 +1381,14 @@ class HealthHandler(BaseHTTPRequestHandler):
                     start_date=start_date,
                     days=days,
                     enqueue=True,
+                    replace_unpublished=str(params.get("replace_unpublished", ["false"])[0]).lower() in ("1", "true", "yes"),
                 )
                 payload = {
                     key: result.get(key)
                     for key in (
                         "status", "created_at_utc", "knowledge_id", "knowledge_version",
                         "knowledge_digest", "start_date", "end_date", "days", "queued",
-                        "skipped_existing", "single_image_posts", "carousel_posts", "calendar_path",
+                        "skipped_existing", "cancelled_legacy_outbox", "single_image_posts", "carousel_posts", "calendar_path",
                     )
                 }
                 body = json.dumps(payload, default=str).encode("utf-8")
@@ -1424,7 +1425,7 @@ class HealthHandler(BaseHTTPRequestHandler):
                     for key in (
                         "status", "created_at_utc", "knowledge_id", "knowledge_version",
                         "knowledge_digest", "start_date", "end_date", "days", "queued",
-                        "skipped_existing", "single_image_posts", "carousel_posts", "calendar_path",
+                        "skipped_existing", "cancelled_legacy_outbox", "single_image_posts", "carousel_posts", "calendar_path",
                     )
                 }
                 payload["entries"] = entries if include_packages else [
@@ -1891,10 +1892,11 @@ def _start_dispatch_thread(slot: str) -> None:
 
 def register_scheduled_jobs() -> None:
     schedule.clear()
-    schedule.every().day.at(morning_utc).do(_start_dispatch_thread, "morning")
-    schedule.every().day.at(midday_utc).do(_start_dispatch_thread, "midday")
-    schedule.every().day.at(evening_utc).do(_start_dispatch_thread, "evening")
-    schedule.every(5).minutes.do(_start_dispatch_thread, "due_sweep")
+    if os.environ.get("CONTENT_DISPATCH_ENABLED", "true").lower() in {"1", "true", "yes", "on"}:
+        schedule.every().day.at(morning_utc).do(_start_dispatch_thread, "morning")
+        schedule.every().day.at(midday_utc).do(_start_dispatch_thread, "midday")
+        schedule.every().day.at(evening_utc).do(_start_dispatch_thread, "evening")
+        schedule.every(5).minutes.do(_start_dispatch_thread, "due_sweep")
     if os.environ.get("CONTENT_FACTORY_ENABLED", "true").lower() in {"1", "true", "yes", "on"}:
         schedule.every(30).minutes.do(_start_factory_thread)
     schedule.every(6).hours.do(run_intelligence_enrichment)

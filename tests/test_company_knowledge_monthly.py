@@ -110,3 +110,21 @@ def test_month_builder_replaces_an_unpublished_slot_package(tmp_path, monkeypatc
     assert first["entries"][0]["content_id"] != replacement["entries"][0]["content_id"]
     assert replacement["queued"] == 1
     assert daily_status(str(tmp_path), "2026-10-01")["ready"] == 1
+
+
+def test_month_builder_can_cancel_unpublished_legacy_inventory(tmp_path, monkeypatch):
+    _seed_knowledge(tmp_path)
+    monkeypatch.setenv("PUBLIC_BASE_URL", "https://example.test")
+    build_monthly_calendar(data_dir=str(tmp_path), start_date="2026-10-01", days=1, enqueue=True)
+
+    replacement = build_monthly_calendar(
+        data_dir=str(tmp_path),
+        start_date="2026-11-01",
+        days=1,
+        enqueue=True,
+        replace_unpublished=True,
+    )
+
+    assert replacement["cancelled_legacy_outbox"] == 1
+    assert daily_status(str(tmp_path), "2026-10-01")["ready"] == 0
+    assert daily_status(str(tmp_path), "2026-11-01")["ready"] == 1

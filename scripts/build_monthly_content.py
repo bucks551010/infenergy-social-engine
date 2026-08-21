@@ -13,7 +13,7 @@ from typing import Any
 from PIL import Image, ImageDraw, ImageFont
 
 from company_knowledge import agent_specialization, knowledge_digest, load_company_knowledge
-from content_operations import archive_candidate, create_council_session, ensure_daily_slots, mark_ready, replace_unpublished_slot
+from content_operations import archive_candidate, cancel_unpublished_inventory, create_council_session, ensure_daily_slots, mark_ready, replace_unpublished_slot
 from inventory_db import get_db_path
 
 
@@ -257,6 +257,7 @@ def build_monthly_calendar(
     start_date: str | date | None = None,
     days: int = 30,
     enqueue: bool = True,
+    replace_unpublished: bool = False,
 ) -> dict[str, Any]:
     if days < 1 or days > 62:
         raise ValueError("days must be between 1 and 62")
@@ -265,6 +266,9 @@ def build_monthly_calendar(
     start = start or (datetime.now(timezone.utc).date() + timedelta(days=1))
     thoughts = list(knowledge["thought_library"])
     existing_ids = _existing_content_ids(data_dir)
+    cancellation = cancel_unpublished_inventory(data_dir) if enqueue and replace_unpublished else {"cancelled_outbox": 0}
+    if cancellation["cancelled_outbox"]:
+        existing_ids = _existing_content_ids(data_dir)
     entries: list[dict[str, Any]] = []
     queued = 0
     skipped_existing = 0
@@ -347,6 +351,7 @@ def build_monthly_calendar(
         "days": days,
         "queued": queued,
         "skipped_existing": skipped_existing,
+        "cancelled_legacy_outbox": cancellation["cancelled_outbox"],
         "single_image_posts": sum(1 for entry in entries if entry["format"] == "single"),
         "carousel_posts": sum(1 for entry in entries if entry["format"] == "carousel"),
         "entries": entries,

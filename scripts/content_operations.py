@@ -202,6 +202,45 @@ def replace_unpublished_slot(data_dir: str, content_date: str, slot: str) -> boo
         connection.close()
 
 
+def cancel_unpublished_inventory(data_dir: str, reason: str = "replaced_by_monthly_content_plan") -> dict[str, int]:
+    """Cancel queued work that has not reached a publisher transaction."""
+    connection = _connect(data_dir)
+    try:
+        connection.execute("BEGIN IMMEDIATE")
+        rows = connection.execute(
+            """
+            SELECT o.outbox_id FROM content_outbox o
+            WHERE o.status IN ('READY', 'DUE', 'RECOVERING', 'EXTERNAL_ACTION_REQUIRED')
+              AND NOT EXISTS (
+                  SELECT 1 FROM platform_transactions t
+                  WHERE t.outbox_id=o.outbox_id AND t.state IN ('REQUEST_SENT', 'CONFIRMED_SUCCESS', 'AMBIGUOUS')
+              )
+            """
+        ).fetchall()
+        outbox_ids = [str(row["outbox_id"]) for row in rows]
+        now = _now()
+        for outbox_id in outbox_ids:
+            connection.execute(
+                "UPDATE content_outbox SET status='CANCELLED', last_error=? WHERE outbox_id=?",
+                (reason, outbox_id),
+            )
+            connection.execute(
+                """
+                UPDATE daily_slots SET content_id=NULL, decision_id=NULL, outbox_id=NULL,
+                    status='UNPLANNED', ready_at=NULL, claimed_at=NULL, published_at=NULL,
+                    last_error=NULL, updated_at=? WHERE outbox_id=?
+                """,
+                (now, outbox_id),
+            )
+        connection.commit()
+        return {"cancelled_outbox": len(outbox_ids)}
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
+
+
 def create_council_session(
     data_dir: str,
     *,

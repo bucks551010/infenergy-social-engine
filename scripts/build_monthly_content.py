@@ -18,6 +18,7 @@ from inventory_db import get_db_path
 
 
 DATA_DIR = os.environ.get("DATA_DIR", os.path.join(os.path.dirname(__file__), "..", "data"))
+ELITE_SLATE_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "data", "marketing", "elite_monthly_slate.json"))
 PLATFORMS = ("facebook", "instagram", "linkedin")
 BACKGROUND_ROTATION = ("#10212B", "#F7F4EC", "#DCEEF2", "#4F7658", "#E45B3A")
 INK_BY_BACKGROUND = {
@@ -97,17 +98,46 @@ def _carousel_slides(thought: dict[str, Any]) -> list[dict[str, str]]:
     ]
 
 
-def _gemini_generation_plan(thought: dict[str, Any]) -> dict[str, Any]:
+def _load_product_brief(data_dir: str, product_id: str) -> dict[str, Any]:
+    candidates = (
+        os.path.join(data_dir, "product_briefs", f"{product_id}.json"),
+        os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "data", "product_briefs", f"{product_id}.json")),
+    )
+    for path in candidates:
+        if not os.path.isfile(path):
+            continue
+        with open(path, "r", encoding="utf-8") as handle:
+            brief = json.load(handle)
+        if isinstance(brief, dict) and str(brief.get("product_id") or "") == product_id:
+            return brief
+    raise ValueError(f"verified product brief not found: {product_id}")
+
+
+def _gemini_generation_plan(thought: dict[str, Any], product: dict[str, Any] | None = None) -> dict[str, Any]:
     slides = _carousel_slides(thought) if thought.get("format") == "carousel" else [
         {"role": "thought", "headline": thought["statement"], "supporting": thought["expansion"]}
     ]
+    visual_execution = str(thought.get("visual_execution") or "editorial_scene")
+    image_scene = str(thought.get("image_scene") or thought["visual_motif"]).strip()
+    product_instruction = ""
+    if product:
+        product_instruction = (
+            f"The attached reference image is the exact {product['name']}. Reproduce that exact product's shape, proportions, "
+            "color, controls, ports, markings, and physical details without redesigning or substituting a generic device. "
+            f"Stage it naturally as follows: {product['visual_direction']} "
+        )
     prompts: list[dict[str, Any]] = []
     for slide_index, slide in enumerate(slides, start=1):
-        overlay_copy = str(slide.get("supporting") or slide.get("headline") or "").strip()
+        overlay_copy = str(
+            slide.get("headline")
+            if len(slides) > 1
+            else thought.get("overlay_text") or thought["statement"]
+        ).strip()
         scene_prompt = (
             "Create one premium, photorealistic square editorial image for Infenergy Power about practical energy readiness. "
-            f"Core thought: {thought['statement']} Scene meaning: {slide.get('headline', '')}. "
-            f"Visual motif: {thought['visual_motif']}. Pillar: {str(thought['pillar']).replace('_', ' ')}. "
+            f"The image must express this exact post and no generic substitute: {thought['statement']} "
+            f"Authored scene: {image_scene} Scene meaning: {slide.get('headline', '')}. "
+            f"Visual execution: {visual_execution}. {product_instruction}"
             f"This is slide {slide_index} of {len(slides)} with the role {slide['role']}. "
             "Show a believable real-life environment, natural human stakes, physically credible portable-energy context, "
             "cinematic directional light, rich material detail, and generous protected negative space in the upper third for an editorial overlay. "
@@ -187,9 +217,12 @@ def _public_url(file_name: str) -> str:
 def _render_assets(data_dir: str, thought: dict[str, Any], index: int) -> dict[str, Any]:
     folder = os.path.join(data_dir, "public_media")
     stem = f"monthly_{index + 1:02d}_{thought['id'].lower()}"
-    slides = _carousel_slides(thought) if thought.get("format") == "carousel" else [
-        {"role": "thought", "headline": thought["statement"], "supporting": thought["expansion"]}
-    ]
+    if thought.get("format") == "carousel":
+        slides = _carousel_slides(thought)
+    elif thought.get("visual_execution") == "statement_graphic":
+        slides = [{"role": "statement", "headline": thought["overlay_text"], "supporting": ""}]
+    else:
+        slides = [{"role": "thought", "headline": thought["statement"], "supporting": thought["expansion"]}]
     assets: list[dict[str, str]] = []
     for slide_index, slide in enumerate(slides, start=1):
         file_name = f"{stem}_{slide_index}.png"
@@ -210,7 +243,10 @@ def _package(knowledge: dict[str, Any], thought: dict[str, Any], content_date: s
     assets = _render_assets(data_dir, thought, index)
     captions = _captions(thought)
     digest = knowledge_digest(knowledge)
-    content_id = hashlib.sha256(f"{content_date}:{thought['id']}:{digest}".encode("utf-8")).hexdigest()[:20]
+    thought_digest = hashlib.sha256(json.dumps(thought, sort_keys=True, ensure_ascii=True).encode("utf-8")).hexdigest()
+    content_id = hashlib.sha256(f"{content_date}:{thought['id']}:{digest}:{thought_digest}".encode("utf-8")).hexdigest()[:20]
+    product_id = str(thought.get("product_id") or "").strip()
+    product = _load_product_brief(data_dir, product_id) if product_id else None
     platform_posts = {
         platform: {
             "platform": platform,
@@ -219,6 +255,7 @@ def _package(knowledge: dict[str, Any], thought: dict[str, Any], content_date: s
             "destination_url": "https://www.infenergypower.com",
             "content_format": (
                 "carousel" if thought.get("format") == "carousel" and platform in ("facebook", "instagram")
+                else "single_image_product" if product
                 else "single_image_thought"
             ),
             "final_caption_qa": {"status": "PRESENTATION_READY", "reasons": []},
@@ -231,14 +268,20 @@ def _package(knowledge: dict[str, Any], thought: dict[str, Any], content_date: s
         "content_id": content_id,
         "post_id": content_id,
         "content_date": content_date,
-        "content_mode": "company_thought",
+        "content_mode": "product_education" if product else "company_thought",
         "thought_id": thought["id"],
         "thought_kind": thought["kind"],
         "thought_statement": thought["statement"],
+        "content_type": str(thought.get("content_type") or "editorial"),
+        "event_series": str(thought.get("event_series") or ""),
+        "editorial_sources": [str(thought.get("source_note"))] if thought.get("source_note") else [],
         "topic": thought["pillar"],
         "pillar": thought["pillar"],
-        "product_id": None,
-        "product_name": "",
+        "product_id": product_id or None,
+        "product_name": str(product.get("name") or "") if product else "",
+        "product_image_url": str(product.get("source_image_url") or "") if product else "",
+        "product_verified_facts": list(product.get("verified_facts") or []) if product else [],
+        "product_proof_rule": str(product.get("proof_rule") or "") if product else "",
         "copy_generation_source": "canonical_company_knowledge",
         "company_knowledge": {
             "knowledge_id": knowledge.get("knowledge_id"),
@@ -251,7 +294,7 @@ def _package(knowledge: dict[str, Any], thought: dict[str, Any], content_date: s
         },
         "master_copy": {
             key: thought.get(key)
-            for key in ("statement", "expansion", "useful_detail", "action", "prompt", "humor", "linkedin_lens", "editorial_mode", "audience")
+            for key in ("statement", "expansion", "useful_detail", "action", "prompt", "humor", "linkedin_lens", "editorial_mode", "audience", "source_note", "overlay_text")
             if thought.get(key)
         },
         "fb_caption": captions["facebook"],
@@ -261,13 +304,15 @@ def _package(knowledge: dict[str, Any], thought: dict[str, Any], content_date: s
         "routing": {"platforms": list(PLATFORMS)},
         "destination_url": "https://www.infenergypower.com",
         "visual_plan": {
-            "creative_route": "BRANDED_COMPANY_THOUGHT",
+            "creative_route": "PREMIUM_PRODUCT_HERO" if product else "BRANDED_COMPANY_THOUGHT",
             "visual_format": "CAROUSEL" if thought.get("format") == "carousel" else "SINGLE_IMAGE",
+            "visual_execution": str(thought.get("visual_execution") or "editorial_scene"),
             "visual_motif": thought["visual_motif"],
+            "image_scene": str(thought.get("image_scene") or thought["visual_motif"]),
             "copy_visual_alignment": thought["statement"],
             "carousel_slides": _carousel_slides(thought) if thought.get("format") == "carousel" else [],
         },
-        "gemini_generation": _gemini_generation_plan(thought),
+        "gemini_generation": _gemini_generation_plan(thought, product),
         "carousel_assets": assets["slides"] if thought.get("format") == "carousel" else [],
         "generated_visuals": {
             "facebook": primary_path,
@@ -308,6 +353,18 @@ def _save_calendar(data_dir: str, payload: dict[str, Any]) -> str:
     return path
 
 
+def _load_editorial_slate() -> dict[str, Any]:
+    with open(ELITE_SLATE_PATH, "r", encoding="utf-8") as handle:
+        slate = json.load(handle)
+    posts = slate.get("posts") if isinstance(slate, dict) else None
+    if not isinstance(posts, list) or len(posts) != 30:
+        raise ValueError("elite monthly slate must contain exactly 30 posts")
+    identifiers = [str(post.get("id") or "") for post in posts if isinstance(post, dict)]
+    if len(identifiers) != 30 or len(set(identifiers)) != 30:
+        raise ValueError("elite monthly slate post identifiers must be complete and unique")
+    return slate
+
+
 def latest_monthly_calendar(data_dir: str = DATA_DIR) -> dict[str, Any]:
     folder = os.path.join(data_dir, "social", "monthly")
     if not os.path.isdir(folder):
@@ -332,10 +389,10 @@ def prepare_monthly_gemini_prompts(data_dir: str = DATA_DIR) -> dict[str, Any]:
     entries = calendar.get("entries") if isinstance(calendar.get("entries"), list) else []
     if not entries:
         raise RuntimeError("monthly_content_not_found")
-    knowledge = load_company_knowledge(data_dir)
+    slate = _load_editorial_slate()
     thoughts = {
         str(thought.get("id") or ""): thought
-        for thought in knowledge.get("thought_library", [])
+        for thought in slate["posts"]
         if isinstance(thought, dict)
     }
     connection = sqlite3.connect(get_db_path(data_dir), timeout=30)
@@ -352,7 +409,9 @@ def prepare_monthly_gemini_prompts(data_dir: str = DATA_DIR) -> dict[str, Any]:
             outbox_id = str(entry.get("outbox_id") or "")
             if not thought or not package or not outbox_id:
                 continue
-            generation = _gemini_generation_plan(thought)
+            product_id = str(thought.get("product_id") or "").strip()
+            product = _load_product_brief(data_dir, product_id) if product_id else None
+            generation = _gemini_generation_plan(thought, product)
             generation["status"] = "PROMPTS_READY"
             generation["prompts_prepared_at_utc"] = prepared_at
             package["gemini_generation"] = generation
@@ -405,9 +464,10 @@ def build_monthly_calendar(
         else {"status": "USED_EXISTING", "path": None, "backup_path": None}
     )
     knowledge = load_company_knowledge(data_dir)
+    slate = _load_editorial_slate()
     start = date.fromisoformat(start_date) if isinstance(start_date, str) else start_date
     start = start or (datetime.now(timezone.utc).date() + timedelta(days=1))
-    thoughts = list(knowledge["thought_library"])
+    thoughts = list(slate["posts"])
     existing_ids = _existing_content_ids(data_dir)
     cancellation = cancel_unpublished_inventory(data_dir) if enqueue and replace_unpublished else {"cancelled_outbox": 0}
     if cancellation["cancelled_outbox"]:
@@ -457,7 +517,7 @@ def build_monthly_calendar(
                     blackboard={
                         "company_knowledge": package["company_knowledge"],
                         "thought": package["master_copy"],
-                        "content_mode": "company_thought",
+                        "content_mode": package["content_mode"],
                     },
                     rationale=["canonical_company_truth", "one_complete_post_per_day", "copy_visual_alignment"],
                 )
@@ -489,6 +549,8 @@ def build_monthly_calendar(
         "knowledge_id": knowledge.get("knowledge_id"),
         "knowledge_version": knowledge.get("schema_version"),
         "knowledge_digest": knowledge_digest(knowledge),
+        "campaign_id": slate.get("campaign_id"),
+        "editorial_standard": slate.get("editorial_standard"),
         "knowledge_refresh": knowledge_refresh,
         "start_date": start.isoformat(),
         "end_date": (start + timedelta(days=days - 1)).isoformat(),
@@ -498,6 +560,9 @@ def build_monthly_calendar(
         "cancelled_legacy_outbox": cancellation["cancelled_outbox"],
         "single_image_posts": sum(1 for entry in entries if entry["format"] == "single"),
         "carousel_posts": sum(1 for entry in entries if entry["format"] == "carousel"),
+        "product_posts": sum(1 for thought in thoughts[:days] if thought.get("content_type") == "product"),
+        "statement_graphics": sum(1 for thought in thoughts[:days] if thought.get("visual_execution") == "statement_graphic"),
+        "current_event_posts": sum(1 for thought in thoughts[:days] if thought.get("event_series")),
         "entries": entries,
     }
     payload["calendar_path"] = _save_calendar(data_dir, payload)

@@ -1,5 +1,5 @@
 {
-  "schema_version": "2.0.0",
+  "schema_version": "3.0.0",
   "knowledge_id": "infenergy-company-truth",
   "brand": {
     "name": "Infenergy Power",
@@ -107,8 +107,8 @@
     "signature_phrases": ["Preparedness over panic", "Power is protection", "Practical power for real life", "Choose by fit, not hype", "From uncertainty to a clear plan", "Stay powered. Stay connected. Stay ready."]
   },
   "editorial_playbook": {
-    "playbook_id": "infenergy-editorial-standard-v2",
-    "purpose": "Earn attention by making practical power unusually useful, human, memorable, and worth sharing.",
+    "playbook_id": "infenergy-elite-editorial-v3",
+    "purpose": "Create category-leading power content that earns attention through consequence, specificity, service, wit, and visual truth.",
     "content_jobs": ["teach a useful distinction", "tell a recognizable micro-story", "correct a costly assumption", "give a practical drill", "offer a defensible opinion", "make preparedness feel human", "create a tasteful laugh"],
     "monthly_mix": {
       "practical_education": 8,
@@ -116,7 +116,9 @@
       "myths_and_contrarian_takes": 5,
       "checklists_and_drills": 5,
       "community_and_identity": 3,
-      "light_humor": 3
+      "light_humor": 4,
+      "verified_product_education": 8,
+      "statement_graphics": 8
     },
     "required_elements": [
       "A specific opening that could not belong to any generic brand.",
@@ -128,7 +130,10 @@
       "Do not repeat the same thesis, opening structure, CTA, scene, or emotional beat within seven posts.",
       "Alternate short declarations, questions, scenes, lists, myths, field notes, calculations, and opinions.",
       "A slogan counts as a post only when the body earns it with substance.",
-      "Every carousel slide must add new information; labels such as Why this matters are not sufficient progression."
+      "Every carousel slide must add new information; labels such as Why this matters are not sufficient progression.",
+      "Every post must declare a specific visual scene that could not illustrate another post unchanged.",
+      "Use statement graphics as strategic punctuation: one memorable line over a matched scene, never an empty quote card.",
+      "Publish two product-education posts in every complete seven-day block, grounded in verified facts and an honest use boundary."
     ],
     "humor_rules": [
       "Use observational humor about dead batteries, cable drawers, overpacking, and ordinary human habits.",
@@ -147,7 +152,32 @@
       "Does the post sound like Infenergy rather than a preparedness template?",
       "Is the image concept inseparable from the post idea?"
     ],
-    "reject_if": ["generic motivation", "recycled calm-versus-panic language", "empty engagement bait", "repeated boilerplate", "fear-based urgency", "unsupported product outcome", "humor without usefulness"]
+    "current_event_standard": {
+      "lesson_source": "The August 2026 northwest Indiana outage demonstrated how prolonged loss of power compounds across food, heat, communication, work, schools, health planning, trust, and community support.",
+      "rules": [
+        "Lead with witness and service, never opportunistic selling.",
+        "Distinguish what a household tool can support from what only utilities, public institutions, and community systems can restore.",
+        "Use dated claims only with named sources and preserve uncertainty as conditions change.",
+        "Never use suffering as a product before-and-after device."
+      ],
+      "sources": [
+        "NPR and Associated Press reporting published August 21, 2026",
+        "PBS NewsHour reporting published August 20, 2026",
+        "CNN and Associated Press reporting published August 20, 2026"
+      ]
+    },
+    "product_content_standard": [
+      "Teach the job, fit question, verified fact, and limitation before the call to action.",
+      "Attach the exact approved product reference to image generation and prohibit generic substitutions.",
+      "Never imply a portable product solves grid failure, medical continuity, whole-home demand, or prolonged community hardship.",
+      "Use the pattern: human job -> verified capability -> fit condition -> honest boundary -> practical next step."
+    ],
+    "statement_graphic_standard": [
+      "The statement must be short enough to remember and strong enough to stand alone.",
+      "The caption must earn the statement with substance, evidence, or a useful action.",
+      "Generate the matched scene without words, then apply approved typography deterministically."
+    ],
+    "reject_if": ["generic motivation", "recycled calm-versus-panic language", "empty engagement bait", "repeated boilerplate", "fear-based urgency", "unsupported product outcome", "humor without usefulness", "generic image prompt", "product without a verified job and boundary", "current-event opportunism"]
   },
   "visual_language": {
     "principle": "Show the life that practical power protects, then make the thought legible in one glance.",

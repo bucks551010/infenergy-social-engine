@@ -41,8 +41,9 @@ VISUAL_REPO_BOOTSTRAP = {
 }
 MONTHLY_SUMMARY_KEYS = (
     "status", "created_at_utc", "knowledge_id", "knowledge_version",
-    "knowledge_digest", "knowledge_refresh", "start_date", "end_date", "days", "queued",
-    "skipped_existing", "cancelled_legacy_outbox", "single_image_posts", "carousel_posts", "calendar_path",
+    "knowledge_digest", "campaign_id", "editorial_standard", "knowledge_refresh", "start_date", "end_date", "days", "queued",
+    "skipped_existing", "cancelled_legacy_outbox", "single_image_posts", "carousel_posts", "product_posts",
+    "statement_graphics", "current_event_posts", "calendar_path",
 )
 
 

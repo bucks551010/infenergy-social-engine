@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
 from agents import carousel_slide_writer  # noqa: E402
-from build_monthly_content import _captions, build_monthly_calendar, latest_monthly_calendar, prepare_monthly_gemini_prompts  # noqa: E402
+from build_monthly_content import _captions, _gemini_generation_plan, _load_editorial_slate, _load_product_brief, build_monthly_calendar, latest_monthly_calendar, prepare_monthly_gemini_prompts  # noqa: E402
 from company_knowledge import agent_specialization, compact_generation_context, load_company_knowledge  # noqa: E402
 from content_operations import daily_status  # noqa: E402
 from social_visuals import _apply_v5_text_overlay  # noqa: E402
@@ -45,26 +45,54 @@ def test_editorial_playbook_reaches_every_shared_agent_context():
         assert agent_specialization(knowledge, agent_name)["editorial_playbook"] == playbook
 
 
-def test_monthly_library_meets_the_editorial_variety_contract():
-    knowledge = load_company_knowledge(str(ROOT / "data"))
-    thoughts = knowledge["thought_library"][:30]
+def test_elite_monthly_slate_meets_the_editorial_variety_contract():
+    thoughts = _load_editorial_slate()["posts"]
     captions = [_captions(thought) for thought in thoughts]
-    required_fields = {"editorial_mode", "statement", "expansion", "useful_detail", "action", "prompt", "linkedin_lens"}
+    required_fields = {
+        "editorial_mode", "content_type", "statement", "overlay_text", "expansion",
+        "useful_detail", "action", "prompt", "linkedin_lens", "image_scene", "visual_execution",
+    }
 
     assert len(thoughts) == 30
     assert all(required_fields <= thought.keys() for thought in thoughts)
-    assert len({thought["editorial_mode"] for thought in thoughts}) >= 20
-    assert sum(bool(thought.get("humor")) for thought in thoughts) >= 3
+    assert len({thought["editorial_mode"] for thought in thoughts}) >= 25
+    assert sum(bool(thought.get("humor")) for thought in thoughts) == 4
     assert len({thought["statement"] for thought in thoughts}) == 30
     assert len({thought["action"] for thought in thoughts}) == 30
+    assert len({thought["image_scene"] for thought in thoughts}) == 30
     for platform in ("facebook", "instagram", "linkedin"):
         assert len({caption[platform] for caption in captions}) == 30
     assert all(len({caption[platform] for platform in ("facebook", "instagram", "linkedin")}) == 3 for caption in captions)
 
     carousels = [thought for thought in thoughts if thought["format"] == "carousel"]
-    assert len(carousels) >= 10
+    assert len(carousels) == 9
     assert all(len(thought.get("slides", [])) == 4 for thought in carousels)
     assert all(len({slide["headline"] for slide in thought["slides"]}) == 4 for thought in carousels)
+
+
+def test_elite_slate_starts_with_sourced_indiana_series_and_has_weekly_products():
+    posts = _load_editorial_slate()["posts"]
+
+    assert all(post.get("event_series") == "indiana-outage-2026-08" for post in posts[:7])
+    assert all(post.get("source_note") for post in posts[:7])
+    assert not any(post.get("humor") for post in posts[:7])
+    assert sum(post["content_type"] == "product" for post in posts) == 8
+    assert [sum(post["content_type"] == "product" for post in posts[index:index + 7]) for index in range(0, 28, 7)] == [2, 2, 2, 2]
+    assert sum(post["visual_execution"] == "statement_graphic" for post in posts) == 8
+
+
+def test_every_elite_prompt_contains_its_authored_scene_and_product_reference_rule():
+    posts = _load_editorial_slate()["posts"]
+
+    for post in posts:
+        product_id = str(post.get("product_id") or "")
+        product = _load_product_brief(str(ROOT / "data"), product_id) if product_id else None
+        plan = _gemini_generation_plan(post, product)
+        assert all(post["image_scene"] in prompt["gemini_image_prompt"] for prompt in plan["prompts"])
+        assert all(prompt["v5_direction"]["text_overlay"]["text"].startswith("Infenergy | ") for prompt in plan["prompts"])
+        if product:
+            assert all(product["name"] in prompt["gemini_image_prompt"] for prompt in plan["prompts"])
+            assert all("attached reference image" in prompt["gemini_image_prompt"] for prompt in plan["prompts"])
 
 
 def test_company_knowledge_falls_back_to_packaged_contract(tmp_path):
@@ -139,7 +167,7 @@ def test_month_builder_persists_ready_assets_and_is_idempotent(tmp_path, monkeyp
     saved = json.loads(Path(first["calendar_path"]).read_text(encoding="utf-8"))
     assert saved["knowledge_digest"] == first["knowledge_digest"]
     assert len(saved["entries"]) == 2
-    assert latest_monthly_calendar(str(tmp_path))["entries"][1]["thought_id"] == "T02"
+    assert latest_monthly_calendar(str(tmp_path))["entries"][1]["thought_id"] == "E02"
 
 
 def test_month_builder_replaces_an_unpublished_slot_package(tmp_path, monkeypatch):
@@ -177,7 +205,7 @@ def test_month_builder_can_cancel_unpublished_legacy_inventory(tmp_path, monkeyp
     )
 
     assert replacement["cancelled_legacy_outbox"] == 1
-    assert replacement["knowledge_version"] == "2.0.0"
+    assert replacement["knowledge_version"] == "3.0.0"
     assert replacement["knowledge_refresh"]["status"] == "REFRESHED_FROM_PACKAGED"
     assert Path(replacement["knowledge_refresh"]["backup_path"]).exists()
     assert json.loads(Path(replacement["knowledge_refresh"]["backup_path"]).read_text(encoding="utf-8"))["schema_version"] == "stale-persistent-copy"
@@ -202,17 +230,19 @@ def test_existing_month_can_be_prepared_for_strict_gemini_without_rebuilding(tmp
 
 def test_all_monthly_gemini_prompts_are_unique_and_overlay_ready():
     from PIL import Image
-    from build_monthly_content import _gemini_generation_plan
 
-    knowledge = load_company_knowledge(str(ROOT / "data"))
+    thoughts = _load_editorial_slate()["posts"]
     prompts = [
         prompt
-        for thought in knowledge["thought_library"][:30]
-        for prompt in _gemini_generation_plan(thought)["prompts"]
+        for thought in thoughts
+        for prompt in _gemini_generation_plan(
+            thought,
+            _load_product_brief(str(ROOT / "data"), thought["product_id"]) if thought.get("product_id") else None,
+        )["prompts"]
     ]
 
-    assert len(prompts) == 66
-    assert len({prompt["prompt_sha256"] for prompt in prompts}) == 66
+    assert len(prompts) == 57
+    assert len({prompt["prompt_sha256"] for prompt in prompts}) == 57
     for prompt in prompts:
         image = Image.new("RGB", (1080, 1080), "#20313a")
         _, overlay_error = _apply_v5_text_overlay(image, prompt["v5_direction"])

@@ -41,13 +41,22 @@ def _post_card(entry: dict, index: int) -> str:
         f'<div class="copy">{_text((posts.get(platform) or {}).get("final_caption")).replace(chr(10), "<br>")}</div></section>'
         for platform in ("facebook", "instagram", "linkedin")
     )
+    visual_plan = package.get("visual_plan") if isinstance(package.get("visual_plan"), dict) else {}
+    chips = [str(package.get("content_type") or "editorial")]
+    if package.get("event_series"):
+        chips.append("Indiana series")
+    chips.append(str(visual_plan.get("visual_execution") or entry.get("format") or "image").replace("_", " "))
+    product_name = str(package.get("product_name") or "").strip()
+    chip_html = "".join(f'<span class="chip">{_text(chip)}</span>' for chip in chips)
     return f"""
     <article class="post" data-format="{_text(entry.get('format'))}" data-index="{index}">
       <header>
         <div><span class="number">{index:02d}</span><span class="date">{_text(entry.get('date'))} · 17:00 UTC</span></div>
         <span class="format">{_text(entry.get('format'))}</span>
       </header>
+    <div class="chips">{chip_html}</div>
       <h2>{_text(entry.get('statement'))}</h2>
+    {f'<div class="product-name">Featured product: {_text(product_name)}</div>' if product_name else ''}
       <div class="slides">{slides}</div>
       <div class="captions">{captions}</div>
     </article>"""
@@ -68,12 +77,13 @@ def render(calendar: dict) -> bytes:
 main{{max-width:1500px;margin:26px auto;padding:0 28px 70px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:24px}}
 .post{{background:var(--panel);border:1px solid var(--line);padding:20px;box-shadow:0 8px 24px rgba(23,36,42,.06)}} .post header{{display:flex;justify-content:space-between;align-items:center;font:13px 'Segoe UI',sans-serif;text-transform:uppercase}}
 .number{{display:inline-grid;place-items:center;width:34px;height:34px;background:var(--accent);color:#fff;font-weight:800;margin-right:12px}} .date{{font-weight:700}} .format{{color:var(--muted)}} h2{{font-size:25px;line-height:1.18;margin:18px 0}}
+.chips{{display:flex;gap:6px;flex-wrap:wrap;margin-top:14px}} .chip{{border:1px solid var(--line);padding:4px 7px;font:700 11px 'Segoe UI',sans-serif;text-transform:uppercase;color:var(--muted)}} .product-name{{font:700 13px 'Segoe UI',sans-serif;color:var(--accent);margin:-8px 0 16px}}
 .slides{{display:flex;overflow-x:auto;gap:10px;scroll-snap-type:x mandatory;padding-bottom:6px}} figure{{margin:0;min-width:calc(50% - 5px);scroll-snap-align:start}} figure img{{display:block;width:100%;aspect-ratio:1;object-fit:cover;background:#edf0ee}} figcaption{{font:12px 'Segoe UI',sans-serif;color:var(--muted);margin-top:5px;text-transform:uppercase}}
 .captions{{margin-top:16px}} .caption h3{{font:700 13px 'Segoe UI',sans-serif;text-transform:uppercase;color:var(--accent);margin:0 0 8px}} .copy{{font:15px/1.5 'Segoe UI',sans-serif;white-space:normal}} .caption:not([data-platform=facebook]){{display:none}}
 .empty{{display:none;max-width:1500px;margin:70px auto;text-align:center;color:var(--muted)}}
 @media(max-width:900px){{.topline{{align-items:start;flex-direction:column}} main{{grid-template-columns:1fr;padding:0 14px}} .top{{padding:16px 14px}} figure{{min-width:85%}}}}
 </style></head><body>
-<div class="top"><div class="topline"><div><h1>Monthly Post Review</h1><div class="summary">{len(entries)} saved posts · {_text(calendar.get('start_date'))} to {_text(calendar.get('end_date'))} · read only</div></div>
+<div class="top"><div class="topline"><div><h1>Monthly Post Review</h1><div class="summary">{len(entries)} saved posts · {_text(calendar.get('start_date'))} to {_text(calendar.get('end_date'))} · {_text(calendar.get('campaign_id'))} · read only</div></div>
 <div class="controls"><button class="active" data-platform="facebook">Facebook</button><button data-platform="instagram">Instagram</button><button data-platform="linkedin">LinkedIn</button><button class="active" data-format="all">All</button><button data-format="single">Singles</button><button data-format="carousel">Carousels</button></div></div></div>
 <main>{cards}</main><div class="empty">No posts match this view.</div>
 <script>

@@ -12,7 +12,7 @@ from typing import Any
 
 from PIL import Image, ImageDraw, ImageFont
 
-from company_knowledge import agent_specialization, knowledge_digest, load_company_knowledge
+from company_knowledge import agent_specialization, knowledge_digest, load_company_knowledge, refresh_persistent_company_knowledge
 from content_operations import archive_candidate, cancel_unpublished_inventory, create_council_session, ensure_daily_slots, mark_ready, replace_unpublished_slot
 from inventory_db import get_db_path
 
@@ -78,6 +78,17 @@ def _render_card(path: str, *, headline: str, supporting: str, pillar: str, inde
 
 
 def _carousel_slides(thought: dict[str, Any]) -> list[dict[str, str]]:
+    custom = thought.get("slides") if isinstance(thought.get("slides"), list) else []
+    if len(custom) >= 4:
+        return [
+            {
+                "role": str(slide.get("role") or f"slide_{index}"),
+                "headline": str(slide.get("headline") or ""),
+                "supporting": str(slide.get("supporting") or ""),
+            }
+            for index, slide in enumerate(custom[:4], start=1)
+            if isinstance(slide, dict)
+        ]
     return [
         {"role": "thought", "headline": thought["statement"], "supporting": ""},
         {"role": "meaning", "headline": "Why this matters", "supporting": thought["expansion"]},
@@ -146,12 +157,23 @@ def _application_for(pillar: str) -> str:
 def _captions(thought: dict[str, Any]) -> dict[str, str]:
     statement = str(thought["statement"])
     expansion = str(thought["expansion"])
+    useful_detail = str(thought.get("useful_detail") or "").strip()
+    action = str(thought.get("action") or _application_for(str(thought["pillar"]))).strip()
     prompt = str(thought["prompt"])
-    pillar_tag = str(thought["pillar"]).replace("_", "").title()
+    humor = str(thought.get("humor") or "").strip()
+    linkedin_lens = str(thought.get("linkedin_lens") or "").strip()
+    instagram_hook = str(thought.get("instagram_hook") or statement).strip()
+    tags = thought.get("hashtags") if isinstance(thought.get("hashtags"), list) else []
+    facebook_tags = " ".join(f"#{tag}" for tag in (tags[:3] or ["Infenergy", "Preparedness", "PracticalPower"]))
+    instagram_tags = " ".join(f"#{tag}" for tag in (tags[:5] or ["Infenergy", "StayReady", "PortablePower"]))
+    linkedin_tags = " ".join(f"#{tag}" for tag in (tags[:3] or ["Infenergy", "EnergyReadiness", "Resilience"]))
+    facebook_blocks = [statement, expansion, useful_detail, humor, f"Try this: {action}" if action else "", prompt, facebook_tags]
+    instagram_blocks = [instagram_hook, expansion, humor, f"Save this move: {action}" if action else "", prompt, instagram_tags]
+    linkedin_blocks = [statement, expansion, useful_detail, linkedin_lens, f"Practical next step: {action}" if action else "", prompt, linkedin_tags]
     return {
-        "facebook": f"{statement}\n\n{expansion}\n\n{prompt}\n\n#Infenergy #Preparedness #PracticalPower",
-        "instagram": f"{statement}\n\n{expansion}\n\n{prompt}\n\n#Infenergy #StayReady #{pillar_tag} #PortablePower #EverydayResilience",
-        "linkedin": f"{statement}\n\n{expansion}\n\n{prompt}\n\nPractical readiness is not about buying the biggest system. It is about making a clear decision before the moment demands one.\n\n#Infenergy #EnergyReadiness #BusinessContinuity",
+        "facebook": "\n\n".join(block for block in facebook_blocks if block),
+        "instagram": "\n\n".join(block for block in instagram_blocks if block),
+        "linkedin": "\n\n".join(block for block in linkedin_blocks if block),
     }
 
 
@@ -227,7 +249,11 @@ def _package(knowledge: dict[str, Any], thought: dict[str, Any], content_date: s
             name: agent_specialization(knowledge, name)
             for name in ("copywriter_agent", "creative_director_agent", "channel_editor_agent", "qa_agent")
         },
-        "master_copy": {"statement": thought["statement"], "expansion": thought["expansion"], "prompt": thought["prompt"]},
+        "master_copy": {
+            key: thought.get(key)
+            for key in ("statement", "expansion", "useful_detail", "action", "prompt", "humor", "linkedin_lens", "editorial_mode", "audience")
+            if thought.get(key)
+        },
         "fb_caption": captions["facebook"],
         "ig_caption": captions["instagram"],
         "li_text": captions["linkedin"],
@@ -373,6 +399,11 @@ def build_monthly_calendar(
 ) -> dict[str, Any]:
     if days < 1 or days > 62:
         raise ValueError("days must be between 1 and 62")
+    knowledge_refresh = (
+        refresh_persistent_company_knowledge(data_dir)
+        if replace_unpublished
+        else {"status": "USED_EXISTING", "path": None, "backup_path": None}
+    )
     knowledge = load_company_knowledge(data_dir)
     start = date.fromisoformat(start_date) if isinstance(start_date, str) else start_date
     start = start or (datetime.now(timezone.utc).date() + timedelta(days=1))
@@ -458,6 +489,7 @@ def build_monthly_calendar(
         "knowledge_id": knowledge.get("knowledge_id"),
         "knowledge_version": knowledge.get("schema_version"),
         "knowledge_digest": knowledge_digest(knowledge),
+        "knowledge_refresh": knowledge_refresh,
         "start_date": start.isoformat(),
         "end_date": (start + timedelta(days=days - 1)).isoformat(),
         "days": days,

@@ -5,6 +5,9 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import shutil
+import tempfile
+from datetime import datetime, timezone
 from typing import Any
 
 
@@ -17,23 +20,27 @@ REQUIRED_SECTIONS = {
     "product_truth_policy",
     "content_pillars",
     "voice",
+    "editorial_playbook",
     "visual_language",
     "thought_library",
     "agent_specializations",
 }
 
 
-def knowledge_path(data_dir: str) -> str:
-    persistent_path = os.path.join(data_dir, "marketing", "infenergy_company_knowledge.json")
-    if os.path.exists(persistent_path):
-        return persistent_path
+def packaged_knowledge_path() -> str:
     return os.path.abspath(
         os.path.join(os.path.dirname(__file__), "..", "data", "marketing", "infenergy_company_knowledge.json")
     )
 
 
-def load_company_knowledge(data_dir: str) -> dict[str, Any]:
-    path = knowledge_path(data_dir)
+def knowledge_path(data_dir: str) -> str:
+    persistent_path = os.path.join(data_dir, "marketing", "infenergy_company_knowledge.json")
+    if os.path.exists(persistent_path):
+        return persistent_path
+    return packaged_knowledge_path()
+
+
+def _load_company_knowledge_file(path: str) -> dict[str, Any]:
     with open(path, "r", encoding="utf-8") as handle:
         knowledge = json.load(handle)
     if not isinstance(knowledge, dict):
@@ -48,6 +55,41 @@ def load_company_knowledge(data_dir: str) -> dict[str, Any]:
     if len(identifiers) != len(set(identifiers)):
         raise ValueError("company thought identifiers must be unique")
     return knowledge
+
+
+def load_company_knowledge(data_dir: str) -> dict[str, Any]:
+    return _load_company_knowledge_file(knowledge_path(data_dir))
+
+
+def refresh_persistent_company_knowledge(data_dir: str) -> dict[str, Any]:
+    source_path = packaged_knowledge_path()
+    source = _load_company_knowledge_file(source_path)
+    persistent_path = os.path.abspath(os.path.join(data_dir, "marketing", "infenergy_company_knowledge.json"))
+    if os.path.samefile(source_path, persistent_path) if os.path.exists(persistent_path) else source_path == persistent_path:
+        return {"status": "PACKAGED_PATH_ACTIVE", "path": persistent_path, "backup_path": None}
+
+    os.makedirs(os.path.dirname(persistent_path), exist_ok=True)
+    backup_path = None
+    if os.path.exists(persistent_path):
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+        backup_path = f"{persistent_path}.backup.{stamp}"
+        shutil.copy2(persistent_path, backup_path)
+
+    descriptor, temporary_path = tempfile.mkstemp(prefix=".company-knowledge-", suffix=".json", dir=os.path.dirname(persistent_path))
+    os.close(descriptor)
+    try:
+        shutil.copy2(source_path, temporary_path)
+        _load_company_knowledge_file(temporary_path)
+        os.replace(temporary_path, persistent_path)
+    finally:
+        if os.path.exists(temporary_path):
+            os.unlink(temporary_path)
+    return {
+        "status": "REFRESHED_FROM_PACKAGED",
+        "path": persistent_path,
+        "backup_path": backup_path,
+        "knowledge_digest": knowledge_digest(source),
+    }
 
 
 def knowledge_digest(knowledge: dict[str, Any]) -> str:
@@ -78,6 +120,7 @@ def compact_generation_context(knowledge: dict[str, Any]) -> dict[str, Any]:
             "rules": list(voice.get("rules", [])),
             "avoid": list(voice.get("avoid", [])),
         },
+        "editorial_playbook": knowledge.get("editorial_playbook", {}),
         "product_truth_policy": knowledge.get("product_truth_policy", {}),
     }
 
@@ -89,5 +132,6 @@ def agent_specialization(knowledge: dict[str, Any], agent_name: str) -> dict[str
         "company_knowledge_version": knowledge.get("schema_version"),
         "company_knowledge_digest": knowledge_digest(knowledge),
         "specialization": str(specializations.get(agent_name) or "Apply canonical company truth to the assigned discipline."),
+        "editorial_playbook": knowledge.get("editorial_playbook", {}),
         "operating_rule": "Canonical company truth is fixed; improve the expression without inventing a new mission, promise, benefit, or product fact.",
     }

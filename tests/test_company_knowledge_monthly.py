@@ -11,8 +11,8 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
 from agents import carousel_slide_writer  # noqa: E402
-from build_monthly_content import build_monthly_calendar, latest_monthly_calendar, prepare_monthly_gemini_prompts  # noqa: E402
-from company_knowledge import compact_generation_context, load_company_knowledge  # noqa: E402
+from build_monthly_content import _captions, build_monthly_calendar, latest_monthly_calendar, prepare_monthly_gemini_prompts  # noqa: E402
+from company_knowledge import agent_specialization, compact_generation_context, load_company_knowledge  # noqa: E402
 from content_operations import daily_status  # noqa: E402
 from social_visuals import _apply_v5_text_overlay  # noqa: E402
 
@@ -34,6 +34,37 @@ def test_company_knowledge_has_complete_generation_contract():
     assert len(knowledge["agent_specializations"]) >= 13
     assert context["central_human_truth"]
     assert context["product_truth_policy"]["never_claim"]
+
+
+def test_editorial_playbook_reaches_every_shared_agent_context():
+    knowledge = load_company_knowledge(str(ROOT / "data"))
+    playbook = knowledge["editorial_playbook"]
+
+    assert compact_generation_context(knowledge)["editorial_playbook"] == playbook
+    for agent_name in knowledge["agent_specializations"]:
+        assert agent_specialization(knowledge, agent_name)["editorial_playbook"] == playbook
+
+
+def test_monthly_library_meets_the_editorial_variety_contract():
+    knowledge = load_company_knowledge(str(ROOT / "data"))
+    thoughts = knowledge["thought_library"][:30]
+    captions = [_captions(thought) for thought in thoughts]
+    required_fields = {"editorial_mode", "statement", "expansion", "useful_detail", "action", "prompt", "linkedin_lens"}
+
+    assert len(thoughts) == 30
+    assert all(required_fields <= thought.keys() for thought in thoughts)
+    assert len({thought["editorial_mode"] for thought in thoughts}) >= 20
+    assert sum(bool(thought.get("humor")) for thought in thoughts) >= 3
+    assert len({thought["statement"] for thought in thoughts}) == 30
+    assert len({thought["action"] for thought in thoughts}) == 30
+    for platform in ("facebook", "instagram", "linkedin"):
+        assert len({caption[platform] for caption in captions}) == 30
+    assert all(len({caption[platform] for platform in ("facebook", "instagram", "linkedin")}) == 3 for caption in captions)
+
+    carousels = [thought for thought in thoughts if thought["format"] == "carousel"]
+    assert len(carousels) >= 10
+    assert all(len(thought.get("slides", [])) == 4 for thought in carousels)
+    assert all(len({slide["headline"] for slide in thought["slides"]}) == 4 for thought in carousels)
 
 
 def test_company_knowledge_falls_back_to_packaged_contract(tmp_path):
@@ -132,6 +163,11 @@ def test_month_builder_can_cancel_unpublished_legacy_inventory(tmp_path, monkeyp
     monkeypatch.setenv("PUBLIC_BASE_URL", "https://example.test")
     build_monthly_calendar(data_dir=str(tmp_path), start_date="2026-10-01", days=1, enqueue=True)
 
+    knowledge_path = tmp_path / "marketing" / "infenergy_company_knowledge.json"
+    stale_knowledge = json.loads(knowledge_path.read_text(encoding="utf-8"))
+    stale_knowledge["schema_version"] = "stale-persistent-copy"
+    knowledge_path.write_text(json.dumps(stale_knowledge), encoding="utf-8")
+
     replacement = build_monthly_calendar(
         data_dir=str(tmp_path),
         start_date="2026-11-01",
@@ -141,6 +177,10 @@ def test_month_builder_can_cancel_unpublished_legacy_inventory(tmp_path, monkeyp
     )
 
     assert replacement["cancelled_legacy_outbox"] == 1
+    assert replacement["knowledge_version"] == "2.0.0"
+    assert replacement["knowledge_refresh"]["status"] == "REFRESHED_FROM_PACKAGED"
+    assert Path(replacement["knowledge_refresh"]["backup_path"]).exists()
+    assert json.loads(Path(replacement["knowledge_refresh"]["backup_path"]).read_text(encoding="utf-8"))["schema_version"] == "stale-persistent-copy"
     assert daily_status(str(tmp_path), "2026-10-01")["ready"] == 0
     assert daily_status(str(tmp_path), "2026-11-01")["ready"] == 1
 

@@ -24,7 +24,11 @@ REQUIRED_SECTIONS = {
 
 
 def knowledge_path(data_dir: str) -> str:
-    return os.path.join(data_dir, "marketing", "infenergy_company_knowledge.json")
+    persistent_path = os.path.join(data_dir, "marketing", "infenergy_company_knowledge.json")
+    if os.path.exists(persistent_path):
+        return persistent_path
+    return os.path.abspath(
+        os.path.join(os.path.dirname(__file__), "..", "data", "marketing", "infenergy_company_knowledge.json")
 
 
 def load_company_knowledge(data_dir: str) -> dict[str, Any]:

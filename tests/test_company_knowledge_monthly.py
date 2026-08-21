@@ -35,6 +35,13 @@ def test_company_knowledge_has_complete_generation_contract():
     assert context["product_truth_policy"]["never_claim"]
 
 
+def test_company_knowledge_falls_back_to_packaged_contract(tmp_path):
+    knowledge = load_company_knowledge(str(tmp_path / "empty-persistent-volume"))
+
+    assert knowledge["knowledge_id"] == "infenergy-company-truth"
+    assert len(knowledge["thought_library"]) >= 30
+
+
 def test_thought_carousel_advances_one_idea_across_four_slides(tmp_path):
     payload = carousel_slide_writer.run(
         str(tmp_path),

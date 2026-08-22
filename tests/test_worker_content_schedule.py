@@ -33,10 +33,12 @@ def test_publication_clocks_dispatch_and_never_generate():
     worker.register_scheduled_jobs()
     jobs = worker.schedule.jobs
     dispatch_jobs = [job for job in jobs if job.job_func.func is worker._start_dispatch_thread]
+    pregeneration_jobs = [job for job in jobs if job.job_func.func is worker._start_pregeneration_thread]
     factory_jobs = [job for job in jobs if job.job_func.func is worker._start_factory_thread]
     legacy_clock_jobs = [job for job in jobs if job.job_func.func is worker.run_slot]
 
     assert len(dispatch_jobs) == 4
+    assert len(pregeneration_jobs) == 1
     assert len(factory_jobs) == 1
     assert legacy_clock_jobs == []
     assert {job.job_func.args[0] for job in dispatch_jobs} == {"morning", "midday", "evening", "due_sweep"}
@@ -73,12 +75,14 @@ def test_factory_schedule_can_be_disabled_when_month_is_prebuilt(monkeypatch):
 
 def test_main_runs_due_sweep_immediately_on_startup(monkeypatch):
     dispatches = []
+    pregenerations = []
     monkeypatch.setenv("CONTENT_DISPATCH_ENABLED", "true")
     monkeypatch.setattr(worker, "start_health_server", lambda: None)
     monkeypatch.setattr(worker, "_load_meta_runtime_from_state", lambda: (False, "not_configured"))
     monkeypatch.setattr(worker, "_auto_bootstrap_visual_repo", lambda: {"status": "ok", "summary": {}})
     monkeypatch.setattr(worker, "run_intelligence_enrichment", lambda: None)
     monkeypatch.setattr(worker, "_start_dispatch_thread", dispatches.append)
+    monkeypatch.setattr(worker, "_start_pregeneration_thread", lambda: pregenerations.append("started"))
     monkeypatch.setattr(worker.schedule, "run_pending", lambda: (_ for _ in ()).throw(KeyboardInterrupt))
 
     try:
@@ -87,6 +91,7 @@ def test_main_runs_due_sweep_immediately_on_startup(monkeypatch):
         pass
 
     assert dispatches == ["startup_sweep"]
+    assert pregenerations == ["started"]
 
 
 def test_manual_no_product_override_is_scoped_to_one_run(monkeypatch):

@@ -2003,12 +2003,36 @@ def dispatch_scheduled_slot(slot: str) -> None:
         RUN_LOCK.release()
 
 
+def pregenerate_scheduled_content() -> None:
+    if not RUN_LOCK.acquire(blocking=False):
+        print("[PREGENERATE] Deferred because another content operation is active")
+        return
+    try:
+        env = os.environ.copy()
+        env.update({"DATA_DIR": _data_dir(), "OUTBOX_ACTION": "pregenerate"})
+        completed = subprocess.run(
+            [sys.executable, os.path.join(os.path.dirname(__file__), "scripts", "dispatch_outbox.py")],
+            cwd=os.path.dirname(__file__), capture_output=True, text=True, env=env,
+            timeout=int(os.environ.get("GEMINI_PREGEN_PROCESS_TIMEOUT_SEC", "600")), check=False,
+        )
+        output = ((completed.stdout or "") + "\n" + (completed.stderr or "")).strip()
+        print(f"[PREGENERATE] exit={completed.returncode} {output[-2000:]}")
+    except subprocess.TimeoutExpired:
+        print("[PREGENERATE] process timeout; package remains READY")
+    finally:
+        RUN_LOCK.release()
+
+
 def _start_factory_thread() -> None:
     threading.Thread(target=run_content_factory, daemon=True, name="content-factory").start()
 
 
 def _start_dispatch_thread(slot: str) -> None:
     threading.Thread(target=dispatch_scheduled_slot, args=(slot,), daemon=True, name=f"dispatch-{slot}").start()
+
+
+def _start_pregeneration_thread() -> None:
+    threading.Thread(target=pregenerate_scheduled_content, daemon=True, name="content-pregeneration").start()
 
 
 def register_scheduled_jobs() -> None:
@@ -2018,6 +2042,7 @@ def register_scheduled_jobs() -> None:
         schedule.every().day.at(midday_utc).do(_start_dispatch_thread, "midday")
         schedule.every().day.at(evening_utc).do(_start_dispatch_thread, "evening")
         schedule.every(5).minutes.do(_start_dispatch_thread, "due_sweep")
+        schedule.every(10).minutes.do(_start_pregeneration_thread)
     if os.environ.get("CONTENT_FACTORY_ENABLED", "true").lower() in {"1", "true", "yes", "on"}:
         schedule.every(30).minutes.do(_start_factory_thread)
     schedule.every(6).hours.do(run_intelligence_enrichment)
@@ -2054,6 +2079,7 @@ def main() -> None:
 
     if os.environ.get("CONTENT_DISPATCH_ENABLED", "true").lower() in {"1", "true", "yes", "on"}:
         _start_dispatch_thread("startup_sweep")
+        _start_pregeneration_thread()
 
     if os.environ.get("RUN_FACTORY_ON_STARTUP", "false").lower() in {"1", "true", "yes", "on"}:
         _start_factory_thread()

@@ -477,6 +477,15 @@ def _normalize_reference_image(raw: bytes) -> tuple[bytes, str]:
         return b"", ""
 
 
+def _gemini_http_options(types: Any) -> Any:
+    timeout_seconds = max(10, int(os.environ.get("GEMINI_REQUEST_TIMEOUT_SECONDS", "90")))
+    attempts = max(1, min(3, int(os.environ.get("GEMINI_REQUEST_ATTEMPTS", "2"))))
+    return types.HttpOptions(
+        timeout=timeout_seconds * 1000,
+        retry_options=types.HttpRetryOptions(attempts=attempts),
+    )
+
+
 def _gemini_semantic_plate_quality(
     client: Any,
     types: Any,
@@ -859,7 +868,7 @@ def _generate_gemini_full_creative(content: dict[str, Any], platform: str, visua
         from google import genai  # type: ignore
         from google.genai import types  # type: ignore
 
-        client = genai.Client(api_key=api_key)
+        client = genai.Client(api_key=api_key, http_options=_gemini_http_options(types))
         model_name = str(os.environ.get("GEMINI_IMAGE_MODEL", "")).strip() or "gemini-2.5-flash-image"
         spec = _platform_visual_spec(platform)
         reference_parts: list[Any] = []

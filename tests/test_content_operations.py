@@ -23,6 +23,8 @@ from content_operations import (  # noqa: E402
     operations_readiness,
     reconcile_ready_inventory,
     reconcile_stale_claims,
+    upcoming_ready_packages,
+    update_ready_package,
 )
 
 
@@ -97,6 +99,34 @@ def test_daily_slots_outbox_and_archive_survive_restart(tmp_path):
     assert claimed and claimed["outbox_id"] == outbox_id
     assert claimed["package"]["platform_presentations"]["instagram"]["final_caption"].count("\n\n") == 1
     assert claim_due(data_dir, "2026-08-19T13:00:02+00:00") is None
+
+
+def test_pregeneration_updates_only_unclaimed_ready_package(tmp_path):
+    day = "2026-08-19"
+    data_dir = str(tmp_path)
+    ensure_daily_slots(data_dir, day, _schedule(day), {"mode": "owner_schedule"})
+    decision_id = create_council_session(
+        data_dir,
+        content_date=day,
+        slot="morning",
+        blackboard={"content_job": "TEACH"},
+    )
+    outbox_id = mark_ready(
+        data_dir,
+        content_date=day,
+        slot="morning",
+        scheduled_at=_schedule(day)["morning"],
+        decision_id=decision_id,
+        package={"content_id": "content-1", "generation": "pending"},
+    )
+
+    rows = upcoming_ready_packages(data_dir, before_utc="2026-08-20T00:00:00+00:00")
+    assert [row["outbox_id"] for row in rows] == [outbox_id]
+    assert update_ready_package(data_dir, outbox_id, {"content_id": "content-1", "generation": "complete"}) is True
+
+    claimed = claim_due(data_dir, "2026-08-19T13:00:01+00:00")
+    assert claimed["package"]["generation"] == "complete"
+    assert update_ready_package(data_dir, outbox_id, {"content_id": "overwritten"}) is False
 
 
 def test_platform_transaction_states_are_idempotent_and_persistent(tmp_path):

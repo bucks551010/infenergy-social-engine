@@ -9,6 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
 import dispatch_outbox  # noqa: E402
+import social_visuals  # noqa: E402
 from build_monthly_content import _gemini_generation_plan  # noqa: E402
 
 
@@ -132,3 +133,88 @@ def test_dispatch_rechecks_strict_artifact_at_publisher_boundary(monkeypatch):
     assert result["status"] == "CONTENT_RECOVERING"
     assert "facebook_strict_artifact_invalid:rendered_scanline_corruption" in recovered[0]
     assert published == []
+
+
+def test_gemini_http_options_bound_timeout_and_attempts(monkeypatch):
+    from google.genai import types
+
+    monkeypatch.setenv("GEMINI_REQUEST_TIMEOUT_SECONDS", "45")
+    monkeypatch.setenv("GEMINI_REQUEST_ATTEMPTS", "1")
+    options = social_visuals._gemini_http_options(types)
+
+    assert options.timeout == 45_000
+    assert options.retry_options.attempts == 1
+
+
+def test_pregenerate_updates_ready_package_without_claim_or_publish(monkeypatch):
+    package = _package(carousel=False)
+    prepared = _package(carousel=False)
+    prepared["gemini_generation"]["status"] = "COMPLETE"
+    updates = []
+    published = []
+    monkeypatch.setattr(
+        dispatch_outbox,
+        "upcoming_ready_packages",
+        lambda *args, **kwargs: [{"outbox_id": "outbox-1", "package": package}],
+    )
+    monkeypatch.setattr(dispatch_outbox, "_gemini_assets_ready", lambda *args: False)
+    monkeypatch.setattr(dispatch_outbox, "_prepare_gemini_assets", lambda *args: prepared)
+    monkeypatch.setattr(dispatch_outbox, "update_ready_package", lambda *args: updates.append(args) or True)
+    monkeypatch.setattr(dispatch_outbox, "_publish", lambda *args: published.append(args))
+
+    result = dispatch_outbox.pregenerate_upcoming(data_dir="unused")
+
+    assert result == {"status": "PREGENERATED", "outbox_id": "outbox-1"}
+    assert updates and updates[0][1:] == ("outbox-1", prepared)
+    assert published == []
+
+
+def test_pregenerate_failure_leaves_package_retryable(monkeypatch):
+    package = _package(carousel=False)
+    updates = []
+    monkeypatch.setattr(
+        dispatch_outbox,
+        "upcoming_ready_packages",
+        lambda *args, **kwargs: [{"outbox_id": "outbox-1", "package": package}],
+    )
+    monkeypatch.setattr(dispatch_outbox, "_gemini_assets_ready", lambda *args: False)
+    monkeypatch.setattr(
+        dispatch_outbox,
+        "_prepare_gemini_assets",
+        lambda *args: (_ for _ in ()).throw(TimeoutError("provider timeout")),
+    )
+    monkeypatch.setattr(dispatch_outbox, "update_ready_package", lambda *args: updates.append(args) or True)
+
+    result = dispatch_outbox.pregenerate_upcoming(data_dir="unused")
+
+    assert result["status"] == "RETRYABLE_FAILURE"
+    assert "provider timeout" in result["error"]
+    assert updates == []
+
+
+def test_pregenerate_skips_completed_package_and_prepares_next(monkeypatch):
+    completed = _package(carousel=False)
+    pending = _package(carousel=False)
+    pending["content_id"] = "monthly-next"
+    prepared = dict(pending)
+    updates = []
+    monkeypatch.setattr(
+        dispatch_outbox,
+        "upcoming_ready_packages",
+        lambda *args, **kwargs: [
+            {"outbox_id": "outbox-complete", "package": completed},
+            {"outbox_id": "outbox-next", "package": pending},
+        ],
+    )
+    monkeypatch.setattr(
+        dispatch_outbox,
+        "_gemini_assets_ready",
+        lambda package, required_count: package is completed,
+    )
+    monkeypatch.setattr(dispatch_outbox, "_prepare_gemini_assets", lambda *args: prepared)
+    monkeypatch.setattr(dispatch_outbox, "update_ready_package", lambda *args: updates.append(args) or True)
+
+    result = dispatch_outbox.pregenerate_upcoming(data_dir="unused")
+
+    assert result == {"status": "PREGENERATED", "outbox_id": "outbox-next"}
+    assert updates[0][1] == "outbox-next"

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import os
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import publish_facebook
@@ -20,7 +20,9 @@ from content_operations import (
     platform_transaction,
     recover_outbox,
     release_outbox,
+    upcoming_ready_packages,
     update_claimed_package,
+    update_ready_package,
 )
 
 DATA_DIR = os.environ.get("DATA_DIR", os.path.join(os.path.dirname(__file__), "..", "data"))
@@ -164,6 +166,27 @@ def _prepare_gemini_assets(package: dict[str, Any], data_dir: str) -> dict[str, 
     return package
 
 
+def pregenerate_upcoming(*, data_dir: str = DATA_DIR) -> dict[str, Any]:
+    horizon_hours = max(1, int(os.environ.get("GEMINI_PREGEN_HORIZON_HOURS", "744")))
+    before_utc = (datetime.now(timezone.utc) + timedelta(hours=horizon_hours)).isoformat()
+    rows = upcoming_ready_packages(data_dir, before_utc=before_utc, limit=100)
+    for row in rows:
+        package = row["package"]
+        generation = package.get("gemini_generation") if isinstance(package.get("gemini_generation"), dict) else {}
+        required_count = int(generation.get("required_image_count") or 0)
+        if generation.get("strict_provider") is not True or _gemini_assets_ready(package, required_count):
+            continue
+        outbox_id = str(row["outbox_id"])
+        try:
+            prepared = _prepare_gemini_assets(package, data_dir)
+            if not update_ready_package(data_dir, outbox_id, prepared):
+                return {"status": "DEFERRED", "outbox_id": outbox_id, "detail": "package_no_longer_ready"}
+            return {"status": "PREGENERATED", "outbox_id": outbox_id}
+        except Exception as exc:
+            return {"status": "RETRYABLE_FAILURE", "outbox_id": outbox_id, "error": f"{type(exc).__name__}:{exc}"}
+    return {"status": "IDLE", "detail": "no_upcoming_gemini_assets_needed"}
+
+
 def _creative_package_error(package: dict[str, Any], platforms: list[str]) -> str:
     visuals = package.get("generated_visuals") if isinstance(package.get("generated_visuals"), dict) else {}
     engines = visuals.get("render_engines") if isinstance(visuals.get("render_engines"), dict) else {}
@@ -280,7 +303,9 @@ def dispatch_due(*, data_dir: str = DATA_DIR, now_utc: str | None = None) -> dic
 
 
 def main() -> None:
-    print(json.dumps(dispatch_due(), ensure_ascii=True))
+    action = str(os.environ.get("OUTBOX_ACTION", "dispatch")).strip().lower()
+    result = pregenerate_upcoming() if action == "pregenerate" else dispatch_due()
+    print(json.dumps(result, ensure_ascii=True))
 
 
 if __name__ == "__main__":

@@ -432,6 +432,47 @@ def update_claimed_package(data_dir: str, outbox_id: str, package: dict[str, Any
         connection.close()
 
 
+def upcoming_ready_packages(
+    data_dir: str,
+    *,
+    before_utc: str,
+    limit: int = 1,
+) -> list[dict[str, Any]]:
+    connection = _connect(data_dir)
+    try:
+        rows = connection.execute(
+            """
+            SELECT outbox_id, scheduled_at, package_json FROM content_outbox
+            WHERE status='READY' AND scheduled_at <= ?
+            ORDER BY scheduled_at, created_at LIMIT ?
+            """,
+            (before_utc, max(1, limit)),
+        ).fetchall()
+        return [
+            {
+                "outbox_id": str(row["outbox_id"]),
+                "scheduled_at": str(row["scheduled_at"]),
+                "package": _decode(row["package_json"], {}),
+            }
+            for row in rows
+        ]
+    finally:
+        connection.close()
+
+
+def update_ready_package(data_dir: str, outbox_id: str, package: dict[str, Any]) -> bool:
+    connection = _connect(data_dir)
+    try:
+        changed = connection.execute(
+            "UPDATE content_outbox SET package_json=? WHERE outbox_id=? AND status='READY'",
+            (_json(package), outbox_id),
+        ).rowcount
+        connection.commit()
+        return changed == 1
+    finally:
+        connection.close()
+
+
 def begin_platform_transaction(
     data_dir: str,
     *,

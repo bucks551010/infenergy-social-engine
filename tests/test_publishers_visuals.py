@@ -35,6 +35,21 @@ from social_visuals import (  # noqa: E402
 
 
 class PublisherVisualTests(unittest.TestCase):
+    def test_facebook_http_error_does_not_expose_request_token(self) -> None:
+        response = Mock()
+        response.status_code = 400
+        response.reason = "Bad Request"
+        response.text = '{"error":{"message":"Unsupported delete request"}}'
+        response.raise_for_status.side_effect = publish_facebook.requests.HTTPError(
+            "400 Client Error for url: https://graph.facebook.com/post?access_token=sentinel-secret"
+        )
+
+        with self.assertRaises(publish_facebook.requests.HTTPError) as raised:
+            publish_facebook._raise_with_body(response)
+
+        self.assertNotIn("sentinel-secret", str(raised.exception))
+        self.assertIn("facebook_api_http_400:Bad Request", str(raised.exception))
+
     def test_normalize_brand_text(self) -> None:
         text = "INF Energy Power helps INF Energy customers. #InfEnergyPower"
         normalized = normalize_brand_text(text)

@@ -35,7 +35,10 @@ def _raise_with_body(resp: requests.Response) -> None:
             body = resp.text[:1000]
         except Exception:
             body = "<unavailable>"
-        raise requests.HTTPError(f"{e} | response={body}") from e
+        raise requests.HTTPError(
+            f"facebook_api_http_{resp.status_code}:{resp.reason} | response={body}",
+            response=resp,
+        ) from e
 
 
 def _resolve_page_access_token(token: str, page_id: str) -> str:

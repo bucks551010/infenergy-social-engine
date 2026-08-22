@@ -45,6 +45,7 @@ MONTHLY_SUMMARY_KEYS = (
     "skipped_existing", "cancelled_legacy_outbox", "single_image_posts", "carousel_posts", "product_posts",
     "statement_graphics", "current_event_posts", "calendar_path",
 )
+CUSTOM_POST_LOCK = threading.Lock()
 
 
 def _data_dir() -> str:
@@ -69,6 +70,73 @@ def _safe_write_json(path: str, payload: dict) -> None:
     with open(temp_path, "w", encoding="utf-8") as f:
         json.dump(payload, f, ensure_ascii=False, indent=2)
     os.replace(temp_path, path)
+
+
+def _custom_post_history_path() -> str:
+    return os.path.join(_data_dir(), "custom_post_history.json")
+
+
+def _publish_custom_post(payload: dict) -> tuple[int, dict]:
+    external_id = str(payload.get("external_id", "")).strip()
+    caption = str(payload.get("caption", "")).strip()
+    image_url = str(payload.get("image_url", "")).strip()
+    platforms = payload.get("platforms") if isinstance(payload.get("platforms"), list) else []
+    platforms = list(dict.fromkeys(str(item).strip().lower() for item in platforms))
+    allowed = {"facebook", "instagram", "linkedin"}
+    if not external_id or len(external_id) > 100:
+        return 400, {"error": "external_id is required and must be at most 100 characters"}
+    if not caption or len(caption) > 5000:
+        return 400, {"error": "caption is required and must be at most 5000 characters"}
+    if not image_url.startswith("https://"):
+        return 400, {"error": "image_url must be a public HTTPS URL"}
+    if not platforms or any(item not in allowed for item in platforms):
+        return 400, {"error": "platforms must contain facebook, instagram, or linkedin"}
+
+    dry_run = not bool(payload.get("live", False))
+    with CUSTOM_POST_LOCK:
+        history = _load_json(_custom_post_history_path(), {})
+        if not isinstance(history, dict):
+            history = {}
+        record = history.get(external_id)
+        if not isinstance(record, dict):
+            record = {"external_id": external_id, "created_at_utc": _utc_now(), "platforms": {}}
+            history[external_id] = record
+        results = record.setdefault("platforms", {})
+        content = {
+            "fb_caption": caption,
+            "ig_caption": caption,
+            "li_text": caption,
+            "wp_title": caption[:180],
+            "topic": "IIS scheduled post",
+            "primary_publish_image_url": image_url,
+            "platform_posts": {
+                "facebook": {"final_caption": caption},
+                "instagram": {"final_caption": caption},
+                "linkedin": {"final_text": caption},
+            },
+        }
+        for platform in platforms:
+            previous = results.get(platform)
+            if isinstance(previous, dict) and previous.get("status") == "published":
+                continue
+            try:
+                if platform == "facebook":
+                    import publish_facebook
+                    result = publish_facebook.publish(content, "", dry_run=dry_run)
+                elif platform == "instagram":
+                    import publish_instagram
+                    result = publish_instagram.publish(content, dry_run=dry_run)
+                else:
+                    import publish_linkedin
+                    result = publish_linkedin.publish(content, "", dry_run=dry_run)
+                results[platform] = {"status": "published", "result": result, "published_at_utc": _utc_now(), "dry_run": dry_run}
+            except Exception as exc:
+                results[platform] = {"status": "failed", "error": str(exc), "updated_at_utc": _utc_now()}
+            record["updated_at_utc"] = _utc_now()
+            _safe_write_json(_custom_post_history_path(), history)
+        failed = [platform for platform in platforms if results.get(platform, {}).get("status") != "published"]
+        response = {"status": "published" if not failed else "partial_failure", "external_id": external_id, "platforms": results, "failed_platforms": failed, "time_utc": _utc_now()}
+        return (200 if not failed else 502), response
 
 
 def _mask_token(value: str) -> str:
@@ -1640,6 +1708,41 @@ class HealthHandler(BaseHTTPRequestHandler):
 
         self.send_response(404)
         self.end_headers()
+
+    def do_POST(self):
+        parsed = urlparse(self.path)
+        if parsed.path != "/custom-post":
+            self.send_response(404)
+            self.end_headers()
+            return
+        params = parse_qs(parsed.query)
+        authorized, status_code, error_payload = _authorized(params)
+        if not authorized:
+            body = json.dumps(error_payload).encode("utf-8")
+            self.send_response(status_code)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+            if length <= 0 or length > 1_000_000:
+                raise ValueError("request body must be between 1 byte and 1 MB")
+            payload = json.loads(self.rfile.read(length).decode("utf-8"))
+            if not isinstance(payload, dict):
+                raise ValueError("request body must be a JSON object")
+            status_code, response = _publish_custom_post(payload)
+        except (ValueError, json.JSONDecodeError) as exc:
+            status_code, response = 400, {"error": str(exc)}
+        except Exception as exc:
+            status_code, response = 500, {"error": str(exc)}
+        body = json.dumps(response, default=str).encode("utf-8")
+        self.send_response(status_code)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
 
     def log_message(self, format, *args):
         return

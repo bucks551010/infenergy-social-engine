@@ -213,6 +213,27 @@ def test_month_builder_can_cancel_unpublished_legacy_inventory(tmp_path, monkeyp
     assert daily_status(str(tmp_path), "2026-11-01")["ready"] == 1
 
 
+def test_month_builder_requeues_cancelled_content_ids(tmp_path, monkeypatch):
+    _seed_knowledge(tmp_path)
+    monkeypatch.setenv("PUBLIC_BASE_URL", "https://example.test")
+    first = build_monthly_calendar(data_dir=str(tmp_path), start_date="2026-11-01", days=2, enqueue=True)
+
+    replacement = build_monthly_calendar(
+        data_dir=str(tmp_path),
+        start_date="2026-11-01",
+        days=2,
+        enqueue=True,
+        replace_unpublished=True,
+    )
+
+    assert first["queued"] == 2
+    assert replacement["cancelled_legacy_outbox"] == 2
+    assert replacement["queued"] == 2
+    assert replacement["skipped_existing"] == 0
+    assert daily_status(str(tmp_path), "2026-11-01")["ready"] == 1
+    assert daily_status(str(tmp_path), "2026-11-02")["ready"] == 1
+
+
 def test_existing_month_can_be_prepared_for_strict_gemini_without_rebuilding(tmp_path, monkeypatch):
     _seed_knowledge(tmp_path)
     monkeypatch.setenv("PUBLIC_BASE_URL", "https://example.test")

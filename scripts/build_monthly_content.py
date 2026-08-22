@@ -336,7 +336,7 @@ def _existing_content_ids(data_dir: str) -> set[str]:
         return set()
     connection = sqlite3.connect(get_db_path(data_dir))
     try:
-        rows = connection.execute("SELECT content_id FROM content_outbox").fetchall()
+        rows = connection.execute("SELECT content_id FROM content_outbox WHERE status != 'CANCELLED'").fetchall()
         return {str(row[0]) for row in rows}
     except sqlite3.OperationalError:
         return set()

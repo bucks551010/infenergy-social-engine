@@ -2052,6 +2052,9 @@ def main() -> None:
     print("Meta refresh endpoint: /refresh-meta?token=... (uses META_REFRESH_TOKEN or MANUAL_RUN_TOKEN)")
     print("Waiting for next scheduled run...\n")
 
+    if os.environ.get("CONTENT_DISPATCH_ENABLED", "true").lower() in {"1", "true", "yes", "on"}:
+        _start_dispatch_thread("startup_sweep")
+
     if os.environ.get("RUN_FACTORY_ON_STARTUP", "false").lower() in {"1", "true", "yes", "on"}:
         _start_factory_thread()
 

@@ -71,6 +71,24 @@ def test_factory_schedule_can_be_disabled_when_month_is_prebuilt(monkeypatch):
     assert factory_jobs == []
 
 
+def test_main_runs_due_sweep_immediately_on_startup(monkeypatch):
+    dispatches = []
+    monkeypatch.setenv("CONTENT_DISPATCH_ENABLED", "true")
+    monkeypatch.setattr(worker, "start_health_server", lambda: None)
+    monkeypatch.setattr(worker, "_load_meta_runtime_from_state", lambda: (False, "not_configured"))
+    monkeypatch.setattr(worker, "_auto_bootstrap_visual_repo", lambda: {"status": "ok", "summary": {}})
+    monkeypatch.setattr(worker, "run_intelligence_enrichment", lambda: None)
+    monkeypatch.setattr(worker, "_start_dispatch_thread", dispatches.append)
+    monkeypatch.setattr(worker.schedule, "run_pending", lambda: (_ for _ in ()).throw(KeyboardInterrupt))
+
+    try:
+        worker.main()
+    except KeyboardInterrupt:
+        pass
+
+    assert dispatches == ["startup_sweep"]
+
+
 def test_manual_no_product_override_is_scoped_to_one_run(monkeypatch):
     captured_env = {}
 

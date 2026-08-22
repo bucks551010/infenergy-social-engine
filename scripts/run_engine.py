@@ -1744,11 +1744,16 @@ def main() -> None:
         effective_channels[platform] = False
         channel_reasons[platform] = f"artifact_visual_qa:{','.join(issues)}"
     visual_gate_errors = _live_visual_gate_errors(content, effective_channels, dry_run or shadow_mode)
+    presentation_errors = _final_presentation_errors(content, effective_channels)
+    for error in presentation_errors:
+        platform = error.split("_", 1)[0]
+        effective_channels[platform] = False
+        channel_reasons[platform] = "final_presentation_qa:not_ready"
     advisory_visual_findings = (
         _strategy_integrity_errors(content)
         + _v5_semantic_visual_errors(content, effective_channels)
-        + _final_presentation_errors(content, effective_channels)
     )
+    visual_gate_errors.extend(presentation_errors)
     if advisory_visual_findings:
         content.setdefault("quality_warnings", []).extend(advisory_visual_findings)
     content["artifact_visual_qa"] = (content.get("generated_visuals") or {}).get("artifact_reviews", {})

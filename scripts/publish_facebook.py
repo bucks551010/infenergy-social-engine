@@ -3,6 +3,8 @@ import os
 import time
 import requests
 
+from social_visuals import review_rendered_visual
+
 GRAPH_BASE = "https://graph.facebook.com/v26.0"
 
 
@@ -165,6 +167,8 @@ def publish(content: dict, wp_link: str, dry_run: bool = False) -> dict:
     if not image_url.startswith("http"):
         image_url = str(content.get("product_image_url", "")).strip()
     require_image = _env_flag("FB_REQUIRE_IMAGE", True)
+    generation = content.get("gemini_generation") if isinstance(content.get("gemini_generation"), dict) else {}
+    require_gemini = generation.get("strict_provider") is True or _env_flag("LIVE_REQUIRE_GEMINI_VISUAL", False)
 
     if dry_run:
         print(f"[DRY RUN] Facebook: would post:\n{message[:150]}...\n")
@@ -172,11 +176,25 @@ def publish(content: dict, wp_link: str, dry_run: bool = False) -> dict:
 
     page_id = _required_env("META_PAGE_ID")
     token = _resolve_page_access_token(_required_env("META_PAGE_ACCESS_TOKEN"), page_id)
+    carousel_assets = [
+        asset
+        for asset in content.get("carousel_assets", []) or []
+        if isinstance(asset, dict)
+    ]
     carousel_paths = [
         str(asset.get("local_path") or "").strip()
-        for asset in content.get("carousel_assets", []) or []
-        if isinstance(asset, dict) and os.path.exists(str(asset.get("local_path") or "").strip())
+        for asset in carousel_assets
+        if os.path.exists(str(asset.get("local_path") or "").strip())
     ]
+    if require_gemini:
+        if carousel_assets and len(carousel_paths) != len(carousel_assets):
+            raise RuntimeError("facebook_strict_gemini_carousel_incomplete")
+        paths_to_publish = carousel_paths if len(carousel_paths) >= 2 else [image_path]
+        for path in paths_to_publish:
+            review = review_rendered_visual(path, "facebook")
+            if review.get("verdict") != "PASS":
+                issues = ",".join(str(issue) for issue in review.get("issues", [])) or "artifact_review_failed"
+                raise RuntimeError(f"facebook_strict_gemini_artifact_invalid:{issues}")
 
     if len(carousel_paths) >= 2:
         data = _publish_feed_with_photos(

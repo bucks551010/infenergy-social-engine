@@ -432,8 +432,35 @@ def _gemini_plate_quality(image: Any, platform: str) -> tuple[bool, list[str]]:
     extrema = grayscale.getextrema()
     if not extrema or extrema[1] - extrema[0] < 24:
         reasons.append("low_dynamic_range")
+    if _has_scanline_corruption(image):
+        reasons.append("scanline_corruption")
 
     return not reasons, reasons
+
+
+def _has_scanline_corruption(image: Any) -> bool:
+    image_module, _, _ = _load_pillow()
+    if image_module is None:
+        return False
+    nearest = getattr(getattr(image_module, "Resampling", image_module), "NEAREST", 0)
+    sample = image.convert("RGB").resize((240, 240), nearest)
+    pixels = sample.load()
+    suspicious_rows = 0
+    for y in range(sample.height):
+        longest_run = 0
+        current_run = 0
+        for x in range(sample.width):
+            red, green, blue = pixels[x, y]
+            extreme_color = (
+                max(red, green, blue) >= 230
+                and min(red, green, blue) <= 25
+                and max(red, green, blue) - min(red, green, blue) >= 180
+            )
+            current_run = current_run + 1 if extreme_color else 0
+            longest_run = max(longest_run, current_run)
+        if longest_run >= 24:
+            suspicious_rows += 1
+    return suspicious_rows >= 3
 
 
 def _normalize_reference_image(raw: bytes) -> tuple[bytes, str]:
@@ -1024,6 +1051,8 @@ def review_rendered_visual(path: str, platform: str) -> dict[str, Any]:
                     issues.append("rendered_dimensions_mismatch")
                 if image.convert("RGB").getbbox() is None:
                     issues.append("rendered_asset_blank")
+                if _has_scanline_corruption(image):
+                    issues.append("rendered_scanline_corruption")
         except Exception as exc:
             issues.append(f"rendered_asset_unreadable:{type(exc).__name__}")
     verdict = "PASS" if not issues else "REGENERATE_VISUAL"

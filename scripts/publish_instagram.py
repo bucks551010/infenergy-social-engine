@@ -5,6 +5,7 @@ import requests
 from urllib.parse import urljoin
 
 import publish_wordpress
+from social_visuals import review_rendered_visual
 from url_safety import is_safe_http_url
 
 GRAPH_BASE = "https://graph.facebook.com/v26.0"
@@ -238,9 +239,21 @@ def publish(content: dict, dry_run: bool = False) -> dict:
     validate_urls = _env("IG_VALIDATE_IMAGE_URLS", "true").lower() in ("1", "true", "yes", "on")
     generated_image_path = str((content.get("generated_visuals") or {}).get("instagram", "")).strip()
     primary_publish_image_url = str(content.get("primary_publish_image_url", "")).strip()
+    generation = content.get("gemini_generation") if isinstance(content.get("gemini_generation"), dict) else {}
+    require_gemini = generation.get("strict_provider") is True or _env("LIVE_REQUIRE_GEMINI_VISUAL", "false").lower() in ("1", "true", "yes", "on")
+    strict_public_urls = {
+        str(asset.get("public_url") or "").strip()
+        for asset in generation.get("assets", []) or []
+        if isinstance(asset, dict) and asset.get("render_engine") == "gemini"
+    }
 
     candidates = []
     if generated_image_path and os.path.exists(generated_image_path):
+        if require_gemini:
+            review = review_rendered_visual(generated_image_path, "instagram")
+            if review.get("verdict") != "PASS":
+                issues = ",".join(str(issue) for issue in review.get("issues", [])) or "artifact_review_failed"
+                return {"id": "skipped", "reason": f"strict_gemini_artifact_invalid:{issues}"}
         try:
             if hasattr(publish_wordpress, "upload_media"):
                 media_result = publish_wordpress.upload_media(generated_image_path, dry_run=dry_run)
@@ -250,24 +263,25 @@ def publish(content: dict, dry_run: bool = False) -> dict:
             else:
                 print("[Instagram] Warning: publish_wordpress.upload_media unavailable; skipping generated visual upload")
         except Exception as e:
-            print(f"[Instagram] Warning: generated visual upload failed, falling back to catalog imagery: {e}")
-    if _is_valid_public_image(primary_publish_image_url):
+            print(f"[Instagram] Warning: generated visual upload failed; trying the hosted generated asset: {e}")
+    if _is_valid_public_image(primary_publish_image_url) and (not require_gemini or primary_publish_image_url in strict_public_urls):
         candidates.append(primary_publish_image_url)
-    product_image = content.get("product_image_url", "")
-    if _is_valid_public_image(product_image):
-        candidates.append(product_image)
-    for c in content.get("product_image_candidates", []) or []:
-        if _is_valid_public_image(c):
-            candidates.append(c)
-    for c in content.get("category_image_candidates", []) or []:
-        if _is_valid_public_image(c):
-            candidates.append(c)
-    if _is_valid_public_image(ig_default_image):
-        candidates.append(ig_default_image)
-    destination_url = str(content.get("destination_url") or "").strip()
-    page_image_candidate = _extract_page_image_candidate(destination_url)
-    if _is_valid_public_image(page_image_candidate):
-        candidates.append(page_image_candidate)
+    if not require_gemini:
+        product_image = content.get("product_image_url", "")
+        if _is_valid_public_image(product_image):
+            candidates.append(product_image)
+        for c in content.get("product_image_candidates", []) or []:
+            if _is_valid_public_image(c):
+                candidates.append(c)
+        for c in content.get("category_image_candidates", []) or []:
+            if _is_valid_public_image(c):
+                candidates.append(c)
+        if _is_valid_public_image(ig_default_image):
+            candidates.append(ig_default_image)
+        destination_url = str(content.get("destination_url") or "").strip()
+        page_image_candidate = _extract_page_image_candidate(destination_url)
+        if _is_valid_public_image(page_image_candidate):
+            candidates.append(page_image_candidate)
     candidates = _dedupe_keep_order(candidates)
 
     image_url = ""
@@ -277,25 +291,36 @@ def publish(content: dict, dry_run: bool = False) -> dict:
                 image_url = candidate
                 break
         if not image_url and candidates:
+            if require_gemini:
+                return {"id": "skipped", "reason": "strict_gemini_public_url_preflight_failed"}
             image_url = candidates[0]
             print("[Instagram] Warning: no candidate passed preflight, using first candidate anyway")
     else:
         image_url = candidates[0] if candidates else ""
 
     if not image_url:
-        print("[Instagram] Skipped: no valid image URL candidates")
+        reason = "required_gemini_visual_unavailable" if require_gemini else "no_valid_image_url_candidates"
+        print(f"[Instagram] Skipped: {reason}")
         return {
             "id": "skipped",
-            "reason": "no_valid_image_url_candidates",
+            "reason": reason,
             "candidate_count": len(candidates),
         }
 
     caption = _bounded_caption(content["ig_caption"])
-    carousel_urls = [
-        str(asset.get("public_url") or "").strip()
-        for asset in content.get("carousel_assets", []) or []
-        if isinstance(asset, dict) and _is_valid_public_image(str(asset.get("public_url") or "").strip())
-    ]
+    carousel_assets = [asset for asset in content.get("carousel_assets", []) or [] if isinstance(asset, dict)]
+    carousel_urls = []
+    for asset in carousel_assets:
+        public_url = str(asset.get("public_url") or "").strip()
+        local_path = str(asset.get("local_path") or "").strip()
+        if require_gemini:
+            review = review_rendered_visual(local_path, "instagram")
+            if asset.get("render_engine") != "gemini" or public_url not in strict_public_urls or review.get("verdict") != "PASS":
+                return {"id": "skipped", "reason": "strict_gemini_carousel_artifact_invalid"}
+        if _is_valid_public_image(public_url):
+            carousel_urls.append(public_url)
+    if require_gemini and carousel_assets and len(carousel_urls) != len(carousel_assets):
+        return {"id": "skipped", "reason": "strict_gemini_carousel_incomplete"}
 
     if dry_run:
         print(f"[DRY RUN] Instagram: would post:\n{caption[:150]}...\n")

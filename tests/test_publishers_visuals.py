@@ -26,9 +26,11 @@ from run_engine import _live_visual_gate_errors  # noqa: E402
 from social_visuals import (  # noqa: E402
     _build_gemini_image_prompt,
     _gemini_plate_quality,
+    _has_scanline_corruption,
     _normalize_reference_image,
     generate_visuals,
     normalize_brand_text,
+    review_rendered_visual,
 )
 
 
@@ -71,6 +73,96 @@ class PublisherVisualTests(unittest.TestCase):
         correct_ratio = Image.new("RGB", (1200, 1200), "#334455")
         accepted, reasons = _gemini_plate_quality(correct_ratio, "instagram")
         self.assertNotIn("aspect_ratio", reasons)
+
+    def test_corrupted_scanlines_are_rejected_at_generation_and_artifact_qa(self) -> None:
+        from PIL import Image, ImageDraw
+
+        image = Image.new("RGB", (1200, 1200), "#263746")
+        draw = ImageDraw.Draw(image)
+        for y, color in ((200, "#ff0000"), (400, "#00ff00"), (600, "#0000ff")):
+            draw.rectangle((700, y, 1199, y + 12), fill=color)
+        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as image_file:
+            image_path = image_file.name
+        try:
+            image.save(image_path, format="PNG")
+            accepted, reasons = _gemini_plate_quality(image, "instagram")
+            review = review_rendered_visual(image_path, "instagram")
+        finally:
+            os.unlink(image_path)
+
+        self.assertTrue(_has_scanline_corruption(image))
+        self.assertFalse(accepted)
+        self.assertIn("scanline_corruption", reasons)
+        self.assertEqual(review["verdict"], "REGENERATE_VISUAL")
+        self.assertIn("rendered_scanline_corruption", review["issues"])
+
+    def test_instagram_strict_gemini_mode_never_uses_catalog_fallback(self) -> None:
+        with patch.dict(
+            os.environ,
+            {
+                "LIVE_REQUIRE_GEMINI_VISUAL": "true",
+                "IG_VALIDATE_IMAGE_URLS": "false",
+            },
+            clear=False,
+        ):
+            result = publish_instagram.publish(
+                {
+                    "ig_caption": "Caption",
+                    "generated_visuals": {},
+                    "product_image_url": "https://example.com/catalog.png",
+                }
+            )
+
+        self.assertEqual(result["id"], "skipped")
+        self.assertEqual(result["reason"], "required_gemini_visual_unavailable")
+
+    def test_instagram_strict_package_rejects_untracked_hosted_image(self) -> None:
+        with patch.dict(os.environ, {"IG_VALIDATE_IMAGE_URLS": "false"}, clear=False):
+            result = publish_instagram.publish(
+                {
+                    "ig_caption": "Caption",
+                    "gemini_generation": {"strict_provider": True, "assets": []},
+                    "primary_publish_image_url": "https://example.com/untracked.png",
+                }
+            )
+
+        self.assertEqual(result["id"], "skipped")
+        self.assertEqual(result["reason"], "required_gemini_visual_unavailable")
+
+    def test_instagram_strict_package_fails_closed_on_public_url_preflight(self) -> None:
+        public_url = "https://example.com/media/reviewed.png"
+        with patch.dict(os.environ, {"IG_VALIDATE_IMAGE_URLS": "true"}, clear=False), patch.object(
+            publish_instagram, "_is_reachable_image_url", return_value=False
+        ):
+            result = publish_instagram.publish(
+                {
+                    "ig_caption": "Caption",
+                    "gemini_generation": {
+                        "strict_provider": True,
+                        "assets": [{"render_engine": "gemini", "public_url": public_url}],
+                    },
+                    "primary_publish_image_url": public_url,
+                }
+            )
+
+        self.assertEqual(result["id"], "skipped")
+        self.assertEqual(result["reason"], "strict_gemini_public_url_preflight_failed")
+
+    def test_facebook_strict_package_rejects_corrupted_local_artifact(self) -> None:
+        with patch.object(
+            publish_facebook,
+            "review_rendered_visual",
+            return_value={"verdict": "REGENERATE_VISUAL", "issues": ["rendered_scanline_corruption"]},
+        ):
+            with self.assertRaisesRegex(RuntimeError, "facebook_strict_gemini_artifact_invalid"):
+                publish_facebook.publish(
+                    {
+                        "fb_caption": "Caption",
+                        "gemini_generation": {"strict_provider": True},
+                        "generated_visuals": {"facebook": "missing.png"},
+                    },
+                    "https://example.com",
+                )
 
     def test_style_reference_must_decode_as_an_image(self) -> None:
         from PIL import Image

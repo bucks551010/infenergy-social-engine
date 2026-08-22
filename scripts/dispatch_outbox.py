@@ -10,7 +10,7 @@ from typing import Any
 import publish_facebook
 import publish_instagram
 import publish_linkedin
-from social_visuals import generate_strict_gemini_image
+from social_visuals import generate_strict_gemini_image, review_rendered_visual
 from content_operations import (
     PLATFORMS,
     begin_platform_transaction,
@@ -87,9 +87,23 @@ def _gemini_assets_ready(package: dict[str, Any], required_count: int) -> bool:
             and asset.get("render_engine") == "gemini"
             and os.path.isfile(str(asset.get("local_path") or ""))
             and str(asset.get("public_url") or "").startswith("http")
+            and review_rendered_visual(str(asset.get("local_path") or ""), "instagram").get("verdict") == "PASS"
             for asset in assets
         )
     )
+
+
+def _strict_publish_artifact_error(package: dict[str, Any], platform: str) -> str:
+    generation = package.get("gemini_generation") if isinstance(package.get("gemini_generation"), dict) else {}
+    if generation.get("strict_provider") is not True:
+        return ""
+    visuals = package.get("generated_visuals") if isinstance(package.get("generated_visuals"), dict) else {}
+    artifact_path = str(visuals.get(platform) or "").strip()
+    review = review_rendered_visual(artifact_path, platform)
+    if review.get("verdict") == "PASS":
+        return ""
+    issues = review.get("issues") if isinstance(review.get("issues"), list) else []
+    return f"{platform}_strict_artifact_invalid:{','.join(str(issue) for issue in issues) or 'artifact_review_failed'}"
 
 
 def _prepare_gemini_assets(package: dict[str, Any], data_dir: str) -> dict[str, Any]:
@@ -203,6 +217,11 @@ def dispatch_due(*, data_dir: str = DATA_DIR, now_utc: str | None = None) -> dic
             ambiguous.append(f"{platform}:{existing.get('state')}")
             results[platform] = existing
             continue
+
+        artifact_error = _strict_publish_artifact_error(package, platform)
+        if artifact_error:
+            recover_outbox(data_dir, outbox_id, artifact_error)
+            return {"status": "CONTENT_RECOVERING", "outbox_id": outbox_id, "platforms": results, "error": artifact_error}
 
         payload = _payload(package, platform)
         begin_platform_transaction(data_dir, outbox_id=outbox_id, platform=platform, payload=payload)

@@ -715,6 +715,15 @@ class PhaseThirteenFourteenTests(unittest.TestCase):
         content.pop("date")
         content.pop("pillar")
         content.pop("topic_hash")
+        content["platform_posts"]["facebook"]["final_caption_qa"] = {
+            "status": "REVISE_PRESENTATION",
+            "reasons": ["planning_language"],
+        }
+        content["generated_visuals"] = {
+            "render_engines": {"facebook": "approved_product_photo"},
+            "artifact_reviews": {"facebook": {"verdict": "PASS", "issues": []}},
+        }
+        content["artifact_visual_qa"] = content["generated_visuals"]["artifact_reviews"]
 
         with patch.object(run_engine.generate_posts, "ensure_runtime_data", return_value=None), \
             patch.object(run_engine.generate_posts, "generate", return_value=content), \
@@ -744,6 +753,12 @@ class PhaseThirteenFourteenTests(unittest.TestCase):
         self.assertEqual(saved_post["date"], saved_post["run_started_at_utc"][:10])
         self.assertIn("platform_records", saved_post)
         self.assertEqual(len(saved_post["platform_records"]), 4)
+        self.assertEqual(saved_post["generated_visuals"]["render_engines"]["facebook"], "approved_product_photo")
+        self.assertEqual(
+            saved_post["platform_posts"]["facebook"]["final_caption_qa"]["reasons"],
+            ["planning_language"],
+        )
+        self.assertEqual(saved_post["artifact_visual_qa"]["facebook"]["verdict"], "PASS")
         self.assertEqual(outcomes, [{"status": "skipped_no_eligible_platforms", "slot": "morning", "detail": "no_eligible_platforms"}])
 
     def test_run_engine_blocks_when_orchestration_control_plane_fails(self) -> None:

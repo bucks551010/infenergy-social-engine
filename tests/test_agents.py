@@ -148,6 +148,52 @@ class AgentsTests(unittest.TestCase):
         self.assertGreaterEqual(len(loaded["winning_hooks"]), 1)
         self.assertEqual(result["posts_analyzed"], 1)
 
+    def test_operational_learning_closes_reflection_read_loop(self) -> None:
+        from agents.learning_context import load_operational_learning
+
+        _make_history(
+            self._tmp,
+            [
+                {
+                    "post_id": f"p{i}",
+                    "status": "success",
+                    "hook": "Measure the load before choosing capacity",
+                    "hook_type": "question" if i < 2 else "warning",
+                    "funnel_stage": "EDUCATION",
+                    "quality_warnings": ["caption_too_dense"] if i == 0 else [],
+                    "logical_emotional_strategy": {
+                        "principle_key": "contrapositive" if i < 2 else "double_implication",
+                        "archetype_key": "preparedness_buyer",
+                    },
+                    "engagement_metrics": {
+                        "facebook": {"total_interactions": 12 if i < 2 else 0},
+                        "instagram": {"total_interactions": 8 if i < 2 else 0},
+                    },
+                }
+                for i in range(3)
+            ],
+        )
+        learning_ingestion.run(self._tmp)
+        performance_reflection.run(self._tmp)
+
+        context = load_operational_learning(self._tmp)
+
+        self.assertEqual(context["contract_version"], "infenergy-operational-learning-v1")
+        self.assertIn("facebook:principle_key:contrapositive", context["winning_patterns"])
+        self.assertIn("caption_too_dense", context["quality_warnings_to_resolve"])
+        self.assertEqual(context["authority"], "advisory_below_canonical_company_and_product_truth")
+
+    def test_agent_snapshots_inherit_operational_learning(self) -> None:
+        from agents._base import latest_snapshot, write_snapshot
+
+        write_snapshot(self._tmp, "qa_agent", {"agent": "qa_agent"})
+        snapshot = latest_snapshot(self._tmp, "qa_agent")
+
+        self.assertEqual(
+            snapshot["operational_learning"]["contract_version"],
+            "infenergy-operational-learning-v1",
+        )
+
     def test_topic_intelligence_no_feeds_configured_is_noop(self) -> None:
         with patch.dict(os.environ, {"TOPIC_RSS_FEEDS": ""}, clear=False):
             result = topic_intelligence.run(self._tmp)

@@ -78,14 +78,16 @@ def test_production_orchestrator_adapter_uses_recipe_provider_before_final_rende
     import importlib
 
     captured = {}
+    monkeypatch.setenv("DATA_DIR", "production-data")
 
     class FakePost:
         def as_dict(self):
             return {"post_id": "recipe-only"}
 
     class FakeOrchestrator:
-        def __init__(self, *, provider):
+        def __init__(self, *, provider, data_dir):
             captured["provider"] = provider
+            captured["data_dir"] = data_dir
 
         def create_batch(self, **kwargs):
             return [FakePost()]
@@ -96,7 +98,9 @@ def test_production_orchestrator_adapter_uses_recipe_provider_before_final_rende
     posts = generate_posts.run_social_intelligence(count=1)
 
     assert captured["provider"].name == "template_render"
-    assert posts == [{"post_id": "recipe-only"}]
+    assert captured["data_dir"]
+    assert posts[0]["post_id"] == "recipe-only"
+    assert posts[0]["operational_learning"]["contract_version"] == "infenergy-operational-learning-v1"
 
 
 def test_normal_generation_defaults_to_conversion_pipeline(monkeypatch):

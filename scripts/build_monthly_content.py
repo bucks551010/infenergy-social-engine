@@ -14,6 +14,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 from company_knowledge import agent_specialization, knowledge_digest, load_company_knowledge, refresh_persistent_company_knowledge
 from content_operations import archive_candidate, cancel_unpublished_inventory, create_council_session, ensure_daily_slots, mark_ready, replace_unpublished_slot
+from agents.learning_context import load_operational_learning
 from inventory_db import get_db_path
 
 
@@ -292,6 +293,7 @@ def _package(knowledge: dict[str, Any], thought: dict[str, Any], content_date: s
             name: agent_specialization(knowledge, name)
             for name in ("copywriter_agent", "creative_director_agent", "channel_editor_agent", "qa_agent")
         },
+        "operational_learning": load_operational_learning(data_dir),
         "master_copy": {
             key: thought.get(key)
             for key in ("statement", "expansion", "useful_detail", "action", "prompt", "humor", "linkedin_lens", "editorial_mode", "audience", "source_note", "overlay_text")

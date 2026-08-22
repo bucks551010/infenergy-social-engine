@@ -82,9 +82,26 @@ def run_social_intelligence(count: int = 1, platform: str = "instagram_feed", **
     # The production adapter renders final pixels below via generate_visuals().
     # Keep the orchestrator on a recipe-only provider so it supplies art direction
     # without spending a second Gemini render for the same candidate.
-    orchestrator = SocialIntelligenceOrchestrator(provider=TemplateRenderProvider())
+    learning_data_dir = (
+        os.environ.get("DATA_DIR")
+        or os.environ.get("BI_DATA_DIR")
+        or os.path.join(os.path.dirname(__file__), "..", "data")
+    )
+    orchestrator = SocialIntelligenceOrchestrator(
+        provider=TemplateRenderProvider(),
+        data_dir=os.environ.get("DATA_DIR"),
+    )
     batch = orchestrator.create_batch(count=count, platform=platform, **kw)
-    return [p.as_dict() for p in batch]
+    packages = [p.as_dict() for p in batch]
+    try:
+        from agents.learning_context import load_operational_learning
+
+        learning = load_operational_learning(learning_data_dir)
+        for package in packages:
+            package["operational_learning"] = learning
+    except (OSError, ValueError):
+        pass
+    return packages
 
 
 def _social_platform_key(platform: str) -> str:
@@ -923,13 +940,15 @@ def _run_phase2_creative_stack(
     segment_constraints = _segment_creative_constraints(audience_segment)
 
     try:
-        from agents.learning_ingestion import load_recent_lessons
-        lessons = load_recent_lessons(DATA_DIR)
+        from agents.learning_context import load_operational_learning
+        lessons = load_operational_learning(DATA_DIR)
     except Exception:
         lessons = {}
-    winning_hooks = lessons.get("winning_hooks", []) if isinstance(lessons, dict) else []
-    losing_hooks = lessons.get("losing_hooks", []) if isinstance(lessons, dict) else []
-    top_warnings = [str(w[0]) for w in lessons.get("top_warnings", [])[:5] if isinstance(w, (list, tuple)) and w]
+    winning_hooks = lessons.get("winning_hook_examples", []) if isinstance(lessons, dict) else []
+    losing_hooks = lessons.get("losing_hook_examples", []) if isinstance(lessons, dict) else []
+    winning_patterns = lessons.get("winning_patterns", []) if isinstance(lessons, dict) else []
+    losing_patterns = lessons.get("losing_patterns", []) if isinstance(lessons, dict) else []
+    top_warnings = lessons.get("quality_warnings_to_resolve", []) if isinstance(lessons, dict) else []
 
     ideation_prompt = f"""{IDEATION_DIVERGENCE_BRIEF}
 
@@ -946,6 +965,8 @@ Run context:
 - Recent topics to avoid: {recent_topics}
 - Recent winning hook patterns (echo the style, not the words): {winning_hooks}
 - Recent losing hook patterns (avoid this style entirely): {losing_hooks}
+- Supported performance patterns (apply only in the named dimension): {winning_patterns}
+- Underperforming patterns to avoid in the named dimension: {losing_patterns}
 - Recent quality warnings to actively resolve in the new draft: {top_warnings}
 
 Return ONLY valid JSON with this exact shape:

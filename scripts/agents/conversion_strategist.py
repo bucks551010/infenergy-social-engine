@@ -122,6 +122,18 @@ def plan(
         except (OSError, ValueError):
             pass
 
+        try:
+            from agents.learning_context import load_operational_learning
+
+            payload["operational_learning"] = load_operational_learning(data_dir)
+            payload["downstream_instructions"]["performance_learning_rules"] = [
+                "Use winning patterns only inside their named platform, stage, archetype, or hook dimension.",
+                "Avoid losing patterns and recurring quality warnings without copying prior winning language.",
+                "Canonical company and verified product truth always outrank performance evidence.",
+            ]
+        except (OSError, ValueError):
+            pass
+
     if data_dir:
         try:
             write_snapshot(data_dir, AGENT_NAME, payload)

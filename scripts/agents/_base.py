@@ -30,6 +30,12 @@ def write_snapshot(data_dir: str, agent_name: str, payload: dict) -> str:
         payload.setdefault("company_knowledge_contract", agent_specialization(knowledge, agent_name))
     except (OSError, ValueError):
         pass
+    try:
+        from .learning_context import load_operational_learning
+
+        payload.setdefault("operational_learning", load_operational_learning(data_dir))
+    except (OSError, ValueError):
+        pass
     path = os.path.join(agent_dir(data_dir, agent_name), f"{agent_name}_{utc_stamp()}.json")
     with open(path, "w", encoding="utf-8") as f:
         json.dump(payload, f, ensure_ascii=False, indent=2, default=str)

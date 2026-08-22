@@ -241,6 +241,7 @@ def publish(content: dict, dry_run: bool = False) -> dict:
     primary_publish_image_url = str(content.get("primary_publish_image_url", "")).strip()
     generation = content.get("gemini_generation") if isinstance(content.get("gemini_generation"), dict) else {}
     require_gemini = generation.get("strict_provider") is True or _env("LIVE_REQUIRE_GEMINI_VISUAL", "false").lower() in ("1", "true", "yes", "on")
+    render_engines = (content.get("generated_visuals") or {}).get("render_engines") or {}
     strict_public_urls = {
         str(asset.get("public_url") or "").strip()
         for asset in generation.get("assets", []) or []
@@ -254,6 +255,8 @@ def publish(content: dict, dry_run: bool = False) -> dict:
             if review.get("verdict") != "PASS":
                 issues = ",".join(str(issue) for issue in review.get("issues", [])) or "artifact_review_failed"
                 return {"id": "skipped", "reason": f"strict_gemini_artifact_invalid:{issues}"}
+            if str(render_engines.get("instagram") or "") == "gemini" and primary_publish_image_url.startswith("http"):
+                strict_public_urls.add(primary_publish_image_url)
         try:
             if hasattr(publish_wordpress, "upload_media"):
                 media_result = publish_wordpress.upload_media(generated_image_path, dry_run=dry_run)

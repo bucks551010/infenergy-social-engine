@@ -1046,7 +1046,6 @@ def _live_visual_gate_errors(content: dict, effective_channels: dict[str, bool],
     render_engines = visuals.get("render_engines") if isinstance(visuals.get("render_engines"), dict) else {}
     overlays = visuals.get("product_overlay_applied") if isinstance(visuals.get("product_overlay_applied"), dict) else {}
     require_gemini = os.environ.get("LIVE_REQUIRE_GEMINI_VISUAL", "false").strip().lower() in {"1", "true", "yes", "on"}
-    approved_render_engines = {"gemini", "approved_product_photo", "approved_reference_image"}
     has_anchored_product = bool(str(content.get("product_id") or "").strip())
     require_product = has_anchored_product and os.environ.get("LIVE_REQUIRE_PRODUCT_VISUAL", "true").strip().lower() in {"1", "true", "yes", "on"}
 
@@ -1056,7 +1055,7 @@ def _live_visual_gate_errors(content: dict, effective_channels: dict[str, bool],
     for platform in requested:
         if not str(visuals.get(platform, "")).strip():
             errors.append(f"{platform}_visual_missing")
-        if require_gemini and str(render_engines.get(platform, "")) not in approved_render_engines:
+        if require_gemini and str(render_engines.get(platform, "")) != "gemini":
             errors.append(f"{platform}_visual_not_gemini")
         if require_product and overlays.get(platform) is not True:
             errors.append(f"{platform}_product_overlay_missing")

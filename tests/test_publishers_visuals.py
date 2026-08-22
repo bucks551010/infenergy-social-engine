@@ -129,6 +129,51 @@ class PublisherVisualTests(unittest.TestCase):
         self.assertEqual(result["id"], "skipped")
         self.assertEqual(result["reason"], "required_gemini_visual_unavailable")
 
+    def test_instagram_strict_mode_accepts_reviewed_hosted_gemini_artifact(self) -> None:
+        with tempfile.NamedTemporaryFile(suffix=".png") as image_file, patch.dict(
+            os.environ,
+            {"LIVE_REQUIRE_GEMINI_VISUAL": "true", "IG_VALIDATE_IMAGE_URLS": "false"},
+            clear=False,
+        ), patch.object(
+            publish_instagram, "review_rendered_visual", return_value={"verdict": "PASS", "issues": []}
+        ), patch.object(
+            publish_instagram.publish_wordpress, "upload_media", side_effect=RuntimeError("not configured")
+        ):
+            result = publish_instagram.publish(
+                {
+                    "ig_caption": "Caption",
+                    "generated_visuals": {
+                        "instagram": image_file.name,
+                        "render_engines": {"instagram": "gemini"},
+                    },
+                    "primary_publish_image_url": "https://example.com/media/reviewed.png",
+                },
+                dry_run=True,
+            )
+
+        self.assertEqual(result["id"], "dry-run")
+
+    def test_live_gate_rejects_approved_photo_when_gemini_is_required(self) -> None:
+        content = {
+            "generated_visuals": {
+                "facebook": "facebook.png",
+                "instagram": "instagram.png",
+                "render_engines": {
+                    "facebook": "approved_product_photo",
+                    "instagram": "approved_product_photo",
+                },
+            }
+        }
+        with patch.dict(os.environ, {"LIVE_REQUIRE_GEMINI_VISUAL": "true"}, clear=False):
+            errors = _live_visual_gate_errors(
+                content,
+                {"facebook": True, "instagram": True, "linkedin": False},
+                dry_run=False,
+            )
+
+        self.assertIn("facebook_visual_not_gemini", errors)
+        self.assertIn("instagram_visual_not_gemini", errors)
+
     def test_instagram_strict_package_fails_closed_on_public_url_preflight(self) -> None:
         public_url = "https://example.com/media/reviewed.png"
         with patch.dict(os.environ, {"IG_VALIDATE_IMAGE_URLS": "true"}, clear=False), patch.object(

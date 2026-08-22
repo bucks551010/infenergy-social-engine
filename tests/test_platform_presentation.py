@@ -367,6 +367,25 @@ def test_general_planning_language_does_not_promise_a_numbered_plan():
     assert "promised_plan_missing_actionable_steps" not in qa["reasons"]
 
 
+def test_duration_spec_does_not_promise_a_numbered_plan():
+    components = _components()
+    components["cta"] = "Review the verified product details."
+    caption = (
+        "Compare the product against the equipment you need to support.\n\n"
+        "The published runtime is 1 hour under the stated test load.\n\n"
+        "Review the verified product details.\n\n"
+        "https://www.infenergypower.com/product/powerpulse-pro-200/"
+    )
+
+    qa = platform_presentation.final_caption_qa(
+        caption,
+        platform="linkedin",
+        components=components,
+    )
+
+    assert "promised_plan_missing_actionable_steps" not in qa["reasons"]
+
+
 def test_instagram_mobile_first_screen_has_entry_point_and_breathing_room():
     improved, _ = platform_presentation.refine_caption(
         POWERPULSE_ORIGINAL,

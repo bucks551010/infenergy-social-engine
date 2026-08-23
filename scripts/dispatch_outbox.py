@@ -101,7 +101,7 @@ def _strict_publish_artifact_error(package: dict[str, Any], platform: str) -> st
         return ""
     visuals = package.get("generated_visuals") if isinstance(package.get("generated_visuals"), dict) else {}
     artifact_path = str(visuals.get(platform) or "").strip()
-    review = review_rendered_visual(artifact_path, platform)
+    review = review_rendered_visual(artifact_path, "instagram")
     if review.get("verdict") == "PASS":
         return ""
     issues = review.get("issues") if isinstance(review.get("issues"), list) else []
@@ -225,8 +225,14 @@ def dispatch_due(*, data_dir: str = DATA_DIR, now_utc: str | None = None) -> dic
             update_claimed_package(data_dir, outbox_id, package)
         except Exception as exc:
             error = f"{type(exc).__name__}:{exc}"
-            recover_outbox(data_dir, outbox_id, error)
-            return {"status": "CONTENT_RECOVERING", "outbox_id": outbox_id, "error": error}
+            release_outbox(data_dir, outbox_id, error)
+            return {"status": "RETRYABLE_FAILURE", "outbox_id": outbox_id, "error": error}
+
+    for platform in platforms:
+        artifact_error = _strict_publish_artifact_error(package, platform)
+        if artifact_error:
+            release_outbox(data_dir, outbox_id, artifact_error)
+            return {"status": "RETRYABLE_FAILURE", "outbox_id": outbox_id, "error": artifact_error}
 
     results: dict[str, Any] = {}
     retry_errors: list[str] = []
@@ -240,11 +246,6 @@ def dispatch_due(*, data_dir: str = DATA_DIR, now_utc: str | None = None) -> dic
             ambiguous.append(f"{platform}:{existing.get('state')}")
             results[platform] = existing
             continue
-
-        artifact_error = _strict_publish_artifact_error(package, platform)
-        if artifact_error:
-            recover_outbox(data_dir, outbox_id, artifact_error)
-            return {"status": "CONTENT_RECOVERING", "outbox_id": outbox_id, "platforms": results, "error": artifact_error}
 
         payload = _payload(package, platform)
         begin_platform_transaction(data_dir, outbox_id=outbox_id, platform=platform, payload=payload)

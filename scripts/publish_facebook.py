@@ -171,7 +171,8 @@ def publish(content: dict, wp_link: str, dry_run: bool = False) -> dict:
         image_url = str(content.get("product_image_url", "")).strip()
     require_image = _env_flag("FB_REQUIRE_IMAGE", True)
     generation = content.get("gemini_generation") if isinstance(content.get("gemini_generation"), dict) else {}
-    require_gemini = generation.get("strict_provider") is True or _env_flag("LIVE_REQUIRE_GEMINI_VISUAL", False)
+    owner_supplied_visual = content.get("owner_supplied_visual") is True and image_url.startswith("https://")
+    require_gemini = not owner_supplied_visual and (generation.get("strict_provider") is True or _env_flag("LIVE_REQUIRE_GEMINI_VISUAL", False))
 
     if dry_run:
         print(f"[DRY RUN] Facebook: would post:\n{message[:150]}...\n")

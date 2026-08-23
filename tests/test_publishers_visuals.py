@@ -224,6 +224,49 @@ class PublisherVisualTests(unittest.TestCase):
                     "https://example.com",
                 )
 
+    def test_facebook_owner_supplied_visual_bypasses_generated_artifact_gate(self) -> None:
+        upload_response = Mock(ok=True)
+        upload_response.json.return_value = {"id": "photo-1"}
+        feed_response = Mock(ok=True)
+        feed_response.json.return_value = {"id": "post-1"}
+        with patch.dict(os.environ, {"LIVE_REQUIRE_GEMINI_VISUAL": "true", "META_PAGE_ID": "page", "META_PAGE_ACCESS_TOKEN": "token"}, clear=False), \
+            patch.object(publish_facebook, "_resolve_page_access_token", return_value="token"), \
+            patch.object(publish_facebook.requests, "post", return_value=upload_response), \
+            patch.object(publish_facebook, "_post_with_retry", return_value=feed_response), \
+            patch.object(publish_facebook, "review_rendered_visual") as review:
+            result = publish_facebook.publish(
+                {
+                    "fb_caption": "Caption",
+                    "owner_supplied_visual": True,
+                    "primary_publish_image_url": "https://example.com/owner.png",
+                },
+                "",
+            )
+
+        self.assertEqual(result["id"], "post-1")
+        review.assert_not_called()
+
+    def test_instagram_owner_supplied_visual_bypasses_generated_artifact_gate(self) -> None:
+        create_response = Mock(ok=True)
+        create_response.json.return_value = {"id": "container-1"}
+        publish_response = Mock(ok=True)
+        publish_response.json.return_value = {"id": "post-1"}
+        with patch.dict(os.environ, {"LIVE_REQUIRE_GEMINI_VISUAL": "true", "META_IG_USER_ID": "user", "META_PAGE_ACCESS_TOKEN": "token"}, clear=False), \
+            patch.object(publish_instagram, "_is_reachable_image_url", return_value=True), \
+            patch.object(publish_instagram, "_post_with_retry", side_effect=[create_response, publish_response]), \
+            patch.object(publish_instagram, "_wait_for_media_container", return_value=(True, "finished")), \
+            patch.object(publish_instagram, "review_rendered_visual") as review:
+            result = publish_instagram.publish(
+                {
+                    "ig_caption": "Caption",
+                    "owner_supplied_visual": True,
+                    "primary_publish_image_url": "https://example.com/owner.png",
+                }
+            )
+
+        self.assertEqual(result["id"], "post-1")
+        review.assert_not_called()
+
     def test_style_reference_must_decode_as_an_image(self) -> None:
         from PIL import Image
         from io import BytesIO

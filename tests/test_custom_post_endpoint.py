@@ -49,3 +49,27 @@ def test_custom_post_retry_only_replays_failed_platform():
     assert second["failed_platforms"] == []
     assert facebook.call_count == 1
     assert instagram.call_count == 2
+
+
+def test_custom_post_marks_skipped_publisher_result_as_failed():
+    payload = _payload()
+    payload["platforms"] = ["instagram"]
+    with tempfile.TemporaryDirectory() as data_dir, patch.dict(os.environ, {"DATA_DIR": data_dir}, clear=False), \
+        patch("publish_instagram.publish", return_value={"id": "skipped", "reason": "image_unavailable"}):
+        status, response = worker._publish_custom_post(payload)
+
+    assert status == 502
+    assert response["failed_platforms"] == ["instagram"]
+    assert response["platforms"]["instagram"]["status"] == "failed"
+    assert response["platforms"]["instagram"]["error"] == "image_unavailable"
+
+
+def test_custom_post_marks_visual_as_owner_supplied():
+    payload = _payload()
+    payload["platforms"] = ["facebook"]
+    with tempfile.TemporaryDirectory() as data_dir, patch.dict(os.environ, {"DATA_DIR": data_dir}, clear=False), \
+        patch("publish_facebook.publish", return_value={"id": "fb-1"}) as facebook:
+        status, _ = worker._publish_custom_post(payload)
+
+    assert status == 200
+    assert facebook.call_args.args[0]["owner_supplied_visual"] is True

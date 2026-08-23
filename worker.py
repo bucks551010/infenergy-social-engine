@@ -109,6 +109,7 @@ def _publish_custom_post(payload: dict) -> tuple[int, dict]:
             "wp_title": caption[:180],
             "topic": "IIS scheduled post",
             "primary_publish_image_url": image_url,
+            "owner_supplied_visual": True,
             "platform_posts": {
                 "facebook": {"final_caption": caption},
                 "instagram": {"final_caption": caption},
@@ -129,6 +130,9 @@ def _publish_custom_post(payload: dict) -> tuple[int, dict]:
                 else:
                     import publish_linkedin
                     result = publish_linkedin.publish(content, "", dry_run=dry_run)
+                if not isinstance(result, dict) or str(result.get("id") or "").strip().lower() == "skipped":
+                    reason = str(result.get("reason") or "publisher did not confirm publication") if isinstance(result, dict) else "publisher returned an invalid result"
+                    raise RuntimeError(reason)
                 results[platform] = {"status": "published", "result": result, "published_at_utc": _utc_now(), "dry_run": dry_run}
             except Exception as exc:
                 results[platform] = {"status": "failed", "error": str(exc), "updated_at_utc": _utc_now()}

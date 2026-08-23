@@ -240,7 +240,8 @@ def publish(content: dict, dry_run: bool = False) -> dict:
     generated_image_path = str((content.get("generated_visuals") or {}).get("instagram", "")).strip()
     primary_publish_image_url = str(content.get("primary_publish_image_url", "")).strip()
     generation = content.get("gemini_generation") if isinstance(content.get("gemini_generation"), dict) else {}
-    require_gemini = generation.get("strict_provider") is True or _env("LIVE_REQUIRE_GEMINI_VISUAL", "false").lower() in ("1", "true", "yes", "on")
+    owner_supplied_visual = content.get("owner_supplied_visual") is True and primary_publish_image_url.startswith("https://")
+    require_gemini = not owner_supplied_visual and (generation.get("strict_provider") is True or _env("LIVE_REQUIRE_GEMINI_VISUAL", "false").lower() in ("1", "true", "yes", "on"))
     render_engines = (content.get("generated_visuals") or {}).get("render_engines") or {}
     strict_public_urls = {
         str(asset.get("public_url") or "").strip()

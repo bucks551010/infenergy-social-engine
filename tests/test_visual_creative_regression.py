@@ -133,6 +133,8 @@ def test_gemini_image_quota_failure_short_circuits_following_calls(tmp_path, mon
     fake_types = types.ModuleType("google.genai.types")
     fake_types.GenerateContentConfig = lambda **kwargs: kwargs
     fake_types.ImageConfig = lambda **kwargs: kwargs
+    fake_types.HttpOptions = lambda **kwargs: kwargs
+    fake_types.HttpRetryOptions = lambda **kwargs: kwargs
     fake_types.Part = types.SimpleNamespace(from_bytes=lambda **kwargs: kwargs)
     fake_genai.types = fake_types
     monkeypatch.setattr(google, "genai", fake_genai)

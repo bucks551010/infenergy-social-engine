@@ -4,6 +4,8 @@ import os
 import sys
 from pathlib import Path
 
+from PIL import Image
+
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -186,6 +188,38 @@ def test_gemini_http_options_bound_timeout_and_attempts(monkeypatch):
 
     assert options.timeout == 45_000
     assert options.retry_options.attempts == 1
+
+
+def test_truth_overlay_uses_compact_partial_width_panel():
+    image = Image.new("RGB", (1200, 1200), "#d8e0e4")
+    rendered, error = social_visuals._apply_v5_text_overlay(
+        image,
+        {
+            "text_overlay": {
+                "enabled": True,
+                "text": "Infenergy | Recovery is communal.",
+                "placement": "upper third",
+                "safe_margin_ratio": 0.055,
+            }
+        },
+    )
+
+    assert error == ""
+    assert rendered.getpixel((70, 70)) != (216, 224, 228)
+    assert rendered.getpixel((1100, 100)) == (216, 224, 228)
+    assert rendered.getpixel((600, 500)) == (216, 224, 228)
+
+
+def test_truth_overlay_fails_closed_without_scalable_font(monkeypatch):
+    image = Image.new("RGB", (1200, 1200), "white")
+    monkeypatch.setattr(social_visuals, "_overlay_font", lambda *args, **kwargs: None)
+
+    _, error = social_visuals._apply_v5_text_overlay(
+        image,
+        {"text_overlay": {"enabled": True, "text": "Infenergy | A useful truth."}},
+    )
+
+    assert error == "scalable_font_unavailable_for_overlay"
 
 
 def test_pregenerate_updates_ready_package_without_claim_or_publish(monkeypatch):

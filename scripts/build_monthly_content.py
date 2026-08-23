@@ -158,7 +158,8 @@ def _gemini_generation_plan(thought: dict[str, Any], product: dict[str, Any] | N
                     "enabled": True,
                     "text": f"Infenergy | {overlay_copy}",
                     "placement": "upper third",
-                    "safe_margin_ratio": 0.08,
+                    "safe_margin_ratio": 0.055,
+                    "style": "editorial_truth_panel",
                 }
             },
         })

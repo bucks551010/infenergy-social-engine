@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import os
+import glob
 from datetime import datetime, timezone
 import hashlib
 import re
@@ -748,38 +749,76 @@ def _apply_v5_text_overlay(image: Any, direction: dict[str, Any]) -> tuple[Any, 
     if image_module is None or draw_module is None or font_module is None:
         return image, "pillow_unavailable_for_overlay"
     width, height = image.size
-    margin = max(24, int(min(width, height) * float(overlay.get("safe_margin_ratio") or 0.08)))
-    max_width = width - margin * 2
-    font_size = max(28, int(min(width, height) * 0.072))
-    try:
-        font = font_module.truetype("DejaVuSans-Bold.ttf", font_size)
-    except Exception:
-        font = font_module.load_default()
+    scale = min(width, height)
+    margin = max(30, int(scale * float(overlay.get("safe_margin_ratio") or 0.055)))
+    panel_width = min(width - margin * 2, int(width * 0.76))
+    panel_padding = max(24, int(scale * 0.032))
+    accent_width = max(6, int(scale * 0.008))
+    truth = text.split("|", 1)[-1].strip() if "|" in text else text
+    headline_size = max(34, int(scale * 0.052))
+    eyebrow_size = max(15, int(scale * 0.017))
+    headline_font = _overlay_font(font_module, headline_size, bold=True)
+    eyebrow_font = _overlay_font(font_module, eyebrow_size, bold=True)
+    if headline_font is None or eyebrow_font is None:
+        return image, "scalable_font_unavailable_for_overlay"
     draw = draw_module.Draw(image, "RGBA")
-    words = text.split()
+    max_text_width = panel_width - panel_padding * 2 - accent_width
+    words = truth.split()
     lines: list[str] = []
     current = ""
     for word in words:
         candidate = f"{current} {word}".strip()
-        if draw.textbbox((0, 0), candidate, font=font)[2] <= max_width or not current:
+        if draw.textbbox((0, 0), candidate, font=headline_font)[2] <= max_text_width or not current:
             current = candidate
         else:
             lines.append(current)
             current = word
     if current:
         lines.append(current)
-    if len(lines) > 4:
+    if len(lines) > 3:
         return image, "overlay_text_exceeds_line_budget"
-    line_height = int(font_size * 1.2)
-    block_height = len(lines) * line_height + margin
-    if block_height > height * 0.45:
+    line_height = int(headline_size * 1.16)
+    eyebrow_height = int(eyebrow_size * 1.3)
+    block_height = panel_padding * 2 + eyebrow_height + int(scale * 0.018) + len(lines) * line_height
+    if block_height > height * 0.32:
         return image, "overlay_text_exceeds_safe_area"
     placement = str(overlay.get("placement") or "upper third").lower()
     y_start = height - margin - block_height if "bottom" in placement else margin
-    draw.rounded_rectangle((margin // 2, y_start - margin // 2, width - margin // 2, y_start + block_height), radius=12, fill=(10, 18, 26, 190))
+    panel_box = (margin, y_start, margin + panel_width, y_start + block_height)
+    draw.rounded_rectangle(panel_box, radius=max(8, int(scale * 0.012)), fill=(10, 18, 26, 218))
+    draw.rounded_rectangle(
+        (margin, y_start, margin + accent_width, y_start + block_height),
+        radius=max(3, accent_width // 2),
+        fill=(247, 163, 15, 255),
+    )
+    text_x = margin + panel_padding + accent_width
+    text_y = y_start + panel_padding
+    draw.text((text_x, text_y), "INFENERGY POWER  /  FIELD TRUTH", font=eyebrow_font, fill=(255, 212, 105, 255))
+    text_y += eyebrow_height + int(scale * 0.018)
     for index, line in enumerate(lines):
-        draw.text((margin, y_start + index * line_height), line, font=font, fill=(255, 255, 255, 255))
+        draw.text((text_x, text_y + index * line_height), line, font=headline_font, fill=(255, 255, 255, 255))
     return image, ""
+
+
+def _overlay_font(font_module: Any, size: int, *, bold: bool) -> Any | None:
+    file_name = "DejaVuSans-Bold.ttf" if bold else "DejaVuSans.ttf"
+    env_name = "SOCIAL_FONT_BOLD_PATH" if bold else "SOCIAL_FONT_REGULAR_PATH"
+    candidates = [
+        str(os.environ.get(env_name) or "").strip(),
+        file_name,
+        os.path.join(os.environ.get("WINDIR", "C:\\Windows"), "Fonts", "arialbd.ttf" if bold else "arial.ttf"),
+        f"/usr/share/fonts/truetype/dejavu/{file_name}",
+        f"/root/.nix-profile/share/fonts/truetype/dejavu/{file_name}",
+    ]
+    candidates.extend(glob.glob(f"/nix/store/*dejavu-fonts*/share/fonts/truetype/{file_name}"))
+    for candidate in candidates:
+        if not candidate:
+            continue
+        try:
+            return font_module.truetype(candidate, size)
+        except Exception:
+            continue
+    return None
 
 
 _GEMINI_IMAGE_UNAVAILABLE_REASON = ""

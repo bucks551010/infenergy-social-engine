@@ -47,6 +47,41 @@ def test_custom_post_passes_six_owner_carousel_assets_to_publishers():
     assert [asset["public_url"] for asset in instagram.call_args.args[0]["carousel_assets"]] == payload["image_urls"]
 
 
+def test_custom_post_routes_platform_specific_captions_to_each_publisher():
+    payload = _payload()
+    payload["platform_captions"] = {
+        "facebook": "Facebook community copy",
+        "instagram": "Instagram visual copy",
+        "linkedin": "LinkedIn professional copy",
+    }
+    with tempfile.TemporaryDirectory() as data_dir, patch.dict(os.environ, {"DATA_DIR": data_dir}, clear=False), \
+        patch("publish_facebook.publish", return_value={"id": "fb-1"}) as facebook, \
+        patch("publish_instagram.publish", return_value={"id": "ig-1"}) as instagram, \
+        patch("publish_linkedin.publish", return_value={"id": "li-1"}) as linkedin:
+        status, _ = worker._publish_custom_post(payload)
+
+    assert status == 200
+    facebook_content = facebook.call_args.args[0]
+    assert facebook_content["fb_caption"] == "Facebook community copy"
+    assert facebook_content["platform_posts"]["facebook"]["final_caption"] == "Facebook community copy"
+    assert instagram.call_args.args[0]["ig_caption"] == "Instagram visual copy"
+    assert linkedin.call_args.args[0]["li_text"] == "LinkedIn professional copy"
+
+
+def test_custom_post_platform_captions_fall_back_to_master_caption():
+    payload = _payload()
+    payload["platform_captions"] = {"facebook": "Facebook only"}
+    payload["platforms"] = ["facebook", "instagram"]
+    with tempfile.TemporaryDirectory() as data_dir, patch.dict(os.environ, {"DATA_DIR": data_dir}, clear=False), \
+        patch("publish_facebook.publish", return_value={"id": "fb-1"}) as facebook, \
+        patch("publish_instagram.publish", return_value={"id": "ig-1"}) as instagram:
+        status, _ = worker._publish_custom_post(payload)
+
+    assert status == 200
+    assert facebook.call_args.args[0]["fb_caption"] == "Facebook only"
+    assert instagram.call_args.args[0]["ig_caption"] == payload["caption"]
+
+
 def test_custom_post_checkpoints_platforms_and_is_idempotent():
     with tempfile.TemporaryDirectory() as data_dir, patch.dict(os.environ, {"DATA_DIR": data_dir}, clear=False), \
         patch("publish_facebook.publish", return_value={"id": "fb-1"}) as facebook, \

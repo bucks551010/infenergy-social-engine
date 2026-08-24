@@ -79,6 +79,7 @@ def _custom_post_history_path() -> str:
 def _publish_custom_post(payload: dict) -> tuple[int, dict]:
     external_id = str(payload.get("external_id", "")).strip()
     caption = str(payload.get("caption", "")).strip()
+    platform_captions = payload.get("platform_captions", {})
     image_url = str(payload.get("image_url", "")).strip()
     image_urls = payload.get("image_urls") if isinstance(payload.get("image_urls"), list) else []
     image_urls = list(dict.fromkeys(str(item).strip() for item in image_urls if str(item).strip()))
@@ -89,6 +90,11 @@ def _publish_custom_post(payload: dict) -> tuple[int, dict]:
         return 400, {"error": "external_id is required and must be at most 100 characters"}
     if not caption or len(caption) > 5000:
         return 400, {"error": "caption is required and must be at most 5000 characters"}
+    if not isinstance(platform_captions, dict) or any(
+        key not in allowed or not isinstance(value, str) or len(value.strip()) > 5000
+        for key, value in platform_captions.items()
+    ):
+        return 400, {"error": "platform_captions must contain only facebook, instagram, or linkedin strings up to 5000 characters"}
     if not image_url.startswith("https://"):
         return 400, {"error": "image_url must be a public HTTPS URL"}
     if image_urls and (len(image_urls) != 6 or any(not item.startswith("https://") for item in image_urls)):
@@ -106,10 +112,13 @@ def _publish_custom_post(payload: dict) -> tuple[int, dict]:
             record = {"external_id": external_id, "created_at_utc": _utc_now(), "platforms": {}}
             history[external_id] = record
         results = record.setdefault("platforms", {})
+        facebook_caption = str(platform_captions.get("facebook", "")).strip() or caption
+        instagram_caption = str(platform_captions.get("instagram", "")).strip() or caption
+        linkedin_caption = str(platform_captions.get("linkedin", "")).strip() or caption
         content = {
-            "fb_caption": caption,
-            "ig_caption": caption,
-            "li_text": caption,
+            "fb_caption": facebook_caption,
+            "ig_caption": instagram_caption,
+            "li_text": linkedin_caption,
             "wp_title": caption[:180],
             "topic": "IIS scheduled post",
             "primary_publish_image_url": image_url,
@@ -119,9 +128,9 @@ def _publish_custom_post(payload: dict) -> tuple[int, dict]:
                 for item in image_urls
             ],
             "platform_posts": {
-                "facebook": {"final_caption": caption},
-                "instagram": {"final_caption": caption},
-                "linkedin": {"final_text": caption},
+                "facebook": {"final_caption": facebook_caption},
+                "instagram": {"final_caption": instagram_caption},
+                "linkedin": {"final_text": linkedin_caption},
             },
         }
         for platform in platforms:

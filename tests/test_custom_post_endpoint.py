@@ -15,10 +15,36 @@ def _payload():
     }
 
 
+def _carousel_payload():
+    payload = _payload()
+    payload["image_urls"] = [f"https://example.com/slide-{position}.png" for position in range(1, 7)]
+    return payload
+
+
 def test_custom_post_validates_required_fields():
     status, response = worker._publish_custom_post({})
     assert status == 400
     assert "external_id" in response["error"]
+
+
+def test_custom_post_requires_exactly_six_carousel_urls():
+    payload = _payload()
+    payload["image_urls"] = ["https://example.com/slide.png"]
+    status, response = worker._publish_custom_post(payload)
+    assert status == 400
+    assert "exactly six" in response["error"]
+
+
+def test_custom_post_passes_six_owner_carousel_assets_to_publishers():
+    payload = _carousel_payload()
+    payload["platforms"] = ["facebook", "instagram"]
+    with tempfile.TemporaryDirectory() as data_dir, patch.dict(os.environ, {"DATA_DIR": data_dir}, clear=False), \
+        patch("publish_facebook.publish", return_value={"id": "fb-carousel"}) as facebook, \
+        patch("publish_instagram.publish", return_value={"id": "ig-carousel"}) as instagram:
+        status, _ = worker._publish_custom_post(payload)
+    assert status == 200
+    assert [asset["public_url"] for asset in facebook.call_args.args[0]["carousel_assets"]] == payload["image_urls"]
+    assert [asset["public_url"] for asset in instagram.call_args.args[0]["carousel_assets"]] == payload["image_urls"]
 
 
 def test_custom_post_checkpoints_platforms_and_is_idempotent():

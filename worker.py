@@ -80,6 +80,8 @@ def _publish_custom_post(payload: dict) -> tuple[int, dict]:
     external_id = str(payload.get("external_id", "")).strip()
     caption = str(payload.get("caption", "")).strip()
     image_url = str(payload.get("image_url", "")).strip()
+    image_urls = payload.get("image_urls") if isinstance(payload.get("image_urls"), list) else []
+    image_urls = list(dict.fromkeys(str(item).strip() for item in image_urls if str(item).strip()))
     platforms = payload.get("platforms") if isinstance(payload.get("platforms"), list) else []
     platforms = list(dict.fromkeys(str(item).strip().lower() for item in platforms))
     allowed = {"facebook", "instagram", "linkedin"}
@@ -89,6 +91,8 @@ def _publish_custom_post(payload: dict) -> tuple[int, dict]:
         return 400, {"error": "caption is required and must be at most 5000 characters"}
     if not image_url.startswith("https://"):
         return 400, {"error": "image_url must be a public HTTPS URL"}
+    if image_urls and (len(image_urls) != 6 or any(not item.startswith("https://") for item in image_urls)):
+        return 400, {"error": "image_urls must contain exactly six public HTTPS URLs"}
     if not platforms or any(item not in allowed for item in platforms):
         return 400, {"error": "platforms must contain facebook, instagram, or linkedin"}
 
@@ -110,6 +114,10 @@ def _publish_custom_post(payload: dict) -> tuple[int, dict]:
             "topic": "IIS scheduled post",
             "primary_publish_image_url": image_url,
             "owner_supplied_visual": True,
+            "carousel_assets": [
+                {"public_url": item, "render_engine": "owner"}
+                for item in image_urls
+            ],
             "platform_posts": {
                 "facebook": {"final_caption": caption},
                 "instagram": {"final_caption": caption},

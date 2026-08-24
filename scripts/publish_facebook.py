@@ -160,6 +160,28 @@ def _publish_feed_with_photos(*, page_id: str, token: str, message: str, image_p
     return feed.json()
 
 
+def _publish_feed_with_photo_urls(*, page_id: str, token: str, message: str, image_urls: list[str]) -> dict:
+    media: list[dict[str, str]] = []
+    for image_url in image_urls:
+        upload = requests.post(
+            f"{GRAPH_BASE}/{page_id}/photos",
+            data={"published": "false", "url": image_url, "access_token": token},
+            timeout=60,
+        )
+        _raise_with_body(upload)
+        media_id = str(upload.json().get("id") or "").strip()
+        if not media_id:
+            raise RuntimeError("facebook_unpublished_photo_missing_id")
+        media.append({"media_fbid": media_id})
+    feed = _post_with_retry(
+        f"{GRAPH_BASE}/{page_id}/feed",
+        {"message": message, "attached_media": json.dumps(media), "access_token": token},
+        timeout=30,
+    )
+    _raise_with_body(feed)
+    return feed.json()
+
+
 def publish(content: dict, wp_link: str, dry_run: bool = False) -> dict:
     facebook_package = (content.get("platform_posts") or {}).get("facebook") or {}
     message = str(facebook_package.get("final_caption") or content["fb_caption"])
@@ -188,6 +210,11 @@ def publish(content: dict, wp_link: str, dry_run: bool = False) -> dict:
         for asset in carousel_assets
         if os.path.exists(str(asset.get("local_path") or "").strip())
     ]
+    carousel_urls = [
+        str(asset.get("public_url") or "").strip()
+        for asset in carousel_assets
+        if str(asset.get("public_url") or "").strip().startswith("https://")
+    ]
     if require_gemini:
         if carousel_assets and len(carousel_paths) != len(carousel_assets):
             raise RuntimeError("facebook_strict_gemini_carousel_incomplete")
@@ -201,7 +228,14 @@ def publish(content: dict, wp_link: str, dry_run: bool = False) -> dict:
     page_id = _required_env("META_PAGE_ID")
     token = _resolve_page_access_token(_required_env("META_PAGE_ACCESS_TOKEN"), page_id)
 
-    if len(carousel_paths) >= 2:
+    if len(carousel_urls) >= 2 and owner_supplied_visual:
+        data = _publish_feed_with_photo_urls(
+            page_id=page_id,
+            token=token,
+            message=message,
+            image_urls=carousel_urls,
+        )
+    elif len(carousel_paths) >= 2:
         data = _publish_feed_with_photos(
             page_id=page_id,
             token=token,

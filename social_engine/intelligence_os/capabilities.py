@@ -1,0 +1,425 @@
+from __future__ import annotations
+
+import os
+import re
+import sys
+from dataclasses import asdict, is_dataclass
+from datetime import date, datetime, timedelta, timezone
+from pathlib import Path
+from typing import Any
+
+from .governance import PolicyEngine
+from .intelligence import AutomationService, ResearchIntelligence
+from .knowledge import ResearchService, StrategyService, WorldModel
+from .models import CopilotMaster
+from .operations import AttentionService, JobService
+from .registry import Capability, CapabilityRegistry, ExecutionContext
+
+
+ROOT = Path(__file__).resolve().parents[2]
+SCRIPTS = ROOT / "scripts"
+if str(SCRIPTS) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS))
+
+
+def object_schema(properties: dict[str, Any] | None = None, required: list[str] | None = None) -> dict[str, Any]:
+    return {"type": "object", "properties": properties or {}, "required": required or []}
+
+
+def register_core_capabilities(registry: CapabilityRegistry, policies: PolicyEngine) -> None:
+    data_dir = registry.data_dir
+    strategy = StrategyService(data_dir)
+    research = ResearchService(data_dir)
+    world = WorldModel(data_dir)
+    jobs = JobService(data_dir)
+    attention = AttentionService(data_dir)
+    external_research = ResearchIntelligence(data_dir)
+    automations = AutomationService(data_dir)
+
+    def health(_: dict[str, Any], context: ExecutionContext) -> dict[str, Any]:
+        import inventory_db
+        from content_operations import daily_status
+
+        db_path = inventory_db.get_db_path(context.data_dir)
+        provider_config = {
+            "copilot": {"sdk_installed": _module_available("copilot"), "master_model": os.environ.get("INFENERGY_MASTER_MODEL", "gpt-5.6-sol")},
+            "gemini": {"configured": bool(os.environ.get("GEMINI_API_KEY", "").strip())},
+            "facebook": {"configured": bool(os.environ.get("META_PAGE_ID", "").strip() and os.environ.get("META_PAGE_ACCESS_TOKEN", "").strip())},
+            "instagram": {"configured": bool((os.environ.get("META_IG_USER_ID", "") or os.environ.get("META_INSTAGRAM_BUSINESS_ID", "")).strip())},
+            "linkedin": {"configured": bool(os.environ.get("LINKEDIN_ACCESS_TOKEN", "").strip())},
+            "wordpress": {"configured": bool(os.environ.get("WP_URL", "").strip())},
+        }
+        return {
+            "status": "DEGRADED" if not provider_config["copilot"]["sdk_installed"] else "OPERATIONAL",
+            "database": {"path": db_path, "exists": os.path.exists(db_path)},
+            "providers": provider_config,
+            "social_today": daily_status(context.data_dir, date.today()),
+            "dry_run": os.environ.get("SOCIAL_DRY_RUN", "true").lower() != "false",
+            "checked_at": datetime.now(timezone.utc).isoformat(),
+        }
+
+    def model_status(_: dict[str, Any], __: ExecutionContext) -> dict[str, Any]:
+        return CopilotMaster(data_dir).status().__dict__
+
+    def products_list(payload: dict[str, Any], context: ExecutionContext) -> dict[str, Any]:
+        import inventory_db
+        products = inventory_db.fetch_products(context.data_dir)
+        query = str(payload.get("query", "")).lower().strip()
+        if query:
+            products = [item for item in products if query in str(item.get("name", "")).lower() or query in str(item.get("sku", "")).lower()]
+        limit = max(1, min(int(payload.get("limit", 100)), 500))
+        return {"count": len(products[:limit]), "products": products[:limit], "source": "inventory_db"}
+
+    def product_get(payload: dict[str, Any], context: ExecutionContext) -> dict[str, Any]:
+        import inventory_db
+        product_id = str(payload["product_id"])
+        item = next((row for row in inventory_db.fetch_products(context.data_dir) if str(row.get("id") or row.get("product_id")) == product_id), None)
+        if not item:
+            raise KeyError(f"product_not_found:{product_id}")
+        return {"product": item, "source": "inventory_db"}
+
+    def calendar(payload: dict[str, Any], context: ExecutionContext) -> dict[str, Any]:
+        from content_operations import daily_status
+        start = date.fromisoformat(str(payload.get("start_date") or date.today().isoformat()))
+        days = max(1, min(int(payload.get("days", 7)), 120))
+        return {"start_date": start.isoformat(), "days": [daily_status(context.data_dir, start + timedelta(days=index)) for index in range(days)]}
+
+    def schedule_post(payload: dict[str, Any], context: ExecutionContext) -> dict[str, Any]:
+        from content_operations import create_council_session, ensure_daily_slots, mark_ready, replace_unpublished_slot
+
+        content_date = str(payload["content_date"])
+        slot = str(payload["slot"])
+        scheduled_at = str(payload["scheduled_at"])
+        package = dict(payload["package"])
+        plan = {
+            "actions": ["ensure_daily_slots", "create_decision_record", "write_content_outbox"],
+            "affected_resources": [{"type": "social_slot", "id": f"{content_date}:{slot}"}],
+            "estimated_cost_usd": 0.0,
+            "risks": ["External publication occurs later only if dispatch policy permits"],
+            "irreversible_steps": [],
+        }
+        if context.dry_run:
+            return {"plan": plan, "would_schedule": {"content_date": content_date, "slot": slot, "scheduled_at": scheduled_at}}
+        day_start = datetime.fromisoformat(scheduled_at.replace("Z", "+00:00"))
+        schedule = {
+            "morning": day_start.replace(hour=13, minute=0).isoformat(),
+            "midday": day_start.replace(hour=17, minute=0).isoformat(),
+            "evening": day_start.replace(hour=23, minute=0).isoformat(),
+        }
+        schedule[slot] = scheduled_at
+        ensure_daily_slots(context.data_dir, content_date, schedule, package.get("platform_policy", {}))
+        replace_unpublished_slot(context.data_dir, content_date, slot)
+        decision_id = create_council_session(
+            context.data_dir, content_date=content_date, slot=slot,
+            blackboard={"source": "infenergy_intelligence_os", "transaction_id": context.transaction_id},
+            rationale=[str(payload.get("rationale", "Owner-directed schedule"))],
+        )
+        outbox_id = mark_ready(
+            context.data_dir, content_date=content_date, slot=slot,
+            scheduled_at=scheduled_at, decision_id=decision_id, package=package,
+        )
+        return {
+            "outbox_id": outbox_id, "decision_id": decision_id, "plan": plan,
+            "_rollback": {"content_date": content_date, "slot": slot, "outbox_id": outbox_id},
+        }
+
+    def rollback_schedule(data: dict[str, Any], context: ExecutionContext) -> dict[str, Any]:
+        from content_operations import replace_unpublished_slot
+        cancelled = replace_unpublished_slot(context.data_dir, str(data["content_date"]), str(data["slot"]))
+        if not cancelled:
+            return {"status": "NOT_REVERSIBLE", "reason": "slot_already_claimed_or_published", "_irreversible": [data]}
+        return {"status": "ROLLED_BACK", "content_date": data["content_date"], "slot": data["slot"]}
+
+    def goals_get(_: dict[str, Any], __: ExecutionContext) -> dict[str, Any]:
+        return {"goals": strategy.list_goals(active_only=False)}
+
+    def goal_create(payload: dict[str, Any], context: ExecutionContext) -> dict[str, Any]:
+        if context.dry_run:
+            return {"would_create": payload, "production_mutated": False}
+        goal = strategy.create_goal(
+            str(payload["name"]), str(payload["description"]),
+            priority=int(payload.get("priority", 50)), metrics=payload.get("metrics", []),
+            constraints=payload.get("constraints", []), horizon=str(payload.get("horizon", "ongoing")),
+        )
+        return {"goal": goal, "_rollback": {"table": "os_goals", "id": goal["id"]}}
+
+    def policy_list(_: dict[str, Any], __: ExecutionContext) -> dict[str, Any]:
+        return {"policies": policies.list_policies(active_only=False)}
+
+    def policy_create(payload: dict[str, Any], context: ExecutionContext) -> dict[str, Any]:
+        if context.dry_run:
+            return {"would_create": payload, "production_mutated": False}
+        policy = policies.create_policy(
+            capability=str(payload["capability"]), rule=str(payload["rule"]),
+            approval_level=str(payload["approval_level"]), created_by=context.actor,
+            scope=payload.get("scope", {}), limits=payload.get("limits", {}),
+            valid_until=payload.get("valid_until"),
+        )
+        return {"policy": policy}
+
+    def research_mission(payload: dict[str, Any], context: ExecutionContext) -> dict[str, Any]:
+        plan = {
+            "question": payload["question"],
+            "workstreams": payload.get("workstreams", ["primary_sources", "market", "competitors", "consumer_voice", "verification"]),
+            "source_requirements": payload.get("source_requirements", ["authoritative", "current", "corroborated_for_high_impact_claims"]),
+        }
+        if context.dry_run:
+            return {"plan": plan, "production_mutated": False}
+        mission = research.create_mission(
+            str(payload["question"]), scope=payload.get("scope", {}),
+            workstreams=plan["workstreams"], source_requirements=plan["source_requirements"],
+            freshness_requirement=str(payload.get("freshness_requirement", "current")),
+            depth=str(payload.get("depth", "standard")),
+        )
+        job = jobs.create(
+            job_type="RESEARCH_MISSION", objective=str(payload["question"]),
+            plan=["plan_sources", *plan["workstreams"], "corroborate", "synthesize", "rank_implications"],
+            operation_id=context.operation_id,
+        )
+        return {"mission": mission, "job": job}
+
+    def jobs_list(_: dict[str, Any], __: ExecutionContext) -> dict[str, Any]:
+        return {"jobs": jobs.list()}
+
+    def job_steer(payload: dict[str, Any], context: ExecutionContext) -> dict[str, Any]:
+        if context.dry_run:
+            return {"would_steer": payload, "production_mutated": False}
+        return {"job": jobs.steer(str(payload["job_id"]), str(payload["instruction"]), context.actor)}
+
+    def job_control(payload: dict[str, Any], context: ExecutionContext) -> dict[str, Any]:
+        action = str(payload["action"]).lower()
+        statuses = {"pause": "PAUSED", "continue": "RUNNING", "cancel": "CANCELED"}
+        if action not in statuses:
+            raise ValueError("action_must_be_pause_continue_or_cancel")
+        if context.dry_run:
+            return {"would_transition": statuses[action], "job_id": payload["job_id"]}
+        return {"job": jobs.transition(str(payload["job_id"]), statuses[action])}
+
+    def scenario_create(payload: dict[str, Any], context: ExecutionContext) -> dict[str, Any]:
+        if context.dry_run:
+            return {"scenario": payload, "production_mutated": False}
+        return {"scenario": strategy.create_scenario(
+            str(payload["premise"]), assumptions=payload.get("assumptions", []),
+            baseline=payload.get("baseline", {}), changed_variables=payload.get("changed_variables", []),
+            projected_effects=payload.get("projected_effects", []), confidence=float(payload.get("confidence", 0.3)),
+            evidence=payload.get("evidence", []), limitations=payload.get("limitations", ["Projection is not an observed fact"]),
+        )}
+
+    def world_search(payload: dict[str, Any], __: ExecutionContext) -> dict[str, Any]:
+        return {"entities": world.search(str(payload["query"]), int(payload.get("limit", 50)))}
+
+    def attention_get(_: dict[str, Any], __: ExecutionContext) -> dict[str, Any]:
+        return {"attention": attention.list_open()}
+
+    def content_120(payload: dict[str, Any], context: ExecutionContext) -> dict[str, Any]:
+        horizons = payload.get("horizons") or [
+            {"days": "1-14", "state": "production_ready"},
+            {"days": "15-30", "state": "approved_concepts"},
+            {"days": "31-60", "state": "adaptive_concepts"},
+            {"days": "61-90", "state": "themes_story_arcs"},
+            {"days": "91-120", "state": "direction_opportunity_reserve"},
+        ]
+        plan = [
+            "load_goals_and_strategy", "analyze_recent_content", "analyze_performance",
+            "fingerprint_creative_history", "research_market_and_competitors",
+            "analyze_products_and_campaigns", "design_story_arcs_and_franchises",
+            "build_rolling_horizon", "diversity_and_saturation_review",
+            "owner_strategy_review", "produce_locked_horizon", "qa_and_package", "schedule_approved",
+        ]
+        if context.dry_run:
+            return {"objective": payload.get("objective", "Build adaptive 120-day content system"), "plan": plan, "horizons": horizons, "estimated_cost": "requires provider pricing and production scope", "production_mutated": False}
+        job = jobs.create(
+            job_type="ADAPTIVE_120_DAY_CONTENT",
+            objective=str(payload.get("objective", "Build adaptive 120-day content system")),
+            plan=plan, operation_id=context.operation_id,
+        )
+        return {"job": job, "horizons": horizons, "locked_days": int(payload.get("locked_days", 7))}
+
+    def research_news(payload: dict[str, Any], _: ExecutionContext) -> dict[str, Any]:
+        return external_research.search_news(
+            str(payload.get("query", "energy technology business world news")),
+            limit=int(payload.get("limit", 10)), freshness_days=int(payload.get("freshness_days", 2)),
+        )
+
+    def findings_get(payload: dict[str, Any], _: ExecutionContext) -> dict[str, Any]:
+        return {"findings": external_research.list_findings(int(payload.get("limit", 100)))}
+
+    def automations_get(_: dict[str, Any], __: ExecutionContext) -> dict[str, Any]:
+        return {"automations": automations.list(), "runs": automations.list_runs(), "watches": automations.list_watches()}
+
+    def automation_create(payload: dict[str, Any], context: ExecutionContext) -> dict[str, Any]:
+        for step in payload.get("steps", []):
+            registry.get(str(step.get("capability", "")))
+        if context.dry_run:
+            return {"would_create": payload, "required_capabilities": [step["capability"] for step in payload.get("steps", [])], "production_mutated": False}
+        automation = automations.create(
+            name=str(payload["name"]), trigger=payload["trigger"], steps=payload["steps"],
+            created_by=context.actor, conditions=payload.get("conditions", []),
+            permissions=payload.get("permissions", {}), approval_rules=payload.get("approval_rules", {}),
+            schedule=payload.get("schedule", {}), failure_policy=payload.get("failure_policy", {}),
+        )
+        return {"automation": automation}
+
+    def automation_control(payload: dict[str, Any], context: ExecutionContext) -> dict[str, Any]:
+        status = {"pause": "PAUSED", "resume": "ACTIVE", "disable": "DISABLED"}.get(str(payload["action"]).lower())
+        if not status:
+            raise ValueError("action_must_be_pause_resume_or_disable")
+        if context.dry_run:
+            return {"would_set_status": status, "automation_id": payload["automation_id"]}
+        return {"automation": automations.set_status(str(payload["automation_id"]), status)}
+
+    def watch_create(payload: dict[str, Any], context: ExecutionContext) -> dict[str, Any]:
+        if context.dry_run:
+            return {"would_create": payload, "production_mutated": False}
+        return {"watch": automations.create_watch(
+            subject=str(payload["subject"]), scope=payload.get("scope", {}),
+            frequency=str(payload.get("frequency", "daily")), source_policy=payload.get("source_policy", {}),
+            materiality_threshold=float(payload.get("materiality_threshold", 0.7)),
+            condition=payload.get("condition", {}), actions=payload.get("actions", []),
+            expires_at=payload.get("expires_at"),
+        )}
+
+    def decisions_get(payload: dict[str, Any], context: ExecutionContext) -> dict[str, Any]:
+        from social_engine.intelligence_os.db import connect, decode
+        with connect(context.data_dir) as connection:
+            rows = connection.execute("SELECT * FROM os_decisions ORDER BY created_at DESC LIMIT ?", (max(1, min(int(payload.get("limit", 100)), 500)),)).fetchall()
+        decisions = []
+        for row in rows:
+            item = dict(row)
+            for key in ("evidence_json", "alternatives_json", "assumptions_json", "goals_affected_json", "policies_applied_json", "actions_json"):
+                item[key[:-5]] = decode(item.pop(key), [])
+            decisions.append(item)
+        return {"decisions": decisions}
+
+    def opportunities_get(_: dict[str, Any], context: ExecutionContext) -> dict[str, Any]:
+        from social_engine.intelligence_os.db import connect, decode
+        with connect(context.data_dir) as connection:
+            rows = connection.execute("SELECT * FROM os_opportunities WHERE status!='DISMISSED' ORDER BY potential_value DESC, confidence DESC").fetchall()
+        result = []
+        for row in rows:
+            item = dict(row); item["evidence"] = decode(item.pop("evidence_json"), []); result.append(item)
+        return {"opportunities": result}
+
+    def risks_get(_: dict[str, Any], context: ExecutionContext) -> dict[str, Any]:
+        from social_engine.intelligence_os.db import connect, decode
+        with connect(context.data_dir) as connection:
+            rows = connection.execute("SELECT * FROM os_risks WHERE status!='CLOSED' ORDER BY impact DESC, likelihood DESC").fetchall()
+        result = []
+        for row in rows:
+            item = dict(row); item["evidence"] = decode(item.pop("evidence_json"), []); result.append(item)
+        return {"risks": result}
+
+    def creative_score(payload: dict[str, Any], _: ExecutionContext) -> dict[str, Any]:
+        from score_content import score_content
+        content = payload.get("content")
+        if not isinstance(content, dict):
+            raise ValueError("content_object_required")
+        return {
+            "evaluation": score_content(content, payload.get("platforms")),
+            "thresholds": {"approve": 82, "regenerate_once": 75, "reject": 0},
+            "production_mutated": False,
+        }
+
+    def publication_operations(payload: dict[str, Any], context: ExecutionContext) -> dict[str, Any]:
+        from content_operations import daily_index, operations_readiness
+        content_date = payload.get("content_date")
+        index = daily_index(context.data_dir, content_date)
+        readiness = operations_readiness(context.data_dir, lead_hours=int(payload.get("lead_hours", 2)))
+        failures = []
+        for detail in index.get("details", []):
+            for outbox in detail.get("outbox", []):
+                for transaction in outbox.get("transactions", []):
+                    if transaction.get("state") in {"FAILED", "AMBIGUOUS"} or transaction.get("last_error"):
+                        failures.append(transaction)
+        return {"index": index, "readiness": readiness, "publication_failures": failures}
+
+    def publication_detail(payload: dict[str, Any], context: ExecutionContext) -> dict[str, Any]:
+        from content_operations import content_detail
+        result = content_detail(context.data_dir, str(payload["decision_id"]))
+        if not result:
+            raise KeyError(f"content_decision_not_found:{payload['decision_id']}")
+        return result
+
+    def publication_dispatch(_: dict[str, Any], context: ExecutionContext) -> dict[str, Any]:
+        from dispatch_outbox import dispatch_due
+        if context.dry_run:
+            from content_operations import operations_readiness
+            return {"would_dispatch_due": True, "readiness": operations_readiness(context.data_dir), "production_mutated": False}
+        return dispatch_due(data_dir=context.data_dir)
+
+    def brand_positioning(_: dict[str, Any], __: ExecutionContext) -> dict[str, Any]:
+        from business_intelligence.brand import build_identity, build_positioning, build_voice, build_why, build_worldview
+        values = {
+            "identity": build_identity(), "why": build_why(), "worldview": build_worldview(),
+            "positioning": build_positioning(), "voice": build_voice(),
+        }
+        return {key: asdict(value) if is_dataclass(value) else value for key, value in values.items()}
+
+    def product_match(payload: dict[str, Any], context: ExecutionContext) -> dict[str, Any]:
+        import inventory_db
+        topic = str(payload.get("topic", ""))
+        archetype = str(payload.get("archetype", "preparedness_buyer"))
+        archetype_words = {
+            "preparedness_buyer": "backup outage emergency battery generator home",
+            "mobile_professional": "portable charger usb commuter travel work",
+            "outdoor_adventurer": "solar camping outdoors off-grid travel",
+        }.get(archetype, archetype.replace("_", " "))
+        terms = {term for term in re.findall(r"[a-z0-9]+", f"{topic} {archetype_words}".lower()) if len(term) > 2}
+        candidates = []
+        for product in inventory_db.fetch_products(context.data_dir):
+            text = " ".join((str(product.get("name", "")), str(product.get("categories", "")), str(product.get("description", "")), str(product.get("verified_facts", "")))).lower()
+            matched = sorted(term for term in terms if term in text)
+            candidates.append({
+                "product_id": product.get("id") or product.get("product_id"),
+                "name": product.get("name"), "score": len(matched), "matched_terms": matched,
+                "evidence_eligible": bool(product.get("verified_facts")),
+            })
+        candidates.sort(key=lambda item: (item["evidence_eligible"], item["score"]), reverse=True)
+        limit = max(1, min(int(payload.get("limit", 5)), 25))
+        return {"topic": topic, "archetype": archetype, "candidates": candidates[:limit], "method": "catalog_evidence_keyword_fit"}
+
+    definitions = [
+        Capability("system.health", "System health", "Inspect actual Infenergy provider, database, and social status.", "SYSTEM_HEALTH", health),
+        Capability("models.status", "Master model status", "Enumerate authenticated Copilot models and verify the configured master model.", "SYSTEM_HEALTH", model_status),
+        Capability("products.list", "List products", "Retrieve canonical Infenergy product records.", "PRODUCTS", products_list, object_schema({"query": {"type": "string"}, "limit": {"type": "integer"}})),
+        Capability("products.get", "Get product", "Retrieve one canonical product by identifier.", "PRODUCTS", product_get, object_schema({"product_id": {"type": "string"}}, ["product_id"])),
+        Capability("social.calendar.get", "Get social calendar", "Retrieve durable Social Engine slots over a date range.", "SOCIAL", calendar, object_schema({"start_date": {"type": "string"}, "days": {"type": "integer"}})),
+        Capability("social.schedule", "Schedule approved post", "Put an approved platform package into the durable Social Engine outbox.", "SOCIAL", schedule_post, object_schema({"content_date": {"type": "string"}, "slot": {"type": "string"}, "scheduled_at": {"type": "string"}, "package": {"type": "object"}, "rationale": {"type": "string"}}, ["content_date", "slot", "scheduled_at", "package"]), risk_level="MUTATION", permission_requirement="EXECUTE_WITH_APPROVAL", supports_rollback=True, rollback_handler=rollback_schedule),
+        Capability("goals.get", "Get goals", "Return active and historical Infenergy goals.", "GOALS", goals_get),
+        Capability("goals.create", "Create goal", "Create a versioned persistent Infenergy goal.", "GOALS", goal_create, object_schema({"name": {"type": "string"}, "description": {"type": "string"}, "priority": {"type": "integer"}, "metrics": {"type": "array"}, "constraints": {"type": "array"}, "horizon": {"type": "string"}}, ["name", "description"]), risk_level="MUTATION", permission_requirement="EXECUTE_WITH_APPROVAL", supports_rollback=False),
+        Capability("policies.get", "Get operating policies", "Return exact current autonomy and approval policies.", "OPERATIONS", policy_list),
+        Capability("policies.create", "Create operating policy", "Create a scoped, time-aware operating policy for an Infenergy capability.", "OPERATIONS", policy_create, object_schema({"capability": {"type": "string"}, "rule": {"type": "string"}, "approval_level": {"type": "string"}, "scope": {"type": "object"}, "limits": {"type": "object"}, "valid_until": {"type": "string"}}, ["capability", "rule", "approval_level"]), risk_level="GOVERNANCE", permission_requirement="AUTONOMOUS"),
+        Capability("research.mission.create", "Create research mission", "Create a durable multi-workstream research mission with source requirements.", "RESEARCH", research_mission, object_schema({"question": {"type": "string"}, "scope": {"type": "object"}, "workstreams": {"type": "array"}, "source_requirements": {"type": "array"}, "freshness_requirement": {"type": "string"}, "depth": {"type": "string"}}, ["question"]), risk_level="MUTATION", permission_requirement="EXECUTE_WITH_APPROVAL", synchronous=False),
+        Capability("jobs.get", "Get jobs", "Inspect durable jobs, steps, progress, checkpoints, errors, and steering.", "OPERATIONS", jobs_list),
+        Capability("jobs.steer", "Steer job", "Add an owner instruction to a running durable job.", "OPERATIONS", job_steer, object_schema({"job_id": {"type": "string"}, "instruction": {"type": "string"}}, ["job_id", "instruction"]), risk_level="MUTATION", permission_requirement="EXECUTE_WITH_APPROVAL"),
+        Capability("jobs.control", "Control job", "Pause, continue, or cancel a durable job.", "OPERATIONS", job_control, object_schema({"job_id": {"type": "string"}, "action": {"type": "string"}}, ["job_id", "action"]), risk_level="MUTATION", permission_requirement="EXECUTE_WITH_APPROVAL"),
+        Capability("scenario.create", "Create scenario", "Create an immutable non-production business scenario with explicit uncertainty.", "STRATEGY", scenario_create, object_schema({"premise": {"type": "string"}, "assumptions": {"type": "array"}, "baseline": {"type": "object"}, "changed_variables": {"type": "array"}, "projected_effects": {"type": "array"}, "confidence": {"type": "number"}, "evidence": {"type": "array"}, "limitations": {"type": "array"}}, ["premise"]), risk_level="INTERNAL_MUTATION", permission_requirement="AUTONOMOUS"),
+        Capability("world.search", "Search world model", "Search temporal Infenergy entities and current assertions.", "KNOWLEDGE", world_search, object_schema({"query": {"type": "string"}, "limit": {"type": "integer"}}, ["query"])),
+        Capability("attention.get", "Get attention", "Return the highest-materiality unresolved executive attention items.", "OPERATIONS", attention_get),
+        Capability("content.plan_120_days", "Plan 120 days", "Start an adaptive, research-informed, entertainment-first rolling 120-day content job.", "SOCIAL", content_120, object_schema({"objective": {"type": "string"}, "locked_days": {"type": "integer"}, "horizons": {"type": "array"}}), risk_level="INTERNAL_MUTATION", permission_requirement="EXECUTE_WITH_APPROVAL", synchronous=False),
+        Capability("research.news", "Research current news", "Retrieve current news through an external provider and store provenance-bearing time-limited findings.", "NEWS", research_news, object_schema({"query": {"type": "string"}, "limit": {"type": "integer"}, "freshness_days": {"type": "integer"}}), cost_class="LOW"),
+        Capability("research.findings.get", "Get research findings", "Retrieve the durable Intelligence Library with provenance, credibility, and freshness.", "RESEARCH", findings_get, object_schema({"limit": {"type": "integer"}})),
+        Capability("automations.get", "Get automations", "Inspect exact durable automations, schedules, watches, permissions, and status.", "AUTOMATIONS", automations_get),
+        Capability("automations.create", "Create automation", "Create a durable capability-based automation with explicit trigger, conditions, approval rules, and failure policy.", "AUTOMATIONS", automation_create, object_schema({"name": {"type": "string"}, "trigger": {"type": "object"}, "conditions": {"type": "array"}, "steps": {"type": "array"}, "permissions": {"type": "object"}, "approval_rules": {"type": "object"}, "schedule": {"type": "object"}, "failure_policy": {"type": "object"}}, ["name", "trigger", "steps"]), risk_level="MUTATION", permission_requirement="EXECUTE_WITH_APPROVAL", supports_rollback=False),
+        Capability("automations.control", "Control automation", "Pause, resume, or disable a durable automation.", "AUTOMATIONS", automation_control, object_schema({"automation_id": {"type": "string"}, "action": {"type": "string"}}, ["automation_id", "action"]), risk_level="MUTATION", permission_requirement="EXECUTE_WITH_APPROVAL"),
+        Capability("watches.create", "Create intelligence watch", "Create a condition-based monitor with source and materiality policies.", "AUTOMATIONS", watch_create, object_schema({"subject": {"type": "string"}, "scope": {"type": "object"}, "frequency": {"type": "string"}, "source_policy": {"type": "object"}, "materiality_threshold": {"type": "number"}, "condition": {"type": "object"}, "actions": {"type": "array"}, "expires_at": {"type": "string"}}, ["subject"]), risk_level="INTERNAL_MUTATION", permission_requirement="EXECUTE_WITH_APPROVAL"),
+        Capability("decisions.get", "Get decisions", "Retrieve actual durable decision rationale, evidence, assumptions, goals, policies, and actions.", "DECISIONS", decisions_get, object_schema({"limit": {"type": "integer"}})),
+        Capability("opportunities.get", "Get opportunities", "Return ranked, evidence-bearing Infenergy opportunities.", "BUSINESS_INTELLIGENCE", opportunities_get),
+        Capability("risks.get", "Get risks", "Return ranked, evidence-bearing Infenergy risks and mitigations.", "BUSINESS_INTELLIGENCE", risks_get),
+        Capability("creative.score", "Score creative", "Evaluate supplied content with the preserved platform-native quality rubric without generating or publishing anything.", "CREATIVE_STUDIO", creative_score, object_schema({"content": {"type": "object"}, "platforms": {"type": "array"}}, ["content"])),
+        Capability("publication.operations.get", "Get publication operations", "Inspect exact daily slots, candidate decisions, outbox state, platform transactions, failures, and readiness actions.", "SOCIAL", publication_operations, object_schema({"content_date": {"type": "string"}, "lead_hours": {"type": "integer"}})),
+        Capability("publication.detail.get", "Get publication decision detail", "Retrieve one content council decision with candidates, rationale, outbox packages, and provider transaction evidence.", "SOCIAL", publication_detail, object_schema({"decision_id": {"type": "string"}}, ["decision_id"])),
+        Capability("publication.dispatch", "Dispatch due publications", "Dispatch due approved outbox packages through preserved idempotent platform publishers; preview safely with dry run.", "SOCIAL", publication_dispatch, object_schema({}), risk_level="EXTERNAL_IRREVERSIBLE", cost_class="MEDIUM", permission_requirement="EXECUTE_WITH_APPROVAL", supports_rollback=False),
+        Capability("brand.positioning.get", "Get brand positioning", "Return owner-first identity, purpose, worldview, competitive position, and voice constraints with preserved source hierarchy.", "BRAND", brand_positioning),
+        Capability("products.match", "Match products to intent", "Rank evidence-eligible catalog products against an audience archetype and topic without changing inventory.", "PRODUCTS", product_match, object_schema({"topic": {"type": "string"}, "archetype": {"type": "string"}, "limit": {"type": "integer"}})),
+    ]
+    for capability in definitions:
+        registry.register(capability)
+
+
+def _module_available(name: str) -> bool:
+    try:
+        __import__(name)
+        return True
+    except ImportError:
+        return False

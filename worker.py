@@ -601,6 +601,18 @@ def _authorized(params: dict) -> tuple[bool, int, dict]:
     return True, 200, {}
 
 
+def _os_authorized(handler: BaseHTTPRequestHandler, params: dict) -> tuple[bool, int, dict]:
+    """Authorize new OS APIs with a bearer token; query token remains a compatibility fallback."""
+    token = os.environ.get("INTELLIGENCE_OS_TOKEN", "").strip() or os.environ.get("MANUAL_RUN_TOKEN", "").strip()
+    authorization = str(handler.headers.get("Authorization", "") if hasattr(handler, "headers") else "")
+    provided = authorization[7:].strip() if authorization.lower().startswith("bearer ") else str(params.get("token", [""])[0])
+    if not token:
+        return False, 403, {"error": "INTELLIGENCE_OS_TOKEN or MANUAL_RUN_TOKEN not configured"}
+    if not hmac.compare_digest(provided, token):
+        return False, 401, {"error": "invalid token"}
+    return True, 200, {}
+
+
 def _uptime_seconds() -> int:
     return int((datetime.now(timezone.utc) - STARTED_AT).total_seconds())
 
@@ -799,6 +811,27 @@ class HealthHandler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         parsed = urlparse(self.path)
+
+        if parsed.path in {"/os", "/os/"} or parsed.path.startswith("/os/assets/") or parsed.path.startswith("/api/os/"):
+            params = parse_qs(parsed.query)
+            if parsed.path.startswith("/api/os/"):
+                authorized, status_code, error_payload = _os_authorized(self, params)
+                if not authorized:
+                    body = json.dumps(error_payload).encode("utf-8")
+                    self.send_response(status_code)
+                    self.send_header("Content-Type", "application/json")
+                    self.send_header("Content-Length", str(len(body)))
+                    self.end_headers()
+                    self.wfile.write(body)
+                    return
+            from social_engine.intelligence_os.web import handle
+            status_code, content_type, body = handle("GET", parsed.path, None, _data_dir())
+            self.send_response(status_code)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
 
         if parsed.path.startswith("/media/"):
             file_name = os.path.basename(parsed.path[len("/media/"):]).strip()
@@ -1723,10 +1756,40 @@ class HealthHandler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_POST(self):
+        if not hasattr(self, "path"):
+            self.do_GET()
+            return
         parsed = urlparse(self.path)
-        if parsed.path != "/custom-post":
-            self.send_response(404)
+        if parsed.path.startswith("/api/os/"):
+            params = parse_qs(parsed.query)
+            authorized, status_code, error_payload = _os_authorized(self, params)
+            if not authorized:
+                body = json.dumps(error_payload).encode("utf-8")
+                self.send_response(status_code)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+                return
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+                if length < 0 or length > 1_000_000:
+                    raise ValueError("request body must be at most 1 MB")
+                payload = json.loads(self.rfile.read(length).decode("utf-8")) if length else {}
+                if not isinstance(payload, dict):
+                    raise ValueError("request body must be a JSON object")
+                from social_engine.intelligence_os.web import handle
+                status_code, content_type, body = handle("POST", parsed.path, payload, _data_dir())
+            except (ValueError, json.JSONDecodeError) as exc:
+                status_code, content_type, body = 400, "application/json", json.dumps({"error": str(exc)}).encode("utf-8")
+            self.send_response(status_code)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Content-Length", str(len(body)))
             self.end_headers()
+            self.wfile.write(body)
+            return
+        if parsed.path != "/custom-post":
+            self.do_GET()
             return
         params = parse_qs(parsed.query)
         authorized, status_code, error_payload = _authorized(params)
@@ -2063,8 +2126,15 @@ def register_scheduled_jobs() -> None:
     schedule.every().day.at("10:00").do(run_candidate_batch)
     schedule.every().monday.at(intelligence_standard_utc).do(run_intelligence_heartbeat, "STANDARD_HEARTBEAT")
     schedule.every().sunday.at(intelligence_deep_utc).do(run_intelligence_heartbeat, "DEEP_HEARTBEAT")
+    if os.environ.get("INTELLIGENCE_OS_ENABLED", "true").lower() in {"1", "true", "yes", "on"}:
+        from social_engine.intelligence_os.foundation import heartbeat
+        schedule.every(15).minutes.do(heartbeat, _data_dir())
 
 def main() -> None:
+    if os.environ.get("INTELLIGENCE_OS_ENABLED", "true").lower() in {"1", "true", "yes", "on"}:
+        from social_engine.intelligence_os.foundation import bootstrap
+        intelligence_os = bootstrap(_data_dir())
+        print(f"Infenergy Intelligence OS ready: {len(intelligence_os.registry.list())} capabilities")
     register_scheduled_jobs()
 
     start_health_server()

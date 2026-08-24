@@ -6280,17 +6280,24 @@ Return ONLY valid JSON with these exact keys (no markdown, no code fences):
             reel_gate = reels.validate_reel_plan(reel_plan)
             content["reel_pre_render_gate"] = reel_gate
             if reel_gate["status"] == "REEL_READY":
-                reel_artifacts = reels.render_reel(
-                    reel_plan,
-                    source_image=str((content.get("generated_visuals") or {}).get("instagram") or ""),
-                )
-                reel_artifacts["technical_qa"] = reels.technical_qa(reel_artifacts, reel_plan)
-                reel_artifacts["freeze_qa"] = reels.freeze_qa(reel_artifacts, reel_plan)
-                reel_artifacts["final_frame_qa"] = reels.final_frame_qa(reel_artifacts)
-                reel_artifacts["cover_qa"] = reels.cover_qa(reel_artifacts)
-                reel_artifacts["motion_qa"] = reels.motion_qa(reel_plan)
-                content["instagram_reel"] = reel_artifacts
-                platform_posts["instagram"]["reel"] = reel_artifacts
+                try:
+                    reel_artifacts = reels.render_reel(
+                        reel_plan,
+                        source_image=str((content.get("generated_visuals") or {}).get("instagram") or ""),
+                    )
+                    reel_artifacts["technical_qa"] = reels.technical_qa(reel_artifacts, reel_plan)
+                    reel_artifacts["freeze_qa"] = reels.freeze_qa(reel_artifacts, reel_plan)
+                    reel_artifacts["final_frame_qa"] = reels.final_frame_qa(reel_artifacts)
+                    reel_artifacts["cover_qa"] = reels.cover_qa(reel_artifacts)
+                    reel_artifacts["motion_qa"] = reels.motion_qa(reel_plan)
+                    content["instagram_reel"] = reel_artifacts
+                    platform_posts["instagram"]["reel"] = reel_artifacts
+                except RuntimeError as exc:
+                    if str(exc) not in {"ffmpeg_not_available", "ffprobe_not_available"}:
+                        raise
+                    content["instagram_media_decision"]["selected_format"] = "STATIC"
+                    content["instagram_media_decision"]["fallback_reason"] = str(exc)
+                    platform_posts["instagram"]["media_type"] = "STATIC"
             else:
                 content["instagram_media_decision"]["selected_format"] = "STATIC"
                 platform_posts["instagram"]["media_type"] = "STATIC"

@@ -1,4 +1,5 @@
 google-genai>=1.28.0
+github-copilot-sdk==1.0.11
 requests>=2.31.0
 schedule>=1.2.0
 Pillow>=10.4.0

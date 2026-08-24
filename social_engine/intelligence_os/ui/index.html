@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Infenergy Intelligence OS</title>
+  <link rel="stylesheet" href="/os/assets/styles.css">
+</head>
+<body>
+  <div class="shell">
+    <aside class="rail">
+      <div class="brand"><span class="brand-mark">I</span><div><strong>INFENERGY</strong><small>INTELLIGENCE OS</small></div></div>
+      <nav id="nav">
+        <button class="active" data-view="command">Command</button>
+        <button data-view="today">Today</button>
+        <button data-view="jobs">Jobs</button>
+        <button data-view="research">Research</button>
+        <button data-view="automations">Automations</button>
+        <button data-view="social">Social</button>
+        <button data-view="strategy">Strategy</button>
+        <button data-view="activity">Activity</button>
+        <button data-view="health">System Health</button>
+        <button data-view="permissions">Permissions</button>
+      </nav>
+      <div class="rail-footer"><span id="system-dot" class="dot"></span><span id="system-label">Connecting</span></div>
+    </aside>
+    <main>
+      <header>
+        <div><p class="eyebrow">MASTER OPERATING ENVIRONMENT</p><h1 id="view-title">Command</h1></div>
+        <div class="header-actions"><button id="refresh" class="ghost">Refresh</button><button id="new-chat" class="ghost">New session</button></div>
+      </header>
+
+      <section id="command" class="view active">
+        <div class="command-grid">
+          <article class="conversation panel">
+            <div id="messages" class="messages">
+              <div class="message assistant"><span class="avatar">I</span><div><strong>Infenergy Intelligence</strong><p>Ready to inspect, plan, research, create, operate, and improve Infenergy. Mutations remain policy-governed.</p></div></div>
+            </div>
+            <form id="command-form" class="composer">
+              <textarea id="command-input" rows="3" placeholder="What should Infenergy know or accomplish?"></textarea>
+              <div><span>Shift + Enter for a new line</span><button type="submit">Run command <b>→</b></button></div>
+            </form>
+          </article>
+          <aside class="context-stack">
+            <article class="panel compact"><div class="panel-title"><h2>Needs attention</h2><span id="attention-count" class="badge">0</span></div><div id="attention-list" class="list empty">Nothing material is waiting.</div></article>
+            <article class="panel compact"><div class="panel-title"><h2>Active jobs</h2><span id="job-count" class="badge">0</span></div><div id="job-list" class="list empty">No active jobs.</div></article>
+            <article class="panel compact"><div class="panel-title"><h2>Current authority</h2></div><div id="policy-summary" class="list empty">Loading policies…</div></article>
+          </aside>
+        </div>
+      </section>
+
+      <section id="today" class="view"><div class="metric-grid" id="today-metrics"></div><article class="panel"><div class="panel-title"><h2>What matters today</h2></div><div id="today-content" class="cards"></div></article></section>
+      <section id="jobs" class="view"><article class="panel"><div class="panel-title"><h2>Execution fabric</h2><button class="ghost" data-action="plan120">Dry-run 120-day plan</button></div><div id="jobs-table" class="table"></div></article></section>
+      <section id="research" class="view"><article class="panel"><div class="panel-title"><h2>Intelligence Library</h2></div><p class="muted">Current findings retain source identity, credibility, freshness, expiration, and limitations.</p><div id="research-content" class="cards"></div></article></section>
+      <section id="automations" class="view"><article class="panel"><div class="panel-title"><h2>Automations and watches</h2></div><div id="automations-content" class="cards"></div></article><article class="panel"><div class="panel-title"><h2>Recent automation runs</h2></div><div id="automation-runs" class="table"></div></article></section>
+      <section id="social" class="view"><article class="panel"><div class="panel-title"><h2>Social operations</h2></div><div id="social-content" class="cards"></div></article></section>
+      <section id="strategy" class="view"><article class="panel"><div class="panel-title"><h2>Goals and strategy</h2></div><div id="strategy-content" class="cards"></div></article></section>
+      <section id="activity" class="view"><article class="panel"><div class="panel-title"><h2>Auditable activity</h2></div><div id="activity-table" class="table"></div></article></section>
+      <section id="health" class="view"><article class="panel"><div class="panel-title"><h2>Provider and system health</h2></div><div id="health-content" class="cards"></div></article></section>
+      <section id="permissions" class="view"><article class="panel"><div class="panel-title"><h2>Owner control</h2></div><div id="permissions-content" class="cards"></div></article></section>
+    </main>
+  </div>
+  <div id="toast" class="toast"></div>
+  <script src="/os/assets/app.js"></script>
+</body>
+</html>

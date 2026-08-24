@@ -178,8 +178,6 @@ def publish(content: dict, wp_link: str, dry_run: bool = False) -> dict:
         print(f"[DRY RUN] Facebook: would post:\n{message[:150]}...\n")
         return {"id": "dry-run"}
 
-    page_id = _required_env("META_PAGE_ID")
-    token = _resolve_page_access_token(_required_env("META_PAGE_ACCESS_TOKEN"), page_id)
     carousel_assets = [
         asset
         for asset in content.get("carousel_assets", []) or []
@@ -199,6 +197,9 @@ def publish(content: dict, wp_link: str, dry_run: bool = False) -> dict:
             if review.get("verdict") != "PASS":
                 issues = ",".join(str(issue) for issue in review.get("issues", [])) or "artifact_review_failed"
                 raise RuntimeError(f"facebook_strict_gemini_artifact_invalid:{issues}")
+
+    page_id = _required_env("META_PAGE_ID")
+    token = _resolve_page_access_token(_required_env("META_PAGE_ACCESS_TOKEN"), page_id)
 
     if len(carousel_paths) >= 2:
         data = _publish_feed_with_photos(

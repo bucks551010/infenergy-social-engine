@@ -94,6 +94,24 @@ def test_schedule_dry_run_does_not_write_social_slot(tmp_path):
     assert calendar["result"]["days"][0]["slots"] == []
 
 
+def test_idempotent_replay_preserves_transaction_response_contract(tmp_path):
+    service = bootstrap(str(tmp_path))
+    arguments = {"premise": "A validation scenario"}
+
+    first = service.execute_capability(
+        "scenario.create", arguments, dry_run=True, operation_id="same-operation"
+    )
+    replay = service.execute_capability(
+        "scenario.create", arguments, dry_run=True, operation_id="same-operation"
+    )
+
+    assert replay["idempotent_replay"] is True
+    assert replay["transaction_id"] == first["transaction_id"]
+    assert replay["status"] == first["status"]
+    assert replay["result"] == first["result"]
+    assert replay["rollback_available"] == first["rollback_available"]
+
+
 def test_world_model_preserves_temporal_assertion_history(tmp_path):
     world = WorldModel(str(tmp_path))
     competitor = world.upsert_entity("CompetitorProduct", "Example 1000")

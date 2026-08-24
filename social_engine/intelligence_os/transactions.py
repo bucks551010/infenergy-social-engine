@@ -38,7 +38,17 @@ class TransactionService:
         operation_id = operation_id or uuid.uuid4().hex
         existing = self._by_operation_id(operation_id)
         if existing:
-            return {**existing, "idempotent_replay": True}
+            return {
+                **existing,
+                "transaction_id": existing["id"],
+                "result": existing["after_state"],
+                "rollback_available": bool(
+                    existing["status"] == "COMPLETED"
+                    and existing["rollback_data"]
+                    and not existing["dry_run"]
+                ),
+                "idempotent_replay": True,
+            }
 
         authorization = self.policies.authorize(
             capability, payload, actor=actor, approval_id=approval_id

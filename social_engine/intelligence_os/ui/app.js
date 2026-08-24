@@ -82,7 +82,18 @@ function render(data) {
 }
 
 async function load() { try { const data = await api('/api/os/state'); state.data = data; state.conversationId = data.conversation?.id; render(data); $('#system-dot').className = 'dot ok'; $('#system-label').textContent = 'OS connected'; } catch (error) { $('#system-dot').className = 'dot bad'; $('#system-label').textContent = 'Connection blocked'; toast(error.message); } }
-$('#nav').addEventListener('click', (event) => { const button = event.target.closest('button[data-view]'); if (!button) return; document.querySelectorAll('#nav button').forEach((item) => item.classList.remove('active')); button.classList.add('active'); document.querySelectorAll('.view').forEach((item) => item.classList.remove('active')); $(`#${button.dataset.view}`).classList.add('active'); $('#view-title').textContent = button.textContent; });
+function activateView(view) {
+  const button = document.querySelector(`#nav button[data-view="${view}"]`);
+  const target = $(`#${view}`);
+  if (!button || !target) return;
+  document.querySelectorAll('#nav button').forEach((item) => item.classList.toggle('active', item === button));
+  document.querySelectorAll('.view').forEach((item) => item.classList.toggle('active', item === target));
+  $('#view-title').textContent = button.textContent;
+  $('#mobile-nav').value = view;
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+$('#nav').addEventListener('click', (event) => { const button = event.target.closest('button[data-view]'); if (button) activateView(button.dataset.view); });
+$('#mobile-nav').addEventListener('change', (event) => activateView(event.target.value));
 $('#command-form').addEventListener('submit', async (event) => { event.preventDefault(); const input = $('#command-input'), text = input.value.trim(); if (!text) return; message('user', text); input.value = ''; message('assistant', 'Working…'); const pending = $('#messages .message:last-child'); try { const result = await api('/api/os/command', { method: 'POST', body: JSON.stringify({ message: text, conversation_id: state.conversationId }) }); pending.remove(); message('assistant', result.message, result.status === 'BLOCKED' ? 'blocked' : ''); state.conversationId = result.conversation_id; await load(); } catch (error) { pending.remove(); message('assistant', error.message, 'blocked'); } });
 $('#command-input').addEventListener('keydown', (event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); $('#command-form').requestSubmit(); } });
 $('#refresh').addEventListener('click', load); $('#new-chat').addEventListener('click', () => { state.conversationId = null; $('#messages').innerHTML = ''; message('assistant', 'New command context started. Durable company memory remains available.'); });

@@ -21,6 +21,7 @@ nav { display: grid; gap: 5px; }
 nav button, .ghost { padding: 11px 13px; color: var(--muted); text-align: left; border-radius: 9px; background: transparent; }
 nav button:hover, nav button.active, .ghost:hover { color: var(--text); background: #172a26; }
 nav button.active { box-shadow: inset 3px 0 var(--accent); }
+.mobile-view-picker { display: none; }
 .rail-footer { margin-top: auto; padding: 18px 10px 0; color: var(--muted); font-size: 12px; border-top: 1px solid var(--line); }
 .dot { display: inline-block; width: 8px; height: 8px; margin-right: 8px; border-radius: 50%; background: var(--accent); }
 .dot.ok { background: var(--green); } .dot.bad { background: var(--red); }
@@ -86,7 +87,9 @@ p { line-height: 1.55; }
 .empty-state { display: grid; min-height: 160px; place-content: center; justify-items: center; padding: 30px; color: var(--muted); text-align: center; }
 .empty-state > span { display: grid; width: 42px; height: 42px; margin-bottom: 12px; place-items: center; color: var(--green); border: 1px solid #2c5549; border-radius: 50%; background: #102a23; }
 .empty-state strong { color: var(--text); } .empty-state p { max-width: 440px; margin: 5px 0 0; font-size: 12px; }
-.data-table { width: 100%; }
+.data-table { width: 100%; min-width: 0; }
+.data-table > *, .table-row > *, article > *, .panel > * { min-width: 0; }
+.table-row strong, .table-row span, .table-row small, article h3, article p { overflow-wrap: anywhere; }
 .table-head, .table-row { display: grid; grid-template-columns: minmax(240px, 1.7fr) 160px minmax(170px, 1fr) 190px; gap: 18px; align-items: center; }
 .table-head { padding: 5px 12px 12px; color: var(--muted); font-size: 9px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
 .table-row { min-height: 68px; padding: 13px 12px; border-top: 1px solid var(--line); font-size: 12px; }
@@ -128,13 +131,46 @@ p { line-height: 1.55; }
 .toast { position: fixed; right: 24px; bottom: 24px; z-index: 10; padding: 12px 17px; opacity: 0; pointer-events: none; transform: translateY(10px); transition: .2s; border: 1px solid #31564d; border-radius: 10px; background: #19312c; box-shadow: var(--shadow); }
 .toast.show { opacity: 1; transform: none; }
 @media (max-width: 1100px) {
-  .shell { grid-template-columns: 82px minmax(0, 1fr); } .rail { padding-inline: 14px; } .brand { padding-left: 2px; } .brand div, nav button { font-size: 0; }
+  .shell { grid-template-columns: 210px minmax(0, 1fr); } .rail { padding-inline: 14px; } .brand { padding-left: 2px; }
   .command-grid { grid-template-columns: 1fr; } .context-stack { grid-template-columns: repeat(3, 1fr); } .conversation { height: auto; }
   .metric-grid { grid-template-columns: repeat(3, 1fr); } .provider-grid { grid-template-columns: repeat(2, 1fr); }
 }
 @media (max-width: 780px) {
-  .shell { display: block; } .rail { position: relative; height: auto; padding: 12px; border-right: 0; border-bottom: 1px solid var(--line); } .brand { padding: 0 0 12px; } .brand div { display: block; }
-  .rail nav { display: flex; overflow: auto; } .rail nav button { font-size: 12px; white-space: nowrap; } .rail-footer, .header-actions { display: none; } main { padding: 22px 14px; }
-  .context-stack, .metric-grid, .provider-grid, .slot-grid, .social-summary, .confidence-grid { grid-template-columns: 1fr; } .social-summary > div { border-right: 0; border-bottom: 1px solid var(--line); }
-  .table-head { display: none; } .table-row { grid-template-columns: 1fr 1fr; gap: 12px; } .conversation { min-height: 70vh; }
+  body { overflow-x: hidden; }
+  .shell { display: block; width: 100%; }
+  .rail { position: sticky; top: 0; z-index: 20; display: grid; grid-template-columns: auto minmax(150px, 1fr); gap: 12px; align-items: center; width: 100%; height: auto; padding: 10px 12px; border-right: 0; border-bottom: 1px solid var(--line); }
+  .brand { padding: 0; } .brand-mark { width: 36px; height: 36px; } .brand div { display: none; }
+  .rail nav { display: none; }
+  .mobile-view-picker { display: grid; gap: 4px; }
+  .mobile-view-picker span { color: var(--muted); font-size: 9px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
+  .mobile-view-picker select { width: 100%; min-width: 0; padding: 9px 34px 9px 11px; color: var(--text); font: inherit; font-size: 13px; border: 1px solid var(--line); border-radius: 9px; background: var(--panel2); }
+  .rail-footer { grid-column: 1 / -1; margin: 0; padding: 7px 2px 0; font-size: 10px; border-top: 1px solid var(--line); }
+  main { width: 100%; max-width: 100%; padding: 18px 12px 34px; overflow: hidden; }
+  header { flex-wrap: wrap; gap: 13px; margin-bottom: 18px; } h1 { font-size: 25px; }
+  .header-actions { display: flex; width: 100%; } .header-actions .ghost { flex: 1; padding: 9px; font-size: 12px; }
+  .view, .panel, .command-grid, .context-stack, .cards, .dashboard-grid, .data-table { width: 100%; max-width: 100%; min-width: 0; }
+  .view > .panel { padding: 15px; border-radius: 13px; }
+  .context-stack { grid-template-columns: 1fr; }
+  .metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
+  .metric { padding: 14px; } .metric b { font-size: 23px; }
+  .cards, .dashboard-grid, .provider-grid, .slot-grid { grid-template-columns: minmax(0, 1fr); }
+  .social-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .social-summary > div { border-right: 0; border-bottom: 1px solid var(--line); }
+  .confidence-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .table-head { display: none; }
+  .table-row { grid-template-columns: minmax(0, 1fr); gap: 10px; padding: 15px 4px; }
+  .table-row > div { padding-bottom: 7px; border-bottom: 1px dashed #29423c; } .table-row > div:last-child { padding-bottom: 0; border: 0; }
+  .progress-cell { grid-template-columns: minmax(0, 1fr) 38px; }
+  .health-hero, .permission-intro, .policy-card { align-items: flex-start; flex-direction: column; }
+  .policy-card { gap: 13px; }
+  .card-top, .meta-line, article footer { flex-wrap: wrap; }
+  .finding-card { min-height: 0; }
+  .conversation { height: calc(100dvh - 225px); min-height: 500px; }
+  .messages { padding: 16px; } .message.user > div { max-width: 92%; }
+  .composer { padding: 12px; } .composer > div { gap: 8px; } .composer > div > span { display: none; } .composer button { width: 100%; }
+  .toast { right: 12px; bottom: 12px; left: 12px; text-align: center; }
+}
+@media (max-width: 430px) {
+  .metric-grid, .social-summary, .confidence-grid { grid-template-columns: minmax(0, 1fr); }
+  .health-footer { display: grid; gap: 8px; }
 }

@@ -178,6 +178,8 @@ def test_command_center_and_api_are_served(tmp_path):
     assert status == 200
     assert content_type.startswith("text/html")
     assert b"Infenergy Intelligence OS" in page
+    assert b'id="mobile-nav"' in page
+    assert b'app.js?v=3' in page
     assert api_status == 200
     assert api_type.startswith("application/json")
     assert b"system.health" in payload
@@ -186,11 +188,15 @@ def test_command_center_and_api_are_served(tmp_path):
     assert b"function renderResearch" in javascript
     assert b"function renderSocial" in javascript
     assert b"function renderHealth" in javascript
+    assert b"function activateView" in javascript
     assert b"JSON.stringify(item" not in javascript
     assert css_status == 200
     assert css_type.startswith("text/css")
     assert b".provider-grid" in stylesheet
     assert b".slot-grid" in stylesheet
+    assert b".mobile-view-picker" in stylesheet
+    assert b"overflow-x: hidden" in stylesheet
+    assert b"grid-template-columns: minmax(0, 1fr)" in stylesheet
 
 
 def test_120_day_plan_is_a_durable_approval_gated_job(tmp_path):

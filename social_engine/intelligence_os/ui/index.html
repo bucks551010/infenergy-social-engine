@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Infenergy Intelligence OS</title>
-  <link rel="stylesheet" href="/os/assets/styles.css?v=2">
+  <link rel="stylesheet" href="/os/assets/styles.css?v=3">
 </head>
 <body>
   <div class="shell">
@@ -22,6 +22,21 @@
         <button data-view="health">System Health</button>
         <button data-view="permissions">Permissions</button>
       </nav>
+      <label class="mobile-view-picker">
+        <span>Current view</span>
+        <select id="mobile-nav" aria-label="Select dashboard view">
+          <option value="command">Command</option>
+          <option value="today">Today</option>
+          <option value="jobs">Jobs</option>
+          <option value="research">Research</option>
+          <option value="automations">Automations</option>
+          <option value="social">Social</option>
+          <option value="strategy">Strategy</option>
+          <option value="activity">Activity</option>
+          <option value="health">System Health</option>
+          <option value="permissions">Permissions</option>
+        </select>
+      </label>
       <div class="rail-footer"><span id="system-dot" class="dot"></span><span id="system-label">Connecting</span></div>
     </aside>
     <main>
@@ -61,6 +76,6 @@
     </main>
   </div>
   <div id="toast" class="toast"></div>
-  <script src="/os/assets/app.js?v=2"></script>
+  <script src="/os/assets/app.js?v=3"></script>
 </body>
 </html>

@@ -73,3 +73,19 @@ def test_custom_post_marks_visual_as_owner_supplied():
 
     assert status == 200
     assert facebook.call_args.args[0]["owner_supplied_visual"] is True
+
+
+def test_custom_post_retries_legacy_published_skipped_checkpoint():
+    payload = _payload()
+    payload["platforms"] = ["instagram"]
+    with tempfile.TemporaryDirectory() as data_dir:
+        history_path = os.path.join(data_dir, "custom_post_history.json")
+        with open(history_path, "w", encoding="utf-8") as history_file:
+            history_file.write('{"iis-schedule-1":{"platforms":{"instagram":{"status":"published","result":{"id":"skipped","reason":"old_gate"}}}}}')
+        with patch.dict(os.environ, {"DATA_DIR": data_dir}, clear=False), \
+            patch("publish_instagram.publish", return_value={"id": "ig-1"}) as instagram:
+            status, response = worker._publish_custom_post(payload)
+
+    assert status == 200
+    assert response["platforms"]["instagram"]["result"]["id"] == "ig-1"
+    assert instagram.call_count == 1

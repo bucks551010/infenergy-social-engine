@@ -119,6 +119,15 @@ def _publish_custom_post(payload: dict) -> tuple[int, dict]:
         for platform in platforms:
             previous = results.get(platform)
             if isinstance(previous, dict) and previous.get("status") == "published":
+                previous_result = previous.get("result") if isinstance(previous.get("result"), dict) else {}
+                if str(previous_result.get("id") or "").strip().lower() == "skipped":
+                    previous = {
+                        "status": "failed",
+                        "error": str(previous_result.get("reason") or "legacy skipped publisher result"),
+                        "updated_at_utc": _utc_now(),
+                    }
+                    results[platform] = previous
+            if isinstance(previous, dict) and previous.get("status") == "published":
                 continue
             try:
                 if platform == "facebook":

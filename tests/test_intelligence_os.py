@@ -172,6 +172,8 @@ def test_master_conversation_fails_closed_without_configured_model(tmp_path, mon
 def test_command_center_and_api_are_served(tmp_path):
     status, content_type, page = handle("GET", "/os", None, str(tmp_path))
     api_status, api_type, payload = handle("GET", "/api/os/capabilities", None, str(tmp_path))
+    js_status, js_type, javascript = handle("GET", "/os/assets/app.js", None, str(tmp_path))
+    css_status, css_type, stylesheet = handle("GET", "/os/assets/styles.css", None, str(tmp_path))
 
     assert status == 200
     assert content_type.startswith("text/html")
@@ -179,6 +181,16 @@ def test_command_center_and_api_are_served(tmp_path):
     assert api_status == 200
     assert api_type.startswith("application/json")
     assert b"system.health" in payload
+    assert js_status == 200
+    assert js_type.startswith("text/javascript")
+    assert b"function renderResearch" in javascript
+    assert b"function renderSocial" in javascript
+    assert b"function renderHealth" in javascript
+    assert b"JSON.stringify(item" not in javascript
+    assert css_status == 200
+    assert css_type.startswith("text/css")
+    assert b".provider-grid" in stylesheet
+    assert b".slot-grid" in stylesheet
 
 
 def test_120_day_plan_is_a_durable_approval_gated_job(tmp_path):

@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import asyncio
 import json
 from datetime import datetime, timezone
+from types import SimpleNamespace
 
 import pytest
 
@@ -9,7 +11,7 @@ from social_engine.intelligence_os.foundation import bootstrap
 from social_engine.intelligence_os.foundation import heartbeat
 from social_engine.intelligence_os.intelligence import AutomationService, ResearchIntelligence, classify_source
 from social_engine.intelligence_os.knowledge import WorldModel
-from social_engine.intelligence_os.models import MasterModelUnavailable, ModelStatus
+from social_engine.intelligence_os.models import CopilotMaster, MasterModelUnavailable, ModelStatus
 from social_engine.intelligence_os.operations import JobService
 from social_engine.intelligence_os.web import handle
 
@@ -196,6 +198,66 @@ def test_master_continues_durable_conversation_context(tmp_path, monkeypatch):
     assert "do not restart discovery" in prompts[1]["prompt"]
 
 
+def test_master_timeout_is_preserved_as_resumable_conversation_state(tmp_path, monkeypatch):
+    service = bootstrap(str(tmp_path))
+
+    async def time_out(*args, **kwargs):
+        raise TimeoutError("Timeout after 300.0s waiting for session.idle")
+
+    monkeypatch.setattr(service.master, "converse", time_out)
+    result = service.command("Complete a substantial research and planning operation.")
+    conversation = service.get_conversation(result["conversation_id"])
+
+    assert result["status"] == "TIMED_OUT"
+    assert "No completion is being claimed" in result["message"]
+    assert conversation["messages"][-1]["metadata"]["timed_out"] is True
+    assert conversation["messages"][-2]["content"] == "Complete a substantial research and planning operation."
+
+
+def test_copilot_master_uses_autopilot_and_extended_wait(tmp_path, monkeypatch):
+    import copilot
+
+    calls = {}
+
+    class FakeSession:
+        async def send_and_wait(self, prompt, **kwargs):
+            calls.update({"prompt": prompt, **kwargs})
+            return SimpleNamespace(data=SimpleNamespace(content="Verified completion"))
+
+        async def disconnect(self):
+            return None
+
+    class FakeClient:
+        async def start(self):
+            return None
+
+        async def create_session(self, **kwargs):
+            calls["session"] = kwargs
+            return FakeSession()
+
+        async def stop(self):
+            return None
+
+    available = ModelStatus(
+        provider="github-copilot-sdk", configured_model="gpt-5.6-sol",
+        authenticated=True, available=True, available_models=[{"id": "gpt-5.6-sol"}],
+        reason="available", checked_at=datetime.now(timezone.utc).isoformat(),
+    )
+    monkeypatch.setenv("INFENERGY_COMMAND_TIMEOUT_SECONDS", "300")
+    monkeypatch.setattr(copilot, "CopilotClient", FakeClient)
+    master = CopilotMaster(str(tmp_path))
+
+    async def available_status():
+        return available
+
+    monkeypatch.setattr(master, "status_async", available_status)
+    result = asyncio.run(master.converse("Finish the operation", session_id="test-session", system_message="Operate."))
+
+    assert result["content"] == "Verified completion"
+    assert calls["agent_mode"] == "autopilot"
+    assert calls["timeout"] == 300.0
+
+
 def test_command_center_and_api_are_served(tmp_path):
     status, content_type, page = handle("GET", "/os", None, str(tmp_path))
     api_status, api_type, payload = handle("GET", "/api/os/capabilities", None, str(tmp_path))
@@ -209,7 +271,7 @@ def test_command_center_and_api_are_served(tmp_path):
     assert content_type.startswith("text/html")
     assert b"Infenergy Intelligence OS" in page
     assert b'id="mobile-nav"' in page
-    assert b'app.js?v=4' in page
+    assert b'app.js?v=5' in page
     assert api_status == 200
     assert api_type.startswith("application/json")
     assert b"system.health" in payload

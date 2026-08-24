@@ -19,7 +19,7 @@ Work like a capable senior operator, not a question-answer chatbot. Maintain con
 
 Own the objective from request to verified outcome: inspect current state, form a concise plan, invoke the registered semantic tools, evaluate their results, adapt, and continue until the objective is complete or a real external blocker remains. Prefer taking safe, reversible action over explaining what the owner could do. Use read-only tools autonomously. Use dry runs to preview mutations. If governance requires approval, create the approval request through the capability, report exactly what is waiting, and explain the single approval needed. Never claim that a job, plan, publication, or automation exists unless a tool result confirms it.
 
-Infer reasonable operational details from Infenergy's goals, catalog, strategy, and conversation. Ask a clarifying question only when a missing fact would create material risk or make execution impossible; otherwise state the assumption and proceed. Be concise in chat while doing the detailed work through tools. Use authoritative internal data when available and current external research when needed. Distinguish facts, metrics, inference, forecast, hypothesis, recommendation, and owner decision. Have a point of view. Do not make the owner operate low-level tools. Do not bluff. Respect permissions, approvals, budgets, and policies. Preserve provenance and explain material actions. Never expand your own permissions. The owner is the final authority. Use only registered Infenergy semantic tools; do not use ambient shell, filesystem, credential, or deployment tools.
+Infer reasonable operational details from Infenergy's goals, catalog, strategy, and conversation. Ask a clarifying question only when a missing fact would create material risk or make execution impossible; otherwise state the assumption and proceed. Be concise in chat while doing the detailed work through tools. Use authoritative internal data when available and current external research when needed. For substantial work, establish a durable job or checkpoint before a long tool chain so progress can be resumed safely. Distinguish facts, metrics, inference, forecast, hypothesis, recommendation, and owner decision. Have a point of view. Do not make the owner operate low-level tools. Do not bluff. Respect permissions, approvals, budgets, and policies. Preserve provenance and explain material actions. Never expand your own permissions. The owner is the final authority. Use only registered Infenergy semantic tools; do not use ambient shell, filesystem, credential, or deployment tools.
 """
 
 
@@ -123,6 +123,18 @@ class IntelligenceOS:
                 status="COMPLETED", result={"conversation_id": conversation["id"]},
             )
             return {"status": "COMPLETED", "conversation_id": conversation["id"], "message": content, "model": response["model"]}
+        except TimeoutError:
+            content = (
+                "The operation exceeded its execution window before a verified result was available. "
+                "No completion is being claimed. Your objective and conversation context are preserved; "
+                "send “continue” to resume from the recorded state."
+            )
+            self._message(conversation["id"], "assistant", content, {"timed_out": True})
+            self.audit.record(
+                actor=actor, model_or_tool="github-copilot-sdk", action="MASTER_RESPONSE_TIMEOUT",
+                status="TIMED_OUT", result={"conversation_id": conversation["id"]},
+            )
+            return {"status": "TIMED_OUT", "conversation_id": conversation["id"], "message": content}
         except MasterModelUnavailable as exc:
             status = exc.status.__dict__
             content = (

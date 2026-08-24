@@ -12,6 +12,7 @@ from .db import connect, encode, initialize, utc_now
 
 
 DEFAULT_MASTER_MODEL = "gpt-5.6-sol"
+DEFAULT_COMMAND_TIMEOUT_SECONDS = 300.0
 
 
 @dataclass(frozen=True)
@@ -38,7 +39,16 @@ class CopilotMaster:
     def __init__(self, data_dir: str):
         self.data_dir = data_dir
         self.model = os.environ.get("INFENERGY_MASTER_MODEL", DEFAULT_MASTER_MODEL).strip() or DEFAULT_MASTER_MODEL
+        self.command_timeout = self._command_timeout()
         initialize(data_dir)
+
+    @staticmethod
+    def _command_timeout() -> float:
+        try:
+            configured = float(os.environ.get("INFENERGY_COMMAND_TIMEOUT_SECONDS", DEFAULT_COMMAND_TIMEOUT_SECONDS))
+        except (TypeError, ValueError):
+            configured = DEFAULT_COMMAND_TIMEOUT_SECONDS
+        return max(60.0, min(configured, 900.0))
 
     async def status_async(self) -> ModelStatus:
         checked_at = utc_now()
@@ -103,7 +113,11 @@ class CopilotMaster:
                 on_permission_request=reject_ambient_tools,
                 working_directory=str(Path(__file__).resolve().parents[2]),
             )
-            response = await session.send_and_wait(prompt)
+            response = await session.send_and_wait(
+                prompt,
+                agent_mode="autopilot",
+                timeout=self.command_timeout,
+            )
             content = str(getattr(getattr(response, "data", None), "content", "") or "")
             await session.disconnect()
             return {"content": content, "model": self.model, "provider": "github-copilot-sdk", "session_id": session_id}

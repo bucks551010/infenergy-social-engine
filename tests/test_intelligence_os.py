@@ -98,6 +98,40 @@ def test_completed_campaign_is_loaded_with_one_approval_and_no_publication(tmp_p
     assert approved["execution"]["rollback_available"] is True
 
 
+def test_date_keyed_posts_load_multiple_slots_with_one_approval(tmp_path):
+    service = bootstrap(str(tmp_path))
+    job = service.jobs.create(job_type="CAMPAIGN", objective="Build companion posts", plan=["produce"])
+    posts = []
+    for content_date in ("2026-09-21", "2026-09-22"):
+        for slot in ("morning", "evening"):
+            posts.append({
+                "content_date": content_date, "slot": slot, "hook": f"{slot} hook",
+                "script": f"{slot} copy", "adaptations": {"facebook": "fb", "instagram": "ig", "linkedin": "li"},
+            })
+    service.jobs.transition(job["id"], "COMPLETED", progress=1, result={
+        "campaign": {"name": "Blackout House"}, "posts": posts,
+    })
+    pending = service.execute_capability("social.schedule_job_campaign", {
+        "job_id": job["id"], "start_date": "2026-09-21", "end_date": "2026-09-22",
+        "slots": ["morning", "evening"],
+        "schedule_times": {"morning": "13:00:00+00:00", "evening": "23:00:00+00:00"},
+        "platforms": ["facebook", "instagram", "linkedin"],
+    })
+
+    approved = service.approve_and_execute(pending["approval_id"])
+
+    assert approved["execution"]["status"] == "COMPLETED"
+    assert approved["execution"]["result"]["scheduled_count"] == 4
+    assert approved["execution"]["result"]["platform_adaptation_count"] == 12
+    assert approved["execution"]["result"]["slots"] == ["morning", "evening"]
+    calendar = service.execute_capability(
+        "social.calendar.get", {"start_date": "2026-09-21", "days": 1}
+    )["result"]["days"][0]
+    loaded = {item["slot"]: item["status"] for item in calendar["slots"]}
+    assert loaded["morning"] == "READY"
+    assert loaded["evening"] == "READY"
+
+
 def test_campaign_schedule_approval_supersedes_overlapping_variants(tmp_path):
     service = bootstrap(str(tmp_path))
     job_id = "job-123"

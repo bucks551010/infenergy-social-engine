@@ -139,6 +139,15 @@ class AttentionService:
             ).fetchall()
         return [dict(row) for row in rows]
 
+    def resolve_matching(self, summary_prefix: str) -> int:
+        with connect(self.data_dir) as connection:
+            changed = connection.execute(
+                "UPDATE os_attention_items SET status='RESOLVED', resolved_at=? WHERE status='OPEN' AND summary LIKE ?",
+                (utc_now(), f"{summary_prefix}%"),
+            ).rowcount
+            connection.commit()
+        return changed
+
 
 class JobService:
     VALID_STATUSES = {"PLANNING", "RUNNING", "WAITING_APPROVAL", "PAUSED", "FAILED", "COMPLETED", "CANCELED"}

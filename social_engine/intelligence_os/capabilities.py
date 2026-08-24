@@ -139,50 +139,74 @@ def register_core_capabilities(registry: CapabilityRegistry, policies: PolicyEng
         end = date.fromisoformat(str(payload["end_date"]))
         if end < start or (end - start).days >= 120:
             raise ValueError("campaign_range_must_be_1_to_120_days")
-        episodes = job.get("result", {}).get("episodes", [])
-        by_date = {str(item.get("date")): item for item in episodes if isinstance(item, dict) and item.get("date")}
+        result = job.get("result", {})
+        deliverables = next(
+            (result.get(key) for key in ("posts", "packages", "episodes") if isinstance(result.get(key), list)),
+            [],
+        )
         dates = [(start + timedelta(days=index)).isoformat() for index in range((end - start).days + 1)]
-        missing = [item for item in dates if item not in by_date]
+        requested_slots = payload.get("slots")
+        if not isinstance(requested_slots, list) or not requested_slots:
+            requested_slots = [str(payload.get("slot", "midday"))]
+        slots = [str(item).lower() for item in requested_slots]
+        by_date_slot: dict[tuple[str, str], dict[str, Any]] = {}
+        for item in deliverables:
+            if not isinstance(item, dict):
+                continue
+            content_date = str(item.get("content_date") or item.get("date") or "")
+            item_slot = str(item.get("slot") or (slots[0] if len(slots) == 1 else "")).lower()
+            if content_date and item_slot:
+                by_date_slot[(content_date, item_slot)] = item
+        missing = [f"{content_date}:{slot}" for content_date in dates for slot in slots if (content_date, slot) not in by_date_slot]
         if missing:
             raise ValueError(f"job_deliverables_missing_dates:{','.join(missing)}")
-        slot = str(payload.get("slot", "midday"))
-        scheduled_time = str(payload.get("scheduled_time", "17:00:00+00:00"))
+        default_times = {"morning": "13:00:00+00:00", "midday": "17:00:00+00:00", "evening": "23:00:00+00:00"}
+        schedule_times = payload.get("schedule_times", {})
+        if not isinstance(schedule_times, dict):
+            schedule_times = {}
+        if len(slots) == 1 and payload.get("scheduled_time"):
+            schedule_times[slots[0]] = str(payload["scheduled_time"])
         platforms = list(payload.get("platforms", ["facebook", "instagram", "linkedin"]))
         campaign = job.get("result", {}).get("campaign", {})
         campaign_name = campaign.get("name", "Campaign") if isinstance(campaign, dict) else str(campaign)
         if context.dry_run:
             return {
-                "job_id": job_id, "campaign": campaign_name, "would_schedule": len(dates),
-                "date_range": {"start": dates[0], "end": dates[-1]}, "slot": slot,
+                "job_id": job_id, "campaign": campaign_name, "would_schedule": len(dates) * len(slots),
+                "date_range": {"start": dates[0], "end": dates[-1]}, "slots": slots,
                 "platforms": platforms, "publication_enabled": False,
             }
         scheduled: list[dict[str, Any]] = []
         try:
             for content_date in dates:
-                episode = by_date[content_date]
-                result = schedule_post({
-                    "content_date": content_date,
-                    "slot": slot,
-                    "scheduled_at": f"{content_date}T{scheduled_time}",
-                    "package": {
-                        "source_job_id": job_id,
-                        "campaign": campaign_name,
-                        "deliverable_date": content_date,
-                        "episode": episode,
-                        "platforms": platforms,
-                        "publication_enabled": False,
-                    },
-                    "rationale": f"Load owner-approved {campaign_name} deliverable from completed job {job_id} without publishing.",
-                }, context)
-                scheduled.append({"content_date": content_date, "slot": slot, "outbox_id": result["outbox_id"]})
+                for slot in slots:
+                    deliverable = by_date_slot[(content_date, slot)]
+                    scheduled_time = str(schedule_times.get(slot) or default_times.get(slot) or "17:00:00+00:00")
+                    scheduled_result = schedule_post({
+                        "content_date": content_date,
+                        "slot": slot,
+                        "scheduled_at": f"{content_date}T{scheduled_time}",
+                        "package": {
+                            "source_job_id": job_id,
+                            "campaign": campaign_name,
+                            "deliverable_date": content_date,
+                            "slot": slot,
+                            "deliverable": deliverable,
+                            "platforms": platforms,
+                            "publication_enabled": False,
+                        },
+                        "rationale": f"Load owner-approved {campaign_name} deliverable from completed job {job_id} without publishing.",
+                    }, context)
+                    scheduled.append({"content_date": content_date, "slot": slot, "outbox_id": scheduled_result["outbox_id"]})
         except Exception:
             for item in reversed(scheduled):
                 rollback_schedule(item, context)
             raise
+        resolved_alerts = attention.resolve_matching("job_deliverables_missing_dates:")
         return {
             "job_id": job_id, "campaign": campaign_name, "scheduled_count": len(scheduled),
-            "platform_adaptation_count": len(scheduled) * len(platforms), "slot": slot,
+            "platform_adaptation_count": len(scheduled) * len(platforms), "slots": slots,
             "publication_enabled": False, "scheduled": scheduled,
+            "resolved_attention_items": resolved_alerts,
             "_rollback": {"slots": scheduled},
         }
 
@@ -467,7 +491,7 @@ def register_core_capabilities(registry: CapabilityRegistry, policies: PolicyEng
         Capability("products.get", "Get product", "Retrieve one canonical product by identifier.", "PRODUCTS", product_get, object_schema({"product_id": {"type": "string"}}, ["product_id"])),
         Capability("social.calendar.get", "Get social calendar", "Retrieve durable Social Engine slots over a date range.", "SOCIAL", calendar, object_schema({"start_date": {"type": "string"}, "days": {"type": "integer"}})),
         Capability("social.schedule", "Schedule approved post", "Put an approved platform package into the durable Social Engine outbox.", "SOCIAL", schedule_post, object_schema({"content_date": {"type": "string"}, "slot": {"type": "string"}, "scheduled_at": {"type": "string"}, "package": {"type": "object"}, "rationale": {"type": "string"}}, ["content_date", "slot", "scheduled_at", "package"]), risk_level="MUTATION", permission_requirement="EXECUTE_WITH_APPROVAL", supports_rollback=True, rollback_handler=rollback_schedule),
-        Capability("social.schedule_job_campaign", "Load completed campaign into calendar", "Load a completed job's dated campaign deliverables into durable Social Engine slots with one owner approval and no publication.", "SOCIAL", schedule_job_campaign, object_schema({"job_id": {"type": "string"}, "start_date": {"type": "string"}, "end_date": {"type": "string"}, "slot": {"type": "string"}, "scheduled_time": {"type": "string"}, "platforms": {"type": "array"}}, ["job_id", "start_date", "end_date"]), risk_level="MUTATION", permission_requirement="EXECUTE_WITH_APPROVAL", supports_rollback=True, rollback_handler=rollback_job_campaign),
+        Capability("social.schedule_job_campaign", "Load completed campaign into calendar", "Load a completed job's dated campaign deliverables from episodes, packages, or posts into one or more durable Social Engine slots with one owner approval and no publication.", "SOCIAL", schedule_job_campaign, object_schema({"job_id": {"type": "string"}, "start_date": {"type": "string"}, "end_date": {"type": "string"}, "slot": {"type": "string"}, "slots": {"type": "array"}, "scheduled_time": {"type": "string"}, "schedule_times": {"type": "object"}, "platforms": {"type": "array"}}, ["job_id", "start_date", "end_date"]), risk_level="MUTATION", permission_requirement="EXECUTE_WITH_APPROVAL", supports_rollback=True, rollback_handler=rollback_job_campaign),
         Capability("goals.get", "Get goals", "Return active and historical Infenergy goals.", "GOALS", goals_get),
         Capability("goals.create", "Create goal", "Create a versioned persistent Infenergy goal.", "GOALS", goal_create, object_schema({"name": {"type": "string"}, "description": {"type": "string"}, "priority": {"type": "integer"}, "metrics": {"type": "array"}, "constraints": {"type": "array"}, "horizon": {"type": "string"}}, ["name", "description"]), risk_level="MUTATION", permission_requirement="EXECUTE_WITH_APPROVAL", supports_rollback=False),
         Capability("policies.get", "Get operating policies", "Return exact current autonomy and approval policies.", "OPERATIONS", policy_list),

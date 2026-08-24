@@ -82,6 +82,17 @@ class IntelligenceOS:
             ).fetchall()
         return [dict(row) for row in rows]
 
+    def archive_conversation(self, conversation_id: str) -> dict[str, Any]:
+        with connect(self.data_dir) as connection:
+            cursor = connection.execute(
+                "UPDATE os_conversations SET status='ARCHIVED', updated_at=? WHERE id=?",
+                (utc_now(), conversation_id),
+            )
+            connection.commit()
+        if not cursor.rowcount:
+            raise KeyError(conversation_id)
+        return self.get_conversation(conversation_id)
+
     def execute_capability(
         self,
         capability: str,

@@ -31,6 +31,9 @@ def handle(method: str, path: str, body: dict[str, Any] | None, data_dir: str) -
                 title=str(payload.get("title", "Infenergy Command")),
             )
             return _json(201, {"conversation": conversation})
+        if method == "POST" and path.startswith("/api/os/conversations/") and path.endswith("/archive"):
+            conversation_id = path.split("/")[-2]
+            return _json(200, {"conversation": service.archive_conversation(conversation_id)})
         if method == "GET" and path == "/api/os/transactions":
             return _json(200, {"transactions": service.transactions.list()})
         if method == "POST" and path == "/api/os/command":

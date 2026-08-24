@@ -278,6 +278,12 @@ def test_command_center_and_api_are_served(tmp_path):
     assert create_status == 201
     assert create_type.startswith("application/json")
     assert json.loads(created_payload)["conversation"]["title"] == "Fresh objective"
+    created = json.loads(created_payload)["conversation"]
+    archive_status, _, archived_payload = handle(
+        "POST", f"/api/os/conversations/{created['id']}/archive", {}, str(tmp_path)
+    )
+    assert archive_status == 200
+    assert json.loads(archived_payload)["conversation"]["status"] == "ARCHIVED"
     assert js_status == 200
     assert js_type.startswith("text/javascript")
     assert b"function renderResearch" in javascript

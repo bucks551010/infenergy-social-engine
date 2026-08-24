@@ -130,6 +130,71 @@ def register_core_capabilities(registry: CapabilityRegistry, policies: PolicyEng
             return {"status": "NOT_REVERSIBLE", "reason": "slot_already_claimed_or_published", "_irreversible": [data]}
         return {"status": "ROLLED_BACK", "content_date": data["content_date"], "slot": data["slot"]}
 
+    def schedule_job_campaign(payload: dict[str, Any], context: ExecutionContext) -> dict[str, Any]:
+        job_id = str(payload["job_id"])
+        job = jobs.get(job_id)
+        if job["status"] != "COMPLETED":
+            raise ValueError(f"job_not_completed:{job_id}")
+        start = date.fromisoformat(str(payload["start_date"]))
+        end = date.fromisoformat(str(payload["end_date"]))
+        if end < start or (end - start).days >= 120:
+            raise ValueError("campaign_range_must_be_1_to_120_days")
+        episodes = job.get("result", {}).get("episodes", [])
+        by_date = {str(item.get("date")): item for item in episodes if isinstance(item, dict) and item.get("date")}
+        dates = [(start + timedelta(days=index)).isoformat() for index in range((end - start).days + 1)]
+        missing = [item for item in dates if item not in by_date]
+        if missing:
+            raise ValueError(f"job_deliverables_missing_dates:{','.join(missing)}")
+        slot = str(payload.get("slot", "midday"))
+        scheduled_time = str(payload.get("scheduled_time", "17:00:00+00:00"))
+        platforms = list(payload.get("platforms", ["facebook", "instagram", "linkedin"]))
+        campaign = job.get("result", {}).get("campaign", {})
+        campaign_name = campaign.get("name", "Campaign") if isinstance(campaign, dict) else str(campaign)
+        if context.dry_run:
+            return {
+                "job_id": job_id, "campaign": campaign_name, "would_schedule": len(dates),
+                "date_range": {"start": dates[0], "end": dates[-1]}, "slot": slot,
+                "platforms": platforms, "publication_enabled": False,
+            }
+        scheduled: list[dict[str, Any]] = []
+        try:
+            for content_date in dates:
+                episode = by_date[content_date]
+                result = schedule_post({
+                    "content_date": content_date,
+                    "slot": slot,
+                    "scheduled_at": f"{content_date}T{scheduled_time}",
+                    "package": {
+                        "source_job_id": job_id,
+                        "campaign": campaign_name,
+                        "deliverable_date": content_date,
+                        "episode": episode,
+                        "platforms": platforms,
+                        "publication_enabled": False,
+                    },
+                    "rationale": f"Load owner-approved {campaign_name} deliverable from completed job {job_id} without publishing.",
+                }, context)
+                scheduled.append({"content_date": content_date, "slot": slot, "outbox_id": result["outbox_id"]})
+        except Exception:
+            for item in reversed(scheduled):
+                rollback_schedule(item, context)
+            raise
+        return {
+            "job_id": job_id, "campaign": campaign_name, "scheduled_count": len(scheduled),
+            "platform_adaptation_count": len(scheduled) * len(platforms), "slot": slot,
+            "publication_enabled": False, "scheduled": scheduled,
+            "_rollback": {"slots": scheduled},
+        }
+
+    def rollback_job_campaign(data: dict[str, Any], context: ExecutionContext) -> dict[str, Any]:
+        results = [rollback_schedule(item, context) for item in reversed(data.get("slots", []))]
+        irreversible = [item for item in results if item.get("status") != "ROLLED_BACK"]
+        return {
+            "status": "ROLLED_BACK" if not irreversible else "PARTIAL_ROLLBACK",
+            "rolled_back": len(results) - len(irreversible),
+            "_irreversible": irreversible,
+        }
+
     def goals_get(_: dict[str, Any], __: ExecutionContext) -> dict[str, Any]:
         return {"goals": strategy.list_goals(active_only=False)}
 
@@ -402,6 +467,7 @@ def register_core_capabilities(registry: CapabilityRegistry, policies: PolicyEng
         Capability("products.get", "Get product", "Retrieve one canonical product by identifier.", "PRODUCTS", product_get, object_schema({"product_id": {"type": "string"}}, ["product_id"])),
         Capability("social.calendar.get", "Get social calendar", "Retrieve durable Social Engine slots over a date range.", "SOCIAL", calendar, object_schema({"start_date": {"type": "string"}, "days": {"type": "integer"}})),
         Capability("social.schedule", "Schedule approved post", "Put an approved platform package into the durable Social Engine outbox.", "SOCIAL", schedule_post, object_schema({"content_date": {"type": "string"}, "slot": {"type": "string"}, "scheduled_at": {"type": "string"}, "package": {"type": "object"}, "rationale": {"type": "string"}}, ["content_date", "slot", "scheduled_at", "package"]), risk_level="MUTATION", permission_requirement="EXECUTE_WITH_APPROVAL", supports_rollback=True, rollback_handler=rollback_schedule),
+        Capability("social.schedule_job_campaign", "Load completed campaign into calendar", "Load a completed job's dated campaign deliverables into durable Social Engine slots with one owner approval and no publication.", "SOCIAL", schedule_job_campaign, object_schema({"job_id": {"type": "string"}, "start_date": {"type": "string"}, "end_date": {"type": "string"}, "slot": {"type": "string"}, "scheduled_time": {"type": "string"}, "platforms": {"type": "array"}}, ["job_id", "start_date", "end_date"]), risk_level="MUTATION", permission_requirement="EXECUTE_WITH_APPROVAL", supports_rollback=True, rollback_handler=rollback_job_campaign),
         Capability("goals.get", "Get goals", "Return active and historical Infenergy goals.", "GOALS", goals_get),
         Capability("goals.create", "Create goal", "Create a versioned persistent Infenergy goal.", "GOALS", goal_create, object_schema({"name": {"type": "string"}, "description": {"type": "string"}, "priority": {"type": "integer"}, "metrics": {"type": "array"}, "constraints": {"type": "array"}, "horizon": {"type": "string"}}, ["name", "description"]), risk_level="MUTATION", permission_requirement="EXECUTE_WITH_APPROVAL", supports_rollback=False),
         Capability("policies.get", "Get operating policies", "Return exact current autonomy and approval policies.", "OPERATIONS", policy_list),

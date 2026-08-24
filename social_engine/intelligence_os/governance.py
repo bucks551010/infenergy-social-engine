@@ -111,6 +111,30 @@ class PolicyEngine:
             ).fetchone()
         if existing:
             return str(existing["id"])
+        schedule_capabilities = {"social.schedule", "social.schedule_job_campaign", "automations.create"}
+        target_jobs = _target_job_ids(request)
+        if capability in schedule_capabilities and target_jobs:
+            with connect(self.data_dir) as connection:
+                related = connection.execute(
+                    "SELECT id, capability, request_json FROM os_approvals WHERE actor=? AND status='PENDING' ORDER BY created_at DESC",
+                    (actor,),
+                ).fetchall()
+                overlapping = [
+                    row for row in related
+                    if row["capability"] in schedule_capabilities
+                    and target_jobs.intersection(_target_job_ids(decode(row["request_json"], {})))
+                ]
+                canonical = next((row for row in overlapping if row["capability"] == "social.schedule_job_campaign"), None)
+                if canonical and capability != "social.schedule_job_campaign":
+                    return str(canonical["id"])
+                if overlapping:
+                    identifiers = [str(row["id"]) for row in overlapping]
+                    placeholders = ",".join("?" for _ in identifiers)
+                    connection.execute(
+                        f"UPDATE os_approvals SET status='SUPERSEDED', decided_by='system', decision_note='Replaced by one canonical campaign scheduling approval', decided_at=? WHERE id IN ({placeholders})",
+                        [utc_now(), *identifiers],
+                    )
+                    connection.commit()
         identifier = uuid.uuid4().hex
         with connect(self.data_dir) as connection:
             connection.execute(
@@ -213,3 +237,17 @@ class PolicyEngine:
                 (approval_id, capability, actor),
             ).fetchone()
         return bool(row and decode(row["request_json"], {}) == payload)
+
+
+def _target_job_ids(value: Any) -> set[str]:
+    found: set[str] = set()
+    if isinstance(value, dict):
+        for key, item in value.items():
+            if key in {"job_id", "source_job_id"} and isinstance(item, str) and item:
+                found.add(item)
+            else:
+                found.update(_target_job_ids(item))
+    elif isinstance(value, list):
+        for item in value:
+            found.update(_target_job_ids(item))
+    return found

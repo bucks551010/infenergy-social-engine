@@ -58,6 +58,7 @@ p { line-height: 1.55; }
 .message-table th { color: var(--text); background: #172a26; }
 .approval-card { display: grid; gap: 7px; padding: 11px; margin: 8px 0; border: 1px solid #6b5127; border-radius: 10px; background: #1c1a12; }
 .approval-card small { color: var(--muted); line-height: 1.4; }
+.approval-card > code { color: #79aaa0; font-size: 9px; overflow-wrap: anywhere; }
 .approval-actions { display: flex; gap: 7px; flex-wrap: wrap; }
 .approval-actions button { padding: 7px 9px; border: 0; border-radius: 7px; color: #17130b; background: var(--accent); font-size: 10px; font-weight: 800; cursor: pointer; }
 .approval-actions button.secondary { color: var(--muted); border: 1px solid var(--line); background: transparent; }

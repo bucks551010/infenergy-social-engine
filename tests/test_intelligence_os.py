@@ -23,6 +23,7 @@ def test_bootstrap_registers_foundation_and_preserves_default_deny(tmp_path):
 
     assert "system.health" in capabilities
     assert "social.schedule" in capabilities
+    assert "social.schedule_job_campaign" in capabilities
     assert "content.plan_120_days" in capabilities
     blocked = service.execute_capability(
         "goals.create",
@@ -68,6 +69,53 @@ def test_approved_schedule_is_transactional_and_rollbackable(tmp_path):
     assert result["rollback_available"] is True
     rolled_back = service.transactions.rollback(result["transaction_id"])
     assert rolled_back["status"] == "ROLLED_BACK"
+
+
+def test_completed_campaign_is_loaded_with_one_approval_and_no_publication(tmp_path):
+    service = bootstrap(str(tmp_path))
+    job = service.jobs.create(job_type="CAMPAIGN", objective="Build dated campaign", plan=["produce"])
+    service.jobs.transition(job["id"], "COMPLETED", progress=1, result={
+        "campaign": {"name": "Blackout House"},
+        "episodes": [
+            {"date": "2026-09-21", "title": "Day one", "script": ["Opening"]},
+            {"date": "2026-09-22", "title": "Day two", "script": ["Follow-up"]},
+        ],
+    })
+    arguments = {
+        "job_id": job["id"], "start_date": "2026-09-21", "end_date": "2026-09-22",
+        "slot": "midday", "scheduled_time": "17:00:00+00:00",
+        "platforms": ["facebook", "instagram", "linkedin"],
+    }
+
+    pending = service.execute_capability("social.schedule_job_campaign", arguments)
+    approved = service.approve_and_execute(pending["approval_id"])
+
+    assert approved["approval"]["status"] == "CONSUMED"
+    assert approved["execution"]["status"] == "COMPLETED"
+    assert approved["execution"]["result"]["scheduled_count"] == 2
+    assert approved["execution"]["result"]["platform_adaptation_count"] == 6
+    assert approved["execution"]["result"]["publication_enabled"] is False
+    assert approved["execution"]["rollback_available"] is True
+
+
+def test_campaign_schedule_approval_supersedes_overlapping_variants(tmp_path):
+    service = bootstrap(str(tmp_path))
+    job_id = "job-123"
+    single = service.execute_capability("social.schedule", {
+        "content_date": "2026-09-21", "slot": "midday", "scheduled_at": "2026-09-21T17:00:00+00:00",
+        "package": {"source_job_id": job_id},
+    })
+    automation = service.execute_capability("automations.create", {
+        "name": "Legacy loader", "trigger": {"type": "once"},
+        "steps": [{"capability": "social.schedule", "arguments": {"package": {"source_job_id": job_id}}}],
+    })
+    canonical = service.execute_capability("social.schedule_job_campaign", {
+        "job_id": job_id, "start_date": "2026-09-21", "end_date": "2026-10-20",
+    })
+
+    assert service.policies.get_approval(single["approval_id"])["status"] == "SUPERSEDED"
+    assert service.policies.get_approval(automation["approval_id"])["status"] == "SUPERSEDED"
+    assert service.policies.get_approval(canonical["approval_id"])["status"] == "PENDING"
 
 
 def test_default_deny_approval_executes_exact_request_once(tmp_path):
@@ -371,7 +419,7 @@ def test_command_center_and_api_are_served(tmp_path):
     assert content_type.startswith("text/html")
     assert b"Infenergy Intelligence OS" in page
     assert b'id="mobile-nav"' in page
-    assert b'app.js?v=7' in page
+    assert b'app.js?v=8' in page
     assert b'id="job-search"' in page
     assert api_status == 200
     assert api_type.startswith("application/json")

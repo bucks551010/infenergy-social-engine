@@ -169,9 +169,39 @@ def test_master_conversation_fails_closed_without_configured_model(tmp_path, mon
     assert "No strategic-model downgrade" in result["message"]
 
 
+def test_master_continues_durable_conversation_context(tmp_path, monkeypatch):
+    service = bootstrap(str(tmp_path))
+    prompts = []
+
+    async def converse(prompt, **kwargs):
+        prompts.append({"prompt": prompt, "system_message": kwargs["system_message"]})
+        return {
+            "content": "Completed the next useful step.",
+            "model": "gpt-5.6-sol",
+            "provider": "github-copilot-sdk",
+            "session_id": kwargs["session_id"],
+        }
+
+    monkeypatch.setattr(service.master, "converse", converse)
+    first = service.command("My audience is campers and off-grid travelers.")
+    second = service.command(
+        "Build a week of content for them.", conversation_id=first["conversation_id"]
+    )
+
+    assert second["status"] == "COMPLETED"
+    assert "My audience is campers and off-grid travelers." in prompts[1]["prompt"]
+    assert "Build a week of content for them." in prompts[1]["prompt"]
+    assert "CURRENT OPERATING STATE" in prompts[1]["prompt"]
+    assert "outcome-driven master intelligence" in prompts[1]["system_message"]
+    assert "do not restart discovery" in prompts[1]["prompt"]
+
+
 def test_command_center_and_api_are_served(tmp_path):
     status, content_type, page = handle("GET", "/os", None, str(tmp_path))
     api_status, api_type, payload = handle("GET", "/api/os/capabilities", None, str(tmp_path))
+    create_status, create_type, created_payload = handle(
+        "POST", "/api/os/conversations", {"title": "Fresh objective"}, str(tmp_path)
+    )
     js_status, js_type, javascript = handle("GET", "/os/assets/app.js", None, str(tmp_path))
     css_status, css_type, stylesheet = handle("GET", "/os/assets/styles.css", None, str(tmp_path))
 
@@ -179,16 +209,21 @@ def test_command_center_and_api_are_served(tmp_path):
     assert content_type.startswith("text/html")
     assert b"Infenergy Intelligence OS" in page
     assert b'id="mobile-nav"' in page
-    assert b'app.js?v=3' in page
+    assert b'app.js?v=4' in page
     assert api_status == 200
     assert api_type.startswith("application/json")
     assert b"system.health" in payload
+    assert create_status == 201
+    assert create_type.startswith("application/json")
+    assert json.loads(created_payload)["conversation"]["title"] == "Fresh objective"
     assert js_status == 200
     assert js_type.startswith("text/javascript")
     assert b"function renderResearch" in javascript
     assert b"function renderSocial" in javascript
     assert b"function renderHealth" in javascript
     assert b"function activateView" in javascript
+    assert b"function richText" in javascript
+    assert b"/api/os/conversations" in javascript
     assert b"JSON.stringify(item" not in javascript
     assert css_status == 200
     assert css_type.startswith("text/css")

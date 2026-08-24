@@ -47,6 +47,15 @@ p { line-height: 1.55; }
 .message.user > div { max-width: 78%; padding: 12px 15px; border: 1px solid #365149; border-radius: 14px 14px 3px 14px; background: #243832; }
 .message.user strong { display: none; }
 .message p { margin: 4px 0; color: #c9d9d5; white-space: pre-wrap; }
+.rich-message { min-width: 0; color: #c9d9d5; }
+.rich-message p { margin: 5px 0 13px; white-space: normal; }
+.rich-message ul { margin: 7px 0 14px; padding-left: 21px; }
+.rich-message li { margin: 5px 0; }
+.rich-message code { padding: 2px 5px; color: #bde9dd; border: 1px solid #29463f; border-radius: 5px; background: #0a1513; }
+.message-table { max-width: 100%; margin: 10px 0 16px; overflow-x: auto; border: 1px solid var(--line); border-radius: 9px; }
+.message-table table { width: 100%; min-width: 480px; border-collapse: collapse; font-size: 11px; }
+.message-table th, .message-table td { padding: 9px 11px; text-align: left; vertical-align: top; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.message-table th { color: var(--text); background: #172a26; }
 .message .avatar { flex: 0 0 32px; height: 32px; border-radius: 9px; }
 .message.blocked p { color: #ffc789; }
 .composer { padding: 16px; border-top: 1px solid var(--line); background: #0b1715; }

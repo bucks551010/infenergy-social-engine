@@ -25,6 +25,12 @@ def handle(method: str, path: str, body: dict[str, Any] | None, data_dir: str) -
             return _json(200, {"capabilities": service.registry.list()})
         if method == "GET" and path == "/api/os/conversations":
             return _json(200, {"conversations": service.list_conversations()})
+        if method == "POST" and path == "/api/os/conversations":
+            conversation = service.create_conversation(
+                owner_id=str(payload.get("owner_id", "owner")),
+                title=str(payload.get("title", "Infenergy Command")),
+            )
+            return _json(201, {"conversation": conversation})
         if method == "GET" and path == "/api/os/transactions":
             return _json(200, {"transactions": service.transactions.list()})
         if method == "POST" and path == "/api/os/command":

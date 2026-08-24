@@ -14,7 +14,32 @@ async function api(path, options = {}) {
 }
 
 function toast(text) { const el = $('#toast'); el.textContent = text; el.classList.add('show'); setTimeout(() => el.classList.remove('show'), 2600); }
-function message(role, content, status = '') { const wrap = document.createElement('div'); wrap.className = `message ${role} ${status}`; wrap.innerHTML = role === 'assistant' ? `<span class="avatar">I</span><div><strong>Infenergy Intelligence</strong><p>${esc(content)}</p></div>` : `<div><strong>Owner</strong><p>${esc(content)}</p></div>`; $('#messages').append(wrap); $('#messages').scrollTop = $('#messages').scrollHeight; }
+function inlineMarkup(value) { return esc(value).replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>').replace(/`([^`]+)`/g, '<code>$1</code>'); }
+function richText(content) {
+  const lines = String(content || '').split(/\r?\n/), output = [];
+  for (let index = 0; index < lines.length;) {
+    const line = lines[index].trim();
+    if (!line) { index += 1; continue; }
+    if (line.startsWith('|') && line.endsWith('|')) {
+      const tableLines = [];
+      while (index < lines.length && lines[index].trim().startsWith('|')) tableLines.push(lines[index++].trim());
+      const rows = tableLines.filter((row) => !/^\|?[\s:|-]+\|?$/.test(row)).map((row) => row.slice(1, -1).split('|').map((cell) => cell.trim()));
+      if (rows.length) output.push(`<div class="message-table"><table>${rows.map((row, rowIndex) => `<tr>${row.map((cell) => `<${rowIndex ? 'td' : 'th'}>${inlineMarkup(cell)}</${rowIndex ? 'td' : 'th'}>`).join('')}</tr>`).join('')}</table></div>`);
+      continue;
+    }
+    if (/^[-*]\s+/.test(line)) {
+      const items = [];
+      while (index < lines.length && /^\s*[-*]\s+/.test(lines[index])) items.push(lines[index++].replace(/^\s*[-*]\s+/, ''));
+      output.push(`<ul>${items.map((item) => `<li>${inlineMarkup(item)}</li>`).join('')}</ul>`);
+      continue;
+    }
+    const heading = line.match(/^(#{1,3})\s+(.+)$/);
+    if (heading) { output.push(`<h${heading[1].length + 2}>${inlineMarkup(heading[2])}</h${heading[1].length + 2}>`); index += 1; continue; }
+    output.push(`<p>${inlineMarkup(line)}</p>`); index += 1;
+  }
+  return output.join('');
+}
+function message(role, content, status = '') { const wrap = document.createElement('div'); wrap.className = `message ${role} ${status}`; wrap.innerHTML = role === 'assistant' ? `<span class="avatar">I</span><div><strong>Infenergy Intelligence</strong><div class="rich-message">${richText(content)}</div></div>` : `<div><strong>Owner</strong><p>${esc(content)}</p></div>`; $('#messages').append(wrap); $('#messages').scrollTop = $('#messages').scrollHeight; }
 function empty(title, detail = '') { return `<div class="empty-state"><span>✓</span><strong>${esc(title)}</strong>${detail ? `<p>${esc(detail)}</p>` : ''}</div>`; }
 function humanize(value) { return String(value || 'Unknown').replaceAll('_', ' ').replace(/\b\w/g, (char) => char.toUpperCase()); }
 function relativeTime(value) { if (!value) return 'Not recorded'; const date = new Date(value); if (Number.isNaN(date.getTime())) return String(value); const seconds = Math.round((date.getTime() - Date.now()) / 1000); for (const [size, unit] of [[31536000, 'year'], [2592000, 'month'], [86400, 'day'], [3600, 'hour'], [60, 'minute']]) { if (Math.abs(seconds) >= size) return new Intl.RelativeTimeFormat('en', { numeric: 'auto' }).format(Math.round(seconds / size), unit); } return 'just now'; }
@@ -96,6 +121,15 @@ $('#nav').addEventListener('click', (event) => { const button = event.target.clo
 $('#mobile-nav').addEventListener('change', (event) => activateView(event.target.value));
 $('#command-form').addEventListener('submit', async (event) => { event.preventDefault(); const input = $('#command-input'), text = input.value.trim(); if (!text) return; message('user', text); input.value = ''; message('assistant', 'Working…'); const pending = $('#messages .message:last-child'); try { const result = await api('/api/os/command', { method: 'POST', body: JSON.stringify({ message: text, conversation_id: state.conversationId }) }); pending.remove(); message('assistant', result.message, result.status === 'BLOCKED' ? 'blocked' : ''); state.conversationId = result.conversation_id; await load(); } catch (error) { pending.remove(); message('assistant', error.message, 'blocked'); } });
 $('#command-input').addEventListener('keydown', (event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); $('#command-form').requestSubmit(); } });
-$('#refresh').addEventListener('click', load); $('#new-chat').addEventListener('click', () => { state.conversationId = null; $('#messages').innerHTML = ''; message('assistant', 'New command context started. Durable company memory remains available.'); });
+$('#refresh').addEventListener('click', load);
+$('#new-chat').addEventListener('click', async () => {
+  try {
+    const result = await api('/api/os/conversations', { method: 'POST', body: JSON.stringify({ title: 'Infenergy Command' }) });
+    state.conversationId = result.conversation.id;
+    $('#messages').innerHTML = '';
+    message('assistant', 'New command session started. Company knowledge remains available; this conversation now has a clean objective and plan.');
+    toast('New session ready');
+  } catch (error) { toast(error.message); }
+});
 document.addEventListener('click', async (event) => { if (event.target.dataset.action !== 'plan120') return; try { const result = await api('/api/os/execute', { method: 'POST', body: JSON.stringify({ capability: 'content.plan_120_days', arguments: { objective: 'Build the next 120 days. Entertainment first. Keep the future adaptive.' }, dry_run: true }) }); toast(result.status); await load(); } catch (error) { toast(error.message); } });
 load();

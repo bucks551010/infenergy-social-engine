@@ -14,8 +14,12 @@ from .registry import CapabilityRegistry
 from .transactions import TransactionService
 
 
-MASTER_PROMPT = """You are Infenergy's master intelligence and operating partner.
-Understand the owner's goal before choosing capabilities. Use authoritative internal data when available and current external research when needed. Distinguish observed facts, derived metrics, inference, forecast, hypothesis, recommendation, and owner decision. Have a point of view. Do not make the owner operate low-level tools. Do not bluff. Respect current permissions, approvals, budgets, and policies. Use dry-run mode when required. Preserve provenance and explain material actions. Never expand your own permissions. The owner is the final authority. Use only the registered Infenergy semantic tools; do not use ambient shell, filesystem, publishing, credential, or deployment tools.
+MASTER_PROMPT = """You are Infenergy's outcome-driven master intelligence and operating agent.
+Work like a capable senior operator, not a question-answer chatbot. Maintain continuity across the supplied durable conversation. Resolve pronouns and short follow-ups such as "go find it", "do that", and "continue" from the prior goal, plan, and results. Never ask the owner to repeat information already present in context.
+
+Own the objective from request to verified outcome: inspect current state, form a concise plan, invoke the registered semantic tools, evaluate their results, adapt, and continue until the objective is complete or a real external blocker remains. Prefer taking safe, reversible action over explaining what the owner could do. Use read-only tools autonomously. Use dry runs to preview mutations. If governance requires approval, create the approval request through the capability, report exactly what is waiting, and explain the single approval needed. Never claim that a job, plan, publication, or automation exists unless a tool result confirms it.
+
+Infer reasonable operational details from Infenergy's goals, catalog, strategy, and conversation. Ask a clarifying question only when a missing fact would create material risk or make execution impossible; otherwise state the assumption and proceed. Be concise in chat while doing the detailed work through tools. Use authoritative internal data when available and current external research when needed. Distinguish facts, metrics, inference, forecast, hypothesis, recommendation, and owner decision. Have a point of view. Do not make the owner operate low-level tools. Do not bluff. Respect permissions, approvals, budgets, and policies. Preserve provenance and explain material actions. Never expand your own permissions. The owner is the final authority. Use only registered Infenergy semantic tools; do not use ambient shell, filesystem, credential, or deployment tools.
 """
 
 
@@ -101,11 +105,12 @@ class IntelligenceOS:
         actor: str = "owner",
     ) -> dict[str, Any]:
         conversation = self.get_conversation(conversation_id) if conversation_id else self.latest_conversation(actor)
+        prompt = self._command_prompt(message, conversation, actor)
         self._message(conversation["id"], "user", message)
         try:
             response = asyncio.run(
                 self.master.converse(
-                    message,
+                    prompt,
                     session_id=conversation["copilot_session_id"],
                     system_message=MASTER_PROMPT + "\nAvailable capabilities:\n" + self.registry.semantic_catalog(),
                     tools=self._copilot_tools(actor),
@@ -132,6 +137,62 @@ class IntelligenceOS:
                 status="BLOCKED", result=status,
             )
             return {"status": "BLOCKED", "conversation_id": conversation["id"], "message": content, "model_status": status}
+
+    def _command_prompt(self, message: str, conversation: dict[str, Any], actor: str) -> str:
+        messages = conversation.get("messages", [])[-20:]
+        transcript_parts = []
+        total_chars = 0
+        for item in reversed(messages):
+            content = str(item.get("content", "")).strip()
+            if not content:
+                continue
+            content = content[-4000:]
+            entry = f"{str(item.get('role', 'unknown')).upper()}: {content}"
+            if total_chars + len(entry) > 24000:
+                break
+            transcript_parts.append(entry)
+            total_chars += len(entry)
+        transcript = "\n\n".join(reversed(transcript_parts)) or "No prior messages in this session."
+        operating_context = self._operating_context(actor)
+        return (
+            "CONTINUING DURABLE INFENERGY SESSION\n"
+            "Treat the transcript as authoritative conversational context. Continue the owner's existing objective; "
+            "do not restart discovery or ask for details already supplied.\n\n"
+            f"RECENT CONVERSATION\n{transcript}\n\n"
+            f"CURRENT OPERATING STATE\n{json.dumps(operating_context, ensure_ascii=False, default=str)}\n\n"
+            f"CURRENT OWNER REQUEST\n{message}\n\n"
+            "Now take the next useful actions with tools and return the verified outcome, a pending approval, or one genuine blocker."
+        )
+
+    def _operating_context(self, actor: str) -> dict[str, Any]:
+        jobs = self.jobs.list(10)
+        with connect(self.data_dir) as connection:
+            approval_rows = connection.execute(
+                """
+                SELECT id, capability, status, created_at, decided_at
+                FROM os_approvals WHERE actor=?
+                ORDER BY created_at DESC LIMIT 10
+                """,
+                (actor,),
+            ).fetchall()
+        return {
+            "active_jobs": [
+                {
+                    "id": item.get("id"),
+                    "type": item.get("job_type"),
+                    "objective": item.get("objective"),
+                    "status": item.get("status"),
+                    "progress": item.get("progress"),
+                    "current_step": item.get("current_step"),
+                    "updated_at": item.get("updated_at"),
+                }
+                for item in jobs
+                if item.get("status") not in {"COMPLETED", "CANCELED"}
+            ],
+            "recent_approvals": [dict(row) for row in approval_rows],
+            "open_attention_count": len(self.attention.list_open(10)),
+            "instruction": "Continue existing work when it matches the owner's request; do not invent a paused job.",
+        }
 
     def executive_state(self) -> dict[str, Any]:
         health = self.execute_capability("system.health", {}, operation_id=f"state-health-{uuid.uuid4().hex}")

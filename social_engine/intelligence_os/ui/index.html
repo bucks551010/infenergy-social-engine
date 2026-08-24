@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Infenergy Intelligence OS</title>
-  <link rel="stylesheet" href="/os/assets/styles.css?v=6">
+  <link rel="stylesheet" href="/os/assets/styles.css?v=7">
 </head>
 <body>
   <div class="shell">
@@ -58,14 +58,14 @@
           </article>
           <aside class="context-stack">
             <article class="panel compact"><div class="panel-title"><h2>Needs attention</h2><span id="attention-count" class="badge">0</span></div><div id="attention-list" class="list empty">Nothing material is waiting.</div></article>
-            <article class="panel compact"><div class="panel-title"><h2>Active jobs</h2><span id="job-count" class="badge">0</span></div><div id="job-list" class="list empty">No active jobs.</div></article>
+            <article class="panel compact"><div class="panel-title"><h2>Recent jobs</h2><span id="job-count" class="badge">0</span></div><div id="job-list" class="list empty">No jobs recorded.</div></article>
             <article class="panel compact"><div class="panel-title"><h2>Current authority</h2></div><div id="policy-summary" class="list empty">Loading policies…</div></article>
           </aside>
         </div>
       </section>
 
       <section id="today" class="view"><div class="metric-grid" id="today-metrics"></div><article class="panel"><div class="panel-title"><h2>What matters today</h2></div><div id="today-content" class="cards"></div></article></section>
-      <section id="jobs" class="view"><article class="panel"><div class="panel-title"><h2>Execution fabric</h2><button class="ghost" data-action="plan120">Dry-run 120-day plan</button></div><div id="jobs-table" class="table"></div></article></section>
+      <section id="jobs" class="view"><article class="panel"><div class="panel-title job-toolbar"><div><h2>Execution fabric</h2><p class="muted">Search completed and active jobs, then open persisted deliverables.</p></div><div class="job-actions"><input id="job-search" type="search" placeholder="Search job ID, objective, or status" aria-label="Search jobs"><button class="ghost" data-action="plan120">Dry-run 120-day plan</button></div></div><div id="jobs-table" class="table"></div></article></section>
       <section id="research" class="view"><article class="panel"><div class="panel-title"><h2>Intelligence Library</h2></div><p class="muted">Current findings retain source identity, credibility, freshness, expiration, and limitations.</p><div id="research-content" class="cards"></div></article></section>
       <section id="automations" class="view"><article class="panel"><div class="panel-title"><h2>Automations and watches</h2></div><div id="automations-content" class="cards"></div></article><article class="panel"><div class="panel-title"><h2>Recent automation runs</h2></div><div id="automation-runs" class="table"></div></article></section>
       <section id="social" class="view"><article class="panel"><div class="panel-title"><h2>Social operations</h2></div><div id="social-content" class="cards"></div></article></section>
@@ -76,6 +76,6 @@
     </main>
   </div>
   <div id="toast" class="toast"></div>
-  <script src="/os/assets/app.js?v=6"></script>
+  <script src="/os/assets/app.js?v=7"></script>
 </body>
 </html>

@@ -1,4 +1,4 @@
-const state = { data: null, conversationId: null, renderedConversationId: null };
+const state = { data: null, conversationId: null, renderedConversationId: null, jobQuery: '' };
 const $ = (selector) => document.querySelector(selector);
 const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[char]));
 
@@ -64,7 +64,10 @@ function renderToday(attention, events) {
 
 function renderJobs(jobs) {
   if (!jobs.length) { $('#jobs-table').innerHTML = empty('No jobs in the execution fabric', 'Create a research mission or preview the rolling 120-day plan.'); return; }
-  $('#jobs-table').innerHTML = `<div class="data-table"><div class="table-head"><span>Job</span><span>Status</span><span>Progress</span><span>Updated</span></div>${jobs.map((job) => { const progress = percent(job.progress); return `<div class="table-row"><div><strong>${esc(job.objective || humanize(job.job_type))}</strong><small>${esc(humanize(job.job_type))}${job.current_step ? ` · ${esc(humanize(job.current_step))}` : ''}</small></div><div>${pill(job.status)}</div><div class="progress-cell"><div class="progress"><i style="width:${progress}%"></i></div><small>${Math.round(progress)}%</small></div><div><span>${esc(relativeTime(job.updated_at))}</span><small>${job.steps?.length || 0} steps</small></div></div>`; }).join('')}</div>`;
+  const query = state.jobQuery.toLowerCase();
+  const visible = jobs.filter((job) => !query || [job.id, job.objective, job.type, job.status].some((value) => String(value || '').toLowerCase().includes(query)));
+  if (!visible.length) { $('#jobs-table').innerHTML = empty('No matching jobs', `Nothing matched “${state.jobQuery}”.`); return; }
+  $('#jobs-table').innerHTML = `<div class="data-table"><div class="table-head"><span>Job</span><span>Status</span><span>Progress</span><span>Updated</span></div>${visible.map((job) => { const progress = percent(job.progress); const result = job.result && Object.keys(job.result).length ? JSON.stringify(job.result, null, 2) : ''; return `<div class="job-record"><div class="table-row"><div><strong>${esc(job.objective || humanize(job.type))}</strong><code class="job-id">${esc(job.id)}</code><small>${esc(humanize(job.type))}${job.current_step ? ` · ${esc(humanize(job.current_step))}` : ''}</small></div><div>${pill(job.status)}</div><div class="progress-cell"><div class="progress"><i style="width:${progress}%"></i></div><small>${Math.round(progress)}%</small></div><div><span>${esc(relativeTime(job.updated_at))}</span><small>${job.steps?.length || 0} steps</small></div></div><details class="job-details"><summary>${result ? 'View persisted deliverables' : 'View job details'}</summary><div class="job-metadata"><span>Job ID</span><code>${esc(job.id)}</code><span>Created</span><b>${esc(dateTime(job.created_at))}</b><span>Updated</span><b>${esc(dateTime(job.updated_at))}</b></div>${result ? `<pre>${esc(result)}</pre>` : '<p>No persisted result has been recorded yet.</p>'}</details></div>`; }).join('')}</div>`;
 }
 
 function renderResearch(findings) {
@@ -107,11 +110,11 @@ function render(data) {
   const pendingApprovals = approvals.filter((item) => item.status === 'PENDING');
   const activeJobs = jobs.filter((job) => !['COMPLETED', 'CANCELED'].includes(job.status));
   const providerCount = Object.values(health.providers || {}).filter((provider) => provider.configured || provider.sdk_installed).length;
-  $('#attention-count').textContent = attention.length + pendingApprovals.length; $('#job-count').textContent = activeJobs.length;
+  $('#attention-count').textContent = attention.length + pendingApprovals.length; $('#job-count').textContent = jobs.length;
   const approvalCards = pendingApprovals.slice(0, 4).map((item) => `<div class="approval-card"><strong>${esc(humanize(item.capability))}</strong><small>${esc(item.request?.objective || item.request?.question || 'Owner authorization required')}</small><div class="approval-actions"><button data-approval="${esc(item.id)}" data-decision="approve">Approve & run</button><button data-approval="${esc(item.id)}" data-decision="reject" class="secondary">Reject</button></div></div>`).join('');
   const attentionCards = attention.slice(0, 4).map((item) => `<div class="list-item"><strong>${esc(item.title)}</strong><small>Priority ${Number(item.score || 0).toFixed(1)}</small></div>`).join('');
   $('#attention-list').innerHTML = `${approvalCards}${attentionCards}` || 'Nothing material is waiting.';
-  $('#job-list').innerHTML = activeJobs.slice(0, 4).map((job) => `<div class="list-item"><strong>${esc(job.objective)}</strong><small>${esc(humanize(job.status))} · ${Math.round(percent(job.progress))}%</small></div>`).join('') || 'No active jobs.';
+  $('#job-list').innerHTML = jobs.slice(0, 4).map((job) => `<button class="list-item job-link" data-job-id="${esc(job.id)}"><strong>${esc(job.objective)}</strong><small>${esc(humanize(job.status))} · ${Math.round(percent(job.progress))}%</small><code>${esc(job.id)}</code></button>`).join('') || 'No jobs recorded.';
   $('#policy-summary').innerHTML = policies.slice(0, 4).map((policy) => `<div class="list-item"><strong>${esc(humanize(policy.capability))}</strong><small>${esc(humanize(policy.approval_level))}</small></div>`).join('') || 'Default deny for mutations.';
   $('#today-metrics').innerHTML = [['Attention', attention.length], ['Active jobs', activeJobs.length], ['Findings', (data.research_findings || []).length], ['Automations', (data.automations || []).length], ['Providers', providerCount]].map(([label, value]) => `<div class="metric panel"><b>${value}</b><span>${esc(label)}</span></div>`).join('');
   renderToday(attention, data.recent_events || []); renderJobs(jobs); renderResearch(data.research_findings || []); renderAutomations(data.automations || [], data.watches || [], data.automation_runs || []); renderSocial(health.social_today); renderStrategy(policies); renderActivity(data.recent_activity || []); renderHealth(health); renderPermissions(policies);
@@ -130,6 +133,8 @@ function activateView(view) {
 }
 $('#nav').addEventListener('click', (event) => { const button = event.target.closest('button[data-view]'); if (button) activateView(button.dataset.view); });
 $('#mobile-nav').addEventListener('change', (event) => activateView(event.target.value));
+$('#job-search').addEventListener('input', (event) => { state.jobQuery = event.target.value.trim(); renderJobs(state.data?.jobs || []); });
+document.addEventListener('click', (event) => { const link = event.target.closest('[data-job-id]'); if (!link) return; state.jobQuery = link.dataset.jobId; $('#job-search').value = state.jobQuery; renderJobs(state.data?.jobs || []); activateView('jobs'); });
 $('#command-form').addEventListener('submit', async (event) => { event.preventDefault(); const input = $('#command-input'), text = input.value.trim(); if (!text) return; message('user', text); input.value = ''; message('assistant', 'Working… Complex operations can take several minutes while tools finish and results are verified.'); const pending = $('#messages .message:last-child'); try { const result = await api('/api/os/command', { method: 'POST', body: JSON.stringify({ message: text, conversation_id: state.conversationId }) }); pending.remove(); message('assistant', result.message, ['BLOCKED', 'TIMED_OUT'].includes(result.status) ? 'blocked' : ''); state.conversationId = result.conversation_id; await load(); } catch (error) { pending.remove(); message('assistant', 'The command could not finish: ' + error.message, 'blocked'); } });
 $('#command-input').addEventListener('keydown', (event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); $('#command-form').requestSubmit(); } });
 $('#refresh').addEventListener('click', load);

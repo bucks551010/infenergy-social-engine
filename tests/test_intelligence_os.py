@@ -355,8 +355,12 @@ def test_copilot_master_uses_autopilot_and_extended_wait(tmp_path, monkeypatch):
 
 
 def test_command_center_and_api_are_served(tmp_path):
+    job = bootstrap(str(tmp_path)).jobs.create(
+        job_type="campaign", objective="Visible completed campaign", plan=["produce"],
+    )
     status, content_type, page = handle("GET", "/os", None, str(tmp_path))
     api_status, api_type, payload = handle("GET", "/api/os/capabilities", None, str(tmp_path))
+    job_status, job_type, job_payload = handle("GET", f"/api/os/jobs/{job['id']}", None, str(tmp_path))
     create_status, create_type, created_payload = handle(
         "POST", "/api/os/conversations", {"title": "Fresh objective"}, str(tmp_path)
     )
@@ -367,10 +371,14 @@ def test_command_center_and_api_are_served(tmp_path):
     assert content_type.startswith("text/html")
     assert b"Infenergy Intelligence OS" in page
     assert b'id="mobile-nav"' in page
-    assert b'app.js?v=6' in page
+    assert b'app.js?v=7' in page
+    assert b'id="job-search"' in page
     assert api_status == 200
     assert api_type.startswith("application/json")
     assert b"system.health" in payload
+    assert job_status == 200
+    assert job_type.startswith("application/json")
+    assert json.loads(job_payload)["job"]["id"] == job["id"]
     assert create_status == 201
     assert create_type.startswith("application/json")
     assert json.loads(created_payload)["conversation"]["title"] == "Fresh objective"
@@ -390,6 +398,8 @@ def test_command_center_and_api_are_served(tmp_path):
     assert b"/api/os/conversations" in javascript
     assert b"Approve & run" in javascript
     assert b"syncConversation" in javascript
+    assert b"View persisted deliverables" in javascript
+    assert b"data-job-id" in javascript
     assert b"JSON.stringify(item" not in javascript
     assert css_status == 200
     assert css_type.startswith("text/css")

@@ -21,6 +21,9 @@ def handle(method: str, path: str, body: dict[str, Any] | None, data_dir: str) -
             return _file(path.rsplit("/", 1)[-1])
         if method == "GET" and path == "/api/os/state":
             return _json(200, service.executive_state())
+        if method == "GET" and path.startswith("/api/os/jobs/"):
+            job_id = path.rsplit("/", 1)[-1]
+            return _json(200, {"job": service.jobs.get(job_id)})
         if method == "GET" and path == "/api/os/capabilities":
             return _json(200, {"capabilities": service.registry.list()})
         if method == "GET" and path == "/api/os/conversations":

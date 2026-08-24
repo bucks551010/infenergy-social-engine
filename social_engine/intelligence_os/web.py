@@ -53,6 +53,17 @@ def handle(method: str, path: str, body: dict[str, Any] | None, data_dir: str) -
             return _json(200, result)
         if method == "POST" and path.startswith("/api/os/approvals/"):
             approval_id = path.rsplit("/", 1)[-1]
+            if bool(payload.get("approved", False)) and bool(payload.get("execute", True)):
+                actor = str(payload.get("decided_by", "owner"))
+                approved = service.approve_and_execute(
+                    approval_id, actor=str(payload.get("decided_by", "owner")),
+                    note=str(payload.get("note", "Owner approved in Command Center")),
+                )
+                job = approved["execution"].get("result", {}).get("job")
+                conversation_id = payload.get("conversation_id")
+                if isinstance(job, dict) and conversation_id:
+                    return _json(200, service.continue_approved_job(str(conversation_id), approved, actor))
+                return _json(200, approved)
             result = service.policies.decide_approval(
                 approval_id, approved=bool(payload.get("approved", False)),
                 decided_by=str(payload.get("decided_by", "owner")), note=str(payload.get("note", "")),

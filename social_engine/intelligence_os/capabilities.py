@@ -195,6 +195,23 @@ def register_core_capabilities(registry: CapabilityRegistry, policies: PolicyEng
             return {"would_transition": statuses[action], "job_id": payload["job_id"]}
         return {"job": jobs.transition(str(payload["job_id"]), statuses[action])}
 
+    def job_complete(payload: dict[str, Any], context: ExecutionContext) -> dict[str, Any]:
+        job_id = str(payload["job_id"])
+        result = dict(payload["result"])
+        job = jobs.get(job_id)
+        if job["status"] in {"CANCELED", "COMPLETED"}:
+            raise ValueError(f"job_not_completable:{job['status']}")
+        if context.dry_run:
+            return {"would_complete_job": job_id, "deliverable_keys": sorted(result), "production_mutated": False}
+        for step in job["steps"]:
+            if step["status"] not in {"COMPLETED", "SKIPPED"}:
+                jobs.checkpoint(
+                    job_id, int(step["ordinal"]), status="COMPLETED",
+                    checkpoint={"completed_by": context.actor, "deliverables_persisted": True},
+                    result={"deliverable_keys": sorted(result)},
+                )
+        return {"job": jobs.transition(job_id, "COMPLETED", progress=1.0, result=result), "deliverables": result}
+
     def scenario_create(payload: dict[str, Any], context: ExecutionContext) -> dict[str, Any]:
         if context.dry_run:
             return {"scenario": payload, "production_mutated": False}
@@ -393,6 +410,7 @@ def register_core_capabilities(registry: CapabilityRegistry, policies: PolicyEng
         Capability("jobs.get", "Get jobs", "Inspect durable jobs, steps, progress, checkpoints, errors, and steering.", "OPERATIONS", jobs_list),
         Capability("jobs.steer", "Steer job", "Add an owner instruction to a running durable job.", "OPERATIONS", job_steer, object_schema({"job_id": {"type": "string"}, "instruction": {"type": "string"}}, ["job_id", "instruction"]), risk_level="MUTATION", permission_requirement="EXECUTE_WITH_APPROVAL"),
         Capability("jobs.control", "Control job", "Pause, continue, or cancel a durable job.", "OPERATIONS", job_control, object_schema({"job_id": {"type": "string"}, "action": {"type": "string"}}, ["job_id", "action"]), risk_level="MUTATION", permission_requirement="EXECUTE_WITH_APPROVAL"),
+        Capability("jobs.complete", "Complete job with deliverables", "Persist the actual completed deliverables for an approved durable job and close every tracked step. Never call with a promise or outline; result must contain the work product.", "OPERATIONS", job_complete, object_schema({"job_id": {"type": "string"}, "result": {"type": "object"}}, ["job_id", "result"]), risk_level="INTERNAL_MUTATION", permission_requirement="AUTONOMOUS"),
         Capability("scenario.create", "Create scenario", "Create an immutable non-production business scenario with explicit uncertainty.", "STRATEGY", scenario_create, object_schema({"premise": {"type": "string"}, "assumptions": {"type": "array"}, "baseline": {"type": "object"}, "changed_variables": {"type": "array"}, "projected_effects": {"type": "array"}, "confidence": {"type": "number"}, "evidence": {"type": "array"}, "limitations": {"type": "array"}}, ["premise"]), risk_level="INTERNAL_MUTATION", permission_requirement="AUTONOMOUS"),
         Capability("world.search", "Search world model", "Search temporal Infenergy entities and current assertions.", "KNOWLEDGE", world_search, object_schema({"query": {"type": "string"}, "limit": {"type": "integer"}}, ["query"])),
         Capability("attention.get", "Get attention", "Return the highest-materiality unresolved executive attention items.", "OPERATIONS", attention_get),

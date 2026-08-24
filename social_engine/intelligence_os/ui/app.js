@@ -1,4 +1,4 @@
-const state = { data: null, conversationId: null };
+const state = { data: null, conversationId: null, renderedConversationId: null };
 const $ = (selector) => document.querySelector(selector);
 const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[char]));
 
@@ -40,6 +40,14 @@ function richText(content) {
   return output.join('');
 }
 function message(role, content, status = '') { const wrap = document.createElement('div'); wrap.className = `message ${role} ${status}`; wrap.innerHTML = role === 'assistant' ? `<span class="avatar">I</span><div><strong>Infenergy Intelligence</strong><div class="rich-message">${richText(content)}</div></div>` : `<div><strong>Owner</strong><p>${esc(content)}</p></div>`; $('#messages').append(wrap); $('#messages').scrollTop = $('#messages').scrollHeight; }
+function syncConversation(conversation) {
+  if (!conversation?.id || state.renderedConversationId === conversation.id) return;
+  $('#messages').innerHTML = '';
+  const messages = conversation.messages || [];
+  if (messages.length) messages.forEach((item) => message(item.role === 'user' ? 'user' : 'assistant', item.content, item.metadata?.timed_out ? 'blocked' : ''));
+  else message('assistant', 'Ready to inspect, plan, research, create, operate, and improve Infenergy. Mutations remain policy-governed.');
+  state.renderedConversationId = conversation.id;
+}
 function empty(title, detail = '') { return `<div class="empty-state"><span>✓</span><strong>${esc(title)}</strong>${detail ? `<p>${esc(detail)}</p>` : ''}</div>`; }
 function humanize(value) { return String(value || 'Unknown').replaceAll('_', ' ').replace(/\b\w/g, (char) => char.toUpperCase()); }
 function relativeTime(value) { if (!value) return 'Not recorded'; const date = new Date(value); if (Number.isNaN(date.getTime())) return String(value); const seconds = Math.round((date.getTime() - Date.now()) / 1000); for (const [size, unit] of [[31536000, 'year'], [2592000, 'month'], [86400, 'day'], [3600, 'hour'], [60, 'minute']]) { if (Math.abs(seconds) >= size) return new Intl.RelativeTimeFormat('en', { numeric: 'auto' }).format(Math.round(seconds / size), unit); } return 'just now'; }
@@ -95,18 +103,21 @@ function renderPermissions(policies) {
 function renderStrategy(policies) { const strategic = policies.filter((policy) => /goal|strateg|scenario|research|content/.test(String(policy.capability))); $('#strategy-content').innerHTML = strategic.length ? strategic.map((policy) => `<article class="operation-card"><div class="card-top"><span class="kicker">${esc(humanize(policy.capability))}</span>${pill(policy.status || 'ACTIVE')}</div><h3>${esc(policy.rule)}</h3><p>${esc(humanize(policy.approval_level))}</p></article>`).join('') : empty('No strategic directives recorded', 'Use Command to define goals, scenarios, or research missions.'); }
 
 function render(data) {
-  const attention = data.attention || [], jobs = data.jobs || [], policies = data.policies || [], health = data.health || {};
+  const attention = data.attention || [], approvals = data.approvals || [], jobs = data.jobs || [], policies = data.policies || [], health = data.health || {};
+  const pendingApprovals = approvals.filter((item) => item.status === 'PENDING');
   const activeJobs = jobs.filter((job) => !['COMPLETED', 'CANCELED'].includes(job.status));
   const providerCount = Object.values(health.providers || {}).filter((provider) => provider.configured || provider.sdk_installed).length;
-  $('#attention-count').textContent = attention.length; $('#job-count').textContent = activeJobs.length;
-  $('#attention-list').innerHTML = attention.slice(0, 4).map((item) => `<div class="list-item"><strong>${esc(item.title)}</strong><small>Priority ${Number(item.score || 0).toFixed(1)}</small></div>`).join('') || 'Nothing material is waiting.';
+  $('#attention-count').textContent = attention.length + pendingApprovals.length; $('#job-count').textContent = activeJobs.length;
+  const approvalCards = pendingApprovals.slice(0, 4).map((item) => `<div class="approval-card"><strong>${esc(humanize(item.capability))}</strong><small>${esc(item.request?.objective || item.request?.question || 'Owner authorization required')}</small><div class="approval-actions"><button data-approval="${esc(item.id)}" data-decision="approve">Approve & run</button><button data-approval="${esc(item.id)}" data-decision="reject" class="secondary">Reject</button></div></div>`).join('');
+  const attentionCards = attention.slice(0, 4).map((item) => `<div class="list-item"><strong>${esc(item.title)}</strong><small>Priority ${Number(item.score || 0).toFixed(1)}</small></div>`).join('');
+  $('#attention-list').innerHTML = `${approvalCards}${attentionCards}` || 'Nothing material is waiting.';
   $('#job-list').innerHTML = activeJobs.slice(0, 4).map((job) => `<div class="list-item"><strong>${esc(job.objective)}</strong><small>${esc(humanize(job.status))} · ${Math.round(percent(job.progress))}%</small></div>`).join('') || 'No active jobs.';
   $('#policy-summary').innerHTML = policies.slice(0, 4).map((policy) => `<div class="list-item"><strong>${esc(humanize(policy.capability))}</strong><small>${esc(humanize(policy.approval_level))}</small></div>`).join('') || 'Default deny for mutations.';
   $('#today-metrics').innerHTML = [['Attention', attention.length], ['Active jobs', activeJobs.length], ['Findings', (data.research_findings || []).length], ['Automations', (data.automations || []).length], ['Providers', providerCount]].map(([label, value]) => `<div class="metric panel"><b>${value}</b><span>${esc(label)}</span></div>`).join('');
   renderToday(attention, data.recent_events || []); renderJobs(jobs); renderResearch(data.research_findings || []); renderAutomations(data.automations || [], data.watches || [], data.automation_runs || []); renderSocial(health.social_today); renderStrategy(policies); renderActivity(data.recent_activity || []); renderHealth(health); renderPermissions(policies);
 }
 
-async function load() { try { const data = await api('/api/os/state'); state.data = data; state.conversationId = data.conversation?.id; render(data); $('#system-dot').className = 'dot ok'; $('#system-label').textContent = 'OS connected'; } catch (error) { $('#system-dot').className = 'dot bad'; $('#system-label').textContent = 'Connection blocked'; toast(error.message); } }
+async function load() { try { const data = await api('/api/os/state'); state.data = data; state.conversationId = data.conversation?.id; syncConversation(data.conversation); render(data); $('#system-dot').className = 'dot ok'; $('#system-label').textContent = 'OS connected'; } catch (error) { $('#system-dot').className = 'dot bad'; $('#system-label').textContent = 'Connection blocked'; toast(error.message); } }
 function activateView(view) {
   const button = document.querySelector(`#nav button[data-view="${view}"]`);
   const target = $(`#${view}`);
@@ -126,10 +137,26 @@ $('#new-chat').addEventListener('click', async () => {
   try {
     const result = await api('/api/os/conversations', { method: 'POST', body: JSON.stringify({ title: 'Infenergy Command' }) });
     state.conversationId = result.conversation.id;
+    state.renderedConversationId = result.conversation.id;
     $('#messages').innerHTML = '';
     message('assistant', 'New command session started. Company knowledge remains available; this conversation now has a clean objective and plan.');
     toast('New session ready');
   } catch (error) { toast(error.message); }
 });
 document.addEventListener('click', async (event) => { if (event.target.dataset.action !== 'plan120') return; try { const result = await api('/api/os/execute', { method: 'POST', body: JSON.stringify({ capability: 'content.plan_120_days', arguments: { objective: 'Build the next 120 days. Entertainment first. Keep the future adaptive.' }, dry_run: true }) }); toast(result.status); await load(); } catch (error) { toast(error.message); } });
+document.addEventListener('click', async (event) => {
+  const button = event.target.closest('button[data-approval]');
+  if (!button) return;
+  const approved = button.dataset.decision === 'approve';
+  button.disabled = true; button.textContent = approved ? 'Executing…' : 'Rejecting…';
+  try {
+    const result = await api(`/api/os/approvals/${button.dataset.approval}`, { method: 'POST', body: JSON.stringify({ approved, execute: approved, decided_by: 'owner', conversation_id: state.conversationId }) });
+    if (approved) {
+      const execution = result.execution || {};
+      const job = execution.result?.job;
+      message('assistant', result.message || (job ? `Approval executed once. Durable job \`${job.id}\` is now **${job.status}** with ${job.steps?.length || 0} tracked steps. Transaction: \`${execution.transaction_id}\`.` : `Approval executed once. **${execution.capability || 'Operation'}** finished with status **${execution.status}**. Transaction: \`${execution.transaction_id}\`.`));
+    } else message('assistant', 'The pending operation was rejected and will not execute.');
+    await load();
+  } catch (error) { button.disabled = false; button.textContent = approved ? 'Approve & run' : 'Reject'; message('assistant', 'Approval action failed: ' + error.message, 'blocked'); }
+});
 load();

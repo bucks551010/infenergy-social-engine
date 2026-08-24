@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 import uuid
 from typing import Any
 
@@ -17,7 +18,7 @@ from .transactions import TransactionService
 MASTER_PROMPT = """You are Infenergy's outcome-driven master intelligence and operating agent.
 Work like a capable senior operator, not a question-answer chatbot. Maintain continuity across the supplied durable conversation. Resolve pronouns and short follow-ups such as "go find it", "do that", and "continue" from the prior goal, plan, and results. Never ask the owner to repeat information already present in context.
 
-Own the objective from request to verified outcome: inspect current state, form a concise plan, invoke the registered semantic tools, evaluate their results, adapt, and continue until the objective is complete or a real external blocker remains. Prefer taking safe, reversible action over explaining what the owner could do. Use read-only tools autonomously. Use dry runs to preview mutations. If governance requires approval, create the approval request through the capability, report exactly what is waiting, and explain the single approval needed. Never claim that a job, plan, publication, or automation exists unless a tool result confirms it.
+Own the objective from request to verified outcome: inspect current state, form a concise plan, invoke the registered semantic tools, evaluate their results, adapt, and continue until the objective is complete or a real external blocker remains. Prefer taking safe, reversible action over explaining what the owner could do. Use read-only tools autonomously. Use dry runs to preview mutations. If governance requires approval, create the approval request through the capability, report exactly what is waiting, and explain the single approval needed. A PLANNING or RUNNING job is not a finished outcome. After an approved job exists, produce the actual requested work product and call jobs.complete with those deliverables before claiming completion. Never claim that a job, plan, publication, or automation exists unless a tool result confirms it.
 
 Infer reasonable operational details from Infenergy's goals, catalog, strategy, and conversation. Ask a clarifying question only when a missing fact would create material risk or make execution impossible; otherwise state the assumption and proceed. Be concise in chat while doing the detailed work through tools. Use authoritative internal data when available and current external research when needed. For substantial work, establish a durable job or checkpoint before a long tool chain so progress can be resumed safely. Distinguish facts, metrics, inference, forecast, hypothesis, recommendation, and owner decision. Have a point of view. Do not make the owner operate low-level tools. Do not bluff. Respect permissions, approvals, budgets, and policies. Preserve provenance and explain material actions. Never expand your own permissions. The owner is the final authority. Use only registered Infenergy semantic tools; do not use ambient shell, filesystem, credential, or deployment tools.
 """
@@ -108,6 +109,25 @@ class IntelligenceOS:
             operation_id=operation_id, approval_id=approval_id,
         )
 
+    def approve_and_execute(self, approval_id: str, *, actor: str = "owner", note: str = "Owner approved and executed") -> dict[str, Any]:
+        approval = self.policies.get_approval(approval_id)
+        if approval["actor"] != actor:
+            raise ValueError("approval_actor_mismatch")
+        if approval["status"] == "PENDING":
+            self.policies.decide_approval(approval_id, approved=True, decided_by=actor, note=note)
+        elif approval["status"] != "APPROVED":
+            raise ValueError(f"approval_not_executable:{approval['status']}")
+        result = self.execute_capability(
+            approval["capability"], approval["request"], actor=actor,
+            approval_id=approval_id, operation_id=f"approval:{approval_id}",
+        )
+        if result.get("status") in {"COMPLETED", "DRY_RUN_COMPLETE"}:
+            self.policies.consume_approval(approval_id)
+            self.policies.supersede_pending(
+                capability=approval["capability"], actor=actor, except_id=approval_id,
+            )
+        return {"approval": self.policies.get_approval(approval_id), "execution": result}
+
     def command(
         self,
         message: str,
@@ -116,6 +136,20 @@ class IntelligenceOS:
         actor: str = "owner",
     ) -> dict[str, Any]:
         conversation = self.get_conversation(conversation_id) if conversation_id else self.latest_conversation(actor)
+        pending = self.policies.list_approvals(actor=actor, status="PENDING", limit=1)
+        if pending and self._is_approval_intent(message):
+            self._message(conversation["id"], "user", message)
+            approved = self.approve_and_execute(pending[0]["id"], actor=actor, note="Natural-language owner approval")
+            job = approved["execution"].get("result", {}).get("job")
+            if isinstance(job, dict):
+                return self.continue_approved_job(conversation["id"], approved, actor)
+            content = self._approval_result_message(approved)
+            self._message(conversation["id"], "assistant", content, approved)
+            return {
+                "status": approved["execution"].get("status", "COMPLETED"),
+                "conversation_id": conversation["id"], "message": content,
+                "approval": approved["approval"], "execution": approved["execution"],
+            }
         prompt = self._command_prompt(message, conversation, actor)
         self._message(conversation["id"], "user", message)
         try:
@@ -160,6 +194,60 @@ class IntelligenceOS:
                 status="BLOCKED", result=status,
             )
             return {"status": "BLOCKED", "conversation_id": conversation["id"], "message": content, "model_status": status}
+
+    @staticmethod
+    def _is_approval_intent(message: str) -> bool:
+        normalized = re.sub(r"[^a-z0-9 ]", " ", message.lower())
+        normalized = re.sub(r"\s+", " ", normalized).strip()
+        return bool(re.search(r"\b(approve|approved|i approve|yes proceed|go ahead|start building|proceed)\b", normalized))
+
+    @staticmethod
+    def _approval_result_message(approved: dict[str, Any]) -> str:
+        approval = approved["approval"]
+        execution = approved["execution"]
+        transaction_id = execution.get("transaction_id", "not recorded")
+        result = execution.get("result", {})
+        job = result.get("job") if isinstance(result, dict) else None
+        if isinstance(job, dict):
+            return (
+                f"Approved and executed **{approval['capability']}** exactly once. "
+                f"Durable job `{job.get('id')}` now exists with status **{job.get('status')}** "
+                f"and {len(job.get('steps', []))} tracked steps. Transaction: `{transaction_id}`. "
+                "This confirms the job was created; it does not claim unfinished deliverables are complete."
+            )
+        return (
+            f"Approved and executed **{approval['capability']}** exactly once. "
+            f"Status: **{execution.get('status')}**. Transaction: `{transaction_id}`."
+        )
+
+    def continue_approved_job(self, conversation_id: str, approved: dict[str, Any], actor: str = "owner") -> dict[str, Any]:
+        execution = approved["execution"]
+        job = execution["result"]["job"]
+        request = (
+            f"Owner approval {approved['approval']['id']} was consumed and created durable job {job['id']} "
+            f"for capability {approved['approval']['capability']}. Continue autonomously now. Produce the actual requested "
+            "deliverables—not another plan or promise—then persist them with jobs.complete. If available tools genuinely "
+            "cannot produce a required artifact, complete everything they can and name only the exact external blocker."
+        )
+        conversation = self.get_conversation(conversation_id)
+        prompt = self._command_prompt(request, conversation, actor)
+        try:
+            response = asyncio.run(self.master.converse(
+                prompt, session_id=conversation["copilot_session_id"],
+                system_message=MASTER_PROMPT + "\nAvailable capabilities:\n" + self.registry.semantic_catalog(),
+                tools=self._copilot_tools(actor),
+            ))
+            content = response["content"]
+            self._message(conversation_id, "assistant", content, {**response, "continued_after_approval": True})
+            return {
+                "status": "COMPLETED", "conversation_id": conversation_id,
+                "message": content, "model": response["model"],
+                "approval": approved["approval"], "execution": execution,
+            }
+        except TimeoutError:
+            content = self._approval_result_message(approved) + " Continuation is still recorded in the durable job."
+            self._message(conversation_id, "assistant", content, {"timed_out": True, "continued_after_approval": True})
+            return {"status": "TIMED_OUT", "conversation_id": conversation_id, "message": content, "approval": approved["approval"], "execution": execution}
 
     def _command_prompt(self, message: str, conversation: dict[str, Any], actor: str) -> str:
         messages = conversation.get("messages", [])[-20:]
@@ -224,6 +312,7 @@ class IntelligenceOS:
             "time_utc": utc_now(),
             "health": health.get("result", {}),
             "attention": self.attention.list_open(10),
+            "approvals": self.policies.list_approvals(actor="owner", limit=20),
             "jobs": self.jobs.list(20),
             "policies": self.policies.list_policies(),
             "recent_events": self.events.list(20),

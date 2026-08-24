@@ -70,6 +70,102 @@ def test_approved_schedule_is_transactional_and_rollbackable(tmp_path):
     assert rolled_back["status"] == "ROLLED_BACK"
 
 
+def test_default_deny_approval_executes_exact_request_once(tmp_path):
+    service = bootstrap(str(tmp_path))
+    arguments = {"name": "Approved goal", "description": "A verified one-time goal"}
+    pending = service.execute_capability("goals.create", arguments)
+
+    approved = service.approve_and_execute(pending["approval_id"])
+
+    assert approved["execution"]["status"] == "COMPLETED"
+    assert approved["approval"]["status"] == "CONSUMED"
+    assert approved["execution"]["result"]["goal"]["description"] == arguments["description"]
+    with pytest.raises(ValueError, match="approval_not_executable:CONSUMED"):
+        service.approve_and_execute(pending["approval_id"])
+
+
+def test_approval_cannot_authorize_different_payload(tmp_path):
+    service = bootstrap(str(tmp_path))
+    pending = service.execute_capability("goals.create", {"name": "Approved", "description": "Approved description"})
+    service.policies.decide_approval(pending["approval_id"], approved=True, decided_by="owner")
+
+    mismatch = service.execute_capability(
+        "goals.create", {"name": "Different", "description": "Different description"}, approval_id=pending["approval_id"]
+    )
+
+    assert mismatch["status"] == "WAITING_APPROVAL"
+    assert mismatch["approval_id"] != pending["approval_id"]
+
+
+def test_duplicate_pending_approval_is_reused_and_stale_variants_are_superseded(tmp_path):
+    service = bootstrap(str(tmp_path))
+    first = service.execute_capability("goals.create", {"name": "One", "description": "Same request"})
+    duplicate = service.execute_capability("goals.create", {"name": "One", "description": "Same request"})
+    variant = service.execute_capability("goals.create", {"name": "Two", "description": "Stale variant"})
+
+    assert duplicate["approval_id"] == first["approval_id"]
+    assert variant["approval_id"] != first["approval_id"]
+    service.approve_and_execute(variant["approval_id"])
+
+    assert service.policies.get_approval(variant["approval_id"])["status"] == "CONSUMED"
+    assert service.policies.get_approval(first["approval_id"])["status"] == "SUPERSEDED"
+
+
+def test_natural_language_approval_executes_without_model_retry_loop(tmp_path, monkeypatch):
+    service = bootstrap(str(tmp_path))
+    pending = service.execute_capability("goals.create", {"name": "Proceed", "description": "Proceed once"})
+
+    async def model_must_not_run(*args, **kwargs):
+        raise AssertionError("approval intent must be handled deterministically")
+
+    monkeypatch.setattr(service.master, "converse", model_must_not_run)
+    result = service.command("I approve this. Go ahead.")
+
+    assert result["status"] == "COMPLETED"
+    assert result["approval"]["id"] == pending["approval_id"]
+    assert result["approval"]["status"] == "CONSUMED"
+    assert "exactly once" in result["message"]
+
+
+def test_approved_job_continues_to_persisted_deliverables(tmp_path, monkeypatch):
+    service = bootstrap(str(tmp_path))
+    pending = service.execute_capability(
+        "content.plan_120_days", {"objective": "Build the complete Blackout House campaign"}
+    )
+
+    async def complete_job(prompt, **kwargs):
+        job = service.jobs.list(1)[0]
+        completed = service.execute_capability(
+            "jobs.complete",
+            {
+                "job_id": job["id"],
+                "result": {
+                    "campaign": "Blackout House",
+                    "scripts": ["Episode one script"],
+                    "captions": ["Episode one caption"],
+                    "calendar": [{"day": 1, "title": "The first hour"}],
+                },
+            },
+        )
+        assert completed["status"] == "COMPLETED"
+        return {
+            "content": "Blackout House deliverables were built and persisted.",
+            "model": "gpt-5.6-sol", "provider": "github-copilot-sdk",
+            "session_id": kwargs["session_id"],
+        }
+
+    monkeypatch.setattr(service.master, "converse", complete_job)
+    result = service.command("I approve this—start building.")
+    job = service.jobs.list(1)[0]
+
+    assert result["status"] == "COMPLETED"
+    assert result["approval"]["id"] == pending["approval_id"]
+    assert job["status"] == "COMPLETED"
+    assert job["progress"] == 1.0
+    assert job["result"]["campaign"] == "Blackout House"
+    assert all(step["status"] == "COMPLETED" for step in job["steps"])
+
+
 def test_schedule_dry_run_does_not_write_social_slot(tmp_path):
     service = bootstrap(str(tmp_path))
     service.policies.create_policy(
@@ -271,7 +367,7 @@ def test_command_center_and_api_are_served(tmp_path):
     assert content_type.startswith("text/html")
     assert b"Infenergy Intelligence OS" in page
     assert b'id="mobile-nav"' in page
-    assert b'app.js?v=5' in page
+    assert b'app.js?v=6' in page
     assert api_status == 200
     assert api_type.startswith("application/json")
     assert b"system.health" in payload
@@ -292,6 +388,8 @@ def test_command_center_and_api_are_served(tmp_path):
     assert b"function activateView" in javascript
     assert b"function richText" in javascript
     assert b"/api/os/conversations" in javascript
+    assert b"Approve & run" in javascript
+    assert b"syncConversation" in javascript
     assert b"JSON.stringify(item" not in javascript
     assert css_status == 200
     assert css_type.startswith("text/css")

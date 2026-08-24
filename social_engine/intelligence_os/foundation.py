@@ -74,17 +74,16 @@ def heartbeat(data_dir: str) -> dict[str, Any]:
 
 def _seed_policies(policies: PolicyEngine) -> None:
     existing = policies.list_policies(active_only=False)
-    if existing:
-        return
-    policies.create_policy(
-        capability="policies.create",
-        rule="Authenticated owner may define explicit scoped operating policies.",
-        approval_level="AUTONOMOUS",
-        created_by="system_bootstrap",
-    )
-    policies.create_policy(
-        capability="scenario.create",
-        rule="Non-mutating scenarios may be created autonomously because they cannot change production state.",
-        approval_level="AUTONOMOUS",
-        created_by="system_bootstrap",
-    )
+    existing_capabilities = {item["capability"] for item in existing if item["status"] == "ACTIVE"}
+    defaults = [
+        ("policies.create", "Authenticated owner may define explicit scoped operating policies."),
+        ("scenario.create", "Non-mutating scenarios may be created autonomously because they cannot change production state."),
+        ("jobs.complete", "The operating agent may persist actual deliverables and close a job that the owner already approved."),
+    ]
+    for capability, rule in defaults:
+        if capability in existing_capabilities:
+            continue
+        policies.create_policy(
+            capability=capability, rule=rule, approval_level="AUTONOMOUS",
+            created_by="system_bootstrap",
+        )

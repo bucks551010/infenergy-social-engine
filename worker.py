@@ -829,6 +829,14 @@ class HealthHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         parsed = urlparse(self.path)
 
+        if parsed.path == "/" and "text/html" in str(self.headers.get("Accept", "")).lower():
+            self.send_response(302)
+            self.send_header("Location", "/os")
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
+
         if parsed.path in {"/os", "/os/"} or parsed.path.startswith("/os/assets/") or parsed.path.startswith("/api/os/"):
             params = parse_qs(parsed.query)
             if parsed.path.startswith("/api/os/"):

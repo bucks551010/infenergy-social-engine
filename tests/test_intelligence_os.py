@@ -453,7 +453,10 @@ def test_command_center_and_api_are_served(tmp_path):
     assert content_type.startswith("text/html")
     assert b"Infenergy Intelligence OS" in page
     assert b'id="mobile-nav"' in page
-    assert b'app.js?v=8' in page
+    assert b'app.js?v=9' in page
+    assert b'id="login-form"' in page
+    assert b'id="login-password"' in page
+    assert b'id="logout"' in page
     assert b'id="job-search"' in page
     assert api_status == 200
     assert api_type.startswith("application/json")
@@ -480,6 +483,9 @@ def test_command_center_and_api_are_served(tmp_path):
     assert b"/api/os/conversations" in javascript
     assert b"Approve & run" in javascript
     assert b"syncConversation" in javascript
+    assert b"sessionStorage.getItem('infenergyToken')" in javascript
+    assert b"localStorage.getItem('infenergyToken')" not in javascript
+    assert b"prompt('Enter the Infenergy owner token')" not in javascript
     assert b"View persisted deliverables" in javascript
     assert b"data-job-id" in javascript
     assert b"JSON.stringify(item" not in javascript
@@ -489,6 +495,7 @@ def test_command_center_and_api_are_served(tmp_path):
     assert b".slot-grid" in stylesheet
     assert b".mobile-view-picker" in stylesheet
     assert b"overflow-x: hidden" in stylesheet
+    assert b".login-screen" in stylesheet
     assert b"grid-template-columns: minmax(0, 1fr)" in stylesheet
 
 

@@ -1,16 +1,41 @@
-const state = { data: null, conversationId: null, renderedConversationId: null, jobQuery: '' };
+const state = { data: null, conversationId: null, renderedConversationId: null, jobQuery: '', token: sessionStorage.getItem('infenergyToken') || '' };
 const $ = (selector) => document.querySelector(selector);
 const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[char]));
 
 async function api(path, options = {}) {
-  const token = localStorage.getItem('infenergyToken') || prompt('Enter the Infenergy owner token');
-  if (token) localStorage.setItem('infenergyToken', token);
   const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
-  if (token) headers.Authorization = `Bearer ${token}`;
+  if (state.token) headers.Authorization = `Bearer ${state.token}`;
   const response = await fetch(path, { ...options, headers });
   const data = await response.json();
+  if (response.status === 401 || response.status === 403) showLogin('That password was not accepted.');
   if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
   return data;
+}
+
+function showLogin(error = '') {
+  $('#app-shell').hidden = true;
+  $('#login-screen').hidden = false;
+  $('#login-error').textContent = error;
+  $('#login-password').focus();
+}
+
+function showApp() {
+  $('#login-screen').hidden = true;
+  $('#app-shell').hidden = false;
+  $('#login-error').textContent = '';
+}
+
+async function login(password) {
+  state.token = password;
+  const response = await fetch('/api/os/state', { headers: { Authorization: `Bearer ${password}` } });
+  if (!response.ok) {
+    state.token = '';
+    sessionStorage.removeItem('infenergyToken');
+    throw new Error('That password was not accepted.');
+  }
+  sessionStorage.setItem('infenergyToken', password);
+  showApp();
+  await load();
 }
 
 function toast(text) { const el = $('#toast'); el.textContent = text; el.classList.add('show'); setTimeout(() => el.classList.remove('show'), 2600); }
@@ -138,6 +163,20 @@ $('#job-search').addEventListener('input', (event) => { state.jobQuery = event.t
 document.addEventListener('click', (event) => { const link = event.target.closest('[data-job-id]'); if (!link) return; state.jobQuery = link.dataset.jobId; $('#job-search').value = state.jobQuery; renderJobs(state.data?.jobs || []); activateView('jobs'); });
 $('#command-form').addEventListener('submit', async (event) => { event.preventDefault(); const input = $('#command-input'), text = input.value.trim(); if (!text) return; message('user', text); input.value = ''; message('assistant', 'Working… Complex operations can take several minutes while tools finish and results are verified.'); const pending = $('#messages .message:last-child'); try { const result = await api('/api/os/command', { method: 'POST', body: JSON.stringify({ message: text, conversation_id: state.conversationId }) }); pending.remove(); message('assistant', result.message, ['BLOCKED', 'TIMED_OUT'].includes(result.status) ? 'blocked' : ''); state.conversationId = result.conversation_id; await load(); } catch (error) { pending.remove(); message('assistant', 'The command could not finish: ' + error.message, 'blocked'); } });
 $('#command-input').addEventListener('keydown', (event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); $('#command-form').requestSubmit(); } });
+$('#login-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const button = event.currentTarget.querySelector('button');
+  button.disabled = true;
+  $('#login-error').textContent = '';
+  try { await login($('#login-password').value); $('#login-password').value = ''; }
+  catch (error) { showLogin(error.message); }
+  finally { button.disabled = false; }
+});
+$('#logout').addEventListener('click', () => {
+  state.token = '';
+  sessionStorage.removeItem('infenergyToken');
+  showLogin();
+});
 $('#refresh').addEventListener('click', load);
 $('#new-chat').addEventListener('click', async () => {
   try {
@@ -165,4 +204,4 @@ document.addEventListener('click', async (event) => {
     await load();
   } catch (error) { button.disabled = false; button.textContent = approved ? 'Approve & run' : 'Reject'; message('assistant', 'Approval action failed: ' + error.message, 'blocked'); }
 });
-load();
+if (state.token) { showApp(); load(); } else showLogin();

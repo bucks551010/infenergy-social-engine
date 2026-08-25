@@ -4,10 +4,22 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Infenergy Intelligence OS</title>
-  <link rel="stylesheet" href="/os/assets/styles.css?v=8">
+  <link rel="stylesheet" href="/os/assets/styles.css?v=9">
 </head>
 <body>
-  <div class="shell">
+  <section id="login-screen" class="login-screen">
+    <form id="login-form" class="login-panel">
+      <div class="login-brand"><span class="brand-mark">I</span><div><strong>INFENERGY</strong><small>INTELLIGENCE OS</small></div></div>
+      <p class="eyebrow">OWNER ACCESS</p>
+      <h1>Social Command Center</h1>
+      <p class="login-copy">Enter the owner password to inspect and operate the social media engine.</p>
+      <label for="login-password">Password</label>
+      <input id="login-password" name="password" type="password" autocomplete="current-password" required autofocus>
+      <p id="login-error" class="login-error" role="alert"></p>
+      <button type="submit">Open Command Center</button>
+    </form>
+  </section>
+  <div id="app-shell" class="shell" hidden>
     <aside class="rail">
       <div class="brand"><span class="brand-mark">I</span><div><strong>INFENERGY</strong><small>INTELLIGENCE OS</small></div></div>
       <nav id="nav">
@@ -42,7 +54,7 @@
     <main>
       <header>
         <div><p class="eyebrow">MASTER OPERATING ENVIRONMENT</p><h1 id="view-title">Command</h1></div>
-        <div class="header-actions"><button id="refresh" class="ghost">Refresh</button><button id="new-chat" class="ghost">New session</button></div>
+        <div class="header-actions"><button id="refresh" class="ghost">Refresh</button><button id="new-chat" class="ghost">New session</button><button id="logout" class="ghost">Log out</button></div>
       </header>
 
       <section id="command" class="view active">
@@ -76,6 +88,6 @@
     </main>
   </div>
   <div id="toast" class="toast"></div>
-  <script src="/os/assets/app.js?v=8"></script>
+  <script src="/os/assets/app.js?v=9"></script>
 </body>
 </html>

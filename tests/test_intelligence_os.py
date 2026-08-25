@@ -24,6 +24,8 @@ def test_bootstrap_registers_foundation_and_preserves_default_deny(tmp_path):
     assert "system.health" in capabilities
     assert "social.schedule" in capabilities
     assert "social.schedule_job_campaign" in capabilities
+    assert "creative.carousel.generate" in capabilities
+    assert "agents.run" in capabilities
     assert "content.plan_120_days" in capabilities
     blocked = service.execute_capability(
         "goals.create",
@@ -70,6 +72,68 @@ def test_approved_schedule_is_transactional_and_rollbackable(tmp_path):
     rolled_back = service.transactions.rollback(result["transaction_id"])
     assert rolled_back["status"] == "ROLLED_BACK"
 
+
+def test_carousel_generation_executes_without_approval_and_schedules_with_one(tmp_path, monkeypatch):
+    service = bootstrap(str(tmp_path))
+    monkeypatch.setenv("GEMINI_API_KEY", "")
+
+    generated = service.execute_capability(
+        "creative.carousel.generate",
+        {
+            "objective": "The last percent is not a plan.",
+            "platform": "instagram_feed",
+            "platforms": ["facebook", "instagram"],
+            "slide_count": 8,
+        },
+    )
+
+    assert generated["status"] == "COMPLETED"
+    assert generated["result"]["slide_count"] == 8
+    assert len(generated["result"]["assets"]) == 8
+    assert all(item["local_path"] for item in generated["result"]["assets"])
+
+    pending = service.execute_capability(
+        "social.schedule",
+        {
+            "content_date": "2026-08-27",
+            "slot": "midday",
+            "package": generated["result"]["package"],
+        },
+    )
+    assert pending["status"] == "WAITING_APPROVAL"
+    approved = service.approve_and_execute(pending["approval_id"])
+    assert approved["execution"]["status"] == "COMPLETED"
+    assert approved["approval"]["status"] == "CONSUMED"
+    assert approved["execution"]["result"]["outbox_id"]
+
+
+def test_schedule_rejects_silent_replacement_and_can_choose_slot_time(tmp_path):
+    service = bootstrap(str(tmp_path))
+    service.policies.create_policy(
+        capability="social.schedule",
+        rule="Test autonomous scheduling.",
+        approval_level="AUTONOMOUS",
+        created_by="owner",
+    )
+    arguments = {
+        "content_date": "2026-08-28",
+        "slot": "evening",
+        "package": {"post_id": "first"},
+    }
+    first = service.execute_capability("social.schedule", arguments)
+    assert first["status"] == "COMPLETED"
+
+    with pytest.raises(ValueError, match="slot_already_occupied"):
+        service.execute_capability(
+            "social.schedule",
+            {**arguments, "package": {"post_id": "second"}},
+        )
+
+    replaced = service.execute_capability(
+        "social.schedule",
+        {**arguments, "package": {"post_id": "second"}, "replace_existing": True},
+    )
+    assert replaced["status"] == "COMPLETED"
 
 def test_completed_campaign_is_loaded_with_one_approval_and_no_publication(tmp_path):
     service = bootstrap(str(tmp_path))

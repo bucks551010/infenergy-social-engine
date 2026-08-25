@@ -79,6 +79,7 @@ def _seed_policies(policies: PolicyEngine) -> None:
         ("policies.create", "Authenticated owner may define explicit scoped operating policies."),
         ("scenario.create", "Non-mutating scenarios may be created autonomously because they cannot change production state."),
         ("jobs.complete", "The operating agent may persist actual deliverables and close a job that the owner already approved."),
+        ("creative.carousel.generate", "Draft carousel generation and rendering may run autonomously; scheduling and publication remain separately governed."),
     ]
     for capability, rule in defaults:
         if capability in existing_capabilities:

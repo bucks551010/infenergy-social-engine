@@ -81,14 +81,14 @@ def _render_card(path: str, *, headline: str, supporting: str, pillar: str, inde
 
 def _carousel_slides(thought: dict[str, Any]) -> list[dict[str, str]]:
     custom = thought.get("slides") if isinstance(thought.get("slides"), list) else []
-    if len(custom) >= 4:
+    if len(custom) >= 2:
         return [
             {
                 "role": str(slide.get("role") or f"slide_{index}"),
                 "headline": str(slide.get("headline") or ""),
                 "supporting": str(slide.get("supporting") or ""),
             }
-            for index, slide in enumerate(custom[:4], start=1)
+            for index, slide in enumerate(custom[:10], start=1)
             if isinstance(slide, dict)
         ]
     return [

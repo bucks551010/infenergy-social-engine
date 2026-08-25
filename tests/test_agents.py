@@ -211,6 +211,29 @@ class AgentsTests(unittest.TestCase):
         _, errors = validate_agent_output("carousel_slide_writer", result)
         self.assertEqual(errors, [])
 
+    def test_carousel_slide_writer_honors_requested_platform_safe_length(self) -> None:
+        with patch.dict(os.environ, {"GEMINI_API_KEY": ""}, clear=False):
+            result = carousel_slide_writer.run(
+                self._tmp,
+                principle_key="contrapositive",
+                archetype_key="preparedness_buyer",
+                product={"name": "PowerFlex", "metrics": ["400W"]},
+                platform="instagram_feed",
+                slide_count=9,
+            )
+        self.assertEqual(result["slide_count"], 9)
+        self.assertEqual(len(result["slides"]), 9)
+        self.assertEqual(result["platform_limit"], 10)
+
+    def test_carousel_slide_writer_rejects_platform_overflow(self) -> None:
+        with self.assertRaisesRegex(ValueError, "slide_count_must_be_between_2_and_10"):
+            carousel_slide_writer.run(
+                self._tmp,
+                product={"name": "PowerFlex"},
+                platform="facebook_feed",
+                slide_count=11,
+            )
+
     def test_visual_qa_reviewer_no_gemini_returns_default_accept(self) -> None:
         with patch.dict(os.environ, {"GEMINI_API_KEY": ""}, clear=False):
             result = visual_qa_reviewer.run(self._tmp, image_path="", platform="facebook")

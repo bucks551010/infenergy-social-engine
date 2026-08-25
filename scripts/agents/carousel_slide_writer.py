@@ -1,7 +1,7 @@
 """Tier-1 #5: carousel_slide_writer_agent.
 
-Given a formal-logic principle_key, an archetype_key, and a product, returns 5
-slides each with on_image_headline, on_image_subline, slide_role.
+Given a formal-logic principle_key, an archetype_key, and a product, returns a
+platform-safe caller-selected number of slides with on-image copy and roles.
 
 Uses Gemini when GEMINI_API_KEY is set; deterministic template fallback otherwise.
 """
@@ -15,7 +15,27 @@ from typing import Any
 from ._base import utc_now, write_snapshot
 
 
-SLIDE_ROLES = ("hook", "logical_contrast", "product_and_verified_proof", "emotional_result", "single_next_step")
+SLIDE_ROLES = (
+    "hook",
+    "problem",
+    "logical_contrast",
+    "mechanism",
+    "product_and_verified_proof",
+    "real_world_application",
+    "objection_answer",
+    "emotional_result",
+    "summary",
+    "single_next_step",
+)
+PLATFORM_LIMITS = {
+    "facebook": 10,
+    "facebook_feed": 10,
+    "instagram": 10,
+    "instagram_feed": 10,
+    "linkedin": 10,
+    "linkedin_feed": 10,
+    "instagram_story": 1,
+}
 
 
 def _thought_slides(thought: dict[str, Any]) -> list[dict]:
@@ -30,7 +50,7 @@ def _thought_slides(thought: dict[str, Any]) -> list[dict]:
     ]
 
 
-def _fallback(principle_key: str, archetype_key: str, product: dict) -> list[dict]:
+def _fallback(principle_key: str, archetype_key: str, product: dict, slide_count: int) -> list[dict]:
     name = str((product or {}).get("name", "") or "your backup power kit").strip()
     metrics = [str(m).strip() for m in (product or {}).get("metrics", []) if str(m).strip()]
     primary_metric = metrics[0] if metrics else "verified specs"
@@ -42,33 +62,33 @@ def _fallback(principle_key: str, archetype_key: str, product: dict) -> list[dic
         "implication_of_result": ("Plug it in tonight. Sleep tomorrow", f"{name} shifts the whole plan"),
     }
     headline, subline = hook_map.get(principle_key, (f"{name}: prepared, not panicked", primary_metric))
+    templates = {
+        "hook": (headline, subline),
+        "problem": ("The outage is not the surprise", "An untested plan is"),
+        "logical_contrast": ("Cheap watts ≠ real backup", "Match must-run devices to actual output"),
+        "mechanism": ("Start with the load", "Then match output, runtime, and recharge"),
+        "product_and_verified_proof": (name, primary_metric),
+        "real_world_application": ("Build around real routines", "Lights, phones, work, and the next recharge"),
+        "objection_answer": ("More capacity is not always better", "The right fit is easier to use"),
+        "emotional_result": ("Lights stay on. Phones stay charged", "The plan works when you cannot improvise"),
+        "summary": ("Load. Runtime. Recharge", "Three checks before backup becomes a plan"),
+        "single_next_step": (f"Get {name}", "One clear next step. Backup handled"),
+    }
+    selected_roles = list(SLIDE_ROLES[:slide_count])
+    if slide_count > 1:
+        selected_roles[-1] = "single_next_step"
     slides = [
-        {"slide_role": "hook", "on_image_headline": headline, "on_image_subline": subline},
         {
-            "slide_role": "logical_contrast",
-            "on_image_headline": "Cheap watts ≠ real backup",
-            "on_image_subline": "Match your must-run devices to actual output",
-        },
-        {
-            "slide_role": "product_and_verified_proof",
-            "on_image_headline": name,
-            "on_image_subline": primary_metric,
-        },
-        {
-            "slide_role": "emotional_result",
-            "on_image_headline": "Lights stay on. Phones stay charged",
-            "on_image_subline": "The plan does the work when you can't",
-        },
-        {
-            "slide_role": "single_next_step",
-            "on_image_headline": f"Get {name}",
-            "on_image_subline": "One step. Backup handled",
-        },
+            "slide_role": role,
+            "on_image_headline": templates[role][0],
+            "on_image_subline": templates[role][1],
+        }
+        for role in selected_roles
     ]
     return slides
 
 
-def _gemini_slides(principle_key: str, archetype_key: str, product: dict) -> list[dict] | None:
+def _gemini_slides(principle_key: str, archetype_key: str, product: dict, slide_count: int) -> list[dict] | None:
     api_key = os.environ.get("GEMINI_API_KEY", "").strip()
     if not api_key:
         return None
@@ -77,13 +97,13 @@ def _gemini_slides(principle_key: str, archetype_key: str, product: dict) -> lis
         from google.genai import types
 
         prompt = (
-            "Return JSON with a top-level 'slides' array of exactly 5 objects. Each object must have "
-            "keys slide_role (from: hook, logical_contrast, product_and_verified_proof, "
-            "emotional_result, single_next_step), on_image_headline (<=8 words), on_image_subline "
+            f"Return JSON with a top-level 'slides' array of exactly {slide_count} objects. Each object must have "
+            f"keys slide_role (use these in this narrative order: {', '.join(SLIDE_ROLES)}), "
+            "on_image_headline (<=8 words), on_image_subline "
             "(<=14 words). Use formal-logic principle "
             f"'{principle_key}' and audience archetype '{archetype_key}'. Product: "
             f"{json.dumps({'name': product.get('name', ''), 'metrics': product.get('metrics', [])[:3]})}. "
-            "No emojis. No hashtags. No product-name repetition across slides beyond slide 3 and slide 5."
+            "No emojis. No hashtags. Use the product name on no more than two slides."
         )
         client = genai.Client(api_key=api_key)
         resp = client.models.generate_content(
@@ -96,10 +116,10 @@ def _gemini_slides(principle_key: str, archetype_key: str, product: dict) -> lis
             return None
         data = json.loads(text)
         slides = data.get("slides") if isinstance(data, dict) else None
-        if not isinstance(slides, list) or len(slides) != 5:
+        if not isinstance(slides, list) or len(slides) != slide_count:
             return None
         cleaned: list[dict] = []
-        for role, item in zip(SLIDE_ROLES, slides):
+        for role, item in zip(SLIDE_ROLES[:slide_count], slides):
             if not isinstance(item, dict):
                 return None
             cleaned.append(
@@ -120,10 +140,20 @@ def run(
     archetype_key: str = "",
     product: dict | None = None,
     thought: dict | None = None,
+    platform: str = "instagram_feed",
+    slide_count: int | None = None,
 ) -> dict:
     product = product or {}
-    slides = _thought_slides(thought) if thought else (
-        _gemini_slides(principle_key, archetype_key, product) or _fallback(principle_key, archetype_key, product)
+    platform_key = str(platform or "instagram_feed").strip().lower()
+    platform_limit = PLATFORM_LIMITS.get(platform_key, 10)
+    requested_count = int(slide_count if slide_count is not None else (4 if thought else 5))
+    if platform_limit < 2:
+        raise ValueError(f"carousel_not_supported_on_{platform_key}")
+    if requested_count < 2 or requested_count > platform_limit:
+        raise ValueError(f"slide_count_must_be_between_2_and_{platform_limit}_for_{platform_key}")
+    slides = _thought_slides(thought) if thought and requested_count == 4 else (
+        _gemini_slides(principle_key, archetype_key, product, requested_count)
+        or _fallback(principle_key, archetype_key, product, requested_count)
     )
     payload = {
         "agent": "carousel_slide_writer",
@@ -132,6 +162,9 @@ def run(
         "archetype_key": archetype_key,
         "product_name": str(product.get("name", "")),
         "content_mode": "company_thought" if thought else "product",
+        "platform": platform_key,
+        "slide_count": len(slides),
+        "platform_limit": platform_limit,
         "slides": slides,
     }
     write_snapshot(data_dir, "carousel_slide_writer", payload)

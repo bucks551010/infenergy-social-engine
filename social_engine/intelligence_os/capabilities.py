@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import re
 import sys
+import uuid
 from dataclasses import asdict, is_dataclass
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
@@ -85,12 +86,26 @@ def register_core_capabilities(registry: CapabilityRegistry, policies: PolicyEng
         return {"start_date": start.isoformat(), "days": [daily_status(context.data_dir, start + timedelta(days=index)) for index in range(days)]}
 
     def schedule_post(payload: dict[str, Any], context: ExecutionContext) -> dict[str, Any]:
-        from content_operations import create_council_session, ensure_daily_slots, mark_ready, replace_unpublished_slot
+        from content_operations import create_council_session, daily_status, ensure_daily_slots, mark_ready, replace_unpublished_slot
 
         content_date = str(payload["content_date"])
-        slot = str(payload["slot"])
-        scheduled_at = str(payload["scheduled_at"])
+        slot = str(payload.get("slot", "midday")).strip().lower()
+        if slot not in {"morning", "midday", "evening"}:
+            raise ValueError("slot_must_be_morning_midday_or_evening")
+        default_times = {"morning": "13:00:00+00:00", "midday": "17:00:00+00:00", "evening": "23:00:00+00:00"}
+        scheduled_at = str(payload.get("scheduled_at") or f"{content_date}T{default_times[slot]}")
+        scheduled_datetime = datetime.fromisoformat(scheduled_at.replace("Z", "+00:00"))
+        if scheduled_datetime.date().isoformat() != content_date:
+            raise ValueError("scheduled_at_must_match_content_date")
         package = dict(payload["package"])
+        platforms = [str(item).lower() for item in payload.get("platforms", []) if str(item).strip()]
+        if platforms:
+            package["platforms"] = platforms
+            package.setdefault("platform_policy", {})["platforms"] = platforms
+        existing_day = daily_status(context.data_dir, content_date)
+        existing_slot = next((item for item in existing_day.get("slots", []) if str(item.get("slot", "")).lower() == slot), None)
+        if existing_slot and (existing_slot.get("content_id") or existing_slot.get("outbox_id")) and not bool(payload.get("replace_existing", False)):
+            raise ValueError(f"slot_already_occupied:{content_date}:{slot}:set_replace_existing_true")
         plan = {
             "actions": ["ensure_daily_slots", "create_decision_record", "write_content_outbox"],
             "affected_resources": [{"type": "social_slot", "id": f"{content_date}:{slot}"}],
@@ -100,7 +115,7 @@ def register_core_capabilities(registry: CapabilityRegistry, policies: PolicyEng
         }
         if context.dry_run:
             return {"plan": plan, "would_schedule": {"content_date": content_date, "slot": slot, "scheduled_at": scheduled_at}}
-        day_start = datetime.fromisoformat(scheduled_at.replace("Z", "+00:00"))
+        day_start = scheduled_datetime
         schedule = {
             "morning": day_start.replace(hour=13, minute=0).isoformat(),
             "midday": day_start.replace(hour=17, minute=0).isoformat(),
@@ -426,6 +441,110 @@ def register_core_capabilities(registry: CapabilityRegistry, policies: PolicyEng
             "production_mutated": False,
         }
 
+    def agents_list(_: dict[str, Any], __: ExecutionContext) -> dict[str, Any]:
+        from agents.dispatcher import available_agents
+        return {"agents": available_agents()}
+
+    def agent_run(payload: dict[str, Any], context: ExecutionContext) -> dict[str, Any]:
+        from agents.dispatcher import run_agent
+        if context.dry_run:
+            return {"would_run": payload["name"], "params": payload.get("params", {}), "production_mutated": False}
+        result = run_agent(str(payload["name"]), context.data_dir, dict(payload.get("params", {})))
+        if result.get("error"):
+            raise ValueError(str(result["error"]))
+        return {"agent": payload["name"], "output": result}
+
+    def creative_carousel_generate(payload: dict[str, Any], context: ExecutionContext) -> dict[str, Any]:
+        from agents.carousel_slide_writer import PLATFORM_LIMITS, run as write_slides
+        from build_monthly_content import _render_assets
+
+        platform = str(payload.get("platform", "instagram_feed")).strip().lower()
+        slide_count = int(payload.get("slide_count", 6))
+        platform_limit = PLATFORM_LIMITS.get(platform, 10)
+        objective = str(payload["objective"]).strip()
+        if context.dry_run:
+            return {
+                "would_generate": {"objective": objective, "platform": platform, "slide_count": slide_count},
+                "platform_limit": platform_limit, "production_mutated": False,
+            }
+        product = dict(payload.get("product", {}))
+        product_id = str(payload.get("product_id", "")).strip()
+        if product_id and not product:
+            import inventory_db
+            product = next(
+                (item for item in inventory_db.fetch_products(context.data_dir) if str(item.get("id") or item.get("product_id")) == product_id),
+                {},
+            )
+            if not product:
+                raise KeyError(f"product_not_found:{product_id}")
+        authored = write_slides(
+            context.data_dir,
+            principle_key=str(payload.get("principle_key", "contrapositive")),
+            archetype_key=str(payload.get("archetype_key", "preparedness_buyer")),
+            product=product,
+            platform=platform,
+            slide_count=slide_count,
+        )
+        thought = {
+            "id": f"CREATIVE-{uuid.uuid4().hex[:12]}",
+            "format": "carousel",
+            "statement": objective,
+            "expansion": str(payload.get("supporting_message", objective)),
+            "prompt": str(payload.get("cta", "What will you prepare first?")),
+            "pillar": str(payload.get("pillar", "preparedness_mindset")),
+            "visual_motif": str(payload.get("visual_motif", "premium editorial energy story")),
+            "slides": [
+                {
+                    "role": slide["slide_role"],
+                    "headline": slide["on_image_headline"],
+                    "supporting": slide["on_image_subline"],
+                }
+                for slide in authored["slides"]
+            ],
+        }
+        rendered = _render_assets(context.data_dir, thought, 0)
+        assets = rendered["slides"]
+        caption = str(payload.get("caption") or objective)
+        platforms = [str(item).lower() for item in payload.get("platforms", []) if str(item).strip()]
+        if not platforms:
+            platforms = ["facebook", "instagram"]
+        package = {
+            "post_id": thought["id"].lower(),
+            "objective": objective,
+            "visual_format": "CAROUSEL",
+            "carousel_slides": authored["slides"],
+            "carousel_assets": assets,
+            "generated_visuals": {name: rendered["primary"]["local_path"] for name in platforms},
+            "fb_caption": caption,
+            "ig_caption": caption,
+            "li_text": caption,
+            "platforms": platforms,
+            "platform_policy": {"platforms": platforms},
+            "platform_posts": {
+                name: {"platform": name, "final_caption": caption, "content_format": "carousel"}
+                for name in platforms
+            },
+        }
+        return {
+            "status": "GENERATED",
+            "slide_count": len(authored["slides"]),
+            "platform": platform,
+            "platform_limit": platform_limit,
+            "package": package,
+            "assets": assets,
+            "next_action": "Call social.schedule with this package; one owner approval will schedule it.",
+            "_rollback": {"asset_paths": [item["local_path"] for item in assets]},
+        }
+
+    def rollback_creative(data: dict[str, Any], _: ExecutionContext) -> dict[str, Any]:
+        removed = []
+        for path in data.get("asset_paths", []):
+            candidate = Path(str(path))
+            if candidate.is_file():
+                candidate.unlink()
+                removed.append(str(candidate))
+        return {"status": "ROLLED_BACK", "removed_assets": removed}
+
     def publication_operations(payload: dict[str, Any], context: ExecutionContext) -> dict[str, Any]:
         from content_operations import daily_index, operations_readiness
         content_date = payload.get("content_date")
@@ -490,7 +609,7 @@ def register_core_capabilities(registry: CapabilityRegistry, policies: PolicyEng
         Capability("products.list", "List products", "Retrieve canonical Infenergy product records.", "PRODUCTS", products_list, object_schema({"query": {"type": "string"}, "limit": {"type": "integer"}})),
         Capability("products.get", "Get product", "Retrieve one canonical product by identifier.", "PRODUCTS", product_get, object_schema({"product_id": {"type": "string"}}, ["product_id"])),
         Capability("social.calendar.get", "Get social calendar", "Retrieve durable Social Engine slots over a date range.", "SOCIAL", calendar, object_schema({"start_date": {"type": "string"}, "days": {"type": "integer"}})),
-        Capability("social.schedule", "Schedule approved post", "Put an approved platform package into the durable Social Engine outbox.", "SOCIAL", schedule_post, object_schema({"content_date": {"type": "string"}, "slot": {"type": "string"}, "scheduled_at": {"type": "string"}, "package": {"type": "object"}, "rationale": {"type": "string"}}, ["content_date", "slot", "scheduled_at", "package"]), risk_level="MUTATION", permission_requirement="EXECUTE_WITH_APPROVAL", supports_rollback=True, rollback_handler=rollback_schedule),
+        Capability("social.schedule", "Approve and schedule post", "Schedule one finished creative package with one owner approval. A time is selected automatically from the slot when scheduled_at is omitted.", "SOCIAL", schedule_post, object_schema({"content_date": {"type": "string"}, "slot": {"type": "string"}, "scheduled_at": {"type": "string"}, "package": {"type": "object"}, "platforms": {"type": "array"}, "replace_existing": {"type": "boolean"}, "rationale": {"type": "string"}}, ["content_date", "package"]), risk_level="MUTATION", permission_requirement="EXECUTE_WITH_APPROVAL", supports_rollback=True, rollback_handler=rollback_schedule),
         Capability("social.schedule_job_campaign", "Load completed campaign into calendar", "Load a completed job's dated campaign deliverables from episodes, packages, or posts into one or more durable Social Engine slots with one owner approval and no publication.", "SOCIAL", schedule_job_campaign, object_schema({"job_id": {"type": "string"}, "start_date": {"type": "string"}, "end_date": {"type": "string"}, "slot": {"type": "string"}, "slots": {"type": "array"}, "scheduled_time": {"type": "string"}, "schedule_times": {"type": "object"}, "platforms": {"type": "array"}}, ["job_id", "start_date", "end_date"]), risk_level="MUTATION", permission_requirement="EXECUTE_WITH_APPROVAL", supports_rollback=True, rollback_handler=rollback_job_campaign),
         Capability("goals.get", "Get goals", "Return active and historical Infenergy goals.", "GOALS", goals_get),
         Capability("goals.create", "Create goal", "Create a versioned persistent Infenergy goal.", "GOALS", goal_create, object_schema({"name": {"type": "string"}, "description": {"type": "string"}, "priority": {"type": "integer"}, "metrics": {"type": "array"}, "constraints": {"type": "array"}, "horizon": {"type": "string"}}, ["name", "description"]), risk_level="MUTATION", permission_requirement="EXECUTE_WITH_APPROVAL", supports_rollback=False),
@@ -515,6 +634,9 @@ def register_core_capabilities(registry: CapabilityRegistry, policies: PolicyEng
         Capability("opportunities.get", "Get opportunities", "Return ranked, evidence-bearing Infenergy opportunities.", "BUSINESS_INTELLIGENCE", opportunities_get),
         Capability("risks.get", "Get risks", "Return ranked, evidence-bearing Infenergy risks and mitigations.", "BUSINESS_INTELLIGENCE", risks_get),
         Capability("creative.score", "Score creative", "Evaluate supplied content with the preserved platform-native quality rubric without generating or publishing anything.", "CREATIVE_STUDIO", creative_score, object_schema({"content": {"type": "object"}, "platforms": {"type": "array"}}, ["content"])),
+        Capability("creative.carousel.generate", "Generate carousel package", "Author and render a complete platform-safe carousel package with a caller-selected 2-to-10 slide count. This creates draft assets but does not schedule or publish them.", "CREATIVE_STUDIO", creative_carousel_generate, object_schema({"objective": {"type": "string"}, "platform": {"type": "string"}, "platforms": {"type": "array"}, "slide_count": {"type": "integer"}, "product_id": {"type": "string"}, "product": {"type": "object"}, "principle_key": {"type": "string"}, "archetype_key": {"type": "string"}, "supporting_message": {"type": "string"}, "caption": {"type": "string"}, "cta": {"type": "string"}, "pillar": {"type": "string"}, "visual_motif": {"type": "string"}}, ["objective"]), risk_level="INTERNAL_MUTATION", cost_class="MEDIUM", permission_requirement="AUTONOMOUS", supports_rollback=True, rollback_handler=rollback_creative),
+        Capability("agents.list", "List operational agents", "List every preserved specialist agent available to the operating system.", "OPERATIONS", agents_list),
+        Capability("agents.run", "Run operational agent", "Run any registered specialist agent with supplied parameters. Mutation-capable agent execution remains owner-approved.", "OPERATIONS", agent_run, object_schema({"name": {"type": "string"}, "params": {"type": "object"}}, ["name"]), risk_level="INTERNAL_MUTATION", permission_requirement="EXECUTE_WITH_APPROVAL"),
         Capability("publication.operations.get", "Get publication operations", "Inspect exact daily slots, candidate decisions, outbox state, platform transactions, failures, and readiness actions.", "SOCIAL", publication_operations, object_schema({"content_date": {"type": "string"}, "lead_hours": {"type": "integer"}})),
         Capability("publication.detail.get", "Get publication decision detail", "Retrieve one content council decision with candidates, rationale, outbox packages, and provider transaction evidence.", "SOCIAL", publication_detail, object_schema({"decision_id": {"type": "string"}}, ["decision_id"])),
         Capability("publication.dispatch", "Dispatch due publications", "Dispatch due approved outbox packages through preserved idempotent platform publishers; preview safely with dry run.", "SOCIAL", publication_dispatch, object_schema({}), risk_level="EXTERNAL_IRREVERSIBLE", cost_class="MEDIUM", permission_requirement="EXECUTE_WITH_APPROVAL", supports_rollback=False),

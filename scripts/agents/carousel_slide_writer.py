@@ -50,7 +50,18 @@ def _thought_slides(thought: dict[str, Any]) -> list[dict]:
     ]
 
 
-def _fallback(principle_key: str, archetype_key: str, product: dict, slide_count: int) -> list[dict]:
+def _short_text(value: str, word_limit: int) -> str:
+    words = str(value or "").strip().split()
+    return " ".join(words[:word_limit]).strip(" ,.;:-")
+
+
+def _fallback(
+    principle_key: str,
+    archetype_key: str,
+    product: dict,
+    slide_count: int,
+    creative_brief: str = "",
+) -> list[dict]:
     name = str((product or {}).get("name", "") or "your backup power kit").strip()
     metrics = [str(m).strip() for m in (product or {}).get("metrics", []) if str(m).strip()]
     primary_metric = metrics[0] if metrics else "verified specs"
@@ -62,6 +73,9 @@ def _fallback(principle_key: str, archetype_key: str, product: dict, slide_count
         "implication_of_result": ("Plug it in tonight. Sleep tomorrow", f"{name} shifts the whole plan"),
     }
     headline, subline = hook_map.get(principle_key, (f"{name}: prepared, not panicked", primary_metric))
+    if creative_brief:
+        headline = _short_text(creative_brief, 8)
+        subline = "Keep swiping for the complete idea"
     templates = {
         "hook": (headline, subline),
         "problem": ("The outage is not the surprise", "An untested plan is"),
@@ -74,6 +88,21 @@ def _fallback(principle_key: str, archetype_key: str, product: dict, slide_count
         "summary": ("Load. Runtime. Recharge", "Three checks before backup becomes a plan"),
         "single_next_step": (f"Get {name}", "One clear next step. Backup handled"),
     }
+    if creative_brief:
+        brief_headline = _short_text(creative_brief, 8)
+        brief_subline = _short_text(creative_brief, 14)
+        templates.update({
+            "hook": (brief_headline, "The complete idea starts here"),
+            "problem": ("What is really at stake", brief_subline),
+            "logical_contrast": ("The assumption versus reality", brief_subline),
+            "mechanism": ("Follow the turning point", brief_subline),
+            "product_and_verified_proof": ("The proof inside the story", brief_subline),
+            "real_world_application": ("Bring the idea into real life", brief_subline),
+            "objection_answer": ("Answer the doubt directly", brief_subline),
+            "emotional_result": ("This is what changes", brief_subline),
+            "summary": ("The idea in one frame", brief_headline),
+            "single_next_step": ("Carry the idea forward", brief_headline),
+        })
     selected_roles = list(SLIDE_ROLES[:slide_count])
     if slide_count > 1:
         selected_roles[-1] = "single_next_step"
@@ -88,7 +117,13 @@ def _fallback(principle_key: str, archetype_key: str, product: dict, slide_count
     return slides
 
 
-def _gemini_slides(principle_key: str, archetype_key: str, product: dict, slide_count: int) -> list[dict] | None:
+def _gemini_slides(
+    principle_key: str,
+    archetype_key: str,
+    product: dict,
+    slide_count: int,
+    creative_brief: str = "",
+) -> list[dict] | None:
     api_key = os.environ.get("GEMINI_API_KEY", "").strip()
     if not api_key:
         return None
@@ -103,6 +138,8 @@ def _gemini_slides(principle_key: str, archetype_key: str, product: dict, slide_
             "(<=14 words). Use formal-logic principle "
             f"'{principle_key}' and audience archetype '{archetype_key}'. Product: "
             f"{json.dumps({'name': product.get('name', ''), 'metrics': product.get('metrics', [])[:3]})}. "
+            f"The owner's exact creative brief is: {json.dumps(creative_brief)}. Every slide must advance that brief; "
+            "do not substitute a generic product or preparedness story. "
             "No emojis. No hashtags. Use the product name on no more than two slides."
         )
         client = genai.Client(api_key=api_key)
@@ -140,6 +177,7 @@ def run(
     archetype_key: str = "",
     product: dict | None = None,
     thought: dict | None = None,
+    creative_brief: str = "",
     platform: str = "instagram_feed",
     slide_count: int | None = None,
 ) -> dict:
@@ -152,8 +190,8 @@ def run(
     if requested_count < 2 or requested_count > platform_limit:
         raise ValueError(f"slide_count_must_be_between_2_and_{platform_limit}_for_{platform_key}")
     slides = _thought_slides(thought) if thought and requested_count == 4 else (
-        _gemini_slides(principle_key, archetype_key, product, requested_count)
-        or _fallback(principle_key, archetype_key, product, requested_count)
+        _gemini_slides(principle_key, archetype_key, product, requested_count, creative_brief)
+        or _fallback(principle_key, archetype_key, product, requested_count, creative_brief)
     )
     payload = {
         "agent": "carousel_slide_writer",
@@ -162,6 +200,7 @@ def run(
         "archetype_key": archetype_key,
         "product_name": str(product.get("name", "")),
         "content_mode": "company_thought" if thought else "product",
+        "creative_brief": creative_brief,
         "platform": platform_key,
         "slide_count": len(slides),
         "platform_limit": platform_limit,

@@ -96,6 +96,157 @@ class IntelligenceOS:
             raise KeyError(conversation_id)
         return self.get_conversation(conversation_id)
 
+    def create_creative(
+        self,
+        *,
+        owner_id: str = "owner",
+        title: str = "Untitled creative",
+        idea: str = "",
+        platform: str = "instagram_feed",
+        platforms: list[str] | None = None,
+        slide_count: int = 6,
+    ) -> dict[str, Any]:
+        identifier = uuid.uuid4().hex
+        now = utc_now()
+        selected_platforms = platforms or ["facebook", "instagram"]
+        with connect(self.data_dir) as connection:
+            connection.execute(
+                "INSERT INTO os_creatives VALUES (?, ?, ?, ?, ?, ?, ?, 'DRAFT', '{}', '{}', '{}', ?, ?)",
+                (
+                    identifier, owner_id, title.strip() or "Untitled creative", idea.strip(),
+                    platform, encode(selected_platforms), max(2, min(int(slide_count), 10)), now, now,
+                ),
+            )
+            connection.commit()
+        return self.get_creative(identifier)
+
+    def get_creative(self, creative_id: str) -> dict[str, Any]:
+        with connect(self.data_dir) as connection:
+            row = connection.execute("SELECT * FROM os_creatives WHERE id=?", (creative_id,)).fetchone()
+        if not row:
+            raise KeyError(f"creative_not_found:{creative_id}")
+        result = dict(row)
+        for key in ("platforms_json", "package_json", "preflight_json", "schedule_json"):
+            result[key[:-5]] = decode(result.pop(key), [] if key == "platforms_json" else {})
+        return result
+
+    def list_creatives(self, *, owner_id: str = "owner", limit: int = 100) -> list[dict[str, Any]]:
+        with connect(self.data_dir) as connection:
+            rows = connection.execute(
+                "SELECT id FROM os_creatives WHERE owner_id=? ORDER BY updated_at DESC LIMIT ?",
+                (owner_id, max(1, min(int(limit), 200))),
+            ).fetchall()
+        return [self.get_creative(str(row["id"])) for row in rows]
+
+    def update_creative(self, creative_id: str, updates: dict[str, Any]) -> dict[str, Any]:
+        current = self.get_creative(creative_id)
+        title = str(updates.get("title", current["title"])).strip() or "Untitled creative"
+        idea = str(updates.get("idea", current["idea"])).strip()
+        platform = str(updates.get("platform", current["platform"])).strip() or "instagram_feed"
+        platforms = updates.get("platforms", current["platforms"])
+        if not isinstance(platforms, list) or not platforms:
+            raise ValueError("at_least_one_platform_required")
+        slide_count = int(updates.get("slide_count", current["slide_count"]))
+        if slide_count < 2 or slide_count > 10:
+            raise ValueError("slide_count_must_be_between_2_and_10")
+        with connect(self.data_dir) as connection:
+            connection.execute(
+                """
+                UPDATE os_creatives
+                SET title=?, idea=?, platform=?, platforms_json=?, slide_count=?, updated_at=?
+                WHERE id=?
+                """,
+                (title, idea, platform, encode(platforms), slide_count, utc_now(), creative_id),
+            )
+            connection.commit()
+        return self.get_creative(creative_id)
+
+    def prepare_and_schedule_creative(
+        self,
+        creative_id: str,
+        *,
+        content_date: str,
+        scheduled_at: str,
+        slot: str = "midday",
+        actor: str = "owner",
+        replace_existing: bool = False,
+    ) -> dict[str, Any]:
+        creative = self.get_creative(creative_id)
+        if not creative["idea"].strip():
+            raise ValueError("creative_idea_required")
+        generated = self.execute_capability(
+            "creative.carousel.generate",
+            {
+                "objective": creative["idea"],
+                "title": creative["title"],
+                "platform": creative["platform"],
+                "platforms": creative["platforms"],
+                "slide_count": creative["slide_count"],
+            },
+            actor=actor,
+            operation_id=f"creative-generate:{creative_id}:{uuid.uuid4().hex}",
+        )
+        package = generated["result"]["package"]
+        assets = package.get("carousel_assets", [])
+        missing_assets = [item for item in assets if not str(item.get("local_path", "")).strip()]
+        captions = [str(package.get(key, "")).strip() for key in ("fb_caption", "ig_caption", "li_text")]
+        from score_content import score_content
+        evaluation = score_content(package, creative["platforms"])
+        preflight = {
+            "passed": len(assets) == creative["slide_count"] and not missing_assets and any(captions),
+            "checks": {
+                "requested_slide_count": len(assets) == creative["slide_count"],
+                "assets_rendered": not missing_assets,
+                "platform_copy_present": any(captions),
+            },
+            "quality": evaluation,
+        }
+        if not preflight["passed"]:
+            with connect(self.data_dir) as connection:
+                connection.execute(
+                    "UPDATE os_creatives SET status='PREFLIGHT_FAILED', package_json=?, preflight_json=?, updated_at=? WHERE id=?",
+                    (encode(package), encode(preflight), utc_now(), creative_id),
+                )
+                connection.commit()
+            raise ValueError("creative_preflight_failed")
+        schedule_request = {
+            "content_date": content_date,
+            "scheduled_at": scheduled_at,
+            "slot": slot,
+            "package": package,
+            "platforms": creative["platforms"],
+            "replace_existing": replace_existing,
+            "rationale": f"Owner approved creative: {creative['title']}",
+        }
+        scheduling = self.execute_capability("social.schedule", schedule_request, actor=actor)
+        if scheduling.get("status") == "WAITING_APPROVAL":
+            approved = self.approve_and_execute(
+                str(scheduling["approval_id"]), actor=actor,
+                note="Owner clicked Run checks, approve & schedule in Creative Studio",
+            )
+            scheduling = approved["execution"]
+        if scheduling.get("status") != "COMPLETED":
+            raise ValueError(f"creative_schedule_failed:{scheduling.get('status', 'unknown')}")
+        schedule = {
+            "content_date": content_date,
+            "scheduled_at": scheduled_at,
+            "slot": slot,
+            "platforms": creative["platforms"],
+            "outbox_id": scheduling["result"].get("outbox_id"),
+            "decision_id": scheduling["result"].get("decision_id"),
+        }
+        with connect(self.data_dir) as connection:
+            connection.execute(
+                """
+                UPDATE os_creatives
+                SET status='SCHEDULED', package_json=?, preflight_json=?, schedule_json=?, updated_at=?
+                WHERE id=?
+                """,
+                (encode(package), encode(preflight), encode(schedule), utc_now(), creative_id),
+            )
+            connection.commit()
+        return {"creative": self.get_creative(creative_id), "preflight": preflight, "scheduling": scheduling}
+
     def execute_capability(
         self,
         capability: str,

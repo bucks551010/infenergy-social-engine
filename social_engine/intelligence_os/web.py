@@ -28,12 +28,38 @@ def handle(method: str, path: str, body: dict[str, Any] | None, data_dir: str) -
             return _json(200, {"capabilities": service.registry.list()})
         if method == "GET" and path == "/api/os/conversations":
             return _json(200, {"conversations": service.list_conversations()})
+        if method == "GET" and path == "/api/os/creatives":
+            return _json(200, {"creatives": service.list_creatives(owner_id=str(payload.get("owner_id", "owner")))})
         if method == "POST" and path == "/api/os/conversations":
             conversation = service.create_conversation(
                 owner_id=str(payload.get("owner_id", "owner")),
                 title=str(payload.get("title", "Infenergy Command")),
             )
             return _json(201, {"conversation": conversation})
+        if method == "POST" and path == "/api/os/creatives":
+            creative = service.create_creative(
+                owner_id=str(payload.get("owner_id", "owner")),
+                title=str(payload.get("title", "Untitled creative")),
+                idea=str(payload.get("idea", "")),
+                platform=str(payload.get("platform", "instagram_feed")),
+                platforms=payload.get("platforms"),
+                slide_count=int(payload.get("slide_count", 6)),
+            )
+            return _json(201, {"creative": creative})
+        if method in {"POST", "PATCH"} and path.startswith("/api/os/creatives/") and path.endswith("/schedule"):
+            creative_id = path.split("/")[-2]
+            result = service.prepare_and_schedule_creative(
+                creative_id,
+                content_date=str(payload["content_date"]),
+                scheduled_at=str(payload["scheduled_at"]),
+                slot=str(payload.get("slot", "midday")),
+                actor=str(payload.get("actor", "owner")),
+                replace_existing=bool(payload.get("replace_existing", False)),
+            )
+            return _json(200, result)
+        if method in {"POST", "PATCH"} and path.startswith("/api/os/creatives/"):
+            creative_id = path.rsplit("/", 1)[-1]
+            return _json(200, {"creative": service.update_creative(creative_id, payload)})
         if method == "POST" and path.startswith("/api/os/conversations/") and path.endswith("/archive"):
             conversation_id = path.split("/")[-2]
             return _json(200, {"conversation": service.archive_conversation(conversation_id)})

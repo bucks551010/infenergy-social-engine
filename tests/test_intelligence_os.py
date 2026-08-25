@@ -107,6 +107,55 @@ def test_carousel_generation_executes_without_approval_and_schedules_with_one(tm
     assert approved["execution"]["result"]["outbox_id"]
 
 
+def test_creative_idea_persists_and_title_can_be_renamed(tmp_path):
+    service = bootstrap(str(tmp_path))
+    created = service.create_creative(title="Untitled creative")
+
+    saved = service.update_creative(created["id"], {
+        "title": "The One Percent Heist",
+        "idea": "The last percent is not a plan.",
+        "slide_count": 7,
+        "platform": "instagram_feed",
+        "platforms": ["facebook", "instagram"],
+    })
+    restored = bootstrap(str(tmp_path)).get_creative(created["id"])
+
+    assert saved["title"] == "The One Percent Heist"
+    assert restored["idea"] == "The last percent is not a plan."
+    assert restored["slide_count"] == 7
+    assert service.list_creatives()[0]["id"] == created["id"]
+
+
+def test_one_click_creative_workflow_checks_approves_and_schedules(tmp_path, monkeypatch):
+    service = bootstrap(str(tmp_path))
+    monkeypatch.setenv("GEMINI_API_KEY", "")
+    creative = service.create_creative(
+        title="The One Percent Heist",
+        idea="The last percent is not a plan.",
+        platform="instagram_feed",
+        platforms=["facebook", "instagram"],
+        slide_count=6,
+    )
+
+    result = service.prepare_and_schedule_creative(
+        creative["id"],
+        content_date="2026-08-29",
+        scheduled_at="2026-08-29T12:30:00",
+        slot="midday",
+    )
+
+    saved = result["creative"]
+    assert saved["status"] == "SCHEDULED"
+    assert saved["preflight"]["passed"] is True
+    assert saved["schedule"]["outbox_id"]
+    assert len(saved["package"]["carousel_slides"]) == 6
+    assert saved["package"]["carousel_slides"][0]["on_image_headline"] == "The last percent is not a plan"
+    assert all("cheap watts" not in slide["on_image_headline"].lower() for slide in saved["package"]["carousel_slides"])
+    assert all("backup power kit" not in slide["on_image_subline"].lower() for slide in saved["package"]["carousel_slides"])
+    assert saved["package"]["platform_posts"]["facebook"]["final_caption"] != saved["package"]["platform_posts"]["instagram"]["final_caption"]
+    assert service.policies.list_approvals(actor="owner", status="PENDING") == []
+
+
 def test_schedule_rejects_silent_replacement_and_can_choose_slot_time(tmp_path):
     service = bootstrap(str(tmp_path))
     service.policies.create_policy(
@@ -510,6 +559,9 @@ def test_command_center_and_api_are_served(tmp_path):
     create_status, create_type, created_payload = handle(
         "POST", "/api/os/conversations", {"title": "Fresh objective"}, str(tmp_path)
     )
+    creative_status, _, creative_payload = handle(
+        "POST", "/api/os/creatives", {"title": "Saved idea", "idea": "A complete idea"}, str(tmp_path)
+    )
     js_status, js_type, javascript = handle("GET", "/os/assets/app.js", None, str(tmp_path))
     css_status, css_type, stylesheet = handle("GET", "/os/assets/styles.css", None, str(tmp_path))
 
@@ -517,7 +569,18 @@ def test_command_center_and_api_are_served(tmp_path):
     assert content_type.startswith("text/html")
     assert b"Infenergy Intelligence OS" in page
     assert b'id="mobile-nav"' in page
-    assert b'app.js?v=9' in page
+    assert b'app.js?v=11' in page
+    assert b'styles.css?v=11' in page
+    assert b'data-view="master"' in page
+    assert b'id="master-capabilities"' in page
+    assert b'id="master-form"' in page
+    assert b'id="master-transactions"' in page
+    assert b'data-master-preset="creative"' in page
+    assert b'data-master-preset="undo"' in page
+    assert b'data-view="creative"' in page
+    assert b'id="new-creative"' in page
+    assert b'id="creative-title"' in page
+    assert b'id="creative-run"' in page
     assert b'id="login-form"' in page
     assert b'id="login-password"' in page
     assert b'id="logout"' in page
@@ -531,6 +594,13 @@ def test_command_center_and_api_are_served(tmp_path):
     assert create_status == 201
     assert create_type.startswith("application/json")
     assert json.loads(created_payload)["conversation"]["title"] == "Fresh objective"
+    assert creative_status == 201
+    creative = json.loads(creative_payload)["creative"]
+    rename_status, _, renamed_payload = handle(
+        "POST", f"/api/os/creatives/{creative['id']}", {"title": "Renamed idea"}, str(tmp_path)
+    )
+    assert rename_status == 200
+    assert json.loads(renamed_payload)["creative"]["title"] == "Renamed idea"
     created = json.loads(created_payload)["conversation"]
     archive_status, _, archived_payload = handle(
         "POST", f"/api/os/conversations/{created['id']}/archive", {}, str(tmp_path)
@@ -546,6 +616,15 @@ def test_command_center_and_api_are_served(tmp_path):
     assert b"function richText" in javascript
     assert b"/api/os/conversations" in javascript
     assert b"Approve & run" in javascript
+    assert b"Run checks, approve & schedule" in javascript
+    assert b"/api/os/creatives" in javascript
+    assert b"/api/os/capabilities" in javascript
+    assert b"/api/os/transactions" in javascript
+    assert b"/api/os/execute" in javascript
+    assert b"data-master-approval" in javascript
+    assert b"data-master-rollback" in javascript
+    assert b"function renderMasterCapabilities" in javascript
+    assert b"function renderMasterTransactions" in javascript
     assert b"syncConversation" in javascript
     assert b"sessionStorage.getItem('infenergyToken')" in javascript
     assert b"localStorage.getItem('infenergyToken')" not in javascript
@@ -558,6 +637,10 @@ def test_command_center_and_api_are_served(tmp_path):
     assert b".provider-grid" in stylesheet
     assert b".slot-grid" in stylesheet
     assert b".mobile-view-picker" in stylesheet
+    assert b".creative-grid" in stylesheet
+    assert b".master-grid" in stylesheet
+    assert b".master-capability" in stylesheet
+    assert b".master-transaction-list" in stylesheet
     assert b"overflow-x: hidden" in stylesheet
     assert b".login-screen" in stylesheet
     assert b"grid-template-columns: minmax(0, 1fr)" in stylesheet

@@ -301,6 +301,24 @@ def initialize(data_dir: str) -> str:
                 FOREIGN KEY(conversation_id) REFERENCES os_conversations(id)
             );
 
+            CREATE TABLE IF NOT EXISTS os_creatives (
+                id TEXT PRIMARY KEY,
+                owner_id TEXT NOT NULL,
+                title TEXT NOT NULL,
+                idea TEXT NOT NULL,
+                platform TEXT NOT NULL,
+                platforms_json TEXT NOT NULL,
+                slide_count INTEGER NOT NULL,
+                status TEXT NOT NULL,
+                package_json TEXT NOT NULL,
+                preflight_json TEXT NOT NULL,
+                schedule_json TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_os_creatives_updated
+                ON os_creatives(owner_id, updated_at DESC);
+
             CREATE TABLE IF NOT EXISTS os_sources (
                 id TEXT PRIMARY KEY,
                 type TEXT NOT NULL,

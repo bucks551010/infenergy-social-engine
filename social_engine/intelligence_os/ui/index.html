@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Infenergy Intelligence OS</title>
-  <link rel="stylesheet" href="/os/assets/styles.css?v=9">
+  <link rel="stylesheet" href="/os/assets/styles.css?v=11">
 </head>
 <body>
   <section id="login-screen" class="login-screen">
@@ -23,7 +23,9 @@
     <aside class="rail">
       <div class="brand"><span class="brand-mark">I</span><div><strong>INFENERGY</strong><small>INTELLIGENCE OS</small></div></div>
       <nav id="nav">
-        <button class="active" data-view="command">Command</button>
+        <button class="active master-nav" data-view="master">Master Mode</button>
+        <button data-view="command">Command</button>
+        <button data-view="creative">Creative Studio</button>
         <button data-view="today">Today</button>
         <button data-view="jobs">Jobs</button>
         <button data-view="research">Research</button>
@@ -37,7 +39,9 @@
       <label class="mobile-view-picker">
         <span>Current view</span>
         <select id="mobile-nav" aria-label="Select dashboard view">
+          <option value="master">Master Mode</option>
           <option value="command">Command</option>
+          <option value="creative">Creative Studio</option>
           <option value="today">Today</option>
           <option value="jobs">Jobs</option>
           <option value="research">Research</option>
@@ -53,11 +57,53 @@
     </aside>
     <main>
       <header>
-        <div><p class="eyebrow">MASTER OPERATING ENVIRONMENT</p><h1 id="view-title">Command</h1></div>
+        <div><p class="eyebrow">MASTER OPERATING ENVIRONMENT</p><h1 id="view-title">Master Mode</h1></div>
         <div class="header-actions"><button id="refresh" class="ghost">Refresh</button><button id="new-chat" class="ghost">New session</button><button id="logout" class="ghost">Log out</button></div>
       </header>
 
-      <section id="command" class="view active">
+      <section id="master" class="view active">
+        <article class="master-hero panel">
+          <div><p class="eyebrow">ABSOLUTE CONTROL PLANE</p><h2>Every capability. Every operation. One governed workspace.</h2><p>Inspect and run the entire Intelligence OS directly. Production mutations retain exact-request approval, audit, and rollback protection.</p></div>
+          <span class="master-badge">MASTER MODE</span>
+        </article>
+        <div id="master-metrics" class="metric-grid"></div>
+        <article class="panel master-launchers">
+          <div class="panel-title"><div><p class="kicker">End-to-end launchers</p><h2>Master workflows</h2></div></div>
+          <div class="master-preset-grid">
+            <button data-master-preset="command"><strong>Autonomous command</strong><span>Give the master agent an outcome and let it operate.</span></button>
+            <button data-master-preset="creative"><strong>Creative → schedule</strong><span>Create, check, approve, and schedule in one flow.</span></button>
+            <button data-master-preset="health"><strong>Full health sweep</strong><span>Inspect providers, storage, channels, and safety mode.</span></button>
+            <button data-master-preset="readiness"><strong>Publication readiness</strong><span>Inspect calendar, outbox, failures, and due operations.</span></button>
+            <button data-master-preset="plan"><strong>120-day plan preview</strong><span>Preview the complete adaptive content operation.</span></button>
+            <button data-master-preset="dispatch"><strong>Dispatch preview</strong><span>Safely inspect what would publish before approval.</span></button>
+            <button data-master-preset="undo" class="danger"><strong>Undo last operation</strong><span>Rollback the newest reversible owner transaction.</span></button>
+          </div>
+        </article>
+        <div class="master-grid">
+          <article class="panel master-library">
+            <div class="panel-title"><div><p class="kicker">Complete function registry</p><h2>Capabilities</h2></div><span id="master-capability-count" class="badge">0</span></div>
+            <div class="master-filters"><input id="master-search" type="search" placeholder="Search every function"><select id="master-domain"><option value="">All domains</option></select></div>
+            <div id="master-capabilities" class="master-capabilities"></div>
+          </article>
+          <article class="panel master-executor">
+            <div id="master-empty" class="empty-state"><span>◆</span><strong>Select a capability</strong><p>Choose any registered function to inspect its contract and execute it.</p></div>
+            <form id="master-form" hidden>
+              <div class="master-capability-heading"><div><p id="master-domain-label" class="kicker"></p><h2 id="master-name"></h2><code id="master-id"></code></div><div id="master-flags"></div></div>
+              <p id="master-description" class="muted"></p>
+              <details class="master-schema"><summary>Input contract</summary><pre id="master-schema"></pre></details>
+              <label class="master-arguments"><span>Operation arguments · JSON</span><textarea id="master-arguments" rows="12" spellcheck="false">{}</textarea></label>
+              <div class="master-execute-bar"><label><input id="master-dry-run" type="checkbox"> Preview only — no mutation</label><button id="master-execute" type="submit">Execute capability →</button></div>
+              <div id="master-result" class="master-result"></div>
+            </form>
+          </article>
+        </div>
+        <article class="panel master-transactions-panel">
+          <div class="panel-title"><div><p class="kicker">Audited operating history</p><h2>Recent transactions</h2></div><button id="master-refresh" class="ghost">Refresh operations</button></div>
+          <div id="master-transactions"></div>
+        </article>
+      </section>
+
+      <section id="command" class="view">
         <div class="command-grid">
           <article class="conversation panel">
             <div id="messages" class="messages">
@@ -76,6 +122,38 @@
         </div>
       </section>
 
+      <section id="creative" class="view">
+        <div class="creative-grid">
+          <aside class="panel creative-library">
+            <div class="panel-title"><div><p class="kicker">Saved work</p><h2>Creative ideas</h2></div><button id="new-creative" class="creative-button secondary">+ New idea</button></div>
+            <div id="creative-list" class="creative-list"></div>
+          </aside>
+          <article class="panel creative-editor">
+            <div id="creative-empty" class="empty-state"><span>+</span><strong>Start a creative idea</strong><p>New ideas save immediately and continue autosaving as they are edited.</p></div>
+            <form id="creative-form" hidden>
+              <div class="creative-heading">
+                <div><p class="kicker">Creative title</p><input id="creative-title" aria-label="Creative title" maxlength="160"></div>
+                <span id="creative-save-state" class="save-state">Saved</span>
+              </div>
+              <label class="creative-field"><span>Idea or complete creative brief</span><textarea id="creative-idea" rows="6" placeholder="Describe the exact story, visual direction, copy, offer, and closing line..."></textarea></label>
+              <div class="creative-options">
+                <label><span>Slides</span><input id="creative-slides" type="number" min="2" max="10" value="6"></label>
+                <label><span>Primary format</span><select id="creative-platform"><option value="instagram_feed">Instagram 4:5</option><option value="facebook_feed">Facebook feed</option><option value="linkedin_feed">LinkedIn feed</option></select></label>
+                <fieldset><legend>Publish to</legend><label><input class="creative-channel" type="checkbox" value="facebook" checked> Facebook</label><label><input class="creative-channel" type="checkbox" value="instagram" checked> Instagram</label><label><input class="creative-channel" type="checkbox" value="linkedin"> LinkedIn</label></fieldset>
+              </div>
+              <div class="creative-schedule">
+                <label><span>Date</span><input id="creative-date" type="date"></label>
+                <label><span>Time</span><input id="creative-time" type="time" value="12:30"></label>
+                <label><span>Slot</span><select id="creative-slot"><option value="morning">Morning</option><option value="midday" selected>Midday</option><option value="evening">Evening</option></select></label>
+                <button id="creative-run" type="button" class="creative-button">Run checks, approve & schedule</button>
+              </div>
+              <div id="creative-result" class="creative-result"></div>
+              <div id="creative-preview" class="creative-preview"></div>
+            </form>
+          </article>
+        </div>
+      </section>
+
       <section id="today" class="view"><div class="metric-grid" id="today-metrics"></div><article class="panel"><div class="panel-title"><h2>What matters today</h2></div><div id="today-content" class="cards"></div></article></section>
       <section id="jobs" class="view"><article class="panel"><div class="panel-title job-toolbar"><div><h2>Execution fabric</h2><p class="muted">Search completed and active jobs, then open persisted deliverables.</p></div><div class="job-actions"><input id="job-search" type="search" placeholder="Search job ID, objective, or status" aria-label="Search jobs"><button class="ghost" data-action="plan120">Dry-run 120-day plan</button></div></div><div id="jobs-table" class="table"></div></article></section>
       <section id="research" class="view"><article class="panel"><div class="panel-title"><h2>Intelligence Library</h2></div><p class="muted">Current findings retain source identity, credibility, freshness, expiration, and limitations.</p><div id="research-content" class="cards"></div></article></section>
@@ -88,6 +166,6 @@
     </main>
   </div>
   <div id="toast" class="toast"></div>
-  <script src="/os/assets/app.js?v=9"></script>
+  <script src="/os/assets/app.js?v=11"></script>
 </body>
 </html>

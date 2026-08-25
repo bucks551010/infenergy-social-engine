@@ -1,4 +1,4 @@
-const state = { data: null, conversationId: null, renderedConversationId: null, jobQuery: '', token: sessionStorage.getItem('infenergyToken') || '' };
+const state = { data: null, conversationId: null, renderedConversationId: null, jobQuery: '', creatives: [], creativeId: null, creativeSaveTimer: null, capabilities: [], transactions: [], masterCapabilityId: null, token: sessionStorage.getItem('infenergyToken') || '' };
 const $ = (selector) => document.querySelector(selector);
 const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[char]));
 
@@ -82,6 +82,139 @@ function pill(label, status = label) { return `<span class="pill ${tone(status)}
 function percent(value) { const number = Number(value || 0); return Math.max(0, Math.min(100, number <= 1 ? number * 100 : number)); }
 function approvalSummary(item) { const request = item.request || {}; const scope = request.permissions?.scope || {}; const range = scope.start_date && scope.end_date ? `${scope.start_date}–${scope.end_date}` : ''; const schedule = request.content_date ? [request.content_date, request.slot || 'midday', request.scheduled_at ? dateTime(request.scheduled_at) : 'automatic slot time'].join(' · ') : ''; const platforms = request.platforms || request.package?.platforms || request.package?.platform_policy?.platforms || []; const purpose = request.objective || request.name || request.rationale || request.package?.objective || request.campaign || scope.campaign || ''; return [purpose, schedule || range, platforms.length ? platforms.map(humanize).join(', ') : ''].filter(Boolean).join(' · ') || 'Owner authorization required'; }
 
+function creativeFormData() {
+  return {
+    title: $('#creative-title').value.trim() || 'Untitled creative',
+    idea: $('#creative-idea').value.trim(),
+    slide_count: Number($('#creative-slides').value || 6),
+    platform: $('#creative-platform').value,
+    platforms: [...document.querySelectorAll('.creative-channel:checked')].map((item) => item.value),
+  };
+}
+
+function renderCreativeList() {
+  $('#creative-list').innerHTML = state.creatives.length ? state.creatives.map((item) => `<button type="button" class="creative-list-item ${item.id === state.creativeId ? 'active' : ''}" data-creative-id="${esc(item.id)}"><strong>${esc(item.title || 'Untitled creative')}</strong><small>${esc(humanize(item.status || 'DRAFT'))} · ${esc(relativeTime(item.updated_at))}</small></button>`).join('') : empty('No saved ideas', 'Click New idea to begin.');
+}
+
+function renderCreative(creative) {
+  state.creativeId = creative?.id || null;
+  $('#creative-empty').hidden = Boolean(creative);
+  $('#creative-form').hidden = !creative;
+  if (!creative) { renderCreativeList(); return; }
+  $('#creative-title').value = creative.title || 'Untitled creative';
+  $('#creative-idea').value = creative.idea || '';
+  $('#creative-slides').value = creative.slide_count || 6;
+  $('#creative-platform').value = creative.platform || 'instagram_feed';
+  document.querySelectorAll('.creative-channel').forEach((item) => { item.checked = (creative.platforms || []).includes(item.value); });
+  $('#creative-save-state').textContent = 'Saved';
+  const schedule = creative.schedule || {};
+  if (schedule.content_date) $('#creative-date').value = schedule.content_date;
+  if (schedule.scheduled_at) $('#creative-time').value = String(schedule.scheduled_at).slice(11, 16);
+  if (schedule.slot) $('#creative-slot').value = schedule.slot;
+  const preflight = creative.preflight || {};
+  $('#creative-result').innerHTML = creative.status === 'SCHEDULED' ? `<div class="creative-success"><strong>✓ Checked, approved, and scheduled</strong><span>${esc(dateTime(schedule.scheduled_at))} · ${(schedule.platforms || []).map(humanize).join(', ')}</span></div>` : preflight.passed === false ? `<div class="inline-alert">Preflight needs attention before scheduling.</div>` : '';
+  const slides = creative.package?.carousel_slides || [];
+  const copy = creative.package?.platform_posts || {};
+  $('#creative-preview').innerHTML = slides.length ? `<div class="section-label">Slide copy</div><div class="slide-copy-grid">${slides.map((slide, index) => `<article><b>${index + 1}/${slides.length}</b><strong>${esc(slide.on_image_headline)}</strong><span>${esc(slide.on_image_subline)}</span></article>`).join('')}</div><div class="section-label spaced">Platform copies</div><div class="platform-copy-grid">${Object.entries(copy).map(([platform, value]) => `<article><strong>${esc(humanize(platform))}</strong><p>${esc(value.final_caption || '')}</p></article>`).join('')}</div>` : '';
+  renderCreativeList();
+}
+
+async function loadCreatives(preferredId = state.creativeId) {
+  const result = await api('/api/os/creatives');
+  state.creatives = result.creatives || [];
+  const selected = state.creatives.find((item) => item.id === preferredId) || state.creatives[0] || null;
+  renderCreative(selected);
+}
+
+async function saveCreative({ quiet = false } = {}) {
+  if (!state.creativeId) return null;
+  $('#creative-save-state').textContent = 'Saving…';
+  const result = await api(`/api/os/creatives/${state.creativeId}`, { method: 'POST', body: JSON.stringify(creativeFormData()) });
+  const creative = result.creative;
+  const index = state.creatives.findIndex((item) => item.id === creative.id);
+  if (index >= 0) state.creatives[index] = creative; else state.creatives.unshift(creative);
+  $('#creative-save-state').textContent = 'Saved';
+  renderCreativeList();
+  if (!quiet) toast('Creative saved');
+  return creative;
+}
+
+function queueCreativeSave() {
+  if (!state.creativeId) return;
+  $('#creative-save-state').textContent = 'Unsaved changes…';
+  clearTimeout(state.creativeSaveTimer);
+  state.creativeSaveTimer = setTimeout(() => saveCreative({ quiet: true }).catch((error) => { $('#creative-save-state').textContent = 'Save failed'; toast(error.message); }), 500);
+}
+
+function capabilityExample(schema) {
+  const example = {};
+  const properties = schema?.properties || {};
+  for (const key of schema?.required || []) {
+    const type = properties[key]?.type;
+    example[key] = type === 'array' ? [] : type === 'object' ? {} : type === 'boolean' ? false : type === 'integer' || type === 'number' ? 0 : '';
+  }
+  return example;
+}
+
+function selectedCapability() { return state.capabilities.find((item) => item.id === state.masterCapabilityId) || null; }
+
+function renderMasterCapabilities() {
+  const search = $('#master-search').value.trim().toLowerCase();
+  const domain = $('#master-domain').value;
+  const visible = state.capabilities.filter((item) => (!domain || item.domain === domain) && (!search || [item.id, item.name, item.description, item.domain].some((value) => String(value).toLowerCase().includes(search))));
+  $('#master-capability-count').textContent = `${visible.length}/${state.capabilities.length}`;
+  $('#master-capabilities').innerHTML = visible.length ? visible.map((item) => `<button type="button" class="master-capability ${item.id === state.masterCapabilityId ? 'active' : ''}" data-master-capability="${esc(item.id)}"><span>${esc(humanize(item.domain))}</span><strong>${esc(item.name)}</strong><code>${esc(item.id)}</code><small>${esc(item.description)}</small><footer>${pill(item.permission_requirement)}${item.supports_rollback ? '<b>↶ rollback</b>' : ''}</footer></button>`).join('') : empty('No matching capabilities');
+}
+
+function selectMasterCapability(capabilityId, argumentsValue = null, dryRun = null) {
+  state.masterCapabilityId = capabilityId;
+  const capability = selectedCapability();
+  $('#master-empty').hidden = Boolean(capability);
+  $('#master-form').hidden = !capability;
+  if (!capability) return;
+  $('#master-domain-label').textContent = capability.domain;
+  $('#master-name').textContent = capability.name;
+  $('#master-id').textContent = capability.id;
+  $('#master-description').textContent = capability.description;
+  $('#master-flags').innerHTML = `${pill(capability.risk_level)}${pill(capability.permission_requirement)}${capability.supports_rollback ? pill('Rollback ready', 'READY') : ''}`;
+  $('#master-schema').textContent = JSON.stringify(capability.input_schema || {}, null, 2);
+  $('#master-arguments').value = JSON.stringify(argumentsValue ?? capabilityExample(capability.input_schema), null, 2);
+  $('#master-dry-run').checked = dryRun ?? (capability.risk_level !== 'READ');
+  $('#master-dry-run').disabled = !capability.supports_dry_run;
+  $('#master-result').innerHTML = '';
+  renderMasterCapabilities();
+}
+
+function renderMasterTransactions() {
+  const reversible = state.transactions.filter((item) => item.status === 'COMPLETED' && !item.dry_run && item.rollback_data && Object.keys(item.rollback_data).length).length;
+  $('#master-metrics').innerHTML = [
+    ['Capabilities', state.capabilities.length],
+    ['Autonomous', state.capabilities.filter((item) => item.permission_requirement === 'AUTONOMOUS').length],
+    ['Approval gated', state.capabilities.filter((item) => item.permission_requirement === 'EXECUTE_WITH_APPROVAL').length],
+    ['Rollback ready', state.capabilities.filter((item) => item.supports_rollback).length],
+    ['Undo available', reversible],
+  ].map(([label, value]) => `<div class="metric panel"><b>${value}</b><span>${esc(label)}</span></div>`).join('');
+  $('#master-transactions').innerHTML = state.transactions.length ? `<div class="master-transaction-list">${state.transactions.slice(0, 30).map((item) => { const operation = item.operations?.[0] || {}; const canRollback = item.status === 'COMPLETED' && !item.dry_run && item.rollback_data && Object.keys(item.rollback_data).length; return `<article><div><strong>${esc(operation.capability || item.name || 'Operation')}</strong><code>${esc(item.id)}</code></div>${pill(item.status)}<span>${esc(relativeTime(item.updated_at))}</span>${canRollback ? `<button data-master-rollback="${esc(item.id)}">Rollback</button>` : '<small>Recorded</small>'}</article>`; }).join('')}</div>` : empty('No transactions recorded');
+}
+
+async function loadMaster() {
+  const [capabilityResult, transactionResult] = await Promise.all([api('/api/os/capabilities'), api('/api/os/transactions')]);
+  state.capabilities = capabilityResult.capabilities || [];
+  state.transactions = transactionResult.transactions || [];
+  const domains = [...new Set(state.capabilities.map((item) => item.domain))].sort();
+  const selectedDomain = $('#master-domain').value;
+  $('#master-domain').innerHTML = `<option value="">All domains</option>${domains.map((item) => `<option value="${esc(item)}">${esc(humanize(item))}</option>`).join('')}`;
+  $('#master-domain').value = domains.includes(selectedDomain) ? selectedDomain : '';
+  if (state.masterCapabilityId && !selectedCapability()) state.masterCapabilityId = null;
+  renderMasterCapabilities();
+  renderMasterTransactions();
+}
+
+function renderMasterResult(result) {
+  const pending = result.status === 'WAITING_APPROVAL' && result.approval_id;
+  $('#master-result').innerHTML = `<div class="master-result-head">${pill(result.status)}${result.transaction_id ? `<code>${esc(result.transaction_id)}</code>` : ''}</div>${pending ? `<div class="master-approval"><strong>Exact-request owner approval required</strong><p>${esc(result.reason || 'Governance requires approval before this mutation executes.')}</p><button data-master-approval="${esc(result.approval_id)}">Approve & execute once</button></div>` : ''}<details open><summary>Verified operation result</summary><pre>${esc(JSON.stringify(result, null, 2))}</pre></details>${result.rollback_available ? `<button class="master-rollback-primary" data-master-rollback="${esc(result.transaction_id)}">Rollback this operation</button>` : ''}`;
+}
+
 function renderToday(attention, events) {
   const signals = attention.map((item) => { const score = Number(item.score || item.materiality || 0); return `<article class="signal-card"><div class="card-top"><span class="kicker">Executive attention</span><strong class="score">${score.toFixed(1)}</strong></div><h3>${esc(item.title || item.subject || 'Material signal')}</h3><p>${esc(item.summary || item.description || 'Requires owner review.')}</p><div class="meta-line">${pill(item.status || 'OPEN')}<span>${esc(relativeTime(item.created_at))}</span></div></article>`; }).join('');
   const recent = events.slice(0, 8).map((event) => { const payload = event.payload || {}; const detail = [payload.capability && humanize(payload.capability), payload.status && humanize(payload.status)].filter(Boolean).join(' · '); return `<article class="event-card"><div class="event-icon ${tone(payload.status || event.type)}">${tone(payload.status || event.type) === 'good' ? '✓' : '•'}</div><div><h3>${esc(humanize(event.type || 'System event'))}</h3><p>${esc(detail || `${humanize(event.subject_type || 'system')} update recorded`)}</p><small>${esc(relativeTime(event.recorded_at || event.occurred_at))}</small></div></article>`; }).join('');
@@ -146,7 +279,7 @@ function render(data) {
   renderToday(attention, data.recent_events || []); renderJobs(jobs); renderResearch(data.research_findings || []); renderAutomations(data.automations || [], data.watches || [], data.automation_runs || []); renderSocial(health.social_today); renderStrategy(policies); renderActivity(data.recent_activity || []); renderHealth(health); renderPermissions(policies);
 }
 
-async function load() { try { const data = await api('/api/os/state'); state.data = data; state.conversationId = data.conversation?.id; syncConversation(data.conversation); render(data); $('#system-dot').className = 'dot ok'; $('#system-label').textContent = 'OS connected'; } catch (error) { $('#system-dot').className = 'dot bad'; $('#system-label').textContent = 'Connection blocked'; toast(error.message); } }
+async function load() { try { const [data] = await Promise.all([api('/api/os/state'), loadCreatives(), loadMaster()]); state.data = data; state.conversationId = data.conversation?.id; syncConversation(data.conversation); render(data); $('#system-dot').className = 'dot ok'; $('#system-label').textContent = 'Master OS connected'; } catch (error) { $('#system-dot').className = 'dot bad'; $('#system-label').textContent = 'Connection blocked'; toast(error.message); } }
 function activateView(view) {
   const button = document.querySelector(`#nav button[data-view="${view}"]`);
   const target = $(`#${view}`);
@@ -178,6 +311,100 @@ $('#logout').addEventListener('click', () => {
   showLogin();
 });
 $('#refresh').addEventListener('click', load);
+$('#master-search').addEventListener('input', renderMasterCapabilities);
+$('#master-domain').addEventListener('change', renderMasterCapabilities);
+$('#master-capabilities').addEventListener('click', (event) => { const button = event.target.closest('[data-master-capability]'); if (button) selectMasterCapability(button.dataset.masterCapability); });
+$('#master-refresh').addEventListener('click', () => loadMaster().catch((error) => toast(error.message)));
+$('#master-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const capability = selectedCapability();
+  if (!capability) return;
+  const button = $('#master-execute');
+  try {
+    const argumentsValue = JSON.parse($('#master-arguments').value || '{}');
+    if (!argumentsValue || Array.isArray(argumentsValue) || typeof argumentsValue !== 'object') throw new Error('Arguments must be a JSON object.');
+    button.disabled = true; button.textContent = 'Executing…';
+    const result = await api('/api/os/execute', { method: 'POST', body: JSON.stringify({ capability: capability.id, arguments: argumentsValue, dry_run: $('#master-dry-run').checked }) });
+    renderMasterResult(result);
+    await loadMaster();
+    toast(result.status === 'WAITING_APPROVAL' ? 'Approval ready' : 'Capability completed');
+  } catch (error) { $('#master-result').innerHTML = `<div class="inline-alert">${esc(error.message)}</div>`; }
+  finally { button.disabled = false; button.textContent = 'Execute capability →'; }
+});
+document.addEventListener('click', async (event) => {
+  const button = event.target.closest('[data-master-approval]');
+  if (!button) return;
+  try {
+    button.disabled = true; button.textContent = 'Approving and executing…';
+    const result = await api(`/api/os/approvals/${button.dataset.masterApproval}`, { method: 'POST', body: JSON.stringify({ approved: true, execute: true, decided_by: 'owner' }) });
+    renderMasterResult(result.execution || result);
+    await load();
+    toast('Approved and executed exactly once');
+  } catch (error) { button.disabled = false; button.textContent = 'Approve & execute once'; toast(error.message); }
+});
+document.addEventListener('click', async (event) => {
+  const button = event.target.closest('[data-master-rollback]');
+  if (!button) return;
+  try {
+    button.disabled = true; button.textContent = 'Rolling back…';
+    const result = await api(`/api/os/transactions/${button.dataset.masterRollback}/rollback`, { method: 'POST', body: JSON.stringify({ actor: 'owner' }) });
+    renderMasterResult(result);
+    await load();
+    toast('Operation rolled back');
+  } catch (error) { button.disabled = false; button.textContent = 'Rollback'; toast(error.message); }
+});
+document.addEventListener('click', async (event) => {
+  const button = event.target.closest('[data-master-preset]');
+  if (!button) return;
+  const preset = button.dataset.masterPreset;
+  if (preset === 'command' || preset === 'creative') { activateView(preset); return; }
+  const presets = {
+    health: ['system.health', {}, false],
+    readiness: ['publication.operations.get', {}, false],
+    plan: ['content.plan_120_days', { objective: 'Build the complete adaptive, entertainment-first 120-day content operation.' }, true],
+    dispatch: ['publication.dispatch', {}, true],
+  };
+  if (preset === 'undo') {
+    try { button.disabled = true; const result = await api('/api/os/undo', { method: 'POST', body: JSON.stringify({ actor: 'owner' }) }); renderMasterResult(result); await load(); toast('Latest reversible operation undone'); }
+    catch (error) { toast(error.message); }
+    finally { button.disabled = false; }
+    return;
+  }
+  const configuration = presets[preset];
+  if (!configuration) return;
+  selectMasterCapability(...configuration);
+  $('.master-executor').scrollIntoView?.({ behavior: 'smooth', block: 'start' });
+});
+$('#new-creative').addEventListener('click', async () => {
+  try {
+    const result = await api('/api/os/creatives', { method: 'POST', body: JSON.stringify({ title: 'Untitled creative', slide_count: 6, platforms: ['facebook', 'instagram'] }) });
+    state.creatives.unshift(result.creative);
+    renderCreative(result.creative);
+    $('#creative-title').select();
+    toast('New idea saved');
+  } catch (error) { toast(error.message); }
+});
+$('#creative-list').addEventListener('click', (event) => { const button = event.target.closest('[data-creative-id]'); if (button) renderCreative(state.creatives.find((item) => item.id === button.dataset.creativeId)); });
+['creative-title', 'creative-idea', 'creative-slides', 'creative-platform'].forEach((id) => $(`#${id}`).addEventListener('input', queueCreativeSave));
+document.querySelectorAll('.creative-channel').forEach((item) => item.addEventListener('change', queueCreativeSave));
+$('#creative-run').addEventListener('click', async () => {
+  const button = $('#creative-run');
+  try {
+    clearTimeout(state.creativeSaveTimer);
+    const creative = await saveCreative({ quiet: true });
+    if (!creative?.idea) throw new Error('Add the creative idea before scheduling.');
+    if (!$('#creative-date').value) throw new Error('Choose a publication date.');
+    if (!$('#creative-time').value) throw new Error('Choose a publication time.');
+    button.disabled = true; button.textContent = 'Checking, approving, and scheduling…';
+    const scheduledAt = `${$('#creative-date').value}T${$('#creative-time').value}:00`;
+    const result = await api(`/api/os/creatives/${state.creativeId}/schedule`, { method: 'POST', body: JSON.stringify({ content_date: $('#creative-date').value, scheduled_at: scheduledAt, slot: $('#creative-slot').value }) });
+    const index = state.creatives.findIndex((item) => item.id === result.creative.id);
+    if (index >= 0) state.creatives[index] = result.creative;
+    renderCreative(result.creative);
+    toast('Creative checked, approved, and scheduled');
+  } catch (error) { $('#creative-result').innerHTML = `<div class="inline-alert">${esc(error.message)}</div>`; }
+  finally { button.disabled = false; button.textContent = 'Run checks, approve & schedule'; }
+});
 $('#new-chat').addEventListener('click', async () => {
   try {
     const result = await api('/api/os/conversations', { method: 'POST', body: JSON.stringify({ title: 'Infenergy Command' }) });

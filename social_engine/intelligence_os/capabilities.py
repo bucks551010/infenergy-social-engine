@@ -462,6 +462,7 @@ def register_core_capabilities(registry: CapabilityRegistry, policies: PolicyEng
         slide_count = int(payload.get("slide_count", 6))
         platform_limit = PLATFORM_LIMITS.get(platform, 10)
         objective = str(payload["objective"]).strip()
+        title = str(payload.get("title") or objective).strip()
         if context.dry_run:
             return {
                 "would_generate": {"objective": objective, "platform": platform, "slide_count": slide_count},
@@ -482,6 +483,7 @@ def register_core_capabilities(registry: CapabilityRegistry, policies: PolicyEng
             principle_key=str(payload.get("principle_key", "contrapositive")),
             archetype_key=str(payload.get("archetype_key", "preparedness_buyer")),
             product=product,
+            creative_brief=objective,
             platform=platform,
             slide_count=slide_count,
         )
@@ -504,7 +506,11 @@ def register_core_capabilities(registry: CapabilityRegistry, policies: PolicyEng
         }
         rendered = _render_assets(context.data_dir, thought, 0)
         assets = rendered["slides"]
-        caption = str(payload.get("caption") or objective)
+        supporting = str(payload.get("supporting_message") or "").strip()
+        cta = str(payload.get("cta") or "What would you protect first?").strip()
+        facebook_caption = str(payload.get("caption") or "\n\n".join(part for part in (title, objective, supporting, cta) if part)).strip()
+        instagram_caption = "\n\n".join(part for part in (objective, supporting, cta, "#Infenergy #Preparedness #PracticalPower") if part)
+        linkedin_caption = "\n\n".join(part for part in (title, objective, supporting, f"Practical next step: {cta}") if part)
         platforms = [str(item).lower() for item in payload.get("platforms", []) if str(item).strip()]
         if not platforms:
             platforms = ["facebook", "instagram"]
@@ -515,15 +521,22 @@ def register_core_capabilities(registry: CapabilityRegistry, policies: PolicyEng
             "carousel_slides": authored["slides"],
             "carousel_assets": assets,
             "generated_visuals": {name: rendered["primary"]["local_path"] for name in platforms},
-            "fb_caption": caption,
-            "ig_caption": caption,
-            "li_text": caption,
+            "title": title,
+            "fb_caption": facebook_caption,
+            "ig_caption": instagram_caption,
+            "li_text": linkedin_caption,
             "platforms": platforms,
             "platform_policy": {"platforms": platforms},
-            "platform_posts": {
-                name: {"platform": name, "final_caption": caption, "content_format": "carousel"}
-                for name in platforms
-            },
+            "platform_posts": {},
+        }
+        platform_copies = {
+            "facebook": facebook_caption,
+            "instagram": instagram_caption,
+            "linkedin": linkedin_caption,
+        }
+        package["platform_posts"] = {
+            name: {"platform": name, "final_caption": platform_copies.get(name, facebook_caption), "content_format": "carousel"}
+            for name in platforms
         }
         return {
             "status": "GENERATED",
@@ -634,7 +647,7 @@ def register_core_capabilities(registry: CapabilityRegistry, policies: PolicyEng
         Capability("opportunities.get", "Get opportunities", "Return ranked, evidence-bearing Infenergy opportunities.", "BUSINESS_INTELLIGENCE", opportunities_get),
         Capability("risks.get", "Get risks", "Return ranked, evidence-bearing Infenergy risks and mitigations.", "BUSINESS_INTELLIGENCE", risks_get),
         Capability("creative.score", "Score creative", "Evaluate supplied content with the preserved platform-native quality rubric without generating or publishing anything.", "CREATIVE_STUDIO", creative_score, object_schema({"content": {"type": "object"}, "platforms": {"type": "array"}}, ["content"])),
-        Capability("creative.carousel.generate", "Generate carousel package", "Author and render a complete platform-safe carousel package with a caller-selected 2-to-10 slide count. This creates draft assets but does not schedule or publish them.", "CREATIVE_STUDIO", creative_carousel_generate, object_schema({"objective": {"type": "string"}, "platform": {"type": "string"}, "platforms": {"type": "array"}, "slide_count": {"type": "integer"}, "product_id": {"type": "string"}, "product": {"type": "object"}, "principle_key": {"type": "string"}, "archetype_key": {"type": "string"}, "supporting_message": {"type": "string"}, "caption": {"type": "string"}, "cta": {"type": "string"}, "pillar": {"type": "string"}, "visual_motif": {"type": "string"}}, ["objective"]), risk_level="INTERNAL_MUTATION", cost_class="MEDIUM", permission_requirement="AUTONOMOUS", supports_rollback=True, rollback_handler=rollback_creative),
+        Capability("creative.carousel.generate", "Generate carousel package", "Author and render a complete platform-safe carousel package with a caller-selected 2-to-10 slide count. This creates draft assets but does not schedule or publish them.", "CREATIVE_STUDIO", creative_carousel_generate, object_schema({"objective": {"type": "string"}, "title": {"type": "string"}, "platform": {"type": "string"}, "platforms": {"type": "array"}, "slide_count": {"type": "integer"}, "product_id": {"type": "string"}, "product": {"type": "object"}, "principle_key": {"type": "string"}, "archetype_key": {"type": "string"}, "supporting_message": {"type": "string"}, "caption": {"type": "string"}, "cta": {"type": "string"}, "pillar": {"type": "string"}, "visual_motif": {"type": "string"}}, ["objective"]), risk_level="INTERNAL_MUTATION", cost_class="MEDIUM", permission_requirement="AUTONOMOUS", supports_rollback=True, rollback_handler=rollback_creative),
         Capability("agents.list", "List operational agents", "List every preserved specialist agent available to the operating system.", "OPERATIONS", agents_list),
         Capability("agents.run", "Run operational agent", "Run any registered specialist agent with supplied parameters. Mutation-capable agent execution remains owner-approved.", "OPERATIONS", agent_run, object_schema({"name": {"type": "string"}, "params": {"type": "object"}}, ["name"]), risk_level="INTERNAL_MUTATION", permission_requirement="EXECUTE_WITH_APPROVAL"),
         Capability("publication.operations.get", "Get publication operations", "Inspect exact daily slots, candidate decisions, outbox state, platform transactions, failures, and readiness actions.", "SOCIAL", publication_operations, object_schema({"content_date": {"type": "string"}, "lead_hours": {"type": "integer"}})),

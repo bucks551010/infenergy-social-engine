@@ -94,6 +94,44 @@ def test_main_runs_due_sweep_immediately_on_startup(monkeypatch):
     assert pregenerations == ["started"]
 
 
+def test_manual_monthly_generation_builds_prepares_and_pregenerates_to_idle(monkeypatch, tmp_path):
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    monkeypatch.setattr(worker, "build_monthly_calendar", lambda **kwargs: {
+        "queued": 2, "calendar_path": "calendar.json", "single_image_posts": 1, "carousel_posts": 1,
+    })
+    monkeypatch.setattr(worker, "prepare_monthly_gemini_prompts", lambda data_dir: {
+        "prepared_entries": 2, "prepared_prompts": 5,
+    })
+    results = iter([
+        {"status": "PREGENERATED", "outbox_id": "one"},
+        {"status": "PREGENERATED", "outbox_id": "two"},
+        {"status": "IDLE"},
+    ])
+    monkeypatch.setattr(worker, "_pregenerate_one_package", lambda: next(results))
+
+    worker.run_manual_monthly_generation("job-1", days=2, start_date=None, replace_unpublished=True)
+
+    status = worker._monthly_generation_status()
+    assert status["status"] == "COMPLETE"
+    assert status["phase"] == "COMPLETE"
+    assert status["queued"] == 2
+    assert status["prepared_prompts"] == 5
+    assert status["pregenerated_packages"] == 2
+
+
+def test_manual_monthly_generation_rejects_second_request_while_first_is_accepted(monkeypatch, tmp_path):
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    worker._save_monthly_generation_status(job_id="job-1", status="ACCEPTED", phase="QUEUED")
+
+    accepted, status = worker._start_manual_monthly_generation(
+        days=30, start_date=None, replace_unpublished=True,
+    )
+
+    assert accepted is False
+    assert status["job_id"] == "job-1"
+    assert status["status"] == "ACCEPTED"
+
+
 def test_manual_no_product_override_is_scoped_to_one_run(monkeypatch):
     captured_env = {}
 

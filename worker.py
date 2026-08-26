@@ -7,6 +7,7 @@ import mimetypes
 import threading
 import subprocess
 import traceback
+import uuid
 from urllib.parse import urlparse, parse_qs
 import schedule
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -46,10 +47,115 @@ MONTHLY_SUMMARY_KEYS = (
     "statement_graphics", "current_event_posts", "calendar_path",
 )
 CUSTOM_POST_LOCK = threading.Lock()
+MONTHLY_GENERATION_LOCK = threading.Lock()
 
 
 def _data_dir() -> str:
     return os.environ.get("DATA_DIR", os.path.join(os.path.dirname(__file__), "data"))
+
+
+def _monthly_generation_job_path() -> str:
+    return os.path.join(_data_dir(), "social", "monthly_generation_job.json")
+
+
+def _monthly_generation_status() -> dict:
+    return _load_json(_monthly_generation_job_path(), {"status": "IDLE", "phase": "IDLE"})
+
+
+def _save_monthly_generation_status(**updates) -> dict:
+    current = _monthly_generation_status()
+    current.update(updates)
+    current["updated_at_utc"] = _utc_now()
+    _safe_write_json(_monthly_generation_job_path(), current)
+    return current
+
+
+def _pregenerate_one_package() -> dict:
+    env = os.environ.copy()
+    env.update({"DATA_DIR": _data_dir(), "OUTBOX_ACTION": "pregenerate"})
+    completed = subprocess.run(
+        [sys.executable, os.path.join(os.path.dirname(__file__), "scripts", "dispatch_outbox.py")],
+        cwd=os.path.dirname(__file__), capture_output=True, text=True, env=env,
+        timeout=int(os.environ.get("GEMINI_PREGEN_PROCESS_TIMEOUT_SEC", "600")), check=False,
+    )
+    output = (completed.stdout or "").strip().splitlines()
+    if completed.returncode != 0 or not output:
+        detail = ((completed.stdout or "") + "\n" + (completed.stderr or "")).strip()[-2000:]
+        return {"status": "RETRYABLE_FAILURE", "error": detail or f"pregeneration_exit_{completed.returncode}"}
+    try:
+        return json.loads(output[-1])
+    except json.JSONDecodeError:
+        return {"status": "RETRYABLE_FAILURE", "error": f"invalid_pregeneration_output:{output[-1][-500:]}"}
+
+
+def run_manual_monthly_generation(job_id: str, *, days: int, start_date: str | None, replace_unpublished: bool) -> None:
+    if not MONTHLY_GENERATION_LOCK.acquire(blocking=False):
+        _save_monthly_generation_status(job_id=job_id, status="DEFERRED", phase="WAITING", error="monthly_generation_already_running")
+        return
+    try:
+        _save_monthly_generation_status(
+            job_id=job_id, status="RUNNING", phase="BUILDING", days=days, start_date=start_date,
+            replace_unpublished=replace_unpublished, pregenerated_packages=0, error=None, started_at_utc=_utc_now(),
+        )
+        calendar = build_monthly_calendar(
+            data_dir=_data_dir(), start_date=start_date, days=days, enqueue=True,
+            replace_unpublished=replace_unpublished,
+        )
+        _save_monthly_generation_status(
+            phase="PREPARING", queued=int(calendar.get("queued") or 0), calendar_path=calendar.get("calendar_path"),
+            single_image_posts=int(calendar.get("single_image_posts") or 0), carousel_posts=int(calendar.get("carousel_posts") or 0),
+        )
+        prepared = prepare_monthly_gemini_prompts(_data_dir())
+        _save_monthly_generation_status(
+            phase="PREGENERATING", prepared_entries=int(prepared.get("prepared_entries") or 0),
+            prepared_prompts=int(prepared.get("prepared_prompts") or 0),
+        )
+        pregenerated = 0
+        while True:
+            result = _pregenerate_one_package()
+            result_status = str(result.get("status") or "")
+            if result_status == "PREGENERATED":
+                pregenerated += 1
+                _save_monthly_generation_status(
+                    phase="PREGENERATING", pregenerated_packages=pregenerated,
+                    last_outbox_id=result.get("outbox_id"),
+                )
+                continue
+            if result_status == "IDLE":
+                _save_monthly_generation_status(
+                    status="COMPLETE", phase="COMPLETE", pregenerated_packages=pregenerated,
+                    completed_at_utc=_utc_now(), error=None,
+                )
+                return
+            _save_monthly_generation_status(
+                status="RETRYABLE_FAILURE", phase="PREGENERATING", pregenerated_packages=pregenerated,
+                error=str(result.get("error") or result.get("detail") or "pregeneration_failed"),
+                failed_outbox_id=result.get("outbox_id"),
+            )
+            return
+    except Exception as exc:
+        _save_monthly_generation_status(
+            status="RETRYABLE_FAILURE", phase="FAILED", error=f"{type(exc).__name__}:{exc}",
+        )
+    finally:
+        MONTHLY_GENERATION_LOCK.release()
+
+
+def _start_manual_monthly_generation(*, days: int, start_date: str | None, replace_unpublished: bool) -> tuple[bool, dict]:
+    current = _monthly_generation_status()
+    if MONTHLY_GENERATION_LOCK.locked() or current.get("status") in {"ACCEPTED", "RUNNING"}:
+        return False, current
+    job_id = str(uuid.uuid4())
+    pending = _save_monthly_generation_status(
+        job_id=job_id, status="ACCEPTED", phase="QUEUED", days=days, start_date=start_date,
+        replace_unpublished=replace_unpublished, pregenerated_packages=0, error=None, accepted_at_utc=_utc_now(),
+    )
+    threading.Thread(
+        target=run_manual_monthly_generation,
+        kwargs={"job_id": job_id, "days": days, "start_date": start_date, "replace_unpublished": replace_unpublished},
+        daemon=True, name=f"monthly-generation-{job_id[:8]}",
+    ).start()
+    return True, pending
 
 
 def _load_json(path: str, default):
@@ -1540,6 +1646,43 @@ class HealthHandler(BaseHTTPRequestHandler):
             except Exception as exc:
                 body = json.dumps({"error": f"{type(exc).__name__}:{exc}"}).encode("utf-8")
                 self.send_response(500)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
+        if parsed.path == "/generate-monthly-content":
+            params = parse_qs(parsed.query)
+            authorized, status_code, error_payload = _os_authorized(self, params)
+            if not authorized:
+                body = json.dumps(error_payload).encode("utf-8")
+                self.send_response(status_code)
+            else:
+                try:
+                    days = max(1, min(62, int(params.get("days", ["30"])[0])))
+                    start_date = str(params.get("start_date", [""])[0]).strip() or None
+                    replace_unpublished = str(params.get("replace_unpublished", ["true"])[0]).lower() in ("1", "true", "yes")
+                    accepted, payload = _start_manual_monthly_generation(
+                        days=days, start_date=start_date, replace_unpublished=replace_unpublished,
+                    )
+                    body = json.dumps({"accepted": accepted, **payload}, default=str).encode("utf-8")
+                    self.send_response(202 if accepted else 409)
+                except Exception as exc:
+                    body = json.dumps({"error": f"{type(exc).__name__}:{exc}"}).encode("utf-8")
+                    self.send_response(500)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
+        if parsed.path == "/monthly-generation-status":
+            params = parse_qs(parsed.query)
+            authorized, status_code, error_payload = _os_authorized(self, params)
+            payload = _monthly_generation_status() if authorized else error_payload
+            body = json.dumps(payload, default=str).encode("utf-8")
+            self.send_response(200 if authorized else status_code)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()

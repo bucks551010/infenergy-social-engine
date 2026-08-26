@@ -65,6 +65,22 @@ All operational preview and control endpoints use the same `MANUAL_RUN_TOKEN` pr
 - `VISUAL_PRODUCT_IMAGE_OVERRIDE` (optional public URL)
 - `GEMINI_STYLE_ACTIVE_KEYS` (optional comma-separated style keys from repo)
 - `VISUAL_REPO_AUTO_SEED` (default `true`; auto-seeds visual idea repo if empty)
+- `ENTERTAINMENT_STUDIO_URL` (optional; enables canonical Eleven/LUX production through the Studio)
+- `ENTERTAINMENT_STUDIO_TOKEN` (required with `ENTERTAINMENT_STUDIO_URL`; must equal the Studio's `SOCIAL_ENGINE_TOKEN`)
+- `ENTERTAINMENT_STUDIO_IMAGE_PROVIDER` (`openai` by default; use `deterministic` only for local contract testing)
+
+## Entertainment Studio Routing
+
+The orchestrator now creates a structured `CreativeRequest` from its approved strategy, winning concept, human-truth gate, art direction, product proof, and explicit `WHAT_HAPPENS`. Every `PostPackage` and memory record retains this request for decision tracing.
+
+Only earned canonical routes are sent to Entertainment Studio:
+
+- `INFENERGY_CHARACTER`
+- `MICRO_MISSION`
+- `LUX_LED`
+- `CINEMATIC_STORY`
+
+An available catalog product does not enter a character story unless the approved strategy supplies an explicit product role and verified proof. Real-world, science, editorial, community, and ordinary product work continues through the existing Gemini provider. If Studio is unavailable or rejects a request, the provider records the reason and falls back to Gemini, then the existing deterministic template provider.
 
 ## New Files
 

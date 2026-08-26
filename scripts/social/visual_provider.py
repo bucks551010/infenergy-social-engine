@@ -14,6 +14,10 @@ import os
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
+import requests
+
+from .creative_contracts import CANONICAL_ROUTES
+
 
 @dataclass
 class VisualResult:
@@ -206,8 +210,62 @@ class GeminiVisualProvider:
         )
 
 
+class EntertainmentStudioVisualProvider:
+    """Routes earned canonical work to Studio and preserves Gemini fallback."""
+
+    name = "entertainment_studio"
+
+    def __init__(self, base_url: str, token: str, *, fallback: VisualProvider | None = None, timeout: float = 180.0) -> None:
+        self.base_url = base_url.rstrip("/")
+        self.token = token
+        self.fallback = fallback or GeminiVisualProvider()
+        self.timeout = timeout
+
+    def generate(self, *, art_direction: dict[str, Any], positive_prompt: str, negative_prompt: str, platform: str) -> VisualResult:
+        creative_request = art_direction.get("creative_request")
+        route = str((creative_request or {}).get("requestedRoute") or "")
+        if not isinstance(creative_request, dict) or route not in CANONICAL_ROUTES:
+            return self.fallback.generate(art_direction=art_direction, positive_prompt=positive_prompt, negative_prompt=negative_prompt, platform=platform)
+        production = {
+            "headline": str(art_direction.get("visual_message") or "Infenergy").strip()[:300],
+            "kind": "carousel" if "carousel" in str(art_direction.get("visual_format", "")).lower() else "cinematic",
+            "aspectRatio": "1:1" if platform.split("_", 1)[0] in {"facebook", "linkedin"} else "4:5",
+            "provider": os.environ.get("ENTERTAINMENT_STUDIO_IMAGE_PROVIDER", "openai").strip().lower() or "openai",
+            "promptPrefix": positive_prompt[:2000],
+        }
+        try:
+            response = requests.post(
+                f"{self.base_url}/api/creative-requests",
+                json={"request": creative_request, "production": production},
+                headers={"Authorization": f"Bearer {self.token}", "Content-Type": "application/json"},
+                timeout=self.timeout,
+            )
+            response.raise_for_status()
+            payload = response.json()
+            result = payload.get("result") or {}
+            assets = result.get("assets") or []
+            if not assets:
+                raise ValueError("Entertainment Studio returned no assets")
+            return VisualResult(
+                provider=self.name,
+                kind="generated_image",
+                prompt=positive_prompt,
+                negative_prompt=negative_prompt,
+                asset_path=f"{self.base_url}/api/assets/{assets[0]}",
+                provider_meta={"platform": platform, "creative_request": creative_request, "creative_result": result, "replayed": bool(payload.get("replayed"))},
+            )
+        except Exception as exc:
+            fallback = self.fallback.generate(art_direction=art_direction, positive_prompt=positive_prompt, negative_prompt=negative_prompt, platform=platform)
+            fallback.provider_meta["entertainment_studio_fallback"] = {"route": route, "reason": str(exc)[:500]}
+            return fallback
+
+
 def default_provider() -> "VisualProvider":
-    """Auto-select the real Gemini provider when a key is configured."""
+    """Select Studio for canonical work, retaining Gemini/template fallback."""
+    studio_url = os.environ.get("ENTERTAINMENT_STUDIO_URL", "").strip()
+    studio_token = os.environ.get("ENTERTAINMENT_STUDIO_TOKEN", "").strip()
+    if studio_url and studio_token:
+        return EntertainmentStudioVisualProvider(studio_url, studio_token)
     if os.environ.get("GEMINI_API_KEY", "").strip():
         return GeminiVisualProvider()
     return TemplateRenderProvider()

@@ -44,10 +44,67 @@ from social import (  # noqa: E402
     strategy_lock,
     visual_intelligence,
     visual_provider,
+    creative_contracts,
     lean_intelligence,
     living_intelligence,
     visual_provider,
 )
+
+
+def test_creative_request_requires_earned_character_route_and_explicit_action():
+    request = creative_contracts.build_creative_request(
+        post_id="post-1", platform="instagram_feed",
+        strategy={"topic": "phone at one percent", "angle": "a tiny charging problem becomes a mission", "creative_mode": "MICRO_MISSION", "characters": ["Eleven", "LUX"], "customer_moment": "a traveler needs their boarding pass", "human_need": "continuity", "human_outcome": "the connection is preserved"},
+        art_direction={"action": "LUX detects the dying phone and Eleven diverts through the terminal to preserve the boarding pass.", "composition": "tracking wide", "lighting": "terminal daylight", "style": "cinematic"},
+        human_truth={"human_truth": "Power matters because access matters"}, audience_reaction="What happens next?", format_name="cinematic",
+    )
+
+    assert request.requested_route == "MICRO_MISSION"
+    assert request.canon_required is True
+    assert request.what_happens.startswith("LUX detects")
+    assert request.as_studio_payload()["continuityRequirements"]
+
+
+def test_entertainment_studio_provider_routes_only_canonical_work(monkeypatch):
+    captured = {}
+
+    class FakeResponse:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {"result": {"assets": ["asset-1"], "creativeRoute": "MICRO_MISSION"}, "replayed": False}
+
+    class Fallback:
+        def generate(self, **kwargs):
+            captured["fallback"] = kwargs
+            return visual_provider.VisualResult(provider="fallback", kind="template_recipe")
+
+    monkeypatch.setattr(visual_provider.requests, "post", lambda url, **kwargs: captured.update({"url": url, "payload": kwargs["json"]}) or FakeResponse())
+    provider = visual_provider.EntertainmentStudioVisualProvider("https://studio.test", "token", fallback=Fallback())
+    canonical = {"creative_request": {"requestedRoute": "MICRO_MISSION", "requestId": "request-1"}, "visual_message": "The one-percent mission", "visual_format": "cinematic"}
+    result = provider.generate(art_direction=canonical, positive_prompt="action", negative_prompt="static pose", platform="instagram_feed")
+
+    assert result.provider == "entertainment_studio"
+    assert result.asset_path == "https://studio.test/api/assets/asset-1"
+    assert captured["payload"]["request"]["requestId"] == "request-1"
+
+    ordinary = provider.generate(art_direction={"creative_request": {"requestedRoute": "SCIENCE_VISUAL"}}, positive_prompt="thermal camera", negative_prompt="", platform="instagram_feed")
+    assert ordinary.provider == "fallback"
+    assert captured["fallback"]["positive_prompt"] == "thermal camera"
+
+
+def test_available_product_does_not_hijack_character_story_without_role_and_proof():
+    request = creative_contracts.build_creative_request(
+        post_id="post-2", platform="facebook",
+        strategy={"topic": "phone at one percent", "angle": "preserve an important message", "creative_mode": "MICRO_MISSION", "characters": ["Eleven"], "offering": "PowerCharge Pro", "customer_moment": "a missed connection"},
+        art_direction={"product_name": "PowerCharge Pro", "action": "Eleven follows the final signal through the station while the phone drops to one percent."},
+        human_truth={"human_truth": "What power enables matters"}, audience_reaction="What happens next?", format_name="cinematic",
+    )
+
+    assert request.requested_route == "MICRO_MISSION"
+    assert request.product is None
+    assert "COMMERCE" not in request.content_worlds
 
 
 # --- generator wiring ------------------------------------------------------

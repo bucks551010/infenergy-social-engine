@@ -34,6 +34,7 @@ from . import (
     claim_intelligence,
     copy_intelligence,
     creative_cognition,
+    creative_contracts,
     creative_intelligence,
     engines,
     libraries,
@@ -603,6 +604,7 @@ class PostPackage:
     business_context: dict[str, Any] | None = None
     anchored_offering: dict[str, Any] | None = None
     creative_decision_packet: dict[str, Any] | None = None
+    creative_request: dict[str, Any] | None = None
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -622,6 +624,7 @@ class PostPackage:
             "business_context": self.business_context,
             "anchored_offering": self.anchored_offering,
             "creative_decision_packet": self.creative_decision_packet,
+            "creative_request": self.creative_request,
         }
 
 
@@ -984,6 +987,23 @@ class SocialIntelligenceOrchestrator:
         art_dict["prompt_governance"] = prompt_governance
         art_dict["v5_fallback_candidates"] = v5_fallback_candidates
         art_dict["human_truth_gate"] = human_truth
+        art_dict["action"] = str(
+            v5_direction.get("action")
+            or v5_direction.get("scene")
+            or selected_concept.get("what_happens")
+            or selected_concept.get("description")
+            or top_concept.description
+        ).strip()
+        creative_request = creative_contracts.build_creative_request(
+            post_id=post_id,
+            platform=platform,
+            strategy=locked,
+            art_direction=art_dict,
+            human_truth=human_truth,
+            audience_reaction=str(locked.get("desired_audience_reaction") or brief.emotional_driver or anchor),
+            format_name=v_format,
+        ).as_studio_payload()
+        art_dict["creative_request"] = creative_request
         if pre_render_gate.get("decision") == "CONCEPT_READY" and prompt_governance.get("ready") and human_truth.get("ready"):
             provider_result = self.provider.generate(
                 art_direction=art_dict,
@@ -1072,6 +1092,7 @@ class SocialIntelligenceOrchestrator:
             business_context=bi_ctx,
             anchored_offering=bi_offering,
             creative_decision_packet=creative_packet,
+            creative_request=creative_request,
         )
         package.creative_director["human_truth_gate"] = human_truth
         if locked:
@@ -1159,6 +1180,11 @@ class SocialIntelligenceOrchestrator:
                     "v5_composition": v5_direction.get("composition", {}),
                     "v5_product_presence": v5_direction.get("product_presence", ""),
                     "v5_prompt_governance": prompt_governance.get("status", ""),
+                    "creative_route": creative_request["requestedRoute"],
+                    "visual_action": creative_request["whatHappens"],
+                    "visual_environment": creative_request["story"]["setup"],
+                    "visual_hero": creative_request["visualHero"],
+                    "characters_used": creative_request["characters"],
                     "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
                 },
                 data_dir=self.data_dir,
@@ -1180,6 +1206,8 @@ class SocialIntelligenceOrchestrator:
                     "quality": q.as_dict(),
                     "claim_ledger": ledger.as_dict(),
                     "anchored_offering": bi_offering,
+                    "creative_request": creative_request,
+                    "provider_result": provider_result.as_dict(),
                     "engagement_metrics": {},
                     "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
                 },

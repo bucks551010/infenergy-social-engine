@@ -392,6 +392,7 @@ def prepare_monthly_gemini_prompts(data_dir: str = DATA_DIR) -> dict[str, Any]:
     entries = calendar.get("entries") if isinstance(calendar.get("entries"), list) else []
     if not entries:
         raise RuntimeError("monthly_content_not_found")
+    queued_entries = [entry for entry in entries if isinstance(entry, dict) and entry.get("outbox_id")]
     slate = _load_editorial_slate()
     thoughts = {
         str(thought.get("id") or ""): thought
@@ -404,9 +405,7 @@ def prepare_monthly_gemini_prompts(data_dir: str = DATA_DIR) -> dict[str, Any]:
     prepared_at = datetime.now(timezone.utc).isoformat()
     try:
         connection.execute("BEGIN IMMEDIATE")
-        for entry in entries:
-            if not isinstance(entry, dict):
-                continue
+        for entry in queued_entries:
             thought = thoughts.get(str(entry.get("thought_id") or ""))
             package = entry.get("package") if isinstance(entry.get("package"), dict) else {}
             outbox_id = str(entry.get("outbox_id") or "")
@@ -430,8 +429,8 @@ def prepare_monthly_gemini_prompts(data_dir: str = DATA_DIR) -> dict[str, Any]:
             entry["package"] = package
             prepared_entries += 1
             prepared_prompts += int(generation["required_image_count"])
-        if prepared_entries != len(entries):
-            raise RuntimeError(f"monthly_prompt_preparation_incomplete:{prepared_entries}/{len(entries)}")
+        if prepared_entries != len(queued_entries):
+            raise RuntimeError(f"monthly_prompt_preparation_incomplete:{prepared_entries}/{len(queued_entries)}")
         connection.commit()
     except Exception:
         connection.rollback()

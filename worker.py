@@ -110,6 +110,12 @@ def run_manual_monthly_generation(job_id: str, *, days: int, start_date: str | N
             phase="PREGENERATING", prepared_entries=int(prepared.get("prepared_entries") or 0),
             prepared_prompts=int(prepared.get("prepared_prompts") or 0),
         )
+        if int(calendar.get("queued") or 0) == 0:
+            _save_monthly_generation_status(
+                status="COMPLETE", phase="COMPLETE", pregenerated_packages=0,
+                completed_at_utc=_utc_now(), error=None,
+            )
+            return
         pregenerated = 0
         while True:
             result = _pregenerate_one_package()

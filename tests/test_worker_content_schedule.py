@@ -132,6 +132,24 @@ def test_manual_monthly_generation_rejects_second_request_while_first_is_accepte
     assert status["status"] == "ACCEPTED"
 
 
+def test_manual_monthly_generation_completes_without_dispatch_when_nothing_new_was_queued(monkeypatch, tmp_path):
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    monkeypatch.setattr(worker, "build_monthly_calendar", lambda **kwargs: {
+        "queued": 0, "calendar_path": "calendar.json", "single_image_posts": 1, "carousel_posts": 0,
+    })
+    monkeypatch.setattr(worker, "prepare_monthly_gemini_prompts", lambda data_dir: {
+        "prepared_entries": 0, "prepared_prompts": 0,
+    })
+    monkeypatch.setattr(worker, "_pregenerate_one_package", lambda: pytest.fail("unrelated outbox work was dispatched"))
+
+    worker.run_manual_monthly_generation("job-1", days=1, start_date=None, replace_unpublished=False)
+
+    status = worker._monthly_generation_status()
+    assert status["status"] == "COMPLETE"
+    assert status["queued"] == 0
+    assert status["pregenerated_packages"] == 0
+
+
 def test_manual_no_product_override_is_scoped_to_one_run(monkeypatch):
     captured_env = {}
 

@@ -249,6 +249,20 @@ def test_existing_month_can_be_prepared_for_strict_gemini_without_rebuilding(tmp
     assert saved["entries"][0]["package"]["gemini_generation"]["status"] == "PROMPTS_READY"
 
 
+def test_prompt_preparation_ignores_preserved_entries_without_outbox_ids(tmp_path, monkeypatch):
+    _seed_knowledge(tmp_path)
+    monkeypatch.setenv("PUBLIC_BASE_URL", "https://example.test")
+    build_monthly_calendar(data_dir=str(tmp_path), start_date="2026-12-01", days=1, enqueue=True)
+    mixed = build_monthly_calendar(data_dir=str(tmp_path), start_date="2026-12-01", days=2, enqueue=True)
+
+    result = prepare_monthly_gemini_prompts(str(tmp_path))
+
+    assert mixed["queued"] == 1
+    assert mixed["skipped_existing"] == 1
+    assert result["prepared_entries"] == 1
+    assert result["prepared_prompts"] == 4
+
+
 def test_all_monthly_gemini_prompts_are_unique_and_overlay_ready():
     from PIL import Image
 

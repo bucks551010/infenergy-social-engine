@@ -15,9 +15,9 @@ def _payload():
     }
 
 
-def _carousel_payload():
+def _carousel_payload(slide_count=6):
     payload = _payload()
-    payload["image_urls"] = [f"https://example.com/slide-{position}.png" for position in range(1, 7)]
+    payload["image_urls"] = [f"https://example.com/slide-{position}.png" for position in range(1, slide_count + 1)]
     return payload
 
 
@@ -27,16 +27,33 @@ def test_custom_post_validates_required_fields():
     assert "external_id" in response["error"]
 
 
-def test_custom_post_requires_exactly_six_carousel_urls():
-    payload = _payload()
-    payload["image_urls"] = ["https://example.com/slide.png"]
+def test_custom_post_requires_two_to_ten_carousel_urls():
+    for slide_count in (1, 11):
+        status, response = worker._publish_custom_post(_carousel_payload(slide_count))
+        assert status == 400
+        assert "2 to 10" in response["error"]
+
+
+def test_custom_post_accepts_carousel_url_boundaries():
+    for slide_count in (2, 10):
+        payload = _carousel_payload(slide_count)
+        payload["external_id"] = f"iis-schedule-{slide_count}"
+        payload["live"] = False
+        with tempfile.TemporaryDirectory() as data_dir, patch.dict(os.environ, {"DATA_DIR": data_dir}, clear=False):
+            status, _ = worker._publish_custom_post(payload)
+        assert status == 200
+
+
+def test_custom_post_rejects_non_https_carousel_url():
+    payload = _carousel_payload(8)
+    payload["image_urls"][3] = "http://example.com/slide-4.png"
     status, response = worker._publish_custom_post(payload)
     assert status == 400
-    assert "exactly six" in response["error"]
+    assert "public HTTPS URLs" in response["error"]
 
 
-def test_custom_post_passes_six_owner_carousel_assets_to_publishers():
-    payload = _carousel_payload()
+def test_custom_post_passes_eight_owner_carousel_assets_to_publishers():
+    payload = _carousel_payload(8)
     payload["platforms"] = ["facebook", "instagram"]
     with tempfile.TemporaryDirectory() as data_dir, patch.dict(os.environ, {"DATA_DIR": data_dir}, clear=False), \
         patch("publish_facebook.publish", return_value={"id": "fb-carousel"}) as facebook, \

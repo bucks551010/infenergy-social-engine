@@ -97,8 +97,8 @@ def _publish_custom_post(payload: dict) -> tuple[int, dict]:
         return 400, {"error": "platform_captions must contain only facebook, instagram, or linkedin strings up to 5000 characters"}
     if not image_url.startswith("https://"):
         return 400, {"error": "image_url must be a public HTTPS URL"}
-    if image_urls and (len(image_urls) != 6 or any(not item.startswith("https://") for item in image_urls)):
-        return 400, {"error": "image_urls must contain exactly six public HTTPS URLs"}
+    if image_urls and (not 2 <= len(image_urls) <= 10 or any(not item.startswith("https://") for item in image_urls)):
+        return 400, {"error": "image_urls must contain 2 to 10 public HTTPS URLs"}
     if not platforms or any(item not in allowed for item in platforms):
         return 400, {"error": "platforms must contain facebook, instagram, or linkedin"}
 

@@ -268,14 +268,17 @@ class IntelligenceOS:
             raise ValueError("approval_actor_mismatch")
         if approval["status"] == "PENDING":
             self.policies.decide_approval(approval_id, approved=True, decided_by=actor, note=note)
-        elif approval["status"] != "APPROVED":
+        elif approval["status"] not in {"APPROVED", "CONSUMED"}:
             raise ValueError(f"approval_not_executable:{approval['status']}")
         result = self.execute_capability(
             approval["capability"], approval["request"], actor=actor,
             approval_id=approval_id, operation_id=f"approval:{approval_id}",
         )
+        if approval["status"] == "CONSUMED" and not result.get("idempotent_replay"):
+            raise ValueError("consumed_approval_transaction_missing")
         if result.get("status") in {"COMPLETED", "DRY_RUN_COMPLETE"}:
-            self.policies.consume_approval(approval_id)
+            if approval["status"] != "CONSUMED":
+                self.policies.consume_approval(approval_id)
             self.policies.supersede_pending(
                 capability=approval["capability"], actor=actor, except_id=approval_id,
             )
@@ -401,6 +404,21 @@ class IntelligenceOS:
             content = self._approval_result_message(approved) + " Continuation is still recorded in the durable job."
             self._message(conversation_id, "assistant", content, {"timed_out": True, "continued_after_approval": True})
             return {"status": "TIMED_OUT", "conversation_id": conversation_id, "message": content, "approval": approved["approval"], "execution": execution}
+        except Exception as exc:
+            content = (
+                self._approval_result_message(approved)
+                + " Automatic continuation could not start, but the approval succeeded and the durable job was not lost. "
+                "Send `continue` to resume this same job."
+            )
+            self._message(
+                conversation_id, "assistant", content,
+                {"continuation_error": f"{type(exc).__name__}: {exc}", "continued_after_approval": True},
+            )
+            return {
+                "status": "CONTINUATION_FAILED", "conversation_id": conversation_id,
+                "message": content, "approval": approved["approval"], "execution": execution,
+                "continuation_error": f"{type(exc).__name__}: {exc}",
+            }
 
     def _command_prompt(self, message: str, conversation: dict[str, Any], actor: str) -> str:
         messages = conversation.get("messages", [])[-20:]

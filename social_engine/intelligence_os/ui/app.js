@@ -6,7 +6,12 @@ async function api(path, options = {}) {
   const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
   if (state.token) headers.Authorization = `Bearer ${state.token}`;
   const response = await fetch(path, { ...options, headers });
-  const data = await response.json();
+  const responseText = await response.text();
+  let data = {};
+  if (responseText) {
+    try { data = JSON.parse(responseText); }
+    catch { data = { error: responseText }; }
+  }
   if (response.status === 401 || response.status === 403) showLogin('That password was not accepted.');
   if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
   return data;

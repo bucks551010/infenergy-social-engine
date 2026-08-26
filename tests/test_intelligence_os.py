@@ -271,12 +271,14 @@ def test_default_deny_approval_executes_exact_request_once(tmp_path):
     pending = service.execute_capability("goals.create", arguments)
 
     approved = service.approve_and_execute(pending["approval_id"])
+    replay = service.approve_and_execute(pending["approval_id"])
 
     assert approved["execution"]["status"] == "COMPLETED"
     assert approved["approval"]["status"] == "CONSUMED"
     assert approved["execution"]["result"]["goal"]["description"] == arguments["description"]
-    with pytest.raises(ValueError, match="approval_not_executable:CONSUMED"):
-        service.approve_and_execute(pending["approval_id"])
+    assert replay["approval"]["status"] == "CONSUMED"
+    assert replay["execution"]["idempotent_replay"] is True
+    assert replay["execution"]["transaction_id"] == approved["execution"]["transaction_id"]
 
 
 def test_approval_cannot_authorize_different_payload(tmp_path):
@@ -350,6 +352,7 @@ def test_approved_job_continues_to_persisted_deliverables(tmp_path, monkeypatch)
         }
 
     monkeypatch.setattr(service.master, "converse", complete_job)
+    monkeypatch.setattr(service, "_copilot_tools", lambda actor: [])
     result = service.command("I approve this—start building.")
     job = service.jobs.list(1)[0]
 
@@ -359,6 +362,28 @@ def test_approved_job_continues_to_persisted_deliverables(tmp_path, monkeypatch)
     assert job["progress"] == 1.0
     assert job["result"]["campaign"] == "Blackout House"
     assert all(step["status"] == "COMPLETED" for step in job["steps"])
+
+
+def test_approved_job_survives_continuation_provider_failure(tmp_path, monkeypatch):
+    service = bootstrap(str(tmp_path))
+    conversation = service.create_conversation(owner_id="owner", title="Recovery")
+    pending = service.execute_capability(
+        "content.plan_120_days", {"objective": "Build the complete Blackout House campaign"}
+    )
+    approved = service.approve_and_execute(pending["approval_id"])
+
+    async def fail_with_non_json_upstream(*args, **kwargs):
+        raise ValueError("Unexpected token 'u', upstream error is not valid JSON")
+
+    monkeypatch.setattr(service.master, "converse", fail_with_non_json_upstream)
+    monkeypatch.setattr(service, "_copilot_tools", lambda actor: [])
+    result = service.continue_approved_job(conversation["id"], approved)
+
+    assert result["status"] == "CONTINUATION_FAILED"
+    assert result["approval"]["status"] == "CONSUMED"
+    assert result["execution"]["status"] == "COMPLETED"
+    assert result["execution"]["result"]["job"]["id"] == service.jobs.list(1)[0]["id"]
+    assert "Send `continue`" in result["message"]
 
 
 def test_schedule_dry_run_does_not_write_social_slot(tmp_path):

@@ -711,6 +711,15 @@ def register_core_capabilities(registry: CapabilityRegistry, policies: PolicyEng
         limit = max(1, min(int(payload.get("limit", 5)), 25))
         return {"topic": topic, "archetype": archetype, "candidates": candidates[:limit], "method": "catalog_evidence_keyword_fit"}
 
+    def platforms_status(_: dict[str, Any], __: ExecutionContext) -> dict[str, Any]:
+        from platform_publishing import list_platforms
+        platforms = list_platforms()
+        return {
+            "platforms": platforms,
+            "connected": [item["platform"] for item in platforms if item["status"] == "CONNECTED"],
+            "action_required": [item["platform"] for item in platforms if item["status"] in {"REAUTH_REQUIRED", "ERROR"}],
+        }
+
     definitions = [
         Capability("system.health", "System health", "Inspect actual Infenergy provider, database, and social status.", "SYSTEM_HEALTH", health),
         Capability("models.status", "Master model status", "Enumerate authenticated Copilot models and verify the configured master model.", "SYSTEM_HEALTH", model_status),
@@ -751,6 +760,7 @@ def register_core_capabilities(registry: CapabilityRegistry, policies: PolicyEng
         Capability("publication.dispatch", "Dispatch due publications", "Dispatch due approved outbox packages through preserved idempotent platform publishers; preview safely with dry run.", "SOCIAL", publication_dispatch, object_schema({}), risk_level="EXTERNAL_IRREVERSIBLE", cost_class="MEDIUM", permission_requirement="EXECUTE_WITH_APPROVAL", supports_rollback=False),
         Capability("brand.positioning.get", "Get brand positioning", "Return owner-first identity, purpose, worldview, competitive position, and voice constraints with preserved source hierarchy.", "BRAND", brand_positioning),
         Capability("products.match", "Match products to intent", "Rank evidence-eligible catalog products against an audience archetype and topic without changing inventory.", "PRODUCTS", product_match, object_schema({"topic": {"type": "string"}, "archetype": {"type": "string"}, "limit": {"type": "integer"}})),
+        Capability("platforms.status", "Get platform connections", "Return machine-readable publishing capabilities, feature flags, and credential health for Facebook, Instagram, LinkedIn, TikTok, and YouTube without exposing secrets.", "SYSTEM_HEALTH", platforms_status),
     ]
     for capability in definitions:
         registry.register(capability)

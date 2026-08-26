@@ -425,6 +425,32 @@ def test_120_day_capability_runs_real_builder_and_completes_job(tmp_path, monkey
     }
 
 
+def test_scored_story_capability_returns_instagram_schedule_package(tmp_path, monkeypatch):
+    service = bootstrap(str(tmp_path))
+    artifact = {
+        "reel_artifact_path": str(tmp_path / "story.mp4"),
+        "cover_path": str(tmp_path / "cover.jpg"),
+        "final_freeze_frame_path": str(tmp_path / "final.jpg"),
+        "static_derivative_path": str(tmp_path / "static.jpg"),
+        "public_urls": {"video": "https://media.example/story.mp4", "cover": "https://media.example/cover.jpg"},
+    }
+    monkeypatch.setattr("social.reels.render_scored_story_reel", lambda plan, data_dir: artifact)
+    monkeypatch.setattr("social.reels.technical_qa", lambda artifact, plan: {"status": "PASS", "reasons": []})
+    package = {
+        "post_id": "mission-1", "ig_caption": "The mission begins.",
+        "carousel_assets": [{"local_path": "one.png"}, {"local_path": "two.png"}],
+        "carousel_slides": [{"on_image_headline": "Darkness"}, {"on_image_headline": "Restore power"}],
+        "platform_posts": {"facebook": {"content_format": "carousel"}},
+    }
+    pending = service.execute_capability("creative.scored_story_reel.generate", {"package": package, "emotions": ["eerie", "triumph"]})
+    result = service.approve_and_execute(pending["approval_id"])["execution"]["result"]
+    assert result["status"] == "RENDERED"
+    assert result["package"]["instagram_reel"] == artifact
+    assert result["package"]["platform_posts"]["instagram"]["media_type"] == "REEL"
+    assert result["package"]["platform_posts"]["facebook"]["content_format"] == "carousel"
+    assert result["platform_support"]["facebook"].endswith("VIDEO_UPLOAD_NOT_ENABLED")
+
+
 def test_schedule_dry_run_does_not_write_social_slot(tmp_path):
     service = bootstrap(str(tmp_path))
     service.policies.create_policy(

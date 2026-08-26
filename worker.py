@@ -241,7 +241,7 @@ def _publish_custom_post(payload: dict) -> tuple[int, dict]:
     reel_cover_url = str(reel.get("cover_url", "")).strip()
     platforms = payload.get("platforms") if isinstance(payload.get("platforms"), list) else []
     platforms = list(dict.fromkeys(str(item).strip().lower() for item in platforms))
-    allowed = {"facebook", "instagram", "linkedin"}
+    allowed = {"facebook", "instagram", "linkedin", "youtube", "tiktok"}
     if not external_id or len(external_id) > 100:
         return 400, {"error": "external_id is required and must be at most 100 characters"}
     if not caption or len(caption) > 5000:
@@ -250,7 +250,7 @@ def _publish_custom_post(payload: dict) -> tuple[int, dict]:
         key not in allowed or not isinstance(value, str) or len(value.strip()) > 5000
         for key, value in platform_captions.items()
     ):
-        return 400, {"error": "platform_captions must contain only facebook, instagram, or linkedin strings up to 5000 characters"}
+        return 400, {"error": "platform_captions must contain only supported platform strings up to 5000 characters"}
     if not image_url.startswith("https://"):
         return 400, {"error": "image_url must be a public HTTPS URL"}
     if image_urls and (not 2 <= len(image_urls) <= 10 or any(not item.startswith("https://") for item in image_urls)):
@@ -258,7 +258,9 @@ def _publish_custom_post(payload: dict) -> tuple[int, dict]:
     if reel and (not reel_video_url.startswith("https://") or not reel_cover_url.startswith("https://")):
         return 400, {"error": "reel video_url and cover_url must be public HTTPS URLs"}
     if not platforms or any(item not in allowed for item in platforms):
-        return 400, {"error": "platforms must contain facebook, instagram, or linkedin"}
+        return 400, {"error": "platforms must contain facebook, instagram, linkedin, youtube, or tiktok"}
+    if any(platform in {"youtube", "tiktok"} for platform in platforms) and not reel:
+        return 400, {"error": "youtube and tiktok require a rendered Reel video"}
 
     dry_run = not bool(payload.get("live", False))
     with CUSTOM_POST_LOCK:
@@ -273,10 +275,14 @@ def _publish_custom_post(payload: dict) -> tuple[int, dict]:
         facebook_caption = str(platform_captions.get("facebook", "")).strip() or caption
         instagram_caption = str(platform_captions.get("instagram", "")).strip() or caption
         linkedin_caption = str(platform_captions.get("linkedin", "")).strip() or caption
+        youtube_caption = str(platform_captions.get("youtube", "")).strip() or caption
+        tiktok_caption = str(platform_captions.get("tiktok", "")).strip() or caption
         content = {
             "fb_caption": facebook_caption,
             "ig_caption": instagram_caption,
             "li_text": linkedin_caption,
+            "youtube_caption": youtube_caption,
+            "tiktok_caption": tiktok_caption,
             "wp_title": caption[:180],
             "topic": "IIS scheduled post",
             "primary_publish_image_url": image_url,
@@ -289,6 +295,8 @@ def _publish_custom_post(payload: dict) -> tuple[int, dict]:
                 "facebook": {"final_caption": facebook_caption},
                 "instagram": {"final_caption": instagram_caption},
                 "linkedin": {"final_text": linkedin_caption},
+                "youtube": {"final_caption": youtube_caption, "media_type": "VIDEO"},
+                "tiktok": {"final_caption": tiktok_caption, "media_type": "VIDEO"},
             },
         }
         if reel:
@@ -296,6 +304,30 @@ def _publish_custom_post(payload: dict) -> tuple[int, dict]:
             content["platform_posts"]["instagram"]["media_type"] = "REEL"
         for platform in platforms:
             previous = results.get(platform)
+            if isinstance(previous, dict) and previous.get("status") == "processing":
+                try:
+                    from platform_publishing import get_status
+                    platform_id = str((previous.get("result") or {}).get("id") or "").strip()
+                    status_result = get_status(platform, platform_id)
+                    status = str(status_result.get("status") or "UNKNOWN").upper()
+                    if status in {"SUCCEEDED", "PUBLISH_COMPLETE", "PUBLISHED"}:
+                        previous = {**previous, "status": "published", "status_result": status_result, "published_at_utc": _utc_now()}
+                        results[platform] = previous
+                    elif status in {"FAILED", "PROCESSING_FAILED", "REJECTED", "NOT_FOUND"}:
+                        previous = {**previous, "status": "failed", "status_result": status_result, "error": str(status_result.get("fail_reason") or status), "updated_at_utc": _utc_now()}
+                        results[platform] = previous
+                    else:
+                        previous["status_result"] = status_result
+                        previous["updated_at_utc"] = _utc_now()
+                        results[platform] = previous
+                        _safe_write_json(_custom_post_history_path(), history)
+                        continue
+                except Exception as exc:
+                    previous["status_error"] = str(exc)
+                    previous["updated_at_utc"] = _utc_now()
+                    results[platform] = previous
+                    _safe_write_json(_custom_post_history_path(), history)
+                    continue
             if isinstance(previous, dict) and previous.get("status") == "published":
                 previous_result = previous.get("result") if isinstance(previous.get("result"), dict) else {}
                 if str(previous_result.get("id") or "").strip().lower() == "skipped":
@@ -308,26 +340,25 @@ def _publish_custom_post(payload: dict) -> tuple[int, dict]:
             if isinstance(previous, dict) and previous.get("status") == "published":
                 continue
             try:
-                if platform == "facebook":
-                    import publish_facebook
-                    result = publish_facebook.publish(content, "", dry_run=dry_run)
-                elif platform == "instagram":
-                    import publish_instagram
-                    result = publish_instagram.publish(content, dry_run=dry_run)
-                else:
-                    import publish_linkedin
-                    result = publish_linkedin.publish(content, "", dry_run=dry_run)
+                from platform_publishing import publish as publish_platform
+                result = publish_platform(platform, content, dry_run=dry_run)
                 if not isinstance(result, dict) or str(result.get("id") or "").strip().lower() == "skipped":
                     reason = str(result.get("reason") or "publisher did not confirm publication") if isinstance(result, dict) else "publisher returned an invalid result"
                     raise RuntimeError(reason)
-                results[platform] = {"status": "published", "result": result, "published_at_utc": _utc_now(), "dry_run": dry_run}
+                processing = str(result.get("status") or "").upper() in {"PROCESSING", "PROCESSING_UPLOAD", "PROCESSING_DOWNLOAD"}
+                results[platform] = {
+                    "status": "processing" if processing else "published", "result": result,
+                    "published_at_utc": None if processing else _utc_now(), "updated_at_utc": _utc_now(), "dry_run": dry_run,
+                }
             except Exception as exc:
                 results[platform] = {"status": "failed", "error": str(exc), "updated_at_utc": _utc_now()}
             record["updated_at_utc"] = _utc_now()
             _safe_write_json(_custom_post_history_path(), history)
-        failed = [platform for platform in platforms if results.get(platform, {}).get("status") != "published"]
-        response = {"status": "published" if not failed else "partial_failure", "external_id": external_id, "platforms": results, "failed_platforms": failed, "time_utc": _utc_now()}
-        return (200 if not failed else 502), response
+        failed = [platform for platform in platforms if results.get(platform, {}).get("status") == "failed"]
+        processing = [platform for platform in platforms if results.get(platform, {}).get("status") == "processing"]
+        response_status = "partial_failure" if failed else "processing" if processing else "published"
+        response = {"status": response_status, "external_id": external_id, "platforms": results, "failed_platforms": failed, "processing_platforms": processing, "time_utc": _utc_now()}
+        return (502 if failed else 202 if processing else 200), response
 
 
 def _mask_token(value: str) -> str:

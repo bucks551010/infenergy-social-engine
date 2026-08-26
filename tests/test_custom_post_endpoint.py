@@ -84,6 +84,60 @@ def test_custom_post_routes_reel_to_instagram_and_keeps_facebook_carousel():
     assert [asset["public_url"] for asset in facebook_content["carousel_assets"]] == payload["image_urls"]
 
 
+def test_custom_post_routes_reel_to_youtube_and_tiktok():
+    payload = _carousel_payload(6)
+    payload["platforms"] = ["youtube", "tiktok"]
+    payload["reel"] = {
+        "video_url": "https://media.example/story.mp4",
+        "cover_url": "https://media.example/story-cover.jpg",
+    }
+    with tempfile.TemporaryDirectory() as data_dir, patch.dict(os.environ, {"DATA_DIR": data_dir, "YOUTUBE_PUBLISHING_ENABLED": "true", "TIKTOK_PUBLISHING_ENABLED": "true", "YOUTUBE_CLIENT_ID": "client", "YOUTUBE_CLIENT_SECRET": "secret", "YOUTUBE_REFRESH_TOKEN": "refresh", "TIKTOK_CLIENT_KEY": "key", "TIKTOK_CLIENT_SECRET": "secret", "TIKTOK_REFRESH_TOKEN": "refresh"}, clear=False), \
+        patch("publish_youtube.publish", return_value={"id": "yt-video"}) as youtube, \
+        patch("publish_tiktok.publish", return_value={"id": "tt-video"}) as tiktok:
+        status, response = worker._publish_custom_post(payload)
+
+    assert status == 200
+    assert response["failed_platforms"] == []
+    assert youtube.call_args.args[0]["instagram_reel"]["public_urls"]["video"].endswith("story.mp4")
+    assert tiktok.call_args.args[0]["instagram_reel"]["public_urls"]["video"].endswith("story.mp4")
+
+
+def test_custom_post_reconciles_processing_video_without_duplicate_upload():
+    payload = _carousel_payload(6)
+    payload["platforms"] = ["tiktok"]
+    payload["reel"] = {
+        "video_url": "https://media.example/story.mp4",
+        "cover_url": "https://media.example/story-cover.jpg",
+    }
+    environment = {
+        "DATA_DIR": "", "TIKTOK_PUBLISHING_ENABLED": "true", "TIKTOK_CLIENT_KEY": "key",
+        "TIKTOK_CLIENT_SECRET": "secret", "TIKTOK_REFRESH_TOKEN": "refresh",
+    }
+    with tempfile.TemporaryDirectory() as data_dir:
+        environment["DATA_DIR"] = data_dir
+        with patch.dict(os.environ, environment, clear=False), \
+            patch("publish_tiktok.publish", return_value={"id": "tt-video", "status": "PROCESSING"}) as tiktok, \
+            patch("publish_tiktok.get_status", return_value={"id": "tt-video", "status": "PUBLISH_COMPLETE"}) as status_lookup:
+            first_status, first = worker._publish_custom_post(payload)
+            second_status, second = worker._publish_custom_post(payload)
+
+    assert first_status == 202
+    assert first["status"] == "processing"
+    assert first["processing_platforms"] == ["tiktok"]
+    assert second_status == 200
+    assert second["status"] == "published"
+    assert tiktok.call_count == 1
+    status_lookup.assert_called_once_with("tt-video")
+
+
+def test_custom_post_blocks_video_platform_without_reel():
+    payload = _payload()
+    payload["platforms"] = ["youtube"]
+    status, response = worker._publish_custom_post(payload)
+    assert status == 400
+    assert "rendered Reel" in response["error"]
+
+
 def test_custom_post_routes_platform_specific_captions_to_each_publisher():
     payload = _payload()
     payload["platform_captions"] = {

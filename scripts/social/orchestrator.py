@@ -994,6 +994,23 @@ class SocialIntelligenceOrchestrator:
             or selected_concept.get("description")
             or top_concept.description
         ).strip()
+        visual_communication_plan = visual_intelligence.build_visual_communication_plan(
+            strategy=locked,
+            art_direction=art_dict,
+            final_copy=" ".join((hook_text, body_text, takeaway)),
+            platform=platform,
+            offering=bi_offering,
+            recent=recent,
+        )
+        art_dict["visual_communication_plan"] = visual_communication_plan
+        positive_prompt = (
+            f"{positive_prompt}\nCommunication plan: image job: {visual_communication_plan['communication_jobs']['image']}. "
+            f"One-second message: {visual_communication_plan['one_second_message']}. "
+            f"Visual concept: {', '.join(visual_communication_plan['visual_concept'])}. "
+            f"Human behavior: {visual_communication_plan['human_behavior']}. "
+            f"Before/current/after: {visual_communication_plan['narrative']['before']} / "
+            f"{visual_communication_plan['narrative']['current']} / {visual_communication_plan['narrative']['after']}."
+        )[:4000]
         creative_request = creative_contracts.build_creative_request(
             post_id=post_id,
             platform=platform,
@@ -1004,7 +1021,8 @@ class SocialIntelligenceOrchestrator:
             format_name=v_format,
         ).as_studio_payload()
         art_dict["creative_request"] = creative_request
-        if pre_render_gate.get("decision") == "CONCEPT_READY" and prompt_governance.get("ready") and human_truth.get("ready"):
+        communication_ready = not visual_communication_plan["quality_governance"]["blocking"]
+        if pre_render_gate.get("decision") == "CONCEPT_READY" and prompt_governance.get("ready") and human_truth.get("ready") and communication_ready:
             provider_result = self.provider.generate(
                 art_direction=art_dict,
                 positive_prompt=positive_prompt,
@@ -1023,6 +1041,7 @@ class SocialIntelligenceOrchestrator:
                     "gate": pre_render_gate,
                     "prompt_governance": prompt_governance,
                     "human_truth_gate": human_truth,
+                    "visual_communication_gate": visual_communication_plan["quality_governance"],
                 },
             )
 
@@ -1066,6 +1085,7 @@ class SocialIntelligenceOrchestrator:
                 "v5_direction": v5_direction,
                 "prompt_governance": prompt_governance,
                 "human_truth_gate": human_truth,
+                "visual_communication_plan": visual_communication_plan,
                 "positive_prompt": positive_prompt,
                 "negative_prompt": negative_prompt,
                 "prompt_humanness": v_humanness,

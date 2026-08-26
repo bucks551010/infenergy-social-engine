@@ -211,7 +211,7 @@ class GeminiVisualProvider:
 
 
 class EntertainmentStudioVisualProvider:
-    """Routes earned canonical work to Studio and preserves Gemini fallback."""
+    """Routes structured visual work to Studio and preserves Gemini fallback."""
 
     name = "entertainment_studio"
 
@@ -224,7 +224,7 @@ class EntertainmentStudioVisualProvider:
     def generate(self, *, art_direction: dict[str, Any], positive_prompt: str, negative_prompt: str, platform: str) -> VisualResult:
         creative_request = art_direction.get("creative_request")
         route = str((creative_request or {}).get("requestedRoute") or "")
-        if not isinstance(creative_request, dict) or route not in CANONICAL_ROUTES:
+        if not isinstance(creative_request, dict) or not route:
             return self.fallback.generate(art_direction=art_direction, positive_prompt=positive_prompt, negative_prompt=negative_prompt, platform=platform)
         production = {
             "headline": str(art_direction.get("visual_message") or "Infenergy").strip()[:300],
@@ -261,7 +261,7 @@ class EntertainmentStudioVisualProvider:
 
 
 def default_provider() -> "VisualProvider":
-    """Select Studio for canonical work, retaining Gemini/template fallback."""
+    """Select Studio for structured visual work, retaining Gemini/template fallback."""
     studio_url = os.environ.get("ENTERTAINMENT_STUDIO_URL", "").strip()
     studio_token = os.environ.get("ENTERTAINMENT_STUDIO_TOKEN", "").strip()
     if studio_url and studio_token:

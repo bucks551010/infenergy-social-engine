@@ -295,6 +295,7 @@ def _route_generate_orchestrator(
         "product_price": (catalog_product or {}).get("price", ""),
         "product_sale_price": (catalog_product or {}).get("sale_price", ""),
         "product_metrics": (catalog_product or {}).get("metrics", []) or list(offering.get("verified_facts", [])),
+        "product_categories": product_for_adaptation["categories"] or (catalog_product or {}).get("categories", []),
         "product_facts": (catalog_product or {}).get("fact_snippet", "") or offering.get("description_clean", ""),
         "product_in_stock": (catalog_product or {}).get("in_stock", "") or offering.get("stock_status", ""),
         "selected_hook": selected_hook,
@@ -6136,6 +6137,7 @@ Return ONLY valid JSON with these exact keys (no markdown, no code fences):
         content["product_price"] = product_price
         content["product_sale_price"] = product_sale_price
         content["product_metrics"] = product.get("metrics", []) if product else []
+        content["product_categories"] = product.get("categories", []) if product else []
         content["product_facts"] = product_facts
         content["product_in_stock"] = product_in_stock
         content["product_stock"] = product_stock

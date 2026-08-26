@@ -63,9 +63,12 @@ def test_creative_request_requires_earned_character_route_and_explicit_action():
     assert request.canon_required is True
     assert request.what_happens.startswith("LUX detects")
     assert request.as_studio_payload()["continuityRequirements"]
+    assert request.as_studio_payload()["oneSecondMessage"]
+    assert request.as_studio_payload()["imageJob"]
+    assert request.as_studio_payload()["productionStrategy"] == {}
 
 
-def test_entertainment_studio_provider_routes_only_canonical_work(monkeypatch):
+def test_entertainment_studio_provider_routes_structured_canonical_and_normal_work(monkeypatch):
     captured = {}
 
     class FakeResponse:
@@ -89,9 +92,9 @@ def test_entertainment_studio_provider_routes_only_canonical_work(monkeypatch):
     assert result.asset_path == "https://studio.test/api/assets/asset-1"
     assert captured["payload"]["request"]["requestId"] == "request-1"
 
-    ordinary = provider.generate(art_direction={"creative_request": {"requestedRoute": "SCIENCE_VISUAL"}}, positive_prompt="thermal camera", negative_prompt="", platform="instagram_feed")
-    assert ordinary.provider == "fallback"
-    assert captured["fallback"]["positive_prompt"] == "thermal camera"
+    ordinary = provider.generate(art_direction={"creative_request": {"requestedRoute": "SCIENCE_VISUAL", "requestId": "request-2"}, "visual_message": "Heat changes charging behavior", "visual_format": "diagram"}, positive_prompt="thermal camera", negative_prompt="", platform="instagram_feed")
+    assert ordinary.provider == "entertainment_studio"
+    assert captured["payload"]["request"]["requestId"] == "request-2"
 
 
 def test_available_product_does_not_hijack_character_story_without_role_and_proof():
@@ -710,11 +713,13 @@ def test_renderer_prompt_consumes_creative_layout_and_platform_interpretation():
 
 def test_orchestrator_records_final_copy_and_visual_critics(tmp_path, monkeypatch):
     monkeypatch.setattr(orchestrator, "_llm_copy_beats", lambda *args: None)
-    post = orchestrator.SocialIntelligenceOrchestrator(data_dir=str(tmp_path)).create_post(record_memory=False)
+    post = orchestrator.SocialIntelligenceOrchestrator(
+        data_dir=str(tmp_path), provider=visual_provider.TemplateRenderProvider()
+    ).create_post(record_memory=False)
 
     assert post.creative_director["copy_critic_review"]["verdict"] in {"PASS", "REVISE"}
-    assert post.creative_director["visual_critic_review"]["pixel_status"] == "PIXEL_REVIEW_PENDING"
-    assert post.provider_result["recipe"]["layout_grammar"] == post.visual["layout_grammar"]
+    assert post.creative_director["visual_critic_review"]["pixel_status"] == "NO_RENDERED_ASSET"
+    assert post.provider_result["provider_meta"]["visual_communication_gate"]["decision"] == "CHANGE_VISUAL_CONCEPT"
 
 
 def test_campaign_state_changes_next_creative_concept(tmp_path):
@@ -1129,6 +1134,51 @@ def test_art_direction_and_prompt_include_brand_tokens():
 def test_visual_truth_violations_flag_unsafe_claims():
     v = visual_intelligence.visual_truth_violations("A waterproof unbreakable battery in the rain.")
     assert "waterproof" in v and "unbreakable" in v
+
+
+def test_visual_communication_plan_assigns_distinct_jobs_and_realistic_governance():
+    plan = visual_intelligence.build_visual_communication_plan(
+        strategy={
+            "angle": "One charging system replaces a pile of separate accessories",
+            "customer_moment": "packing for an airport trip",
+            "human_outcome": "the traveler closes the bag and leaves",
+            "product_role": "consolidates charging accessories",
+            "proof": ["verified integrated charging interfaces"],
+        },
+        art_direction={
+            "action": "A traveler places one charging system into the carry-on while several accessories remain on the table",
+            "environment": "airport hotel room",
+            "visual_format": "ai_editorial_photo",
+            "focal_point": "the hand and one charging system",
+            "camera_angle": "over-the-shoulder",
+            "lighting": "natural morning window light",
+            "product_name": "PowerCharge Pro",
+        },
+        final_copy="Packing more charging accessories creates more things to remember. One verified system can simplify the decision.",
+        platform="instagram_feed",
+        offering={"name": "PowerCharge Pro", "verified_facts": ["verified integrated charging interfaces"]},
+    )
+
+    assert plan["communication_jobs"]["image"] != plan["communication_jobs"]["caption"]
+    assert plan["visual_concept"] == ["SUBTRACTION", "CONSOLIDATION"]
+    assert plan["narrative"]["current"].startswith("A traveler places")
+    assert plan["product"]["visibility_level"] == 2
+    assert plan["production"]["candidate_count"] == 3
+    assert plan["production"]["max_major_revisions"] == 2
+    assert plan["quality_governance"]["semantic_alignment"] in {"COMPLEMENTARY", "PROGRESSIVE"}
+
+
+def test_visual_communication_plan_blocks_disconnected_execution():
+    plan = visual_intelligence.build_visual_communication_plan(
+        strategy={"angle": "safe water filtration during backcountry travel"},
+        art_direction={"action": "A solar panel floats above a neon city", "visual_format": "ai_editorial_photo"},
+        final_copy="Choose a filtration method that fits the available water source.",
+        platform="facebook_feed",
+    )
+
+    assert plan["quality_governance"]["semantic_alignment"] == "DISCONNECTED"
+    assert plan["quality_governance"]["blocking"] is True
+    assert plan["quality_governance"]["decision"] == "CHANGE_VISUAL_CONCEPT"
 
 
 # --- carousel director ---------------------------------------------------

@@ -95,6 +95,29 @@ class CreativeRequest:
     must_avoid: list[str] = field(default_factory=list)
     reference_asset_ids: list[str] = field(default_factory=list)
     continuity_requirements: list[str] = field(default_factory=list)
+    one_second_message: str = ""
+    image_job: str = ""
+    headline_job: str = ""
+    caption_job: str = ""
+    cta_job: str = ""
+    visual_concept: list[str] = field(default_factory=list)
+    visual_grammar: list[str] = field(default_factory=list)
+    environment: str = ""
+    human_behavior: str = ""
+    before_frame: str = ""
+    after_frame: str = ""
+    composition: dict[str, Any] = field(default_factory=dict)
+    camera: dict[str, Any] = field(default_factory=dict)
+    lighting: str = ""
+    color_character: str = ""
+    product_visibility: int = 0
+    product_interaction: str = "none"
+    product_visual_lock: dict[str, Any] = field(default_factory=dict)
+    text_mode: str = "NONE"
+    layout_archetype: str = "EDITORIAL_PHOTO"
+    reference_package: dict[str, Any] = field(default_factory=dict)
+    production_strategy: dict[str, Any] = field(default_factory=dict)
+    quality_governance: dict[str, Any] = field(default_factory=dict)
     product: str | None = None
     product_role: str | None = None
     verified_proof: list[str] = field(default_factory=list)
@@ -111,6 +134,17 @@ class CreativeRequest:
             "visualStandard": self.visual_standard, "visualHero": self.visual_hero,
             "whatHappens": self.what_happens, "mustInclude": self.must_include, "mustAvoid": self.must_avoid,
             "referenceAssetIds": self.reference_asset_ids, "continuityRequirements": self.continuity_requirements,
+            "oneSecondMessage": self.one_second_message, "imageJob": self.image_job,
+            "headlineJob": self.headline_job, "captionJob": self.caption_job, "ctaJob": self.cta_job,
+            "visualConcept": self.visual_concept, "visualGrammar": self.visual_grammar,
+            "environment": self.environment, "humanBehavior": self.human_behavior,
+            "beforeFrame": self.before_frame, "afterFrame": self.after_frame,
+            "composition": self.composition, "camera": self.camera, "lighting": self.lighting,
+            "colorCharacter": self.color_character, "productVisibility": self.product_visibility,
+            "productInteraction": self.product_interaction, "productVisualLock": self.product_visual_lock,
+            "textMode": self.text_mode, "layoutArchetype": self.layout_archetype,
+            "referencePackage": self.reference_package, "productionStrategy": self.production_strategy,
+            "qualityGovernance": self.quality_governance,
         }
         if self.product:
             payload["product"] = self.product
@@ -143,6 +177,10 @@ def build_creative_request(
     if emotional not in allowed_emotions:
         emotional = "CINEMATIC" if characters else "HUMAN"
     visual_hero = "CHARACTER" if characters else "PRODUCT" if art_direction.get("product_name") else "SCIENCE_PHENOMENON" if "SCIENCE_DISCOVERY" in worlds else "PERSON"
+    visual_plan = art_direction.get("visual_communication_plan") if isinstance(art_direction.get("visual_communication_plan"), dict) else {}
+    jobs = visual_plan.get("communication_jobs") if isinstance(visual_plan.get("communication_jobs"), dict) else {}
+    narrative = visual_plan.get("narrative") if isinstance(visual_plan.get("narrative"), dict) else {}
+    product_plan = visual_plan.get("product") if isinstance(visual_plan.get("product"), dict) else {}
     return CreativeRequest(
         request_id=str(uuid.uuid4()), content_id=post_id,
         objective=str(strategy.get("visual_objective") or art_direction.get("visual_purpose") or "communicate one worthwhile idea"),
@@ -160,4 +198,17 @@ def build_creative_request(
         visual_hero=visual_hero, what_happens=action,
         must_include=list(art_direction.get("must_include") or []), must_avoid=list(art_direction.get("must_avoid") or []),
         continuity_requirements=["locked character identity", "costume continuity", "behavioral canon", "story continuity"] if route in CANONICAL_ROUTES else [],
+        one_second_message=str(visual_plan.get("one_second_message") or strategy.get("angle") or action),
+        image_job=str(jobs.get("image") or action), headline_job=str(jobs.get("headline") or "add meaning without repeating the image"),
+        caption_job=str(jobs.get("caption") or "explain the supported insight"), cta_job=str(jobs.get("cta") or "offer a proportionate next action"),
+        visual_concept=list(visual_plan.get("visual_concept") or []), visual_grammar=list(visual_plan.get("visual_grammar") or []),
+        environment=str((visual_plan.get("environment") or {}).get("name") if isinstance(visual_plan.get("environment"), dict) else art_direction.get("environment") or human_moment),
+        human_behavior=str(visual_plan.get("human_behavior") or action), before_frame=str(narrative.get("before") or human_moment), after_frame=str(narrative.get("after") or payoff),
+        composition=dict(visual_plan.get("composition") or {}), camera=dict(visual_plan.get("camera") or {}),
+        lighting=str(visual_plan.get("lighting") or art_direction.get("lighting") or ""), color_character=str(visual_plan.get("color_character") or art_direction.get("color_direction") or ""),
+        product_visibility=int(product_plan.get("visibility_level") or 0), product_interaction=str(product_plan.get("interaction") or "none"),
+        product_visual_lock={"required": bool(product_plan.get("visual_lock_required")), "product": product},
+        text_mode=str(visual_plan.get("text_mode") or "NONE"), layout_archetype=str(visual_plan.get("layout_archetype") or "EDITORIAL_PHOTO"),
+        reference_package=dict(visual_plan.get("reference_package") or {}), production_strategy=dict(visual_plan.get("production") or {}),
+        quality_governance=dict(visual_plan.get("quality_governance") or {}),
     )

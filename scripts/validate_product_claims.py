@@ -12,6 +12,23 @@ _METRIC_PATTERN = re.compile(
 _RUNTIME_PATTERN = re.compile(r"\b\d+(?:\.\d+)?\s?hours?\b", flags=re.IGNORECASE)
 _PRICE_PATTERN = re.compile(r"\$\s?\d{1,4}(?:[\.,]\d{2})?", flags=re.IGNORECASE)
 
+_PRODUCT_DOMAIN_PATTERNS = {
+    "water": re.compile(r"\b(?:water\s+(?:filter|purifier|filtration)|filter\s+straw|purification)\b", re.IGNORECASE),
+    "lighting": re.compile(r"\b(?:light(?:ing)?|lamp|bulb|lantern)\b", re.IGNORECASE),
+    "mobility": re.compile(r"\b(?:e-?bike|electric\s+bike|bicycle|scooter)\b", re.IGNORECASE),
+    "power": re.compile(r"\b(?:power\s+station|generator|inverter|battery|charger|power\s+bank|solar\s+panel)\b", re.IGNORECASE),
+}
+
+_FOREIGN_SUBJECT_PATTERNS = {
+    "water": re.compile(
+        r"\b(?:solar\s+panels?|battery\s+(?:capacity|runtime|charging)|power\s+stations?|generators?|inverters?|wattage)\b",
+        re.IGNORECASE,
+    ),
+    "lighting": re.compile(r"\b(?:water\s+(?:filter|purifier|filtration)|e-?bike\s+(?:range|grade|motor))\b", re.IGNORECASE),
+    "mobility": re.compile(r"\b(?:water\s+(?:filter|purifier|filtration)|refrigerator\s+runtime|solar\s+panel\s+output)\b", re.IGNORECASE),
+    "power": re.compile(r"\b(?:water\s+(?:filter|purifier|filtration)|e-?bike\s+(?:range|grade|motor))\b", re.IGNORECASE),
+}
+
 
 class ValidationResult(dict):
     @property
@@ -43,6 +60,37 @@ def _contains_testimonial_like_claim(text: str) -> bool:
         "real customer story",
     )
     return any(t in low for t in triggers)
+
+
+def _product_domain(content: dict[str, Any]) -> str:
+    categories = content.get("product_categories") or []
+    if isinstance(categories, str):
+        categories = [categories]
+    evidence = " ".join(
+        [
+            *(str(item) for item in categories if str(item).strip()),
+            str(content.get("product_name", "")),
+            str(content.get("product_facts", "")),
+        ]
+    )
+    for domain, pattern in _PRODUCT_DOMAIN_PATTERNS.items():
+        if pattern.search(evidence):
+            return domain
+    return ""
+
+
+def _strategy_subject(content: dict[str, Any]) -> str:
+    brief = content.get("strategic_brief") if isinstance(content.get("strategic_brief"), dict) else {}
+    topic_path = brief.get("topic_path") if isinstance(brief.get("topic_path"), dict) else {}
+    return " ".join(
+        str(value)
+        for value in (
+            content.get("selected_hook", ""),
+            topic_path.get("angle", ""),
+            brief.get("angle", ""),
+        )
+        if str(value).strip()
+    )
 
 
 def validate_generated_content(content: dict[str, Any]) -> ValidationResult:
@@ -104,6 +152,12 @@ def validate_generated_content(content: dict[str, Any]) -> ValidationResult:
         low_text = text.lower()
         if "compatible with" in low_text and "compat" not in verified_product_text:
             errors.append("compatibility_not_verified")
+
+        product_domain = _product_domain(content)
+        foreign_subject = _FOREIGN_SUBJECT_PATTERNS.get(product_domain)
+        strategy_subject = _strategy_subject(content)
+        if foreign_subject and strategy_subject and foreign_subject.search(strategy_subject):
+            errors.append(f"topic_product_semantic_mismatch:{product_domain}")
 
         if _contains_testimonial_like_claim(text):
             errors.append("testimonial_or_customer_claim_unverified")

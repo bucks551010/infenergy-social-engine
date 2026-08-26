@@ -67,6 +67,44 @@ class PhaseSevenEightTests(unittest.TestCase):
 
         self.assertTrue(result["passed"], result["errors"])
 
+    def test_claim_validator_rejects_foreign_product_subject(self) -> None:
+        content = {
+            "product_name": "Wosfer Portable Electric Water Filter & Purifier",
+            "product_categories": ["Water Purification"],
+            "product_facts": "Portable six-stage water filtration for travel and emergency kits.",
+            "product_url": "https://example.com/wosfer-water-filter",
+            "product_in_stock": "1",
+            "selected_hook": "Why solar panels rarely hit their rated output?",
+            "strategic_brief": {"topic_path": {"angle": "Why solar panels rarely hit their rated output?"}},
+            "wp_content": "Clean-water preparedness starts with a verified filtration method.",
+            "fb_caption": "Add clean-water support to a travel kit.",
+            "ig_caption": "Plan for safe water.",
+            "li_text": "Water preparedness requires a suitable filtration method.",
+        }
+
+        result = validate_generated_content(content)
+
+        self.assertFalse(result["passed"])
+        self.assertIn("topic_product_semantic_mismatch:water", result["errors"])
+
+    def test_claim_validator_allows_matching_and_product_free_subjects(self) -> None:
+        matching = {
+            "product_name": "Sorein Foldable Solar Panel",
+            "product_categories": ["Portable Solar Panels"],
+            "product_facts": "Portable solar charging equipment.",
+            "product_url": "https://example.com/solar-panel",
+            "product_in_stock": "1",
+            "selected_hook": "Why solar panels rarely hit their rated output?",
+            "fb_caption": "Panel output depends on real conditions.",
+        }
+        product_free = {
+            "selected_hook": "Why solar panels rarely hit their rated output?",
+            "fb_caption": "A practical science question.",
+        }
+
+        self.assertTrue(validate_generated_content(matching)["passed"])
+        self.assertTrue(validate_generated_content(product_free)["passed"])
+
     def test_score_content_threshold_logic(self) -> None:
         content = {
             "selected_hook": "Most buyers miss this outage planning mistake?",

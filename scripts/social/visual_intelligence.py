@@ -512,6 +512,134 @@ def visual_truth_violations(positive_prompt: str) -> list[str]:
     return [c for c in _UNTRUTHFUL_CLAIMS if re.search(c, low)]
 
 
+_VISUAL_CONCEPT_RULES = (
+    (("replace", "instead", "fewer", "consolidat", "one device"), ["SUBTRACTION", "CONSOLIDATION"]),
+    (("before", "after", "transform"), ["BEFORE_AFTER", "TRANSFORMATION"]),
+    (("outage", "interrupt", "stops", "drops"), ["INTERRUPTION", "CONTINUITY"]),
+    (("compare", "choice", "choose", "versus", " vs "), ["CONTRAST", "CHOICE"]),
+    (("why", "cause", "because", "mechanism"), ["CAUSE_EFFECT", "REVEAL"]),
+    (("deadline", "one percent", "time", "urgent"), ["TIME_PRESSURE", "PRIORITIZATION"]),
+)
+
+_SCENE_GRAPH = {
+    "airport": ["crowded gate", "occupied outlets", "carry-on bag", "boarding movement", "phones and laptops"],
+    "hotel room": ["unfamiliar outlet placement", "bedside table", "packing", "multiple devices", "night routine"],
+    "outage": ["changed practical lighting", "stopped appliances", "quiet rooms", "device prioritization", "altered routine"],
+    "remote work": ["active laptop", "router", "meeting headset", "deadline pressure", "multiple dependent devices"],
+    "workshop": ["active task", "used tools", "credible work surface", "safety clearance", "practical storage"],
+    "campsite": ["used equipment", "changing daylight", "weather exposure", "limited infrastructure", "packing decisions"],
+}
+
+
+def _select_visual_concepts(text: str) -> list[str]:
+    lower = text.lower()
+    for signals, concepts in _VISUAL_CONCEPT_RULES:
+        if any(signal in lower for signal in signals):
+            return concepts
+    return ["HUMAN_REACTION", "OBJECT_CHOREOGRAPHY"]
+
+
+def _scene_relationships(environment: str) -> list[str]:
+    lower = environment.lower()
+    for scene, relationships in _SCENE_GRAPH.items():
+        if scene in lower:
+            return list(relationships)
+    return ["one credible foreground object", "an active human task", "environmental evidence of use"]
+
+
+def _semantic_terms(value: str) -> set[str]:
+    ignored = {"about", "after", "before", "could", "every", "from", "have", "into", "should", "that", "their", "there", "these", "this", "through", "what", "when", "where", "which", "while", "with", "would"}
+    return {token for token in re.findall(r"[a-z0-9]+", value.lower()) if len(token) >= 4 and token not in ignored}
+
+
+def build_visual_communication_plan(
+    *,
+    strategy: dict[str, Any],
+    art_direction: dict[str, Any],
+    final_copy: str,
+    platform: str,
+    offering: dict[str, Any] | None = None,
+    recent: dict[str, list[Any]] | None = None,
+) -> dict[str, Any]:
+    """Build the communication and production decision before prompt compilation.
+
+    This extends the existing visual pipeline rather than introducing another
+    agent. The returned packet is provider-neutral and travels with the
+    CreativeRequest so Studio can enforce the same decisions.
+    """
+    recent = recent or {}
+    dominant_idea = str(strategy.get("angle") or strategy.get("human_need") or art_direction.get("visual_message") or "").strip()
+    action = str(art_direction.get("action") or art_direction.get("creative_concept") or "").strip()
+    environment = str(art_direction.get("environment") or strategy.get("customer_moment") or "a specific real-world environment").strip()
+    emotional_mode = str(strategy.get("emotional_mode") or strategy.get("emotional_driver") or art_direction.get("mood") or "HUMAN").upper().replace(" ", "_")
+    product_name = str((offering or {}).get("name") or art_direction.get("product_name") or "").strip()
+    product_role = str(strategy.get("product_role") or "").strip()
+    proof = [str(item) for item in (strategy.get("proof") or (offering or {}).get("verified_facts") or []) if str(item).strip()]
+    product_earned = bool(product_name and product_role and proof)
+    characters = strategy.get("characters") or []
+    if isinstance(characters, str):
+        characters = [item.strip() for item in characters.split(",") if item.strip()]
+    canonical = bool(characters)
+    concepts = _select_visual_concepts(f"{dominant_idea} {action} {final_copy}")
+    grammar = [concept for concept in concepts if concept in {"CONTRAST", "SUBTRACTION", "INTERRUPTION", "CONTINUITY", "TRANSFORMATION", "REVEAL", "OBJECT_CHOREOGRAPHY"}]
+    grammar = grammar or ["DEPTH", "FRAMING"]
+    one_second_message = str(strategy.get("one_second_message") or dominant_idea or action).strip()[:180]
+    image_job = str(strategy.get("image_job") or (f"Show {action}" if action else f"Make {one_second_message} understandable without words")).strip()
+    headline_job = str(strategy.get("headline_job") or "Reframe the tension without describing the picture").strip()
+    caption_job = str(strategy.get("caption_job") or "Explain the mechanism, evidence, and human consequence the image cannot show alone").strip()
+    cta_job = str(strategy.get("cta_job") or "Offer the next proportionate action for this awareness stage").strip()
+    presence = str(art_direction.get("product_presence") or "").lower()
+    visibility = 0
+    if product_earned:
+        visibility = {"incidental": 1, "supporting": 2, "prominent": 3, "hero": 4, "demonstration": 5}.get(presence, 2)
+    visual_hero = "CHARACTER" if canonical else "PRODUCT" if visibility >= 3 else "PROBLEM" if "INTERRUPTION" in concepts else "TRANSFORMATION" if "TRANSFORMATION" in concepts else "PERSON"
+    before = str(strategy.get("before_frame") or strategy.get("customer_moment") or f"The normal routine is still intact in {environment}").strip()
+    after = str(strategy.get("after_frame") or strategy.get("human_outcome") or strategy.get("human_value") or "The consequence of the decision becomes visible").strip()
+    visual_format = str(art_direction.get("visual_format") or "editorial_photo").lower()
+    text_mode = "NONE" if any(token in visual_format for token in ("cinematic", "photo")) else "INFORMATIONAL" if any(token in visual_format for token in ("diagram", "fact", "carousel")) else "HEADLINE"
+    layout_archetype = "SEQUENTIAL_STORY" if "carousel" in visual_format else "BEFORE_AFTER" if "BEFORE_AFTER" in concepts else "PRODUCT_DEMONSTRATION" if visibility >= 4 else "HUMAN_STORY" if visual_hero == "PERSON" else "EDITORIAL_PHOTO"
+    simpler_medium = "CAROUSEL_OR_DIAGRAM" if len(final_copy.split()) > 160 or "CAUSE_EFFECT" in concepts else "EXISTING_PRODUCT_PHOTOGRAPHY" if visibility >= 4 else "GENERATED_EDITORIAL_SCENE"
+    production_strategy = "REFERENCE_GUIDED" if canonical else "PRODUCT_INSERTION" if visibility >= 3 else "GRAPHIC_DESIGN_FIRST" if text_mode == "INFORMATIONAL" else "SINGLE_PASS"
+    risk = "HIGH" if canonical or visibility >= 4 or len(proof) >= 4 else "MEDIUM" if product_earned or text_mode == "INFORMATIONAL" else "LOW"
+    candidate_count = {"LOW": 2, "MEDIUM": 3, "HIGH": 4}[risk]
+    strategy_terms = _semantic_terms(f"{dominant_idea} {one_second_message}")
+    copy_terms = _semantic_terms(final_copy)
+    visual_terms = _semantic_terms(f"{image_job} {action} {' '.join(concepts)}")
+    copy_overlap = len(strategy_terms & copy_terms) / max(1, len(strategy_terms))
+    visual_overlap = len(strategy_terms & visual_terms) / max(1, len(strategy_terms))
+    alignment = "COMPLEMENTARY" if copy_overlap >= 0.25 and visual_overlap >= 0.25 else "PROGRESSIVE" if visual_overlap >= 0.25 else "DISCONNECTED"
+    return {
+        "version": "visual_creative_brain_v1",
+        "communication_jobs": {"image": image_job, "headline": headline_job, "caption": caption_job, "cta": cta_job},
+        "one_second_message": one_second_message,
+        "visual_concept": concepts,
+        "visual_grammar": grammar,
+        "visual_hero": visual_hero,
+        "environment": {"name": environment, "relationships": _scene_relationships(environment), "recently_used": environment.lower() in {str(item).lower() for item in recent.get("environments", [])}},
+        "human_behavior": action,
+        "emotional_mode": emotional_mode,
+        "wardrobe_direction": str(strategy.get("wardrobe_direction") or "contemporary, activity-appropriate, unbranded, believable for the environment"),
+        "narrative": {"before": before, "current": action, "after": after},
+        "composition": {"primary_focal_point": art_direction.get("focal_point", visual_hero), "negative_space": art_direction.get("text_safe_area", "platform-safe upper third"), "depth": art_direction.get("depth", "foreground, active middle ground, contextual background"), "eye_path": f"{visual_hero.lower()} -> action -> consequence", "crop_safety": "protect focal action and any verified product at all target ratios"},
+        "camera": {"shot_size": str(strategy.get("shot_size") or "medium-wide"), "angle": art_direction.get("camera_angle", "eye-level"), "lens_feel": art_direction.get("lens_feel", "neutral editorial"), "movement": str(strategy.get("camera_movement") or "locked")},
+        "lighting": art_direction.get("lighting", "naturalistic practical light motivated by the environment"),
+        "color_character": art_direction.get("color_direction", "natural skin tones, restrained saturation, selective brand accents"),
+        "product": {"name": product_name or None, "visibility_level": visibility, "role": product_role or None, "interaction": str(strategy.get("product_interaction") or ("physically credible use with verified orientation and connections" if visibility else "none")), "visual_lock_required": visibility >= 2},
+        "text_mode": text_mode,
+        "layout_archetype": layout_archetype,
+        "reference_package": {
+            "smallest_useful_bundle": True,
+            "character_required": canonical,
+            "product_required": visibility >= 2,
+            "environment_reference_required": False,
+            "product_asset_urls": [str(url) for url in ((offering or {}).get("images") or [])[:3] if str(url).startswith("https://")],
+        },
+        "production": {"strategy": production_strategy, "simpler_medium_test": simpler_medium, "candidate_count": candidate_count, "max_major_revisions": 2, "fallback_ladder": ["EDIT_OR_INPAINT", "SIMPLER_SCENE", "EXISTING_APPROVED_ASSET", "TYPOGRAPHY_OR_DIAGRAM"]},
+        "quality_governance": {"risk": risk, "semantic_alignment": alignment, "copy_strategy_overlap": round(copy_overlap, 3), "visual_strategy_overlap": round(visual_overlap, 3), "blocking": alignment == "DISCONNECTED", "decision": "CHANGE_VISUAL_CONCEPT" if alignment == "DISCONNECTED" else "AUTO_APPROVE"},
+        "platform_recomposition": {"platform": platform.split("_", 1)[0], "rule": "RECOMPOSE_IF_CROP_BREAKS_HIERARCHY", "mobile_scroll_test_required": text_mode != "NONE"},
+    }
+
+
 # --- V5 tension-first visual direction -------------------------------------
 
 

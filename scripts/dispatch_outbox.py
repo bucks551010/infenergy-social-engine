@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import os
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -11,6 +12,7 @@ import publish_facebook
 import publish_instagram
 import publish_linkedin
 from social_visuals import generate_strict_gemini_image, review_rendered_visual
+from build_monthly_content import _captions, _gemini_generation_plan, _load_current_news
 from content_operations import (
     PLATFORMS,
     begin_platform_transaction,
@@ -95,6 +97,52 @@ def _gemini_assets_ready(package: dict[str, Any], required_count: int) -> bool:
     )
 
 
+def _refresh_current_news_package(package: dict[str, Any]) -> dict[str, Any]:
+    if package.get("weekly_role") != "current_news":
+        return package
+    news = _load_current_news(10)
+    if not news:
+        raise RuntimeError("current_news_refresh_unavailable")
+    content_date = str(package.get("content_date") or "")
+    selected = news[int(hashlib.sha256(content_date.encode("utf-8")).hexdigest()[:8], 16) % len(news)]
+    thought = package.get("generation_thought") if isinstance(package.get("generation_thought"), dict) else {}
+    thought.update({
+        "statement": selected["title"],
+        "overlay_text": selected["title"],
+        "instagram_hook": selected["title"],
+        "source_note": selected["url"],
+        "source_published_at": selected.get("published", ""),
+        "event_series": f"daily-news-{content_date}",
+    })
+    captions = _captions(thought)
+    package.update({
+        "thought_statement": thought["statement"],
+        "editorial_sources": [selected["url"]],
+        "event_series": thought["event_series"],
+        "generation_thought": thought,
+        "fb_caption": captions["facebook"],
+        "ig_caption": captions["instagram"],
+        "li_text": captions["linkedin"],
+        "gemini_generation": _gemini_generation_plan(thought),
+        "news_freshness": {
+            "status": "REFRESHED",
+            "refreshed_at_utc": datetime.now(timezone.utc).isoformat(),
+            "source_published_at": selected.get("published", ""),
+            "source_url": selected["url"],
+        },
+    })
+    for platform, caption in captions.items():
+        post = ((package.get("platform_posts") or {}).get(platform) or {})
+        post["caption"] = caption
+        post["final_caption"] = caption
+    package["master_copy"] = {
+        key: thought.get(key)
+        for key in ("statement", "expansion", "useful_detail", "action", "prompt", "linkedin_lens", "editorial_mode", "audience", "source_note", "overlay_text")
+        if thought.get(key)
+    }
+    return package
+
+
 def _strict_publish_artifact_error(package: dict[str, Any], platform: str) -> str:
     generation = package.get("gemini_generation") if isinstance(package.get("gemini_generation"), dict) else {}
     if generation.get("strict_provider") is not True:
@@ -170,8 +218,14 @@ def pregenerate_upcoming(*, data_dir: str = DATA_DIR) -> dict[str, Any]:
     horizon_hours = max(1, int(os.environ.get("GEMINI_PREGEN_HORIZON_HOURS", "744")))
     before_utc = (datetime.now(timezone.utc) + timedelta(hours=horizon_hours)).isoformat()
     rows = upcoming_ready_packages(data_dir, before_utc=before_utc, limit=100)
+    news_before_utc = datetime.now(timezone.utc) + timedelta(hours=24)
     for row in rows:
         package = row["package"]
+        if package.get("weekly_role") == "current_news":
+            scheduled_at = datetime.fromisoformat(str(row["scheduled_at"]).replace("Z", "+00:00"))
+            if scheduled_at > news_before_utc:
+                continue
+            package = _refresh_current_news_package(package)
         generation = package.get("gemini_generation") if isinstance(package.get("gemini_generation"), dict) else {}
         required_count = int(generation.get("required_image_count") or 0)
         if generation.get("strict_provider") is not True or _gemini_assets_ready(package, required_count):
@@ -221,6 +275,7 @@ def dispatch_due(*, data_dir: str = DATA_DIR, now_utc: str | None = None) -> dic
     generation = package.get("gemini_generation") if isinstance(package.get("gemini_generation"), dict) else {}
     if generation.get("strict_provider") is True:
         try:
+            package = _refresh_current_news_package(package)
             package = _prepare_gemini_assets(package, data_dir)
             update_claimed_package(data_dir, outbox_id, package)
         except Exception as exc:

@@ -44,7 +44,7 @@ MONTHLY_SUMMARY_KEYS = (
     "status", "created_at_utc", "knowledge_id", "knowledge_version",
     "knowledge_digest", "campaign_id", "editorial_standard", "knowledge_refresh", "start_date", "end_date", "days", "queued",
     "skipped_existing", "cancelled_legacy_outbox", "single_image_posts", "carousel_posts", "product_posts",
-    "statement_graphics", "current_event_posts", "calendar_path",
+    "statement_graphics", "current_event_posts", "superhero_posts", "micro_mission_posts", "historical_mission_posts", "content_plan", "calendar_path",
 )
 CUSTOM_POST_LOCK = threading.Lock()
 MONTHLY_GENERATION_LOCK = threading.Lock()
@@ -88,22 +88,25 @@ def _pregenerate_one_package() -> dict:
         return {"status": "RETRYABLE_FAILURE", "error": f"invalid_pregeneration_output:{output[-1][-500:]}"}
 
 
-def run_manual_monthly_generation(job_id: str, *, days: int, start_date: str | None, replace_unpublished: bool) -> None:
+def run_manual_monthly_generation(job_id: str, *, days: int, start_date: str | None, replace_unpublished: bool, content_plan: str | None = None) -> None:
     if not MONTHLY_GENERATION_LOCK.acquire(blocking=False):
         _save_monthly_generation_status(job_id=job_id, status="DEFERRED", phase="WAITING", error="monthly_generation_already_running")
         return
     try:
         _save_monthly_generation_status(
             job_id=job_id, status="RUNNING", phase="BUILDING", days=days, start_date=start_date,
-            replace_unpublished=replace_unpublished, pregenerated_packages=0, error=None, started_at_utc=_utc_now(),
+            replace_unpublished=replace_unpublished, content_plan=content_plan, pregenerated_packages=0, error=None, started_at_utc=_utc_now(),
         )
         calendar = build_monthly_calendar(
             data_dir=_data_dir(), start_date=start_date, days=days, enqueue=True,
-            replace_unpublished=replace_unpublished,
+            replace_unpublished=replace_unpublished, content_plan=content_plan,
         )
         _save_monthly_generation_status(
             phase="PREPARING", queued=int(calendar.get("queued") or 0), calendar_path=calendar.get("calendar_path"),
             single_image_posts=int(calendar.get("single_image_posts") or 0), carousel_posts=int(calendar.get("carousel_posts") or 0),
+            product_posts=int(calendar.get("product_posts") or 0), current_event_posts=int(calendar.get("current_event_posts") or 0),
+            superhero_posts=int(calendar.get("superhero_posts") or 0), micro_mission_posts=int(calendar.get("micro_mission_posts") or 0),
+            historical_mission_posts=int(calendar.get("historical_mission_posts") or 0),
         )
         prepared = prepare_monthly_gemini_prompts(_data_dir())
         _save_monthly_generation_status(
@@ -147,18 +150,18 @@ def run_manual_monthly_generation(job_id: str, *, days: int, start_date: str | N
         MONTHLY_GENERATION_LOCK.release()
 
 
-def _start_manual_monthly_generation(*, days: int, start_date: str | None, replace_unpublished: bool) -> tuple[bool, dict]:
+def _start_manual_monthly_generation(*, days: int, start_date: str | None, replace_unpublished: bool, content_plan: str | None = None) -> tuple[bool, dict]:
     current = _monthly_generation_status()
     if MONTHLY_GENERATION_LOCK.locked() or current.get("status") in {"ACCEPTED", "RUNNING"}:
         return False, current
     job_id = str(uuid.uuid4())
     pending = _save_monthly_generation_status(
         job_id=job_id, status="ACCEPTED", phase="QUEUED", days=days, start_date=start_date,
-        replace_unpublished=replace_unpublished, pregenerated_packages=0, error=None, accepted_at_utc=_utc_now(),
+        replace_unpublished=replace_unpublished, content_plan=content_plan, pregenerated_packages=0, error=None, accepted_at_utc=_utc_now(),
     )
     threading.Thread(
         target=run_manual_monthly_generation,
-        kwargs={"job_id": job_id, "days": days, "start_date": start_date, "replace_unpublished": replace_unpublished},
+        kwargs={"job_id": job_id, "days": days, "start_date": start_date, "replace_unpublished": replace_unpublished, "content_plan": content_plan},
         daemon=True, name=f"monthly-generation-{job_id[:8]}",
     ).start()
     return True, pending
@@ -1634,7 +1637,7 @@ class HealthHandler(BaseHTTPRequestHandler):
                 self.wfile.write(body)
                 return
             try:
-                days = max(1, min(62, int(params.get("days", ["30"])[0])))
+                days = max(1, min(120, int(params.get("days", ["30"])[0])))
                 start_date = str(params.get("start_date", [""])[0]).strip() or None
                 result = build_monthly_calendar(
                     data_dir=_data_dir(),
@@ -1642,6 +1645,7 @@ class HealthHandler(BaseHTTPRequestHandler):
                     days=days,
                     enqueue=True,
                     replace_unpublished=str(params.get("replace_unpublished", ["false"])[0]).lower() in ("1", "true", "yes"),
+                    content_plan=str(params.get("content_plan", [""])[0]).strip() or None,
                 )
                 payload = {
                     key: result.get(key)
@@ -1666,11 +1670,14 @@ class HealthHandler(BaseHTTPRequestHandler):
                 self.send_response(status_code)
             else:
                 try:
-                    days = max(1, min(62, int(params.get("days", ["30"])[0])))
+                    days = max(1, min(120, int(params.get("days", ["30"])[0])))
                     start_date = str(params.get("start_date", [""])[0]).strip() or None
                     replace_unpublished = str(params.get("replace_unpublished", ["true"])[0]).lower() in ("1", "true", "yes")
+                    content_plan = str(params.get("content_plan", [""])[0]).strip() or None
+                    if content_plan not in (None, "weekly_brand_mix"):
+                        raise ValueError(f"unsupported content plan: {content_plan}")
                     accepted, payload = _start_manual_monthly_generation(
-                        days=days, start_date=start_date, replace_unpublished=replace_unpublished,
+                        days=days, start_date=start_date, replace_unpublished=replace_unpublished, content_plan=content_plan,
                     )
                     body = json.dumps({"accepted": accepted, **payload}, default=str).encode("utf-8")
                     self.send_response(202 if accepted else 409)

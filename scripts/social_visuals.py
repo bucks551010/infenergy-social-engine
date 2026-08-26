@@ -911,8 +911,14 @@ def _generate_gemini_full_creative(content: dict[str, Any], platform: str, visua
         model_name = str(os.environ.get("GEMINI_IMAGE_MODEL", "")).strip() or "gemini-2.5-flash-image"
         spec = _platform_visual_spec(platform)
         reference_parts: list[Any] = []
-        for reference in repo_refs[:3] if isinstance(repo_refs, list) else []:
-            source = str(reference.get("reference_url") or "").strip() if isinstance(reference, dict) else ""
+        content_references = [str(source) for source in content.get("reference_image_urls", []) if str(source).startswith("http")]
+        generic_references = [
+            str(reference.get("reference_url") or "").strip()
+            for reference in (repo_refs if isinstance(repo_refs, list) else [])
+            if isinstance(reference, dict)
+        ]
+        reference_sources = list(dict.fromkeys([*content_references, *generic_references]))[:4]
+        for source in reference_sources:
             image_bytes, mime_type = _read_image_bytes_any(source)
             image_bytes, mime_type = _normalize_reference_image(image_bytes)
             if not image_bytes:
@@ -921,6 +927,7 @@ def _generate_gemini_full_creative(content: dict[str, Any], platform: str, visua
                 reference_parts.append(types.Part.from_bytes(data=image_bytes, mime_type=mime_type or "image/jpeg"))
             except Exception:
                 continue
+        metadata["content_reference_count"] = len(content_references)
 
         product_source = _resolve_product_source(content, repo_context=repo_context)
         metadata["source_product_asset"] = product_source

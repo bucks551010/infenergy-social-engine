@@ -7,6 +7,10 @@ import json
 import os
 import sqlite3
 import textwrap
+import urllib.parse
+import urllib.request
+import xml.etree.ElementTree as ET
+from copy import deepcopy
 from datetime import date, datetime, time, timedelta, timezone
 from typing import Any
 
@@ -21,6 +25,8 @@ from inventory_db import get_db_path
 DATA_DIR = os.environ.get("DATA_DIR", os.path.join(os.path.dirname(__file__), "..", "data"))
 ELITE_SLATE_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "data", "marketing", "elite_monthly_slate.json"))
 PLATFORMS = ("facebook", "instagram", "linkedin")
+MAX_CALENDAR_DAYS = 120
+WEEKLY_BRAND_MIX = "weekly_brand_mix"
 BACKGROUND_ROTATION = ("#10212B", "#F7F4EC", "#DCEEF2", "#4F7658", "#E45B3A")
 INK_BY_BACKGROUND = {
     "#10212B": "#F7F4EC",
@@ -29,6 +35,31 @@ INK_BY_BACKGROUND = {
     "#4F7658": "#F7F4EC",
     "#E45B3A": "#F7F4EC",
 }
+
+CONSUMER_MOMENTS = (
+    "keeping phones, lights, and communication available during an outage",
+    "protecting work, caregiving, and household routines when grid power is interrupted",
+    "taking dependable power into travel, outdoor, and mobile-work settings",
+    "making a calm plan before severe weather enters the forecast",
+    "matching essential devices to realistic runtime and recharge needs",
+    "helping family and neighbors understand the first practical readiness step",
+)
+
+SUPERHERO_QUOTES = (
+    ("Prepared is a decision you make before the lights go out.", "Eleven stands in a lived-in kitchen at dusk while a family calmly checks its readiness plan."),
+    ("Real power is staying useful when the day changes without permission.", "Eleven helps a small business owner keep one essential task moving during a neighborhood outage."),
+    ("Calm is not luck. It is a plan you can reach in the dark.", "Eleven kneels beside an organized emergency shelf as storm light moves across the room."),
+    ("The strongest backup plan protects people, not just devices.", "Eleven checks on an older neighbor while practical lights and communication remain available."),
+    ("Readiness turns uncertainty into the next clear move.", "Eleven points a family toward three labeled priorities on a power-readiness checklist."),
+)
+
+HISTORICAL_MISSION_FACTS = (
+    {"event": "the Northeast blackout of 2003", "fact": "The August 2003 blackout interrupted power across parts of the United States and Canada and showed how widely one grid disturbance can travel.", "source": "https://www.energy.gov/oe/august-2003-blackout"},
+    {"event": "Hurricane Katrina in 2005", "fact": "Hurricane Katrina damaged critical Gulf Coast infrastructure and demonstrated how a disaster can disrupt power, transportation, communication, and daily care at the same time.", "source": "https://www.nhc.noaa.gov/data/tcr/AL122005_Katrina.pdf"},
+    {"event": "Hurricane Sandy in 2012", "fact": "Hurricane Sandy caused extensive power outages across the Northeast, leaving households and communities to manage prolonged disruptions after the storm passed.", "source": "https://www.nhc.noaa.gov/data/tcr/AL182012_Sandy.pdf"},
+    {"event": "Hurricane Maria in 2017", "fact": "Hurricane Maria devastated Puerto Rico's electric grid and made the human cost of long-duration power loss impossible to ignore.", "source": "https://www.gao.gov/products/gao-18-472"},
+    {"event": "the February 2021 Texas winter storm", "fact": "The February 2021 cold-weather event caused widespread generation failures and outages, reinforcing that energy readiness is not limited to hurricane season.", "source": "https://www.ferc.gov/media/february-2021-cold-weather-outages-texas-and-south-central-united-states-ferc-nerc-and"},
+)
 
 
 def _font(size: int, *, bold: bool = False) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
@@ -46,6 +77,182 @@ def _font(size: int, *, bold: bool = False) -> ImageFont.FreeTypeFont | ImageFon
 
 def _wrapped_lines(text: str, width: int) -> list[str]:
     return textwrap.wrap(str(text).strip(), width=width, break_long_words=False, break_on_hyphens=False) or [""]
+
+
+def _load_locked_canon_references() -> list[str]:
+    base_url = os.environ.get("ENTERTAINMENT_STUDIO_URL", "").strip().rstrip("/")
+    if not base_url:
+        return []
+    request = urllib.request.Request(
+        f"{base_url}/api/studio",
+        headers={"Accept": "application/json", "Authorization": f"Bearer {os.environ.get('ENTERTAINMENT_STUDIO_TOKEN', '').strip()}"},
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=20) as response:
+            snapshot = json.load(response)
+    except Exception:
+        return []
+    canons = snapshot.get("canons") if isinstance(snapshot, dict) else []
+    locked = next((canon for canon in canons or [] if isinstance(canon, dict) and canon.get("status") == "LOCKED"), None)
+    assets = locked.get("assets") if isinstance(locked, dict) and isinstance(locked.get("assets"), list) else []
+    ranked = sorted(
+        (asset for asset in assets if isinstance(asset, dict) and asset.get("id")),
+        key=lambda asset: int(asset.get("authorityRank") or 0),
+        reverse=True,
+    )
+    return [f"{base_url}/api/assets/{asset['id']}" for asset in ranked[:4]]
+
+
+def _load_current_news(limit: int) -> list[dict[str, str]]:
+    query = urllib.parse.quote("power outage OR hurricane OR energy business when:7d")
+    request = urllib.request.Request(
+        f"https://news.google.com/rss/search?q={query}&hl=en-US&gl=US&ceid=US:en",
+        headers={"User-Agent": "InfenergySocial/1.0"},
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=20) as response:
+            root = ET.fromstring(response.read())
+    except Exception:
+        return []
+    items: list[dict[str, str]] = []
+    for item in root.findall("./channel/item"):
+        title = str(item.findtext("title") or "").strip()
+        link = str(item.findtext("link") or "").strip()
+        published = str(item.findtext("pubDate") or "").strip()
+        if title and link:
+            items.append({"title": title, "url": link, "published": published})
+        if len(items) >= limit:
+            break
+    return items
+
+
+def _synthetic_thought(*, identifier: str, kind: str, content_type: str, statement: str, expansion: str, image_scene: str, visual_execution: str = "editorial_scene", format_name: str = "single", source_note: str = "", slides: list[dict[str, str]] | None = None, characters: list[str] | None = None, reference_image_urls: list[str] | None = None) -> dict[str, Any]:
+    return {
+        "id": identifier,
+        "pillar": "outage_readiness",
+        "kind": kind,
+        "content_type": content_type,
+        "format": format_name,
+        "statement": statement,
+        "overlay_text": statement,
+        "expansion": expansion,
+        "useful_detail": "Connect the lesson to one realistic household, work, travel, or community decision.",
+        "action": "Choose one essential routine and identify what it needs to continue safely.",
+        "prompt": "What would your first practical move be?",
+        "linkedin_lens": "Resilience becomes useful when a broad lesson is translated into an operational decision.",
+        "instagram_hook": statement,
+        "hashtags": ["Infenergy", "PowerReadiness", "PracticalPower"],
+        "visual_motif": image_scene,
+        "image_scene": image_scene,
+        "visual_execution": visual_execution,
+        "source_note": source_note,
+        "slides": slides or [],
+        "characters": characters or [],
+        "reference_image_urls": reference_image_urls or [],
+        "audience": "households, caregivers, small businesses, travelers, and community-minded consumers",
+        "editorial_mode": kind,
+    }
+
+
+def _weekly_brand_mix_thoughts(slate: dict[str, Any], *, start: date, days: int) -> list[dict[str, Any]]:
+    posts = [post for post in slate["posts"] if isinstance(post, dict)]
+    products = [post for post in posts if post.get("content_type") == "product"]
+    if len(products) < 3:
+        raise ValueError("weekly brand mix requires at least three verified product posts")
+    weeks = (days + 6) // 7
+    current_news = _load_current_news(weeks)
+    canon_references = _load_locked_canon_references()
+    if len(current_news) < weeks:
+        raise RuntimeError(f"current_news_coverage_incomplete:{len(current_news)}/{weeks}")
+    if not canon_references:
+        raise RuntimeError("locked_infenergy_canon_unavailable")
+    compiled: list[dict[str, Any]] = []
+    for week in range(weeks):
+        week_number = week + 1
+        week_start = start + timedelta(days=week * 7)
+        weekly: list[dict[str, Any]] = []
+        for product_slot in range(3):
+            product = deepcopy(products[(week * 3 + product_slot) % len(products)])
+            product["id"] = f"WB{week_number:02d}-P{product_slot + 1}-{product['id']}"
+            product["weekly_role"] = "product"
+            product["audience"] = "households, caregivers, small businesses, travelers, and community-minded consumers"
+            product["expansion"] = f"{product['expansion']} Frame the benefit around {CONSUMER_MOMENTS[(week * 3 + product_slot) % len(CONSUMER_MOMENTS)]}."
+            weekly.append(product)
+
+        news = current_news[week]
+        news_thought = _synthetic_thought(
+            identifier=f"WB{week_number:02d}-NEWS",
+            kind="current_event",
+            content_type="current_event",
+            statement=news["title"],
+            expansion="Use the verified report as current context, explain the practical energy-readiness consequence, and avoid speculation beyond the source.",
+            image_scene="A documentary editorial scene showing the human routine affected by the reported power, weather, or business event without disaster sensationalism.",
+            source_note=news["url"],
+        )
+        news_thought["event_series"] = f"weekly-news-{week_start.isoformat()}"
+        news_thought["source_published_at"] = news["published"]
+        news_thought["weekly_role"] = "current_news"
+        weekly.append(news_thought)
+
+        quote, scene = SUPERHERO_QUOTES[week % len(SUPERHERO_QUOTES)]
+        superhero = _synthetic_thought(
+            identifier=f"WB{week_number:02d}-HERO",
+            kind="infenergy_superhero_quote",
+            content_type="superhero_quote",
+            statement=quote,
+            expansion="Infenergy's superhero turns the quote into a coherent human scene where readiness is visible through behavior, not spectacle.",
+            image_scene=scene,
+            visual_execution="canon_character_quote_scene",
+            characters=["Eleven"],
+            reference_image_urls=canon_references,
+        )
+        superhero["weekly_role"] = "superhero_quote"
+        superhero["canon_required"] = True
+        weekly.append(superhero)
+
+        mission_slides = [
+            {"role": "mission", "headline": f"Micro-Mission {week_number}", "supporting": "Protect one essential routine before the next interruption."},
+            {"role": "notice", "headline": "Name the routine", "supporting": "Choose communication, light, care, work, food, or mobility."},
+            {"role": "inventory", "headline": "List what it uses", "supporting": "Write down every device the routine actually depends on."},
+            {"role": "priority", "headline": "Choose the essential three", "supporting": "Separate must-continue needs from conveniences."},
+            {"role": "demand", "headline": "Check real demand", "supporting": "Use published device and product information, not guesses."},
+            {"role": "duration", "headline": "Set a time target", "supporting": "Decide how long the routine needs support."},
+            {"role": "recharge", "headline": "Plan the refill", "supporting": "Identify where and how power can be restored safely."},
+            {"role": "rehearse", "headline": "Run one rehearsal", "supporting": "Practice the sequence before pressure makes decisions harder."},
+            {"role": "share", "headline": "Share the plan", "supporting": "Make sure everyone knows the first move and the limits."},
+        ]
+        mission = _synthetic_thought(
+            identifier=f"WB{week_number:02d}-MISSION",
+            kind="micro_mission",
+            content_type="micro_mission",
+            statement=f"This week's Micro-Mission: protect one essential routine.",
+            expansion="A nine-step practical exercise turns preparedness from a vague intention into one completed household action.",
+            image_scene="Nine distinct, full-canvas editorial scenes that progress through one realistic power-readiness mission.",
+            visual_execution="full_canvas_nine_slide_carousel",
+            format_name="carousel",
+            slides=mission_slides,
+            characters=["Eleven"],
+            reference_image_urls=canon_references,
+        )
+        mission["weekly_role"] = "micro_mission"
+        mission["canon_required"] = True
+        weekly.append(mission)
+
+        history = HISTORICAL_MISSION_FACTS[week % len(HISTORICAL_MISSION_FACTS)]
+        historical = _synthetic_thought(
+            identifier=f"WB{week_number:02d}-HISTORY",
+            kind="historical_mission",
+            content_type="historical_mission",
+            statement=f"What {history['event']} still teaches about readiness.",
+            expansion=f"{history['fact']} This is why Infenergy exists: to make practical continuity more understandable and reachable before disruption becomes personal.",
+            image_scene=f"A respectful documentary composition connecting an archival visual cue from {history['event']} to a present-day household making a calm readiness plan.",
+            visual_execution="sourced_historical_editorial",
+            source_note=history["source"],
+        )
+        historical["weekly_role"] = "historical_mission"
+        weekly.append(historical)
+        compiled.extend(weekly)
+    return compiled[:days]
 
 
 def _render_card(path: str, *, headline: str, supporting: str, pillar: str, index: int, slide_label: str = "") -> None:
@@ -127,6 +334,13 @@ def _gemini_generation_plan(thought: dict[str, Any], product: dict[str, Any] | N
             "color, controls, ports, markings, and physical details without redesigning or substituting a generic device. "
             f"Stage it naturally as follows: {product['visual_direction']} "
         )
+    characters = [str(character) for character in thought.get("characters", []) if str(character).strip()]
+    character_instruction = ""
+    if characters:
+        character_instruction = (
+            f"Feature the canonical Infenergy character {', '.join(characters)} and preserve identity, face, body, chest logo, costume, and behavior from the attached authority references. "
+            "Do not redesign, approximate, recolor, or substitute the character. "
+        )
     prompts: list[dict[str, Any]] = []
     for slide_index, slide in enumerate(slides, start=1):
         overlay_copy = str(
@@ -138,7 +352,7 @@ def _gemini_generation_plan(thought: dict[str, Any], product: dict[str, Any] | N
             "Create one premium, photorealistic square editorial image for Infenergy Power about practical energy readiness. "
             f"The image must express this exact post and no generic substitute: {thought['statement']} "
             f"Authored scene: {image_scene} Scene meaning: {slide.get('headline', '')}. "
-            f"Visual execution: {visual_execution}. {product_instruction}"
+            f"Visual execution: {visual_execution}. {product_instruction}{character_instruction}"
             f"This is slide {slide_index} of {len(slides)} with the role {slide['role']}. "
             "Show a believable real-life environment, natural human stakes, physically credible portable-energy context, "
             "cinematic directional light, rich material detail, and generous protected negative space in the upper third for an editorial overlay. "
@@ -171,6 +385,7 @@ def _gemini_generation_plan(thought: dict[str, Any], product: dict[str, Any] | N
         "fallback_allowed": False,
         "reuse_across_platforms": True,
         "required_image_count": len(prompts),
+        "reference_image_urls": [str(url) for url in thought.get("reference_image_urls", []) if str(url).startswith("http")],
         "prompts": prompts,
     }
 
@@ -274,6 +489,10 @@ def _package(knowledge: dict[str, Any], thought: dict[str, Any], content_date: s
         "thought_id": thought["id"],
         "thought_kind": thought["kind"],
         "thought_statement": thought["statement"],
+        "weekly_role": str(thought.get("weekly_role") or ""),
+        "characters": [str(character) for character in thought.get("characters", []) if str(character).strip()],
+        "canon_required": bool(thought.get("canon_required")),
+        "reference_image_urls": [str(url) for url in thought.get("reference_image_urls", []) if str(url).startswith("http")],
         "content_type": str(thought.get("content_type") or "editorial"),
         "event_series": str(thought.get("event_series") or ""),
         "editorial_sources": [str(thought.get("source_note"))] if thought.get("source_note") else [],
@@ -285,6 +504,7 @@ def _package(knowledge: dict[str, Any], thought: dict[str, Any], content_date: s
         "product_verified_facts": list(product.get("verified_facts") or []) if product else [],
         "product_proof_rule": str(product.get("proof_rule") or "") if product else "",
         "copy_generation_source": "canonical_company_knowledge",
+        "generation_thought": thought,
         "company_knowledge": {
             "knowledge_id": knowledge.get("knowledge_id"),
             "schema_version": knowledge.get("schema_version"),
@@ -408,6 +628,8 @@ def prepare_monthly_gemini_prompts(data_dir: str = DATA_DIR) -> dict[str, Any]:
         for entry in queued_entries:
             thought = thoughts.get(str(entry.get("thought_id") or ""))
             package = entry.get("package") if isinstance(entry.get("package"), dict) else {}
+            if not thought and isinstance(package.get("generation_thought"), dict):
+                thought = package["generation_thought"]
             outbox_id = str(entry.get("outbox_id") or "")
             if not thought or not package or not outbox_id:
                 continue
@@ -457,9 +679,12 @@ def build_monthly_calendar(
     days: int = 30,
     enqueue: bool = True,
     replace_unpublished: bool = False,
+    content_plan: str | None = None,
 ) -> dict[str, Any]:
-    if days < 1 or days > 62:
-        raise ValueError("days must be between 1 and 62")
+    if days < 1 or days > MAX_CALENDAR_DAYS:
+        raise ValueError(f"days must be between 1 and {MAX_CALENDAR_DAYS}")
+    if content_plan not in (None, "", WEEKLY_BRAND_MIX):
+        raise ValueError(f"unsupported content plan: {content_plan}")
     knowledge_refresh = (
         refresh_persistent_company_knowledge(data_dir)
         if replace_unpublished
@@ -469,7 +694,15 @@ def build_monthly_calendar(
     slate = _load_editorial_slate()
     start = date.fromisoformat(start_date) if isinstance(start_date, str) else start_date
     start = start or (datetime.now(timezone.utc).date() + timedelta(days=1))
-    thoughts = list(slate["posts"])
+    thoughts = (
+        _weekly_brand_mix_thoughts(slate, start=start, days=days)
+        if content_plan == WEEKLY_BRAND_MIX
+        else [deepcopy(slate["posts"][index % len(slate["posts"])]) for index in range(days)]
+    )
+    packages = [
+        _package(knowledge, thought, (start + timedelta(days=index)).isoformat(), index, data_dir)
+        for index, thought in enumerate(thoughts)
+    ]
     existing_ids = _existing_content_ids(data_dir)
     cancellation = cancel_unpublished_inventory(data_dir) if enqueue and replace_unpublished else {"cancelled_outbox": 0}
     if cancellation["cancelled_outbox"]:
@@ -480,8 +713,8 @@ def build_monthly_calendar(
 
     for index in range(days):
         day = start + timedelta(days=index)
-        thought = thoughts[index % len(thoughts)]
-        package = _package(knowledge, thought, day.isoformat(), index, data_dir)
+        thought = thoughts[index]
+        package = packages[index]
         scheduled = datetime.combine(day, time(17, 0), tzinfo=timezone.utc).isoformat()
         entry = {
             "date": day.isoformat(),
@@ -557,14 +790,21 @@ def build_monthly_calendar(
         "start_date": start.isoformat(),
         "end_date": (start + timedelta(days=days - 1)).isoformat(),
         "days": days,
+        "content_plan": content_plan or "elite_monthly_slate",
         "queued": queued,
         "skipped_existing": skipped_existing,
         "cancelled_legacy_outbox": cancellation["cancelled_outbox"],
         "single_image_posts": sum(1 for entry in entries if entry["format"] == "single"),
         "carousel_posts": sum(1 for entry in entries if entry["format"] == "carousel"),
-        "product_posts": sum(1 for thought in thoughts[:days] if thought.get("content_type") == "product"),
-        "statement_graphics": sum(1 for thought in thoughts[:days] if thought.get("visual_execution") == "statement_graphic"),
-        "current_event_posts": sum(1 for thought in thoughts[:days] if thought.get("event_series")),
+        "product_posts": sum(1 for thought in thoughts if thought.get("content_type") == "product"),
+        "statement_graphics": sum(1 for thought in thoughts if thought.get("visual_execution") == "statement_graphic"),
+        "current_event_posts": sum(
+            1 for thought in thoughts
+            if thought.get("weekly_role") == "current_news" or (content_plan != WEEKLY_BRAND_MIX and thought.get("event_series"))
+        ),
+        "superhero_posts": sum(1 for thought in thoughts if thought.get("weekly_role") == "superhero_quote"),
+        "micro_mission_posts": sum(1 for thought in thoughts if thought.get("weekly_role") == "micro_mission"),
+        "historical_mission_posts": sum(1 for thought in thoughts if thought.get("weekly_role") == "historical_mission"),
         "entries": entries,
     }
     payload["calendar_path"] = _save_calendar(data_dir, payload)

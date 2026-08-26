@@ -119,6 +119,26 @@ def test_manual_monthly_generation_builds_prepares_and_pregenerates_to_idle(monk
     assert status["pregenerated_packages"] == 2
 
 
+def test_manual_monthly_generation_propagates_weekly_brand_mix(monkeypatch, tmp_path):
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    captured = {}
+    monkeypatch.setattr(worker, "build_monthly_calendar", lambda **kwargs: captured.update(kwargs) or {
+        "queued": 0, "calendar_path": "calendar.json", "single_image_posts": 103, "carousel_posts": 17,
+    })
+    monkeypatch.setattr(worker, "prepare_monthly_gemini_prompts", lambda data_dir: {
+        "prepared_entries": 0, "prepared_prompts": 0,
+    })
+
+    worker.run_manual_monthly_generation(
+        "job-120", days=120, start_date="2026-09-01", replace_unpublished=True, content_plan="weekly_brand_mix",
+    )
+
+    assert captured["days"] == 120
+    assert captured["replace_unpublished"] is True
+    assert captured["content_plan"] == "weekly_brand_mix"
+    assert worker._monthly_generation_status()["status"] == "COMPLETE"
+
+
 def test_manual_monthly_generation_rejects_second_request_while_first_is_accepted(monkeypatch, tmp_path):
     monkeypatch.setenv("DATA_DIR", str(tmp_path))
     worker._save_monthly_generation_status(job_id="job-1", status="ACCEPTED", phase="QUEUED")

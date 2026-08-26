@@ -11,9 +11,10 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
 from agents import carousel_slide_writer  # noqa: E402
-from build_monthly_content import _captions, _gemini_generation_plan, _load_editorial_slate, _load_product_brief, build_monthly_calendar, latest_monthly_calendar, prepare_monthly_gemini_prompts  # noqa: E402
+from build_monthly_content import _captions, _gemini_generation_plan, _load_editorial_slate, _load_product_brief, _weekly_brand_mix_thoughts, build_monthly_calendar, latest_monthly_calendar, prepare_monthly_gemini_prompts  # noqa: E402
 from company_knowledge import agent_specialization, compact_generation_context, load_company_knowledge  # noqa: E402
 from content_operations import daily_status  # noqa: E402
+from dispatch_outbox import _refresh_current_news_package, pregenerate_upcoming  # noqa: E402
 from social_visuals import _apply_v5_text_overlay  # noqa: E402
 
 
@@ -168,6 +169,117 @@ def test_month_builder_persists_ready_assets_and_is_idempotent(tmp_path, monkeyp
     assert saved["knowledge_digest"] == first["knowledge_digest"]
     assert len(saved["entries"]) == 2
     assert latest_monthly_calendar(str(tmp_path))["entries"][1]["thought_id"] == "E02"
+
+
+def test_weekly_brand_mix_compiles_120_days_with_exact_weekly_roles(monkeypatch):
+    monkeypatch.setattr("build_monthly_content._load_current_news", lambda limit: [
+        {"title": f"Current power story {index}", "url": f"https://news.example/{index}", "published": "today"}
+        for index in range(limit)
+    ])
+    monkeypatch.setattr("build_monthly_content._load_locked_canon_references", lambda: ["https://studio.example/api/assets/canon"])
+
+    thoughts = _weekly_brand_mix_thoughts(_load_editorial_slate(), start=__import__("datetime").date(2026, 9, 1), days=120)
+
+    assert len(thoughts) == 120
+    expected_roles = ["product", "product", "product", "current_news", "superhero_quote", "micro_mission", "historical_mission"]
+    for offset in range(0, 119, 7):
+        assert [thought["weekly_role"] for thought in thoughts[offset:offset + 7]] == expected_roles
+    mission = thoughts[5]
+    assert len(mission["slides"]) == 9
+    assert len(_gemini_generation_plan(mission)["prompts"]) == 9
+    assert mission["reference_image_urls"] == ["https://studio.example/api/assets/canon"]
+    assert thoughts[4]["canon_required"] is True
+    assert thoughts[6]["source_note"].startswith("https://")
+
+
+def test_weekly_brand_mix_fails_closed_without_live_news_or_locked_canon(monkeypatch):
+    monkeypatch.setattr("build_monthly_content._load_current_news", lambda limit: [])
+    monkeypatch.setattr("build_monthly_content._load_locked_canon_references", lambda: ["https://studio.example/api/assets/canon"])
+    with __import__("pytest").raises(RuntimeError, match="current_news_coverage_incomplete"):
+        _weekly_brand_mix_thoughts(_load_editorial_slate(), start=__import__("datetime").date(2026, 9, 1), days=7)
+
+    monkeypatch.setattr("build_monthly_content._load_current_news", lambda limit: [
+        {"title": "Current story", "url": "https://news.example/current", "published": "today"},
+    ])
+    monkeypatch.setattr("build_monthly_content._load_locked_canon_references", lambda: [])
+    with __import__("pytest").raises(RuntimeError, match="locked_infenergy_canon_unavailable"):
+        _weekly_brand_mix_thoughts(_load_editorial_slate(), start=__import__("datetime").date(2026, 9, 1), days=7)
+
+
+def test_replacement_validates_new_packages_before_canceling_inventory(tmp_path, monkeypatch):
+    _seed_knowledge(tmp_path)
+    cancellations = []
+    monkeypatch.setattr("build_monthly_content._package", lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("invalid_new_package")))
+    monkeypatch.setattr("build_monthly_content.cancel_unpublished_inventory", lambda data_dir: cancellations.append(data_dir) or {"cancelled_outbox": 1})
+
+    with __import__("pytest").raises(RuntimeError, match="invalid_new_package"):
+        build_monthly_calendar(data_dir=str(tmp_path), start_date="2026-09-01", days=1, enqueue=True, replace_unpublished=True)
+
+    assert cancellations == []
+
+
+def test_due_news_refresh_rebuilds_source_captions_and_prompts(monkeypatch):
+    thought = {
+        "id": "NEWS", "pillar": "outage_readiness", "kind": "current_event", "content_type": "current_event",
+        "format": "single", "statement": "Old headline", "overlay_text": "Old headline", "expansion": "Explain the practical consequence.",
+        "useful_detail": "Use verified context.", "action": "Make one plan.", "prompt": "What changes?", "linkedin_lens": "Operational relevance.",
+        "instagram_hook": "Old headline", "hashtags": ["Infenergy"], "visual_motif": "A documentary outage scene", "image_scene": "A documentary outage scene",
+        "visual_execution": "editorial_scene", "source_note": "https://old.example", "weekly_role": "current_news",
+    }
+    package = {
+        "content_date": "2026-09-01", "weekly_role": "current_news", "generation_thought": thought,
+        "platform_posts": {platform: {"caption": "old", "final_caption": "old"} for platform in ("facebook", "instagram", "linkedin")},
+    }
+    monkeypatch.setattr("dispatch_outbox._load_current_news", lambda limit: [
+        {"title": "Fresh verified headline", "url": "https://news.example/fresh", "published": "today"},
+    ])
+
+    refreshed = _refresh_current_news_package(package)
+
+    assert refreshed["thought_statement"] == "Fresh verified headline"
+    assert refreshed["editorial_sources"] == ["https://news.example/fresh"]
+    assert refreshed["news_freshness"]["status"] == "REFRESHED"
+    assert "Fresh verified headline" in refreshed["platform_posts"]["instagram"]["final_caption"]
+    assert "Fresh verified headline" in refreshed["gemini_generation"]["prompts"][0]["gemini_image_prompt"]
+
+
+def test_future_news_waits_for_the_24_hour_freshness_window(monkeypatch, tmp_path):
+    future = (__import__("datetime").datetime.now(__import__("datetime").timezone.utc) + __import__("datetime").timedelta(days=2)).isoformat()
+    monkeypatch.setattr("dispatch_outbox.upcoming_ready_packages", lambda *args, **kwargs: [{
+        "outbox_id": "news-1", "scheduled_at": future,
+        "package": {"weekly_role": "current_news", "gemini_generation": {"strict_provider": True, "required_image_count": 1}},
+    }])
+    monkeypatch.setattr("dispatch_outbox._refresh_current_news_package", lambda package: __import__("pytest").fail("news refreshed too early"))
+
+    result = pregenerate_upcoming(data_dir=str(tmp_path))
+
+    assert result["status"] == "IDLE"
+
+
+def test_weekly_brand_mix_survives_real_queue_and_prompt_preparation(tmp_path, monkeypatch):
+    _seed_knowledge(tmp_path)
+    monkeypatch.setenv("PUBLIC_BASE_URL", "https://example.test")
+    monkeypatch.setattr("build_monthly_content._load_current_news", lambda limit: [
+        {"title": "A current power story", "url": "https://news.example/current", "published": "today"},
+    ])
+    monkeypatch.setattr("build_monthly_content._load_locked_canon_references", lambda: ["https://studio.example/api/assets/canon"])
+
+    calendar = build_monthly_calendar(
+        data_dir=str(tmp_path), start_date="2026-09-01", days=7, enqueue=True, content_plan="weekly_brand_mix",
+    )
+    prepared = prepare_monthly_gemini_prompts(str(tmp_path))
+
+    assert calendar["queued"] == 7
+    assert calendar["product_posts"] == 3
+    assert calendar["current_event_posts"] == 1
+    assert calendar["superhero_posts"] == 1
+    assert calendar["micro_mission_posts"] == 1
+    assert calendar["historical_mission_posts"] == 1
+    assert prepared["prepared_entries"] == 7
+    assert prepared["prepared_prompts"] == 15
+    saved = latest_monthly_calendar(str(tmp_path))
+    assert len(saved["entries"][5]["package"]["carousel_assets"]) == 9
+    assert saved["entries"][4]["package"]["gemini_generation"]["reference_image_urls"] == ["https://studio.example/api/assets/canon"]
 
 
 def test_month_builder_replaces_an_unpublished_slot_package(tmp_path, monkeypatch):

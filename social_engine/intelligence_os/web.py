@@ -90,7 +90,7 @@ def handle(method: str, path: str, body: dict[str, Any] | None, data_dir: str) -
                 )
                 job = approved["execution"].get("result", {}).get("job")
                 conversation_id = payload.get("conversation_id")
-                if isinstance(job, dict) and conversation_id:
+                if isinstance(job, dict) and job.get("status") != "COMPLETED" and conversation_id:
                     return _json(200, service.continue_approved_job(str(conversation_id), approved, actor))
                 return _json(200, approved)
             result = service.policies.decide_approval(

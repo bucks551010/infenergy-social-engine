@@ -333,6 +333,8 @@ def register_core_capabilities(registry: CapabilityRegistry, policies: PolicyEng
         return {"attention": attention.list_open()}
 
     def content_120(payload: dict[str, Any], context: ExecutionContext) -> dict[str, Any]:
+        from build_monthly_content import build_monthly_calendar, prepare_monthly_gemini_prompts
+
         horizons = payload.get("horizons") or [
             {"days": "1-14", "state": "production_ready"},
             {"days": "15-30", "state": "approved_concepts"},
@@ -354,7 +356,52 @@ def register_core_capabilities(registry: CapabilityRegistry, policies: PolicyEng
             objective=str(payload.get("objective", "Build adaptive 120-day content system")),
             plan=plan, operation_id=context.operation_id,
         )
-        return {"job": job, "horizons": horizons, "locked_days": int(payload.get("locked_days", 7))}
+        try:
+            jobs.transition(job["id"], "RUNNING", progress=0.05)
+            jobs.checkpoint(
+                job["id"], 0, status="COMPLETED",
+                checkpoint={"builder": "build_monthly_calendar", "days": 120},
+            )
+            calendar = build_monthly_calendar(
+                data_dir=context.data_dir,
+                start_date=payload.get("start_date"),
+                days=120,
+                enqueue=True,
+                replace_unpublished=bool(payload.get("replace_unpublished", True)),
+                content_plan=str(payload.get("content_plan") or "weekly_brand_mix"),
+            )
+            prepared = prepare_monthly_gemini_prompts(context.data_dir)
+            result = {
+                "calendar_path": calendar.get("calendar_path"),
+                "queued": int(calendar.get("queued") or 0),
+                "cancelled_outbox": int(calendar.get("cancelled_outbox") or 0),
+                "single_image_posts": int(calendar.get("single_image_posts") or 0),
+                "carousel_posts": int(calendar.get("carousel_posts") or 0),
+                "product_posts": int(calendar.get("product_posts") or 0),
+                "current_event_posts": int(calendar.get("current_event_posts") or 0),
+                "superhero_posts": int(calendar.get("superhero_posts") or 0),
+                "micro_mission_posts": int(calendar.get("micro_mission_posts") or 0),
+                "historical_mission_posts": int(calendar.get("historical_mission_posts") or 0),
+                "prepared_entries": int(prepared.get("prepared_entries") or 0),
+                "prepared_prompts": int(prepared.get("prepared_prompts") or 0),
+                "content_plan": str(payload.get("content_plan") or "weekly_brand_mix"),
+                "replace_unpublished": bool(payload.get("replace_unpublished", True)),
+            }
+            for step in jobs.get(job["id"])["steps"]:
+                if step["status"] not in {"COMPLETED", "SKIPPED"}:
+                    jobs.checkpoint(
+                        job["id"], int(step["ordinal"]), status="COMPLETED",
+                        checkpoint={"builder": "build_monthly_calendar", "calendar_path": result["calendar_path"]},
+                        result={"queued": result["queued"]},
+                    )
+            completed = jobs.transition(job["id"], "COMPLETED", progress=1.0, result=result)
+            return {"job": completed, "calendar": result, "horizons": horizons, "locked_days": int(payload.get("locked_days", 7))}
+        except Exception as exc:
+            jobs.transition(
+                job["id"], "FAILED",
+                result={"error": f"{type(exc).__name__}: {exc}", "builder": "build_monthly_calendar"},
+            )
+            raise
 
     def research_news(payload: dict[str, Any], _: ExecutionContext) -> dict[str, Any]:
         return external_research.search_news(
@@ -636,7 +683,7 @@ def register_core_capabilities(registry: CapabilityRegistry, policies: PolicyEng
         Capability("scenario.create", "Create scenario", "Create an immutable non-production business scenario with explicit uncertainty.", "STRATEGY", scenario_create, object_schema({"premise": {"type": "string"}, "assumptions": {"type": "array"}, "baseline": {"type": "object"}, "changed_variables": {"type": "array"}, "projected_effects": {"type": "array"}, "confidence": {"type": "number"}, "evidence": {"type": "array"}, "limitations": {"type": "array"}}, ["premise"]), risk_level="INTERNAL_MUTATION", permission_requirement="AUTONOMOUS"),
         Capability("world.search", "Search world model", "Search temporal Infenergy entities and current assertions.", "KNOWLEDGE", world_search, object_schema({"query": {"type": "string"}, "limit": {"type": "integer"}}, ["query"])),
         Capability("attention.get", "Get attention", "Return the highest-materiality unresolved executive attention items.", "OPERATIONS", attention_get),
-        Capability("content.plan_120_days", "Plan 120 days", "Start an adaptive, research-informed, entertainment-first rolling 120-day content job.", "SOCIAL", content_120, object_schema({"objective": {"type": "string"}, "locked_days": {"type": "integer"}, "horizons": {"type": "array"}}), risk_level="INTERNAL_MUTATION", permission_requirement="EXECUTE_WITH_APPROVAL", synchronous=False),
+        Capability("content.plan_120_days", "Build and schedule 120 days", "Build and queue a complete research-informed 120-day weekly brand content calendar with one owner approval.", "SOCIAL", content_120, object_schema({"objective": {"type": "string"}, "start_date": {"type": "string"}, "replace_unpublished": {"type": "boolean"}, "content_plan": {"type": "string"}, "locked_days": {"type": "integer"}, "horizons": {"type": "array"}}), risk_level="INTERNAL_MUTATION", permission_requirement="EXECUTE_WITH_APPROVAL", synchronous=False),
         Capability("research.news", "Research current news", "Retrieve current news through an external provider and store provenance-bearing time-limited findings.", "NEWS", research_news, object_schema({"query": {"type": "string"}, "limit": {"type": "integer"}, "freshness_days": {"type": "integer"}}), cost_class="LOW"),
         Capability("research.findings.get", "Get research findings", "Retrieve the durable Intelligence Library with provenance, credibility, and freshness.", "RESEARCH", findings_get, object_schema({"limit": {"type": "integer"}})),
         Capability("automations.get", "Get automations", "Inspect exact durable automations, schedules, watches, permissions, and status.", "AUTOMATIONS", automations_get),

@@ -327,7 +327,7 @@ def test_natural_language_approval_executes_without_model_retry_loop(tmp_path, m
 def test_approved_job_continues_to_persisted_deliverables(tmp_path, monkeypatch):
     service = bootstrap(str(tmp_path))
     pending = service.execute_capability(
-        "content.plan_120_days", {"objective": "Build the complete Blackout House campaign"}
+        "research.mission.create", {"question": "Build the complete Blackout House research brief"}
     )
 
     async def complete_job(prompt, **kwargs):
@@ -368,7 +368,7 @@ def test_approved_job_survives_continuation_provider_failure(tmp_path, monkeypat
     service = bootstrap(str(tmp_path))
     conversation = service.create_conversation(owner_id="owner", title="Recovery")
     pending = service.execute_capability(
-        "content.plan_120_days", {"objective": "Build the complete Blackout House campaign"}
+        "research.mission.create", {"question": "Build the complete Blackout House research brief"}
     )
     approved = service.approve_and_execute(pending["approval_id"])
 
@@ -384,6 +384,45 @@ def test_approved_job_survives_continuation_provider_failure(tmp_path, monkeypat
     assert result["execution"]["status"] == "COMPLETED"
     assert result["execution"]["result"]["job"]["id"] == service.jobs.list(1)[0]["id"]
     assert "Send `continue`" in result["message"]
+
+
+def test_120_day_capability_runs_real_builder_and_completes_job(tmp_path, monkeypatch):
+    service = bootstrap(str(tmp_path))
+    captured = {}
+
+    def build_calendar(**kwargs):
+        captured.update(kwargs)
+        return {
+            "calendar_path": str(tmp_path / "calendar.json"), "queued": 120,
+            "cancelled_outbox": 90, "single_image_posts": 103, "carousel_posts": 17,
+            "product_posts": 52, "current_event_posts": 17, "superhero_posts": 17,
+            "micro_mission_posts": 17, "historical_mission_posts": 17,
+        }
+
+    monkeypatch.setattr("build_monthly_content.build_monthly_calendar", build_calendar)
+    monkeypatch.setattr(
+        "build_monthly_content.prepare_monthly_gemini_prompts",
+        lambda data_dir: {"prepared_entries": 120, "prepared_prompts": 222},
+    )
+    pending = service.execute_capability(
+        "content.plan_120_days",
+        {
+            "objective": "Build the consumer campaign", "start_date": "2026-08-27",
+            "replace_unpublished": True, "content_plan": "weekly_brand_mix",
+        },
+    )
+    result = service.approve_and_execute(pending["approval_id"])
+
+    job = result["execution"]["result"]["job"]
+    assert result["execution"]["status"] == "COMPLETED"
+    assert job["status"] == "COMPLETED"
+    assert job["progress"] == 1.0
+    assert job["result"]["queued"] == 120
+    assert all(step["status"] == "COMPLETED" for step in job["steps"])
+    assert captured == {
+        "data_dir": str(tmp_path), "start_date": "2026-08-27", "days": 120,
+        "enqueue": True, "replace_unpublished": True, "content_plan": "weekly_brand_mix",
+    }
 
 
 def test_schedule_dry_run_does_not_write_social_slot(tmp_path):

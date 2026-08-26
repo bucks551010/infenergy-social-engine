@@ -297,7 +297,7 @@ class IntelligenceOS:
             self._message(conversation["id"], "user", message)
             approved = self.approve_and_execute(pending[0]["id"], actor=actor, note="Natural-language owner approval")
             job = approved["execution"].get("result", {}).get("job")
-            if isinstance(job, dict):
+            if isinstance(job, dict) and job.get("status") != "COMPLETED":
                 return self.continue_approved_job(conversation["id"], approved, actor)
             content = self._approval_result_message(approved)
             self._message(conversation["id"], "assistant", content, approved)

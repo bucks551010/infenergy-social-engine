@@ -9,6 +9,7 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 import pytest
+from PIL import Image
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -76,6 +77,29 @@ def test_technical_qa_fails_closed_for_missing_mp4():
     result = reels.technical_qa({"reel_artifact_path": "missing.mp4"}, {"freeze_start_time": 3.0})
     assert result["status"] == "FAIL"
     assert "missing_or_empty_mp4" in result["reasons"]
+
+
+def test_scored_story_plan_sets_readable_timing_and_emotional_arc(tmp_path):
+    assets = []
+    for index in range(3):
+        path = tmp_path / f"slide-{index}.png"
+        Image.new("RGB", (1080, 1350), (25 + index * 20, 40, 55)).save(path)
+        assets.append({"local_path": str(path), "public_url": f"https://media.example/{path.name}"})
+    plan = reels.build_scored_story_plan(
+        post_id="micro-mission-1", carousel_assets=assets,
+        slide_texts=["The lights went out.", "Something moved downstairs behind the breaker panel.", "We found the emergency power kit."],
+        emotions=["mystery", "danger", "relief"],
+    )
+    assert plan["pre_render_gate"] == "SCORED_STORY_READY"
+    assert plan["music_score"]["emotional_arc"] == ["mystery", "danger", "relief"]
+    assert plan["scenes"][1]["duration"] > plan["scenes"][0]["duration"]
+    assert plan["scenes"][2]["start"] == plan["scenes"][1]["end"]
+    assert plan["video_end_time"] == plan["scenes"][-1]["end"]
+    if (os.environ.get("FFMPEG_BIN") or shutil.which("ffmpeg")) and (os.environ.get("FFPROBE_BIN") or shutil.which("ffprobe")):
+        artifact = reels.render_scored_story_reel(plan, data_dir=str(tmp_path))
+        assert reels.technical_qa(artifact, plan)["status"] == "PASS"
+        assert artifact["reel_type"] == "SCORED_STORY_REEL"
+        assert artifact["story_score"]["commercial_use"] is True
 
 
 def test_real_renderer_freezes_actual_video_when_ffmpeg_is_available():

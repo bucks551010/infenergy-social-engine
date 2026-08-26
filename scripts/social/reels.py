@@ -8,6 +8,7 @@ the normal governance gates approve it.
 from __future__ import annotations
 
 import json
+import math
 import os
 import shutil
 import subprocess
@@ -24,6 +25,12 @@ REEL_HEIGHT = 1920
 REEL_FPS = 30
 MIN_REEL_SECONDS = 3.0
 MAX_REEL_SECONDS = 15 * 60.0
+STORY_EMOTIONS = ("mystery", "eerie", "tension", "danger", "discovery", "relief", "triumph", "reflection")
+EMOTION_SCORE = {
+    "mystery": (146.83, 0.12), "eerie": (138.59, 0.10), "tension": (196.00, 0.14),
+    "danger": (220.00, 0.16), "discovery": (261.63, 0.13), "relief": (329.63, 0.11),
+    "triumph": (392.00, 0.16), "reflection": (293.66, 0.10),
+}
 
 
 def _text(value: Any, limit: int = 180) -> str:
@@ -193,6 +200,142 @@ def validate_reel_plan(plan: dict[str, Any]) -> dict[str, Any]:
     return {"status": "REEL_READY" if not errors else "REVISE_STORYBOARD", "reasons": errors}
 
 
+def build_scored_story_plan(
+    *,
+    post_id: str,
+    carousel_assets: list[dict[str, Any]],
+    slide_texts: list[str] | None = None,
+    emotions: list[str] | None = None,
+    narration_path: str | None = None,
+    motion_intensity: float = 0.55,
+) -> dict[str, Any]:
+    """Turn ordered carousel assets into a readable, emotionally scored story timeline."""
+    if len(carousel_assets) < 2:
+        raise ValueError("scored_story_reel_requires_at_least_two_slides")
+    texts = slide_texts or []
+    requested_emotions = emotions or []
+    scenes = []
+    cursor = 0.0
+    for index, asset in enumerate(carousel_assets):
+        local_path = str(asset.get("local_path") or "").strip()
+        if not local_path:
+            raise ValueError(f"scored_story_slide_missing_local_path:{index + 1}")
+        text = _text(texts[index] if index < len(texts) else asset.get("caption") or asset.get("title"), 500)
+        words = len(text.split())
+        duration = round(min(7.0, max(2.8, 2.4 + words * 0.22)), 2)
+        emotion = _text(requested_emotions[index] if index < len(requested_emotions) else STORY_EMOTIONS[index % len(STORY_EMOTIONS)], 24).lower()
+        if emotion not in EMOTION_SCORE:
+            raise ValueError(f"unsupported_story_emotion:{emotion}")
+        scenes.append({
+            "index": index, "asset_path": local_path, "public_url": str(asset.get("public_url") or ""),
+            "caption": text, "emotion": emotion, "start": round(cursor, 2),
+            "end": round(cursor + duration, 2), "duration": duration,
+            "movement": "slow_push" if index % 2 == 0 else "slow_pull",
+        })
+        cursor += duration
+    return {
+        "pre_render_gate": "SCORED_STORY_READY",
+        "creative_family_id": f"scored-story-{post_id}",
+        "parent_reel_id": post_id,
+        "reel_type": "SCORED_STORY_REEL",
+        "target_duration": round(cursor, 2),
+        "video_end_time": round(cursor, 2),
+        "motion_intensity": max(0.0, min(float(motion_intensity), 1.0)),
+        "narration_path": narration_path,
+        "scenes": scenes,
+        "music_score": {
+            "source": "ffmpeg_procedural_original",
+            "license": "original_generated_audio",
+            "commercial_use": True,
+            "emotional_arc": [scene["emotion"] for scene in scenes],
+            "narration_ducking": bool(narration_path),
+        },
+        "caption_strategy": "captions_are_inherited_from_the_readable_carousel_slides",
+    }
+
+
+def _story_frame(source_path: str, destination: Path, *, square: bool = False) -> None:
+    size = (1080, 1080) if square else (REEL_WIDTH, REEL_HEIGHT)
+    with Image.open(source_path) as source:
+        source = source.convert("RGB")
+        contained = source.copy()
+        contained.thumbnail(size, Image.Resampling.LANCZOS)
+        canvas = Image.new("RGB", size, "#10191d")
+        canvas.paste(contained, ((size[0] - contained.width) // 2, (size[1] - contained.height) // 2))
+        canvas.save(destination, format="JPEG", quality=94, subsampling=0)
+
+
+def render_scored_story_reel(plan: dict[str, Any], *, data_dir: str | None = None) -> dict[str, Any]:
+    """Render ordered slides and an adaptive procedural score into the standard Reel contract."""
+    if plan.get("pre_render_gate") != "SCORED_STORY_READY" or not plan.get("scenes"):
+        raise RuntimeError("scored_story_pre_render_gate_failed")
+    root = Path(data_dir or os.environ.get("DATA_DIR") or Path(__file__).resolve().parents[2] / "data")
+    media_dir = root / "public_media"
+    media_dir.mkdir(parents=True, exist_ok=True)
+    stem = f"{plan['parent_reel_id']}_{uuid.uuid4().hex[:8]}_scored_story"
+    video_path = media_dir / f"{stem}.mp4"
+    cover_path = media_dir / f"{stem}_cover.jpg"
+    final_path = media_dir / f"{stem}_final_frame.jpg"
+    static_path = media_dir / f"{stem}_static.jpg"
+    scenes = plan["scenes"]
+    _story_frame(scenes[0]["asset_path"], cover_path)
+    _story_frame(scenes[-1]["asset_path"], final_path)
+    _story_frame(scenes[-1]["asset_path"], static_path, square=True)
+    command = [_ffmpeg(), "-y"]
+    for scene in scenes:
+        command.extend(["-loop", "1", "-framerate", str(REEL_FPS), "-t", str(scene["duration"]), "-i", scene["asset_path"]])
+    narration_path = str(plan.get("narration_path") or "").strip()
+    if narration_path:
+        if not os.path.isfile(narration_path):
+            raise ValueError("scored_story_narration_not_found")
+        command.extend(["-i", narration_path])
+    filters = []
+    video_labels = []
+    audio_labels = []
+    intensity = float(plan.get("motion_intensity") or 0.55)
+    for index, scene in enumerate(scenes):
+        frames = max(1, int(math.ceil(float(scene["duration"]) * REEL_FPS)))
+        zoom_step = (0.00018 + intensity * 0.00032) * (1 if scene["movement"] == "slow_push" else -1)
+        zoom = f"min(zoom+{zoom_step:.6f},1.08)" if zoom_step > 0 else f"max(zoom{zoom_step:.6f},1.0)"
+        filters.append(
+            f"[{index}:v]scale={REEL_WIDTH}:{REEL_HEIGHT}:force_original_aspect_ratio=decrease,"
+            f"pad={REEL_WIDTH}:{REEL_HEIGHT}:(ow-iw)/2:(oh-ih)/2:color=0x10191d,"
+            f"zoompan=z='{zoom}':d={frames}:s={REEL_WIDTH}x{REEL_HEIGHT}:fps={REEL_FPS},"
+            f"trim=duration={scene['duration']},setpts=PTS-STARTPTS[v{index}]"
+        )
+        frequency, volume = EMOTION_SCORE[scene["emotion"]]
+        fade_out = max(0.0, float(scene["duration"]) - 0.45)
+        filters.append(
+            f"sine=frequency={frequency}:sample_rate=48000:duration={scene['duration']},"
+            f"volume={volume},afade=t=in:st=0:d=0.35,afade=t=out:st={fade_out:.2f}:d=0.45[a{index}]"
+        )
+        video_labels.append(f"[v{index}]")
+        audio_labels.append(f"[a{index}]")
+    filters.append(f"{''.join(video_labels)}concat=n={len(scenes)}:v=1:a=0,format=yuv420p[v]")
+    filters.append(f"{''.join(audio_labels)}concat=n={len(scenes)}:v=0:a=1[score]")
+    audio_map = "[score]"
+    if narration_path:
+        narration_index = len(scenes)
+        filters.append(f"[score]volume=0.32[ducked];[{narration_index}:a]volume=1.0[narration];[ducked][narration]amix=inputs=2:duration=first:dropout_transition=1[aout]")
+        audio_map = "[aout]"
+    command.extend([
+        "-filter_complex", ";".join(filters), "-map", "[v]", "-map", audio_map,
+        "-r", str(REEL_FPS), "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23",
+        "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", "-pix_fmt", "yuv420p",
+        "-shortest", str(video_path),
+    ])
+    result = _run(command)
+    if result.returncode != 0 or not video_path.exists():
+        raise RuntimeError(f"scored_story_render_failed:{result.stderr[-900:]}")
+    return {
+        "reel_artifact_path": str(video_path), "cover_path": str(cover_path),
+        "final_freeze_frame_path": str(final_path), "static_derivative_path": str(static_path),
+        "public_urls": {"video": _public_url(str(video_path)), "cover": _public_url(str(cover_path)), "final_frame": _public_url(str(final_path)), "static": _public_url(str(static_path))},
+        "creative_family_id": plan["creative_family_id"], "parent_reel_id": plan["parent_reel_id"],
+        "reel_type": "SCORED_STORY_REEL", "story_score": plan["music_score"], "scenes": scenes,
+    }
+
+
 def _poster(final_state: dict[str, Any], source_image: str | None, *, square: bool = False) -> Image.Image:
     width, height = (1080, 1080) if square else (REEL_WIDTH, REEL_HEIGHT)
     image = Image.new("RGB", (width, height), "#15242a")
@@ -235,6 +378,24 @@ def _ffprobe() -> str:
     if not executable:
         raise RuntimeError("ffprobe_not_available")
     return executable
+
+def _espeak() -> str:
+    executable = os.environ.get("ESPEAK_BIN", "").strip() or shutil.which("espeak-ng") or shutil.which("espeak")
+    if not executable:
+        raise RuntimeError("espeak_not_available")
+    return executable
+
+def render_story_narration(plan: dict[str, Any], *, output_path: str) -> str:
+    script = " ".join(_text(scene.get("caption"), 500) for scene in plan.get("scenes", [])).strip()
+    if not script:
+        raise ValueError("scored_story_narration_requires_slide_text")
+    result = _run([_espeak(), "-s", "150", "-p", "38", "-w", output_path, script])
+    if result.returncode != 0 or not os.path.isfile(output_path):
+        raise RuntimeError(f"story_narration_failed:{result.stderr[-500:]}")
+    return output_path
+    narration_path = str(plan.get("narration_path") or "").strip()
+    if not narration_path and bool(plan.get("auto_narration")):
+        narration_path = render_story_narration(plan, output_path=str(media_dir / f"{stem}_narration.wav"))
 
 
 def render_reel(plan: dict[str, Any], *, source_image: str | None, data_dir: str | None = None) -> dict[str, Any]:

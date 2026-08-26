@@ -8,6 +8,7 @@ import threading
 import subprocess
 import traceback
 import uuid
+import urllib.request
 from urllib.parse import urlparse, parse_qs
 import schedule
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -191,6 +192,43 @@ def _custom_post_history_path() -> str:
     return os.path.join(_data_dir(), "custom_post_history.json")
 
 
+def _compose_scored_story(payload: dict) -> tuple[int, dict]:
+    from social.reels import build_scored_story_plan, render_scored_story_reel, technical_qa
+
+    image_urls = payload.get("image_urls") if isinstance(payload.get("image_urls"), list) else []
+    image_urls = [str(item).strip() for item in image_urls if str(item).strip()]
+    if not 2 <= len(image_urls) <= 10 or any(not item.startswith("https://") for item in image_urls):
+        return 400, {"error": "image_urls must contain 2 to 10 public HTTPS URLs"}
+    media_dir = os.path.join(_data_dir(), "public_media")
+    os.makedirs(media_dir, exist_ok=True)
+    request_id = uuid.uuid4().hex
+    assets = []
+    try:
+        for index, url in enumerate(image_urls):
+            path = os.path.join(media_dir, f"studio_{request_id}_slide_{index + 1}.png")
+            request = urllib.request.Request(url, headers={"User-Agent": "Infenergy-Scored-Story/1.0"})
+            with urllib.request.urlopen(request, timeout=30) as response, open(path, "wb") as destination:
+                data = response.read(15 * 1024 * 1024 + 1)
+                if len(data) > 15 * 1024 * 1024:
+                    raise ValueError("slide exceeds 15 MB")
+                destination.write(data)
+            assets.append({"local_path": path, "public_url": url})
+        plan = build_scored_story_plan(
+            post_id=str(payload.get("post_id") or f"studio-{request_id}"), carousel_assets=assets,
+            slide_texts=[str(item) for item in payload.get("slide_texts", [])],
+            emotions=[str(item) for item in payload.get("emotions", [])],
+            motion_intensity=float(payload.get("motion_intensity", 0.55)),
+        )
+        plan["auto_narration"] = bool(payload.get("auto_narration", True))
+        artifact = render_scored_story_reel(plan, data_dir=_data_dir())
+        qa = technical_qa(artifact, plan)
+        if qa["status"] != "PASS":
+            return 422, {"error": "scored_story_technical_qa_failed", "technical_qa": qa}
+        return 200, {"status": "RENDERED", "instagram_reel": artifact, "plan": plan, "technical_qa": qa}
+    except Exception as exc:
+        return 500, {"error": f"{type(exc).__name__}: {exc}"}
+
+
 def _publish_custom_post(payload: dict) -> tuple[int, dict]:
     external_id = str(payload.get("external_id", "")).strip()
     caption = str(payload.get("caption", "")).strip()
@@ -198,6 +236,9 @@ def _publish_custom_post(payload: dict) -> tuple[int, dict]:
     image_url = str(payload.get("image_url", "")).strip()
     image_urls = payload.get("image_urls") if isinstance(payload.get("image_urls"), list) else []
     image_urls = list(dict.fromkeys(str(item).strip() for item in image_urls if str(item).strip()))
+    reel = payload.get("reel") if isinstance(payload.get("reel"), dict) else {}
+    reel_video_url = str(reel.get("video_url", "")).strip()
+    reel_cover_url = str(reel.get("cover_url", "")).strip()
     platforms = payload.get("platforms") if isinstance(payload.get("platforms"), list) else []
     platforms = list(dict.fromkeys(str(item).strip().lower() for item in platforms))
     allowed = {"facebook", "instagram", "linkedin"}
@@ -214,6 +255,8 @@ def _publish_custom_post(payload: dict) -> tuple[int, dict]:
         return 400, {"error": "image_url must be a public HTTPS URL"}
     if image_urls and (not 2 <= len(image_urls) <= 10 or any(not item.startswith("https://") for item in image_urls)):
         return 400, {"error": "image_urls must contain 2 to 10 public HTTPS URLs"}
+    if reel and (not reel_video_url.startswith("https://") or not reel_cover_url.startswith("https://")):
+        return 400, {"error": "reel video_url and cover_url must be public HTTPS URLs"}
     if not platforms or any(item not in allowed for item in platforms):
         return 400, {"error": "platforms must contain facebook, instagram, or linkedin"}
 
@@ -248,6 +291,9 @@ def _publish_custom_post(payload: dict) -> tuple[int, dict]:
                 "linkedin": {"final_text": linkedin_caption},
             },
         }
+        if reel:
+            content["instagram_reel"] = {"public_urls": {"video": reel_video_url, "cover": reel_cover_url}}
+            content["platform_posts"]["instagram"]["media_type"] = "REEL"
         for platform in platforms:
             previous = results.get(platform)
             if isinstance(previous, dict) and previous.get("status") == "published":
@@ -1972,7 +2018,7 @@ class HealthHandler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(body)
             return
-        if parsed.path != "/custom-post":
+        if parsed.path not in {"/custom-post", "/scored-story-reel"}:
             self.do_GET()
             return
         params = parse_qs(parsed.query)
@@ -1992,7 +2038,7 @@ class HealthHandler(BaseHTTPRequestHandler):
             payload = json.loads(self.rfile.read(length).decode("utf-8"))
             if not isinstance(payload, dict):
                 raise ValueError("request body must be a JSON object")
-            status_code, response = _publish_custom_post(payload)
+            status_code, response = _compose_scored_story(payload) if parsed.path == "/scored-story-reel" else _publish_custom_post(payload)
         except (ValueError, json.JSONDecodeError) as exc:
             status_code, response = 400, {"error": str(exc)}
         except Exception as exc:

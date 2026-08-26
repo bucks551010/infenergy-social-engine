@@ -596,6 +596,54 @@ def register_core_capabilities(registry: CapabilityRegistry, policies: PolicyEng
             "_rollback": {"asset_paths": [item["local_path"] for item in assets]},
         }
 
+    def creative_scored_story_reel(payload: dict[str, Any], context: ExecutionContext) -> dict[str, Any]:
+        from social.reels import build_scored_story_plan, render_scored_story_reel, technical_qa
+
+        package = dict(payload["package"])
+        carousel_assets = package.get("carousel_assets")
+        if not isinstance(carousel_assets, list) or len(carousel_assets) < 2:
+            raise ValueError("package_requires_at_least_two_carousel_assets")
+        slide_texts = payload.get("slide_texts")
+        if not isinstance(slide_texts, list):
+            slide_texts = [
+                " ".join(part for part in (str(slide.get("on_image_headline") or ""), str(slide.get("on_image_subline") or "")) if part).strip()
+                for slide in package.get("carousel_slides", [])
+                if isinstance(slide, dict)
+            ]
+        plan = build_scored_story_plan(
+            post_id=str(package.get("post_id") or uuid.uuid4().hex),
+            carousel_assets=carousel_assets,
+            slide_texts=[str(item) for item in slide_texts],
+            emotions=[str(item) for item in payload.get("emotions", [])],
+            narration_path=str(payload.get("narration_path") or "") or None,
+            motion_intensity=float(payload.get("motion_intensity", 0.55)),
+        )
+        plan["auto_narration"] = bool(payload.get("auto_narration", True))
+        if context.dry_run:
+            return {"would_render": plan, "production_mutated": False}
+        artifact = render_scored_story_reel(plan, data_dir=context.data_dir)
+        qa = technical_qa(artifact, plan)
+        if qa["status"] != "PASS":
+            raise RuntimeError(f"scored_story_technical_qa_failed:{','.join(qa['reasons'])}")
+        package["instagram_reel"] = artifact
+        package["visual_format"] = "SCORED_STORY_REEL"
+        package.setdefault("platform_posts", {})["instagram"] = {
+            **package.get("platform_posts", {}).get("instagram", {}),
+            "platform": "instagram", "media_type": "REEL", "content_format": "reel",
+            "final_caption": package.get("ig_caption", ""),
+        }
+        return {
+            "status": "RENDERED", "package": package, "instagram_reel": artifact,
+            "plan": plan, "technical_qa": qa,
+            "platform_support": {
+                "instagram": "READY_FOR_REEL_SCHEDULING",
+                "facebook": "CAROUSEL_ASSETS_RETAINED_VIDEO_UPLOAD_NOT_ENABLED",
+                "linkedin": "CAROUSEL_ASSETS_RETAINED_VIDEO_UPLOAD_NOT_ENABLED",
+            },
+            "next_action": "Call social.schedule with this package and include instagram to schedule the Reel.",
+            "_rollback": {"asset_paths": [artifact[key] for key in ("reel_artifact_path", "cover_path", "final_freeze_frame_path", "static_derivative_path")]},
+        }
+
     def rollback_creative(data: dict[str, Any], _: ExecutionContext) -> dict[str, Any]:
         removed = []
         for path in data.get("asset_paths", []):
@@ -695,6 +743,7 @@ def register_core_capabilities(registry: CapabilityRegistry, policies: PolicyEng
         Capability("risks.get", "Get risks", "Return ranked, evidence-bearing Infenergy risks and mitigations.", "BUSINESS_INTELLIGENCE", risks_get),
         Capability("creative.score", "Score creative", "Evaluate supplied content with the preserved platform-native quality rubric without generating or publishing anything.", "CREATIVE_STUDIO", creative_score, object_schema({"content": {"type": "object"}, "platforms": {"type": "array"}}, ["content"])),
         Capability("creative.carousel.generate", "Generate carousel package", "Author and render a complete platform-safe carousel package with a caller-selected 2-to-10 slide count. This creates draft assets but does not schedule or publish them.", "CREATIVE_STUDIO", creative_carousel_generate, object_schema({"objective": {"type": "string"}, "title": {"type": "string"}, "platform": {"type": "string"}, "platforms": {"type": "array"}, "slide_count": {"type": "integer"}, "product_id": {"type": "string"}, "product": {"type": "object"}, "principle_key": {"type": "string"}, "archetype_key": {"type": "string"}, "supporting_message": {"type": "string"}, "caption": {"type": "string"}, "cta": {"type": "string"}, "pillar": {"type": "string"}, "visual_motif": {"type": "string"}}, ["objective"]), risk_level="INTERNAL_MUTATION", cost_class="MEDIUM", permission_requirement="AUTONOMOUS", supports_rollback=True, rollback_handler=rollback_creative),
+        Capability("creative.scored_story_reel.generate", "Render scored story Reel", "Animate an existing ordered carousel into a vertical H.264 story Reel with readable timing, emotional scoring, free local narration, and Instagram-ready media. Facebook and LinkedIn retain carousel assets until their video upload paths are enabled.", "CREATIVE_STUDIO", creative_scored_story_reel, object_schema({"package": {"type": "object"}, "slide_texts": {"type": "array"}, "emotions": {"type": "array"}, "narration_path": {"type": "string"}, "auto_narration": {"type": "boolean"}, "motion_intensity": {"type": "number"}}, ["package"]), risk_level="INTERNAL_MUTATION", cost_class="LOW", permission_requirement="EXECUTE_WITH_APPROVAL", supports_rollback=True, rollback_handler=rollback_creative),
         Capability("agents.list", "List operational agents", "List every preserved specialist agent available to the operating system.", "OPERATIONS", agents_list),
         Capability("agents.run", "Run operational agent", "Run any registered specialist agent with supplied parameters. Mutation-capable agent execution remains owner-approved.", "OPERATIONS", agent_run, object_schema({"name": {"type": "string"}, "params": {"type": "object"}}, ["name"]), risk_level="INTERNAL_MUTATION", permission_requirement="EXECUTE_WITH_APPROVAL"),
         Capability("publication.operations.get", "Get publication operations", "Inspect exact daily slots, candidate decisions, outbox state, platform transactions, failures, and readiness actions.", "SOCIAL", publication_operations, object_schema({"content_date": {"type": "string"}, "lead_hours": {"type": "integer"}})),

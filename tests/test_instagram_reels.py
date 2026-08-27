@@ -5,6 +5,7 @@ import shutil
 import sys
 import tempfile
 import json
+import wave
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -92,6 +93,10 @@ def test_scored_story_plan_sets_readable_timing_and_emotional_arc(tmp_path):
     )
     assert plan["pre_render_gate"] == "SCORED_STORY_READY"
     assert plan["music_score"]["emotional_arc"] == ["mystery", "danger", "relief"]
+    assert plan["music_score"]["source"] == "original_cinematic_composition"
+    assert plan["music_score"]["channels"] == 2
+    assert "percussion" not in plan["music_score"]["instrumentation"]
+    assert {"kick", "snare", "hi_hat", "arpeggio"}.issubset(plan["music_score"]["instrumentation"])
     assert plan["scenes"][1]["duration"] > plan["scenes"][0]["duration"]
     assert plan["scenes"][2]["start"] == plan["scenes"][1]["end"]
     assert plan["video_end_time"] == plan["scenes"][-1]["end"]
@@ -100,6 +105,22 @@ def test_scored_story_plan_sets_readable_timing_and_emotional_arc(tmp_path):
         assert reels.technical_qa(artifact, plan)["status"] == "PASS"
         assert artifact["reel_type"] == "SCORED_STORY_REEL"
         assert artifact["story_score"]["commercial_use"] is True
+
+
+def test_cinematic_story_score_is_nonempty_stereo_music(tmp_path):
+    plan = {
+        "parent_reel_id": "score-test",
+        "video_end_time": 1.2,
+        "music_score": {"tempo_bpm": 92},
+        "scenes": [{"emotion": "mystery", "start": 0.0, "end": 1.2, "duration": 1.2}],
+    }
+    destination = tmp_path / "score.wav"
+    reels._render_cinematic_score(plan, destination)
+    with wave.open(str(destination), "rb") as audio:
+        assert audio.getnchannels() == 2
+        assert audio.getframerate() == 48_000
+        assert audio.getnframes() == 57_600
+        assert any(audio.readframes(2048))
 
 
 def test_real_renderer_freezes_actual_video_when_ffmpeg_is_available():

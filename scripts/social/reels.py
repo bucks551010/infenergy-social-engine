@@ -10,9 +10,12 @@ from __future__ import annotations
 import json
 import math
 import os
+import random
 import shutil
+import struct
 import subprocess
 import uuid
+import wave
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -26,10 +29,10 @@ REEL_FPS = 30
 MIN_REEL_SECONDS = 3.0
 MAX_REEL_SECONDS = 15 * 60.0
 STORY_EMOTIONS = ("mystery", "eerie", "tension", "danger", "discovery", "relief", "triumph", "reflection")
-EMOTION_SCORE = {
-    "mystery": (146.83, 0.12), "eerie": (138.59, 0.10), "tension": (196.00, 0.14),
-    "danger": (220.00, 0.16), "discovery": (261.63, 0.13), "relief": (329.63, 0.11),
-    "triumph": (392.00, 0.16), "reflection": (293.66, 0.10),
+EMOTION_HARMONY = {
+    "mystery": (50, (0, 3, 7)), "eerie": (47, (0, 1, 7)), "tension": (45, (0, 3, 6)),
+    "danger": (43, (0, 1, 6)), "discovery": (52, (0, 4, 7)), "relief": (55, (0, 4, 7)),
+    "triumph": (57, (0, 4, 7)), "reflection": (50, (0, 3, 7)),
 }
 
 
@@ -224,7 +227,7 @@ def build_scored_story_plan(
         words = len(text.split())
         duration = round(min(7.0, max(2.8, 2.4 + words * 0.22)), 2)
         emotion = _text(requested_emotions[index] if index < len(requested_emotions) else STORY_EMOTIONS[index % len(STORY_EMOTIONS)], 24).lower()
-        if emotion not in EMOTION_SCORE:
+        if emotion not in EMOTION_HARMONY:
             raise ValueError(f"unsupported_story_emotion:{emotion}")
         scenes.append({
             "index": index, "asset_path": local_path, "public_url": str(asset.get("public_url") or ""),
@@ -244,9 +247,12 @@ def build_scored_story_plan(
         "narration_path": narration_path,
         "scenes": scenes,
         "music_score": {
-            "source": "ffmpeg_procedural_original",
+            "source": "original_cinematic_composition",
             "license": "original_generated_audio",
             "commercial_use": True,
+            "tempo_bpm": 92,
+            "instrumentation": ["cinematic_pad", "sub_bass", "arpeggio", "kick", "snare", "hi_hat", "transition_swell"],
+            "channels": 2,
             "emotional_arc": [scene["emotion"] for scene in scenes],
             "narration_ducking": bool(narration_path),
         },
@@ -265,6 +271,74 @@ def _story_frame(source_path: str, destination: Path, *, square: bool = False) -
         canvas.save(destination, format="JPEG", quality=94, subsampling=0)
 
 
+def _midi_frequency(note: int) -> float:
+    return 440.0 * (2.0 ** ((note - 69) / 12.0))
+
+
+def _render_cinematic_score(plan: dict[str, Any], destination: Path) -> None:
+    sample_rate = 48_000
+    tempo = float(plan.get("music_score", {}).get("tempo_bpm") or 92)
+    beat_seconds = 60.0 / tempo
+    scenes = plan["scenes"]
+    total_seconds = float(plan["video_end_time"])
+    total_samples = int(math.ceil(total_seconds * sample_rate))
+    randomizer = random.Random(str(plan.get("parent_reel_id") or "infenergy-score"))
+    scene_index = 0
+    noise = [randomizer.uniform(-1.0, 1.0) for _ in range(4096)]
+    with wave.open(str(destination), "wb") as output:
+        output.setnchannels(2)
+        output.setsampwidth(2)
+        output.setframerate(sample_rate)
+        block = bytearray()
+        for sample_index in range(total_samples):
+            time_seconds = sample_index / sample_rate
+            while scene_index + 1 < len(scenes) and time_seconds >= float(scenes[scene_index]["end"]):
+                scene_index += 1
+            scene = scenes[scene_index]
+            local_time = max(0.0, time_seconds - float(scene["start"]))
+            scene_duration = float(scene["duration"])
+            root, intervals = EMOTION_HARMONY[scene["emotion"]]
+            scene_envelope = min(1.0, local_time / 0.45, max(0.0, (scene_duration - local_time) / 0.5))
+            pulse = 0.84 + 0.16 * math.sin(2 * math.pi * time_seconds / (beat_seconds * 4))
+            pad = sum(
+                math.sin(2 * math.pi * _midi_frequency(root + interval) * time_seconds + interval * 0.31)
+                for interval in intervals
+            ) / len(intervals)
+            bass = math.sin(2 * math.pi * _midi_frequency(root - 12) * time_seconds)
+            half_beat = beat_seconds / 2
+            arp_step = int(time_seconds / half_beat)
+            arp_note = root + 12 + intervals[arp_step % len(intervals)]
+            arp_phase = time_seconds % half_beat
+            arp_envelope = math.exp(-5.2 * arp_phase / half_beat)
+            arpeggio = (
+                math.sin(2 * math.pi * _midi_frequency(arp_note) * time_seconds)
+                + 0.28 * math.sin(4 * math.pi * _midi_frequency(arp_note) * time_seconds)
+            ) * arp_envelope
+            beat_phase = time_seconds % beat_seconds
+            kick = math.sin(2 * math.pi * (58 - 24 * min(1.0, beat_phase / 0.16)) * beat_phase) * math.exp(-24 * beat_phase)
+            beat_number = int(time_seconds / beat_seconds)
+            snare_phase = beat_phase if beat_number % 4 in (1, 3) else 1.0
+            snare = noise[sample_index % len(noise)] * math.exp(-22 * snare_phase) if snare_phase < 0.22 else 0.0
+            hat_phase = time_seconds % half_beat
+            hi_hat = noise[(sample_index * 7) % len(noise)] * math.exp(-52 * hat_phase) if hat_phase < 0.08 else 0.0
+            transition = 0.0
+            if scene_duration - local_time < 0.55:
+                progress = 1.0 - max(0.0, scene_duration - local_time) / 0.55
+                transition = noise[(sample_index * 13) % len(noise)] * progress * 0.08
+            tonal = scene_envelope * (pad * 0.19 * pulse + bass * 0.16 + arpeggio * 0.15)
+            rhythm = kick * 0.24 + snare * 0.11 + hi_hat * 0.055 + transition
+            overall_fade = min(1.0, time_seconds / 0.8, max(0.0, (total_seconds - time_seconds) / 1.1))
+            pan = -0.22 if arp_step % 2 == 0 else 0.22
+            left = math.tanh((tonal * (1.0 - pan * 0.35) + rhythm) * overall_fade)
+            right = math.tanh((tonal * (1.0 + pan * 0.35) + rhythm) * overall_fade)
+            block.extend(struct.pack("<hh", int(left * 25_500), int(right * 25_500)))
+            if len(block) >= 65_536:
+                output.writeframesraw(block)
+                block.clear()
+        if block:
+            output.writeframesraw(block)
+
+
 def render_scored_story_reel(plan: dict[str, Any], *, data_dir: str | None = None) -> dict[str, Any]:
     """Render ordered slides and an adaptive procedural score into the standard Reel contract."""
     if plan.get("pre_render_gate") != "SCORED_STORY_READY" or not plan.get("scenes"):
@@ -277,46 +351,47 @@ def render_scored_story_reel(plan: dict[str, Any], *, data_dir: str | None = Non
     cover_path = media_dir / f"{stem}_cover.jpg"
     final_path = media_dir / f"{stem}_final_frame.jpg"
     static_path = media_dir / f"{stem}_static.jpg"
+    score_path = media_dir / f"{stem}_score.wav"
     scenes = plan["scenes"]
     _story_frame(scenes[0]["asset_path"], cover_path)
     _story_frame(scenes[-1]["asset_path"], final_path)
     _story_frame(scenes[-1]["asset_path"], static_path, square=True)
+    _render_cinematic_score(plan, score_path)
+    narration_path = str(plan.get("narration_path") or "").strip()
+    if not narration_path and bool(plan.get("auto_narration")):
+        narration_path = render_story_narration(plan, output_path=str(media_dir / f"{stem}_narration.wav"))
     command = [_ffmpeg(), "-y"]
     for scene in scenes:
         command.extend(["-loop", "1", "-framerate", str(REEL_FPS), "-t", str(scene["duration"]), "-i", scene["asset_path"]])
-    narration_path = str(plan.get("narration_path") or "").strip()
+    command.extend(["-i", str(score_path)])
     if narration_path:
         if not os.path.isfile(narration_path):
             raise ValueError("scored_story_narration_not_found")
         command.extend(["-i", narration_path])
     filters = []
     video_labels = []
-    audio_labels = []
     intensity = float(plan.get("motion_intensity") or 0.55)
     for index, scene in enumerate(scenes):
         frames = max(1, int(math.ceil(float(scene["duration"]) * REEL_FPS)))
         zoom_step = (0.00018 + intensity * 0.00032) * (1 if scene["movement"] == "slow_push" else -1)
         zoom = f"min(zoom+{zoom_step:.6f},1.08)" if zoom_step > 0 else f"max(zoom{zoom_step:.6f},1.0)"
         filters.append(
-            f"[{index}:v]scale={REEL_WIDTH}:{REEL_HEIGHT}:force_original_aspect_ratio=decrease,"
-            f"pad={REEL_WIDTH}:{REEL_HEIGHT}:(ow-iw)/2:(oh-ih)/2:color=0x10191d,"
+            f"[{index}:v]split=2[bg{index}][fg{index}];"
+            f"[bg{index}]scale={REEL_WIDTH}:{REEL_HEIGHT}:force_original_aspect_ratio=increase,"
+            f"crop={REEL_WIDTH}:{REEL_HEIGHT},gblur=sigma=28,eq=brightness=-0.32:saturation=0.72[back{index}];"
+            f"[fg{index}]scale=1000:1250:force_original_aspect_ratio=decrease[front{index}];"
+            f"[back{index}][front{index}]overlay=(W-w)/2:(H-h)/2,"
+            f"drawbox=x=38:y=333:w=1004:h=1254:color=white@0.82:t=4,"
             f"zoompan=z='{zoom}':d={frames}:s={REEL_WIDTH}x{REEL_HEIGHT}:fps={REEL_FPS},"
             f"trim=duration={scene['duration']},setpts=PTS-STARTPTS[v{index}]"
         )
-        frequency, volume = EMOTION_SCORE[scene["emotion"]]
-        fade_out = max(0.0, float(scene["duration"]) - 0.45)
-        filters.append(
-            f"sine=frequency={frequency}:sample_rate=48000:duration={scene['duration']},"
-            f"volume={volume},afade=t=in:st=0:d=0.35,afade=t=out:st={fade_out:.2f}:d=0.45[a{index}]"
-        )
         video_labels.append(f"[v{index}]")
-        audio_labels.append(f"[a{index}]")
     filters.append(f"{''.join(video_labels)}concat=n={len(scenes)}:v=1:a=0,format=yuv420p[v]")
-    filters.append(f"{''.join(audio_labels)}concat=n={len(scenes)}:v=0:a=1[score]")
-    audio_map = "[score]"
+    score_index = len(scenes)
+    audio_map = f"{score_index}:a"
     if narration_path:
-        narration_index = len(scenes)
-        filters.append(f"[score]volume=0.32[ducked];[{narration_index}:a]volume=1.0[narration];[ducked][narration]amix=inputs=2:duration=first:dropout_transition=1[aout]")
+        narration_index = score_index + 1
+        filters.append(f"[{score_index}:a]volume=0.32[ducked];[{narration_index}:a]volume=1.0[narration];[ducked][narration]amix=inputs=2:duration=first:dropout_transition=1[aout]")
         audio_map = "[aout]"
     command.extend([
         "-filter_complex", ";".join(filters), "-map", "[v]", "-map", audio_map,
@@ -393,9 +468,6 @@ def render_story_narration(plan: dict[str, Any], *, output_path: str) -> str:
     if result.returncode != 0 or not os.path.isfile(output_path):
         raise RuntimeError(f"story_narration_failed:{result.stderr[-500:]}")
     return output_path
-    narration_path = str(plan.get("narration_path") or "").strip()
-    if not narration_path and bool(plan.get("auto_narration")):
-        narration_path = render_story_narration(plan, output_path=str(media_dir / f"{stem}_narration.wav"))
 
 
 def render_reel(plan: dict[str, Any], *, source_image: str | None, data_dir: str | None = None) -> dict[str, Any]:
@@ -450,10 +522,13 @@ def technical_qa(artifact: dict[str, Any], plan: dict[str, Any]) -> dict[str, An
         return {"status": "FAIL", "reasons": ["ffprobe_failed"]}
     data = json.loads(probe.stdout)
     video = next((stream for stream in data.get("streams", []) if stream.get("codec_type") == "video"), {})
+    audio = next((stream for stream in data.get("streams", []) if stream.get("codec_type") == "audio"), {})
     duration = float(data.get("format", {}).get("duration") or 0)
     reasons = []
     if video.get("codec_name") != "h264": reasons.append("codec_not_h264")
     if (int(video.get("width") or 0), int(video.get("height") or 0)) != (REEL_WIDTH, REEL_HEIGHT): reasons.append("wrong_resolution")
+    if audio.get("codec_name") != "aac": reasons.append("audio_not_aac")
+    if int(audio.get("channels") or 0) != 2: reasons.append("audio_not_stereo")
     if not MIN_REEL_SECONDS <= duration <= MAX_REEL_SECONDS: reasons.append("invalid_duration")
     return {"status": "PASS" if not reasons else "FAIL", "reasons": reasons, "duration": duration, "width": video.get("width"), "height": video.get("height"), "fps": REEL_FPS, "codec": video.get("codec_name"), "file_size": os.path.getsize(path)}
 

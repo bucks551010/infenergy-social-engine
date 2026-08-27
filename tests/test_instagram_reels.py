@@ -110,9 +110,9 @@ def test_scored_story_plan_sets_readable_timing_and_emotional_arc(tmp_path):
         assert artifact["story_score"]["commercial_use"] is True
 
 
-def test_scored_story_reel_accepts_24_native_scenes_but_not_25():
-    assert worker._valid_scored_story_urls([f"https://media.example/scene-{index}.png" for index in range(24)])
-    assert not worker._valid_scored_story_urls([f"https://media.example/scene-{index}.png" for index in range(25)])
+def test_scored_story_reel_accepts_30_native_scenes_but_not_31():
+    assert worker._valid_scored_story_urls([f"https://media.example/scene-{index}.png" for index in range(30)])
+    assert not worker._valid_scored_story_urls([f"https://media.example/scene-{index}.png" for index in range(31)])
     assert not worker._valid_scored_story_urls(["https://media.example/only-one.png"])
     assert not worker._valid_scored_story_urls(["https://media.example/one.png", "http://media.example/two.png"])
 

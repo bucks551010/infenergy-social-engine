@@ -1198,7 +1198,12 @@ def test_carousel_builds_from_structure():
         visual_type="carousel",
         visual_direction="clean comparison layout",
     )
-    assert c.slide_count == 5
+    assert c.slide_count == 7
+    assert [slide.role for slide in c.slides] == ["COVER", "STORY", "STORY", "STORY", "STORY", "STORY", "FINALE"]
+    assert c.slides[-1].logo_url == carousel_director.OFFICIAL_LOGO_URL
+    assert c.slides[-1].call_to_action == "GO TO INFENERGY"
+    assert c.slides[-1].tagline
+    assert c.slides[-1].website == "infenergypower.com"
     valid, problems = carousel_director.is_valid_carousel(c, max_slides=10)
     assert valid, problems
 
@@ -1211,7 +1216,8 @@ def test_carousel_skips_empty_beats():
         visual_type="carousel",
         visual_direction="",
     )
-    assert c.slide_count == 1
+    assert c.slide_count == 3
+    assert [slide.role for slide in c.slides] == ["COVER", "STORY", "FINALE"]
 
 
 # --- claim intelligence -------------------------------------------------

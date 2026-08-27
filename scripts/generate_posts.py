@@ -11,6 +11,7 @@ from datetime import date, datetime, timezone, timedelta
 from typing import Any
 from google import genai
 from google.genai import types
+from social import carousel_director
 
 
 # ---------------------------------------------------------------------------
@@ -3675,7 +3676,12 @@ def _apply_strategic_brief_to_visual(visual_plan: dict, run_context: dict, produ
             slide["on_image_text_hint"] = proof_hint[:80]
         storyboard.append(slide)
 
-    visual_plan["strategic_carousel_storyboard"] = storyboard
+    visual_plan["strategic_carousel_storyboard"] = carousel_director.normalize_slide_dicts(
+        storyboard,
+        title=str((storyboard[0] if storyboard else {}).get("beat") or "INFENERGY MICRO MISSION"),
+        moral=to_state or carousel_director.DEFAULT_MORAL,
+        call_to_action=cta_pinned or carousel_director.DEFAULT_CTA,
+    )
     visual_plan["strategic_brief_alignment"] = {
         "logic_principle": law_name,
         "template_family": template,
@@ -3708,11 +3714,7 @@ def _build_logical_carousel_campaign(components: dict) -> dict:
     proof_line = features[0] if features else str(components.get("proof") or "Review the published product details.")
     second_proof = features[1] if len(features) > 1 else str(components.get("detail_summary") or proof_line)
     strategy = components.get("logical_emotional_strategy", {}) if isinstance(components.get("logical_emotional_strategy"), dict) else {}
-    return {
-        "format": "five_slide_carousel",
-        "principle": str(strategy.get("principle_name") or "Logical product-fit narrative"),
-        "audience_archetype": str(strategy.get("audience_archetype") or "Prepared buyer"),
-        "slides": [
+    narrative_slides = [
             {
                 "slide": 1,
                 "purpose": "visual_anxiety_or_desire_hook",
@@ -3743,7 +3745,17 @@ def _build_logical_carousel_campaign(components: dict) -> dict:
                 "headline": "MAKE THE NEXT MOVE",
                 "body": str(components.get("cta") or "Review the verified product details."),
             },
-        ],
+        ]
+    return {
+        "format": "framed_carousel",
+        "principle": str(strategy.get("principle_name") or "Logical product-fit narrative"),
+        "audience_archetype": str(strategy.get("audience_archetype") or "Prepared buyer"),
+        "slides": carousel_director.normalize_slide_dicts(
+            narrative_slides,
+            title=str(components.get("on_image_headline") or components.get("hook") or "INFENERGY MICRO MISSION"),
+            moral=str(components.get("emotional_outcome") or carousel_director.DEFAULT_MORAL),
+            call_to_action=str(components.get("cta") or carousel_director.DEFAULT_CTA),
+        ),
     }
 
 

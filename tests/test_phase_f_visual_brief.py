@@ -60,12 +60,15 @@ def test_apply_strategic_brief_to_visual_builds_storyboard_from_narrative_templa
     vp = {"visual_objective": "", "gemini_image_prompt": "scene"}
     out = gp._apply_strategic_brief_to_visual(vp, _make_run_context(), product=None)
     storyboard = out["strategic_carousel_storyboard"]
-    assert len(storyboard) == 5
-    assert storyboard[0]["beat"].startswith("Show the storm")
+    assert len(storyboard) == 7
+    assert storyboard[0]["role"] == "COVER"
+    assert storyboard[1]["beat"].startswith("Show the storm")
     # slide 1 seeded with transformation_from
-    assert "storm" in storyboard[0]["on_image_text_hint"].lower()
+    assert "storm" in storyboard[1]["on_image_text_hint"].lower()
     # last slide holds pinned CTA
     assert "1500wh" in storyboard[-1]["on_image_text_hint"].lower()
+    assert storyboard[-1]["role"] == "FINALE"
+    assert storyboard[-1]["logo_url"].startswith("https://infenergypower.com/")
 
 
 def test_apply_strategic_brief_to_visual_falls_back_when_no_narrative():
@@ -73,7 +76,7 @@ def test_apply_strategic_brief_to_visual_falls_back_when_no_narrative():
     rc["conversion_strategist"]["law_narrative_template"] = []
     out = gp._apply_strategic_brief_to_visual({"visual_objective": "", "gemini_image_prompt": ""}, rc, product=None)
     storyboard = out["strategic_carousel_storyboard"]
-    assert len(storyboard) == 5
+    assert len(storyboard) == 7
     for slide in storyboard:
         assert slide["beat"].strip()
 

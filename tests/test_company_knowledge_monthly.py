@@ -145,14 +145,19 @@ def test_month_builder_persists_ready_assets_and_is_idempotent(tmp_path, monkeyp
     carousel = first["entries"][1]["package"]
     assert os.path.exists(single["generated_visuals"]["linkedin"])
     assert single["primary_publish_image_url"].startswith("https://example.test/media/")
-    assert len(carousel["carousel_assets"]) == 4
+    assert len(carousel["carousel_assets"]) == 6
+    assert [asset["role"] for asset in carousel["carousel_assets"]] == ["COVER", "STORY", "STORY", "STORY", "STORY", "FINALE"]
+    assert carousel["carousel_assets"][-1]["logo_url"].startswith("https://infenergypower.com/")
     assert all(os.path.exists(asset["local_path"]) for asset in carousel["carousel_assets"])
     assert carousel["platform_posts"]["linkedin"]["final_caption_qa"]["status"] == "PRESENTATION_READY"
     assert single["gemini_generation"]["required_image_count"] == 1
-    assert carousel["gemini_generation"]["required_image_count"] == 4
+    assert carousel["gemini_generation"]["required_image_count"] == 6
     assert not carousel["gemini_generation"]["fallback_allowed"]
     prompts = carousel["gemini_generation"]["prompts"]
-    assert len({prompt["prompt_sha256"] for prompt in prompts}) == 4
+    assert len({prompt["prompt_sha256"] for prompt in prompts}) == 6
+    assert prompts[0]["v5_direction"]["semantic_role"] == "COVER"
+    assert prompts[-1]["v5_direction"]["semantic_role"] == "FINALE"
+    assert prompts[-1]["v5_direction"]["official_logo_path"].endswith("infenergy_official_logo.png")
     assert all("Do not render words" in prompt["gemini_image_prompt"] for prompt in prompts)
     assert all(prompt["v5_direction"]["text_overlay"]["enabled"] for prompt in prompts)
 
@@ -186,7 +191,7 @@ def test_weekly_brand_mix_compiles_120_days_with_exact_weekly_roles(monkeypatch)
         assert [thought["weekly_role"] for thought in thoughts[offset:offset + 7]] == expected_roles
     mission = thoughts[5]
     assert len(mission["slides"]) == 9
-    assert len(_gemini_generation_plan(mission)["prompts"]) == 9
+    assert len(_gemini_generation_plan(mission)["prompts"]) == 10
     assert mission["reference_image_urls"] == ["https://studio.example/api/assets/canon"]
     assert thoughts[4]["canon_required"] is True
     assert thoughts[6]["source_note"].startswith("https://")
@@ -276,9 +281,9 @@ def test_weekly_brand_mix_survives_real_queue_and_prompt_preparation(tmp_path, m
     assert calendar["micro_mission_posts"] == 1
     assert calendar["historical_mission_posts"] == 1
     assert prepared["prepared_entries"] == 7
-    assert prepared["prepared_prompts"] == 15
+    assert prepared["prepared_prompts"] == 16
     saved = latest_monthly_calendar(str(tmp_path))
-    assert len(saved["entries"][5]["package"]["carousel_assets"]) == 9
+    assert len(saved["entries"][5]["package"]["carousel_assets"]) == 10
     assert saved["entries"][4]["package"]["gemini_generation"]["reference_image_urls"] == ["https://studio.example/api/assets/canon"]
 
 
@@ -355,7 +360,7 @@ def test_existing_month_can_be_prepared_for_strict_gemini_without_rebuilding(tmp
     saved = latest_monthly_calendar(str(tmp_path))
 
     assert result["prepared_entries"] == 2
-    assert result["prepared_prompts"] == 5
+    assert result["prepared_prompts"] == 7
     assert saved["gemini_prompt_status"] == "READY"
     assert saved["entries"][0]["outbox_id"] == original["entries"][0]["outbox_id"]
     assert saved["entries"][0]["package"]["gemini_generation"]["status"] == "PROMPTS_READY"
@@ -372,7 +377,7 @@ def test_prompt_preparation_ignores_preserved_entries_without_outbox_ids(tmp_pat
     assert mixed["queued"] == 1
     assert mixed["skipped_existing"] == 1
     assert result["prepared_entries"] == 1
-    assert result["prepared_prompts"] == 4
+    assert result["prepared_prompts"] == 6
 
 
 def test_all_monthly_gemini_prompts_are_unique_and_overlay_ready():
@@ -388,8 +393,8 @@ def test_all_monthly_gemini_prompts_are_unique_and_overlay_ready():
         )["prompts"]
     ]
 
-    assert len(prompts) == 57
-    assert len({prompt["prompt_sha256"] for prompt in prompts}) == 57
+    assert len(prompts) == 75
+    assert len({prompt["prompt_sha256"] for prompt in prompts}) == 75
     for prompt in prompts:
         image = Image.new("RGB", (1080, 1080), "#20313a")
         _, overlay_error = _apply_v5_text_overlay(image, prompt["v5_direction"])

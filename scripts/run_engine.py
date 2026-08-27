@@ -1323,6 +1323,37 @@ def _final_channel_evidence_readiness(content: dict, effective_channels: dict[st
     return readiness
 
 
+def _candidate_final_readiness(
+    content: dict,
+    effective_channels: dict[str, bool],
+    *,
+    dry_run: bool,
+) -> tuple[list[str], dict]:
+    """Run final hard gates before a candidate can enter the ready pool."""
+    candidate_channels = dict(effective_channels)
+    visuals = content.get("generated_visuals") if isinstance(content.get("generated_visuals"), dict) else {}
+    if visuals.get("deferred") and not dry_run:
+        content["generated_visuals"] = _render_selected_visuals(content)
+        content["image_generation_attempts"] = int(content.get("image_generation_attempts", 0) or 0) + 1
+
+    visual_errors: list[str] = []
+    if not dry_run:
+        _ensure_final_artifact_qa(content, candidate_channels)
+        artifact_errors = _artifact_visual_errors_by_platform(content, candidate_channels)
+        content["artifact_visual_qa"] = (content.get("generated_visuals") or {}).get("artifact_reviews", {})
+        content["artifact_visual_qa_failures"] = artifact_errors
+        visual_errors.extend(
+            f"{platform}_artifact_visual_qa:{issue}"
+            for platform, issues in artifact_errors.items()
+            for issue in issues
+        )
+        visual_errors.extend(_live_visual_gate_errors(content, candidate_channels, False))
+        visual_errors.extend(_final_presentation_errors(content, candidate_channels))
+
+    evidence_readiness = _final_channel_evidence_readiness(content, candidate_channels)
+    return list(dict.fromkeys(visual_errors)), evidence_readiness
+
+
 def _apply_manual_platform_override(
     effective_channels: dict[str, bool],
     channel_reasons: dict[str, str],
@@ -1533,13 +1564,27 @@ def main() -> None:
         # Conversion Logic Engine rule (spec section 23): below 80 CQS, automatically
         # attempt improvement before publishing rather than accepting a "warning"-only gate.
         cqs_total = _conversion_quality_score(content)
+        candidate_visual_errors, candidate_evidence_readiness = _candidate_final_readiness(
+            content,
+            effective_channels,
+            dry_run=dry_run or shadow_mode,
+        )
+        if candidate_visual_errors:
+            validation = {
+                "passed": False,
+                "errors": list(dict.fromkeys([*validation.get("errors", []), *candidate_visual_errors])),
+                "warnings": list(validation.get("warnings", [])),
+            }
+            content["validation_status"] = "failed"
+            content["validation_errors"] = validation["errors"]
         publish_decision = decide_publication(
             legacy_score=scoring,
             validation=validation,
             duplicates=duplicates,
             conversion_quality_score=cqs_total,
             orchestrator_quality=content.get("orchestrator_quality"),
-            evidence_readiness=_evidence_readiness(content),
+            visual_errors=candidate_visual_errors,
+            evidence_readiness=candidate_evidence_readiness,
         )
         content["publish_decision"] = publish_decision
         current_strategy = _strategy_lock_for_revision(content)

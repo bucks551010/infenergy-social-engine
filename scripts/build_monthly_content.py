@@ -20,6 +20,7 @@ from company_knowledge import agent_specialization, knowledge_digest, load_compa
 from content_operations import archive_candidate, cancel_unpublished_inventory, create_council_session, ensure_daily_slots, mark_ready, replace_unpublished_slot
 from agents.learning_context import load_operational_learning
 from inventory_db import get_db_path
+from social.carousel_director import OFFICIAL_LOGO_URL, normalize_slide_dicts
 
 
 DATA_DIR = os.environ.get("DATA_DIR", os.path.join(os.path.dirname(__file__), "..", "data"))
@@ -35,6 +36,7 @@ INK_BY_BACKGROUND = {
     "#4F7658": "#F7F4EC",
     "#E45B3A": "#F7F4EC",
 }
+OFFICIAL_LOGO_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "data", "brand", "infenergy_official_logo.png"))
 
 CONSUMER_MOMENTS = (
     "keeping phones, lights, and communication available during an outage",
@@ -255,7 +257,7 @@ def _weekly_brand_mix_thoughts(slate: dict[str, Any], *, start: date, days: int)
     return compiled[:days]
 
 
-def _render_card(path: str, *, headline: str, supporting: str, pillar: str, index: int, slide_label: str = "") -> None:
+def _render_card(path: str, *, headline: str, supporting: str, pillar: str, index: int, slide_label: str = "", role: str = "STORY") -> None:
     background = BACKGROUND_ROTATION[index % len(BACKGROUND_ROTATION)]
     ink = INK_BY_BACKGROUND[background]
     accent = "#F2C94C" if background != "#F7F4EC" else "#E45B3A"
@@ -281,6 +283,12 @@ def _render_card(path: str, *, headline: str, supporting: str, pillar: str, inde
             draw.text((132, y), line, font=_font(31), fill=ink)
             y += 45
 
+    if role == "FINALE":
+        with Image.open(OFFICIAL_LOGO_PATH) as logo_source:
+            logo = logo_source.convert("RGBA")
+            logo.thumbnail((210, 130), Image.Resampling.LANCZOS)
+            image.paste(logo, (798, 820), logo)
+
     draw.text((132, 984), "PRACTICAL POWER FOR REAL LIFE", font=_font(20, bold=True), fill=ink)
     os.makedirs(os.path.dirname(path), exist_ok=True)
     image.save(path, format="PNG", optimize=True)
@@ -289,7 +297,7 @@ def _render_card(path: str, *, headline: str, supporting: str, pillar: str, inde
 def _carousel_slides(thought: dict[str, Any]) -> list[dict[str, str]]:
     custom = thought.get("slides") if isinstance(thought.get("slides"), list) else []
     if len(custom) >= 2:
-        return [
+        narrative = [
             {
                 "role": str(slide.get("role") or f"slide_{index}"),
                 "headline": str(slide.get("headline") or ""),
@@ -298,12 +306,19 @@ def _carousel_slides(thought: dict[str, Any]) -> list[dict[str, str]]:
             for index, slide in enumerate(custom[:10], start=1)
             if isinstance(slide, dict)
         ]
-    return [
-        {"role": "thought", "headline": thought["statement"], "supporting": ""},
-        {"role": "meaning", "headline": "Why this matters", "supporting": thought["expansion"]},
-        {"role": "application", "headline": "Make it practical", "supporting": _application_for(thought["pillar"])},
-        {"role": "community_question", "headline": thought["prompt"], "supporting": "Bring one clear answer into your power plan."},
-    ]
+    else:
+        narrative = [
+            {"role": "thought", "headline": thought["statement"], "supporting": ""},
+            {"role": "meaning", "headline": "Why this matters", "supporting": thought["expansion"]},
+            {"role": "application", "headline": "Make it practical", "supporting": _application_for(thought["pillar"])},
+            {"role": "community_question", "headline": thought["prompt"], "supporting": "Bring one clear answer into your power plan."},
+        ]
+    return normalize_slide_dicts(
+        narrative,
+        title=str(thought.get("mission_title") or thought.get("overlay_text") or thought.get("statement") or "INFENERGY MICRO MISSION"),
+        moral=str(thought.get("moral") or thought.get("expansion") or ""),
+        call_to_action=str(thought.get("cta") or "GO TO INFENERGY"),
+    )
 
 
 def _load_product_brief(data_dir: str, product_id: str) -> dict[str, Any]:
@@ -343,16 +358,24 @@ def _gemini_generation_plan(thought: dict[str, Any], product: dict[str, Any] | N
         )
     prompts: list[dict[str, Any]] = []
     for slide_index, slide in enumerate(slides, start=1):
+        role = str(slide.get("role") or "STORY").upper()
         overlay_copy = str(
             slide.get("headline")
             if len(slides) > 1
             else thought.get("overlay_text") or thought["statement"]
         ).strip()
+        framing_instruction = (
+            "Design a high-impact original Infenergy mission cover with the mission title as the first delivery frame. "
+            if role == "COVER"
+            else "Reserve a clean lower-right brand zone for downstream composition of the attached official Infenergy logo; do not redraw, imitate, or place that logo in the environment. Show the ending revelation and support the moral, tagline, website, and call to action as the final delivery frame. "
+            if role == "FINALE"
+            else ""
+        )
         scene_prompt = (
             "Create one premium, photorealistic square editorial image for Infenergy Power about practical energy readiness. "
             f"The image must express this exact post and no generic substitute: {thought['statement']} "
             f"Authored scene: {image_scene} Scene meaning: {slide.get('headline', '')}. "
-            f"Visual execution: {visual_execution}. {product_instruction}{character_instruction}"
+            f"Visual execution: {visual_execution}. {product_instruction}{character_instruction}{framing_instruction}"
             f"This is slide {slide_index} of {len(slides)} with the role {slide['role']}. "
             "Show a believable real-life environment, natural human stakes, physically credible portable-energy context, "
             "cinematic directional light, rich material detail, and generous protected negative space in the upper third for an editorial overlay. "
@@ -368,6 +391,9 @@ def _gemini_generation_plan(thought: dict[str, Any], product: dict[str, Any] | N
             "gemini_image_prompt": scene_prompt,
             "prompt_sha256": hashlib.sha256(scene_prompt.encode("utf-8")).hexdigest(),
             "v5_direction": {
+                "semantic_role": role,
+                "official_logo_path": OFFICIAL_LOGO_PATH if role == "FINALE" else "",
+                "official_logo_url": OFFICIAL_LOGO_URL if role == "FINALE" else "",
                 "text_overlay": {
                     "enabled": True,
                     "text": f"Infenergy | {overlay_copy}",
@@ -385,7 +411,10 @@ def _gemini_generation_plan(thought: dict[str, Any], product: dict[str, Any] | N
         "fallback_allowed": False,
         "reuse_across_platforms": True,
         "required_image_count": len(prompts),
-        "reference_image_urls": [str(url) for url in thought.get("reference_image_urls", []) if str(url).startswith("http")],
+        "reference_image_urls": list(dict.fromkeys([
+            *[str(url) for url in thought.get("reference_image_urls", []) if str(url).startswith("http")],
+            *([OFFICIAL_LOGO_URL] if len(slides) > 1 else []),
+        ])),
         "prompts": prompts,
     }
 
@@ -451,8 +480,14 @@ def _render_assets(data_dir: str, thought: dict[str, Any], index: int) -> dict[s
             pillar=thought["pillar"],
             index=index + slide_index - 1,
             slide_label=f"{slide_index}/{len(slides)}" if len(slides) > 1 else "",
+            role=str(slide.get("role") or "STORY").upper(),
         )
-        assets.append({"role": slide["role"], "local_path": local_path, "public_url": _public_url(file_name)})
+        assets.append({
+            "role": slide["role"],
+            "local_path": local_path,
+            "public_url": _public_url(file_name),
+            "logo_url": str(slide.get("logo_url") or ""),
+        })
     return {"primary": assets[0], "slides": assets}
 
 

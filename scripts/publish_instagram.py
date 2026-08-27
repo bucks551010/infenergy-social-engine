@@ -1,8 +1,9 @@
 import os
 import time
 import re
+import mimetypes
 import requests
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse
 
 import publish_wordpress
 from social_visuals import review_rendered_visual
@@ -122,6 +123,12 @@ def _is_reachable_public_url(url: str, *, media_kind: str, timeout: int = 15) ->
     if not is_safe_http_url(url):
         return False
     expected = "video" if media_kind == "video" else "image"
+    parsed = urlparse(url)
+    if parsed.hostname == _env("RAILWAY_PUBLIC_DOMAIN") and parsed.path.startswith("/media/"):
+        file_name = os.path.basename(parsed.path[len("/media/"):]).strip()
+        media_path = os.path.join(_env("DATA_DIR", "/data"), "public_media", file_name)
+        content_type = (mimetypes.guess_type(media_path)[0] or "").lower()
+        return bool(file_name and os.path.isfile(media_path) and os.path.getsize(media_path) > 0 and expected in content_type)
     try:
         response = requests.head(url, allow_redirects=True, timeout=timeout)
         if response.status_code >= 400 or int(response.headers.get("Content-Length") or "1") <= 0:

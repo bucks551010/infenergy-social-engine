@@ -172,6 +172,41 @@ def test_reel_publisher_uses_public_video_cover_and_never_wordpress_upload():
     wordpress_upload.assert_not_called()
 
 
+def test_reel_preflight_accepts_own_persisted_public_media(tmp_path):
+    media_dir = tmp_path / "public_media"
+    media_dir.mkdir()
+    (media_dir / "story.mp4").write_bytes(b"video")
+    with patch.dict(os.environ, {"DATA_DIR": str(tmp_path), "RAILWAY_PUBLIC_DOMAIN": "social.example"}, clear=False), \
+         patch.object(publish_instagram.requests, "head") as head:
+        assert publish_instagram._is_reachable_public_url(
+            "https://social.example/media/story.mp4", media_kind="video"
+        )
+    head.assert_not_called()
+
+
+def test_reel_preflight_rejects_wrong_local_media_type(tmp_path):
+    media_dir = tmp_path / "public_media"
+    media_dir.mkdir()
+    (media_dir / "story.jpg").write_bytes(b"image")
+    with patch.dict(os.environ, {"DATA_DIR": str(tmp_path), "RAILWAY_PUBLIC_DOMAIN": "social.example"}, clear=False):
+        assert not publish_instagram._is_reachable_public_url(
+            "https://social.example/media/story.jpg", media_kind="video"
+        )
+
+
+def test_reel_preflight_does_not_trust_lookalike_domain(tmp_path):
+    media_dir = tmp_path / "public_media"
+    media_dir.mkdir()
+    (media_dir / "story.mp4").write_bytes(b"video")
+    response = Mock(status_code=404, headers={})
+    with patch.dict(os.environ, {"DATA_DIR": str(tmp_path), "RAILWAY_PUBLIC_DOMAIN": "social.example"}, clear=False), \
+         patch.object(publish_instagram.requests, "head", return_value=response) as head:
+        assert not publish_instagram._is_reachable_public_url(
+            "https://social.example.attacker.test/media/story.mp4", media_kind="video"
+        )
+    head.assert_called_once()
+
+
 def test_reel_receipt_is_durable_and_blocks_duplicate_meta_publish():
     content = {
         "post_id": "reel-candidate",

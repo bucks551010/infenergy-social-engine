@@ -192,13 +192,17 @@ def _custom_post_history_path() -> str:
     return os.path.join(_data_dir(), "custom_post_history.json")
 
 
+def _valid_scored_story_urls(image_urls: list[str]) -> bool:
+    return 2 <= len(image_urls) <= 24 and all(item.startswith("https://") for item in image_urls)
+
+
 def _compose_scored_story(payload: dict) -> tuple[int, dict]:
     from social.reels import build_scored_story_plan, render_scored_story_reel, technical_qa
 
     image_urls = payload.get("image_urls") if isinstance(payload.get("image_urls"), list) else []
     image_urls = [str(item).strip() for item in image_urls if str(item).strip()]
-    if not 2 <= len(image_urls) <= 10 or any(not item.startswith("https://") for item in image_urls):
-        return 400, {"error": "image_urls must contain 2 to 10 public HTTPS URLs"}
+    if not _valid_scored_story_urls(image_urls):
+        return 400, {"error": "image_urls must contain 2 to 24 public HTTPS URLs"}
     media_dir = os.path.join(_data_dir(), "public_media")
     os.makedirs(media_dir, exist_ok=True)
     request_id = uuid.uuid4().hex

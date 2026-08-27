@@ -19,6 +19,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 import publish_instagram
 import run_engine
+import worker
 from social import reels
 
 
@@ -107,6 +108,13 @@ def test_scored_story_plan_sets_readable_timing_and_emotional_arc(tmp_path):
         assert reels.technical_qa(artifact, plan)["status"] == "PASS"
         assert artifact["reel_type"] == "SCORED_STORY_REEL"
         assert artifact["story_score"]["commercial_use"] is True
+
+
+def test_scored_story_reel_accepts_24_native_scenes_but_not_25():
+    assert worker._valid_scored_story_urls([f"https://media.example/scene-{index}.png" for index in range(24)])
+    assert not worker._valid_scored_story_urls([f"https://media.example/scene-{index}.png" for index in range(25)])
+    assert not worker._valid_scored_story_urls(["https://media.example/only-one.png"])
+    assert not worker._valid_scored_story_urls(["https://media.example/one.png", "http://media.example/two.png"])
 
 
 def test_cinematic_story_score_has_cue_dynamics_stereo_motion_and_release(tmp_path):

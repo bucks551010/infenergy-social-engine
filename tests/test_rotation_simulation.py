@@ -9,6 +9,7 @@ sys.path.insert(0, os.path.join(_REPO, "scripts"))
 
 from social.candidate_pool import build_rotation_ledger, select_least_recently_used
 from social.product_eligibility import filter_evidence_eligible_products
+from anti_repeat import check_duplicates
 
 
 def test_twenty_one_slots_rotate_without_blocking_or_image_waste():
@@ -82,3 +83,20 @@ def test_zero_fact_briefs_are_excluded_before_twenty_one_slot_rotation(tmp_path)
             {"status": "success", "product_id": selected["id"], "run_started_at_utc": slot_time.isoformat()}
         )
     assert len(set(selected_ids)) == 21
+
+
+def test_consecutive_calendar_day_rejects_repeated_premise_but_ignores_skips():
+    now = datetime(2026, 8, 27, 0, 5, tzinfo=timezone.utc)
+    repeated = {"topic_hash": "outage-family", "scenario": "A family chooses which device stays powered."}
+    previous_post = {
+        "status": "success",
+        "topic_hash": "outage-family",
+        "scenario": "A family chooses which device stays powered.",
+        "run_started_at_utc": "2026-08-26T23:59:00+00:00",
+    }
+    result = check_duplicates(repeated, {"posts": [previous_post]}, now_utc=now)
+    assert "duplicate_premise_on_consecutive_day" in result["reasons"]
+
+    skipped = {**previous_post, "status": "skipped_duplicate"}
+    result = check_duplicates(repeated, {"posts": [skipped]}, now_utc=now)
+    assert "duplicate_premise_on_consecutive_day" not in result["reasons"]

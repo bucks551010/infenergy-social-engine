@@ -108,6 +108,11 @@ def _recent_posts(posts: list[dict[str, Any]], days: int, now_utc: datetime | No
     return out
 
 
+def _previous_calendar_day_posts(posts: list[dict[str, Any]], now_utc: datetime) -> list[dict[str, Any]]:
+    previous_date = now_utc.astimezone(timezone.utc).date() - timedelta(days=1)
+    return [post for post in posts if (parsed := _parse_dt(post)) is not None and parsed.astimezone(timezone.utc).date() == previous_date]
+
+
 def _normalize_text(value: str) -> str:
     return re.sub(r"\s+", " ", (value or "").strip().lower())
 
@@ -120,7 +125,7 @@ def _opening_sentence(text: str) -> str:
     return parts[0].strip() if parts else cleaned
 
 
-def check_duplicates(content: dict[str, Any], history: dict[str, Any], windows: dict[str, int] | None = None) -> dict[str, Any]:
+def check_duplicates(content: dict[str, Any], history: dict[str, Any], windows: dict[str, int] | None = None, now_utc: datetime | None = None) -> dict[str, Any]:
     cfg = dict(DEFAULT_WINDOWS)
     if windows:
         cfg.update(windows)
@@ -135,10 +140,32 @@ def check_duplicates(content: dict[str, Any], history: dict[str, Any], windows: 
 
     reasons: list[str] = []
 
+    current_time = now_utc or datetime.now(timezone.utc)
+    previous_day_posts = _previous_calendar_day_posts(posts, current_time)
+    premise_signatures = {
+        value for value in (
+            str(content.get("topic_hash", "")),
+            stable_text_hash(str(content.get("scenario", ""))) if str(content.get("scenario", "")).strip() else "",
+            stable_text_hash(str(content.get("educational_lesson", ""))) if str(content.get("educational_lesson", "")).strip() else "",
+        ) if value
+    }
+    if premise_signatures and "topic" not in disabled_signatures:
+        for post in previous_day_posts:
+            previous_signatures = {
+                value for value in (
+                    str(post.get("topic_hash", "")),
+                    str(post.get("scenario_signature", "")) or (stable_text_hash(str(post.get("scenario", ""))) if str(post.get("scenario", "")).strip() else ""),
+                    str(post.get("lesson_signature", "")) or (stable_text_hash(str(post.get("educational_lesson", ""))) if str(post.get("educational_lesson", "")).strip() else ""),
+                ) if value
+            }
+            if premise_signatures.intersection(previous_signatures):
+                reasons.append("duplicate_premise_on_consecutive_day")
+                break
+
     # Topic window
     topic_hash = str(content.get("topic_hash", ""))
     if topic_hash and "topic" not in disabled_signatures:
-        for p in _recent_posts(posts, cfg["topic_days"]):
+        for p in _recent_posts(posts, cfg["topic_days"], current_time):
             if str(p.get("topic_hash", "")) == topic_hash:
                 reasons.append("duplicate_topic_within_window")
                 break
@@ -241,7 +268,8 @@ def check_duplicates(content: dict[str, Any], history: dict[str, Any], windows: 
     strict_reasons = [
         reason
         for reason in reasons
-        if reason == "duplicate_exact_caption_within_window" and "exact_caption" in blocking_signatures
+        if reason == "duplicate_premise_on_consecutive_day"
+        or (reason == "duplicate_exact_caption_within_window" and "exact_caption" in blocking_signatures)
     ]
     configured_reasons = [
         reason

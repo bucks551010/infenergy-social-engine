@@ -1018,6 +1018,25 @@ class HealthHandler(BaseHTTPRequestHandler):
     def do_POST(self):
         self.do_GET()
 
+    def do_HEAD(self):
+        parsed = urlparse(self.path)
+        if not parsed.path.startswith("/media/"):
+            self.send_error(404)
+            return
+
+        file_name = os.path.basename(parsed.path[len("/media/"):]).strip()
+        media_path = os.path.join(_data_dir(), "public_media", file_name)
+        if not file_name or not os.path.isfile(media_path):
+            self.send_error(404)
+            return
+
+        mime, _ = mimetypes.guess_type(media_path)
+        self.send_response(200)
+        self.send_header("Content-Type", mime or "application/octet-stream")
+        self.send_header("Cache-Control", "public, max-age=31536000, immutable")
+        self.send_header("Content-Length", str(os.path.getsize(media_path)))
+        self.end_headers()
+
     def do_GET(self):
         parsed = urlparse(self.path)
 

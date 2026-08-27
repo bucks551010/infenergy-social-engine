@@ -1,6 +1,10 @@
 import os
 import tempfile
+import threading
+from http.server import HTTPServer
 from unittest.mock import patch
+
+import requests
 
 import worker
 
@@ -19,6 +23,29 @@ def _carousel_payload(slide_count=6):
     payload = _payload()
     payload["image_urls"] = [f"https://example.com/slide-{position}.png" for position in range(1, slide_count + 1)]
     return payload
+
+
+def test_public_media_head_returns_reel_preflight_headers():
+    with tempfile.TemporaryDirectory() as data_dir, patch.dict(os.environ, {"DATA_DIR": data_dir}, clear=False):
+        media_dir = os.path.join(data_dir, "public_media")
+        os.makedirs(media_dir)
+        media_path = os.path.join(media_dir, "story.mp4")
+        with open(media_path, "wb") as media_file:
+            media_file.write(b"video-bytes")
+
+        server = HTTPServer(("127.0.0.1", 0), worker.HealthHandler)
+        thread = threading.Thread(target=server.handle_request)
+        thread.start()
+        try:
+            response = requests.head(f"http://127.0.0.1:{server.server_port}/media/story.mp4", timeout=5)
+        finally:
+            thread.join(timeout=5)
+            server.server_close()
+
+    assert response.status_code == 200
+    assert response.headers["Content-Type"] == "video/mp4"
+    assert response.headers["Content-Length"] == str(len(b"video-bytes"))
+    assert response.content == b""
 
 
 def test_custom_post_validates_required_fields():

@@ -507,8 +507,12 @@ def _gemini_semantic_plate_quality(
         f"'{expected_headline}', a call-to-action reading approximately '{expected_cta}', and a real "
         f"product staged in the {spec['product_zone']}. Return JSON only with booleans for: "
         "text_missing_or_illegible, headline_mismatch, cta_missing, product_missing, "
-        "gibberish_or_garbled_text, looks_like_generic_ai_poster. Treat misspelled, duplicated, or "
-        "nonsensical letters as gibberish_or_garbled_text=true."
+        "gibberish_or_garbled_text, looks_like_generic_ai_poster, infenergy_symbol_in_sky_or_atmosphere, "
+        "derivative_existing_superhero_imitation. Treat misspelled, duplicated, or nonsensical letters as "
+        "gibberish_or_garbled_text=true. Any Infenergy logo, emblem, infinity-bolt symbol, wordmark, or proxy "
+        "symbol in the sky, clouds, moon, stars, fog, smoke, searchlight, skyline, or atmospheric background "
+        "makes infenergy_symbol_in_sky_or_atmosphere=true. Recognizable imitation of Batman or any existing "
+        "superhero makes derivative_existing_superhero_imitation=true."
     )
     model_candidates = [
         str(os.environ.get("GEMINI_VISUAL_QA_MODEL", "")).strip(),
@@ -533,6 +537,8 @@ def _gemini_semantic_plate_quality(
                 "product_missing",
                 "gibberish_or_garbled_text",
                 "looks_like_generic_ai_poster",
+                "infenergy_symbol_in_sky_or_atmosphere",
+                "derivative_existing_superhero_imitation",
             )
             reasons = [key for key in failure_keys if review.get(key) is True]
             return not reasons, reasons
@@ -551,10 +557,20 @@ _CONSUMER_STAGE_LABELS = {
 
 
 def _build_gemini_image_prompt(content: dict[str, Any], platform: str, visual_plan: dict[str, Any]) -> str:
+    character_policy = (
+        "INFENERGY ORIGINALITY CANON: Infenergy is his own superhero, never an imitation of Batman or any "
+        "existing superhero. Build him around observation before action, preparation, intelligent energy "
+        "mechanisms, adaptation, restraint, protection of human agency, verification, and the human result he "
+        "enables. ABSOLUTE BAN: never place the Infenergy logo, chest emblem, infinity-bolt symbol, wordmark, "
+        "or any proxy symbol in the sky, clouds, moon, stars, fog, smoke, a searchlight, skyline, projection, "
+        "or atmospheric background. Never use bat-like silhouettes, derivative rooftop brooding, recognizable "
+        "costume or gadget language, vehicles, lairs, poses, lighting motifs, compositions, or iconography from "
+        "another superhero. The chest emblem may appear only as a physically attached, canon-accurate suit detail."
+    )
     v5_direction = _safe_json_dict(visual_plan.get("v5_direction"))
     v5_prompt = str(visual_plan.get("gemini_image_prompt") or "").strip()
     if v5_direction and v5_prompt:
-        return v5_prompt[:3200]
+        return f"{v5_prompt[:2200]}\n{character_policy}"[:3200]
     spec = _platform_visual_spec(platform)
     platform_key = platform.split("_", 1)[0]
     platform_cfg = _safe_json_dict((visual_plan.get("platform_overrides") or {}).get(platform))
@@ -709,6 +725,7 @@ def _build_gemini_image_prompt(content: dict[str, Any], platform: str, visual_pl
         "screenshot-style frame. Do not show any competitor or third-party manufacturer logo, brand name, or model number on the "
         "product or anywhere in the frame. Avoid misspellings, garbled or duplicated letters, invented specs, extra claims, "
         "random decoration, muddy contrast, excessive glow, impossible reflections, or visual clutter. "
+        f"{character_policy} "
     )
     return (
         "Create a finished, ready-to-publish premium social ad creative for Infenergy Power — the complete image, "

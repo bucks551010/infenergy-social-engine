@@ -17,6 +17,19 @@ import social_visuals  # noqa: E402
 import run_engine  # noqa: E402
 
 
+def test_every_gemini_prompt_path_enforces_infenergy_originality_canon():
+    prompt = social_visuals._build_gemini_image_prompt(
+        {"post_id": "originality-policy"},
+        "instagram",
+        {"v5_direction": {"route": "character"}, "gemini_image_prompt": "Create a cinematic Infenergy scene."},
+    )
+
+    assert "never an imitation of Batman or any existing superhero" in prompt
+    assert "never place the Infenergy logo" in prompt
+    assert "sky, clouds, moon" in prompt
+    assert "physically attached, canon-accurate suit detail" in prompt
+
+
 def test_failed_gemini_variants_never_publish_a_reference_photo(tmp_path, monkeypatch):
     monkeypatch.setattr(social_visuals, "VISUAL_DIR", str(tmp_path))
 

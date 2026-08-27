@@ -291,7 +291,7 @@ def _story_vertical_frame(scene: dict[str, Any], destination: Path, *, scene_cou
             (foreground_x - 4, foreground_y - 4, foreground_x + foreground.width + 4, foreground_y + foreground.height + 4),
             radius=4, outline=(205, 255, 68, 215), width=4,
         )
-        draw.text((54, 52), "INFENERGY  •  MICRO MISSION", fill=(205, 255, 68, 255), font=_font(38))
+        draw.text((54, 52), "INFENERGY  |  MICRO MISSION", fill=(205, 255, 68, 255), font=_font(38))
         counter = f"{int(scene['index']) + 1:02d} / {scene_count:02d}"
         counter_width = draw.textbbox((0, 0), counter, font=_font(34))[2]
         draw.text((REEL_WIDTH - 54 - counter_width, 58), counter, fill=(255, 255, 255, 245), font=_font(34))

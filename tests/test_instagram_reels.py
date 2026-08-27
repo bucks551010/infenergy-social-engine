@@ -137,6 +137,14 @@ def test_story_vertical_frame_is_true_reel_canvas_with_story_text(tmp_path):
         assert frame.getbbox() == (0, 0, 1080, 1920)
 
 
+def test_font_fallback_honors_requested_size(monkeypatch):
+    monkeypatch.setattr(reels.os.path, "exists", lambda _path: False)
+
+    font = reels._font(43)
+
+    assert font.getbbox("Readable story text")[3] >= 35
+
+
 def test_real_renderer_freezes_actual_video_when_ffmpeg_is_available():
     if not (os.environ.get("FFMPEG_BIN") or shutil.which("ffmpeg")):
         pytest.skip("FFmpeg is not installed for local acceptance")

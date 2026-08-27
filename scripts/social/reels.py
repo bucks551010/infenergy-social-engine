@@ -48,7 +48,7 @@ def _font(size: int) -> ImageFont.ImageFont:
     ):
         if os.path.exists(candidate):
             return ImageFont.truetype(candidate, size=size)
-    return ImageFont.load_default()
+    return ImageFont.load_default(size=size)
 
 
 def _media_base_url() -> str:

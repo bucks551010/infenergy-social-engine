@@ -248,13 +248,15 @@ def build_scored_story_plan(
         "narration_path": narration_path,
         "scenes": scenes,
         "music_score": {
-            "source": "original_cinematic_composition",
+            "source": "original_cue_based_cinematic_composition",
             "license": "original_generated_audio",
             "commercial_use": True,
-            "tempo_bpm": 92,
-            "instrumentation": ["cinematic_pad", "sub_bass", "arpeggio", "kick", "snare", "hi_hat", "transition_swell"],
+            "score_version": 2,
+            "tempo_bpm": 84,
+            "instrumentation": ["low_strings", "felt_piano_motif", "string_ostinato", "sub_bass", "taiko", "brass_swell", "cymbal_riser", "final_resolve"],
             "channels": 2,
             "emotional_arc": [scene["emotion"] for scene in scenes],
+            "cue_arc": ["suspense", "threat", "investigation", "stakes", "plan", "pursuit", "reversal", "resolution"][:len(scenes)],
             "narration_ducking": bool(narration_path),
         },
         "caption_strategy": "captions_are_inherited_from_the_readable_carousel_slides",
@@ -307,7 +309,7 @@ def _midi_frequency(note: int) -> float:
 
 def _render_cinematic_score(plan: dict[str, Any], destination: Path) -> None:
     sample_rate = 48_000
-    tempo = float(plan.get("music_score", {}).get("tempo_bpm") or 92)
+    tempo = float(plan.get("music_score", {}).get("tempo_bpm") or 84)
     beat_seconds = 60.0 / tempo
     scenes = plan["scenes"]
     total_seconds = float(plan["video_end_time"])
@@ -315,6 +317,18 @@ def _render_cinematic_score(plan: dict[str, Any], destination: Path) -> None:
     randomizer = random.Random(str(plan.get("parent_reel_id") or "infenergy-score"))
     scene_index = 0
     noise = [randomizer.uniform(-1.0, 1.0) for _ in range(4096)]
+    scene_count = len(scenes)
+    motif_intervals = (0, 3, 7, 10, 7, 3)
+
+    def harmonic_tone(frequency: float, time_seconds: float, harmonics: tuple[float, ...]) -> float:
+        return sum(
+            amplitude * math.sin(2 * math.pi * frequency * (index + 1) * time_seconds)
+            for index, amplitude in enumerate(harmonics)
+        ) / max(1.0, sum(harmonics))
+
+    def triangle_tone(frequency: float, time_seconds: float) -> float:
+        return (2.0 / math.pi) * math.asin(math.sin(2 * math.pi * frequency * time_seconds))
+
     with wave.open(str(destination), "wb") as output:
         output.setnchannels(2)
         output.setsampwidth(2)
@@ -327,41 +341,88 @@ def _render_cinematic_score(plan: dict[str, Any], destination: Path) -> None:
             scene = scenes[scene_index]
             local_time = max(0.0, time_seconds - float(scene["start"]))
             scene_duration = float(scene["duration"])
-            root, intervals = EMOTION_HARMONY[scene["emotion"]]
-            scene_envelope = min(1.0, local_time / 0.45, max(0.0, (scene_duration - local_time) / 0.5))
-            pulse = 0.84 + 0.16 * math.sin(2 * math.pi * time_seconds / (beat_seconds * 4))
-            pad = sum(
-                math.sin(2 * math.pi * _midi_frequency(root + interval) * time_seconds + interval * 0.31)
+            arc = scene_index / max(1, scene_count - 1)
+            fallback_emotion = "relief" if scene_index == scene_count - 1 else "tension"
+            root, intervals = EMOTION_HARMONY.get(str(scene.get("emotion") or "").lower(), EMOTION_HARMONY[fallback_emotion])
+            scene_envelope = min(1.0, local_time / 0.32, max(0.0, (scene_duration - local_time) / 0.42))
+            phrase_pulse = 0.76 + 0.24 * math.sin(2 * math.pi * time_seconds / (beat_seconds * 8))
+
+            string_chord = sum(
+                harmonic_tone(_midi_frequency(root + interval - 12), time_seconds + interval * 0.013, (1.0, 0.42, 0.2, 0.1))
                 for interval in intervals
             ) / len(intervals)
-            bass = math.sin(2 * math.pi * _midi_frequency(root - 12) * time_seconds)
-            half_beat = beat_seconds / 2
-            arp_step = int(time_seconds / half_beat)
-            arp_note = root + 12 + intervals[arp_step % len(intervals)]
-            arp_phase = time_seconds % half_beat
-            arp_envelope = math.exp(-5.2 * arp_phase / half_beat)
-            arpeggio = (
-                math.sin(2 * math.pi * _midi_frequency(arp_note) * time_seconds)
-                + 0.28 * math.sin(4 * math.pi * _midi_frequency(arp_note) * time_seconds)
-            ) * arp_envelope
+            high_strings = sum(
+                triangle_tone(_midi_frequency(root + interval + 12), time_seconds + interval * 0.009)
+                for interval in intervals
+            ) / len(intervals)
+            bass_frequency = _midi_frequency(root - 24)
+            sub_bass = harmonic_tone(bass_frequency, time_seconds, (1.0, 0.22, 0.08))
+
+            motif_step_seconds = beat_seconds * (1.0 if arc < 0.45 else 0.5)
+            motif_step = int(time_seconds / motif_step_seconds)
+            motif_phase = time_seconds % motif_step_seconds
+            motif_note = root + 12 + motif_intervals[motif_step % len(motif_intervals)]
+            piano_envelope = math.exp(-4.8 * motif_phase / motif_step_seconds)
+            piano = harmonic_tone(_midi_frequency(motif_note), time_seconds, (1.0, 0.5, 0.22, 0.12, 0.07)) * piano_envelope
+
+            eighth_seconds = beat_seconds / 2
+            ostinato_step = int(time_seconds / eighth_seconds)
+            ostinato_phase = time_seconds % eighth_seconds
+            ostinato_note = root - 12 + (0, 7, 3, 7)[ostinato_step % 4]
+            ostinato = triangle_tone(_midi_frequency(ostinato_note), time_seconds) * math.exp(-5.5 * ostinato_phase / eighth_seconds)
+
             beat_phase = time_seconds % beat_seconds
-            kick = math.sin(2 * math.pi * (58 - 24 * min(1.0, beat_phase / 0.16)) * beat_phase) * math.exp(-24 * beat_phase)
             beat_number = int(time_seconds / beat_seconds)
-            snare_phase = beat_phase if beat_number % 4 in (1, 3) else 1.0
-            snare = noise[sample_index % len(noise)] * math.exp(-22 * snare_phase) if snare_phase < 0.22 else 0.0
-            hat_phase = time_seconds % half_beat
-            hi_hat = noise[(sample_index * 7) % len(noise)] * math.exp(-52 * hat_phase) if hat_phase < 0.08 else 0.0
+            taiko_active = scene_index >= 1 and (scene_index >= scene_count - 2 or beat_number % 2 == 0)
+            taiko = 0.0
+            if taiko_active and beat_phase < 0.42:
+                taiko_frequency = 76.0 - 38.0 * min(1.0, beat_phase / 0.3)
+                taiko = harmonic_tone(taiko_frequency, beat_phase, (1.0, 0.48, 0.22)) * math.exp(-8.5 * beat_phase)
+                taiko += noise[(sample_index * 5) % len(noise)] * math.exp(-34 * beat_phase) * 0.14
+
+            scene_impact = 0.0
+            if local_time < 0.8:
+                scene_impact = harmonic_tone(42.0, local_time, (1.0, 0.32, 0.15)) * math.exp(-4.2 * local_time)
+            brass = 0.0
+            if scene_index >= max(2, scene_count // 2):
+                brass_swell = math.sin(math.pi * min(1.0, local_time / max(0.5, scene_duration * 0.72))) ** 2
+                brass = sum(
+                    harmonic_tone(_midi_frequency(root + interval), time_seconds, (1.0, 0.65, 0.34, 0.18, 0.08))
+                    for interval in intervals
+                ) / len(intervals) * brass_swell
+
             transition = 0.0
-            if scene_duration - local_time < 0.55:
-                progress = 1.0 - max(0.0, scene_duration - local_time) / 0.55
-                transition = noise[(sample_index * 13) % len(noise)] * progress * 0.08
-            tonal = scene_envelope * (pad * 0.19 * pulse + bass * 0.16 + arpeggio * 0.15)
-            rhythm = kick * 0.24 + snare * 0.11 + hi_hat * 0.055 + transition
-            overall_fade = min(1.0, time_seconds / 0.8, max(0.0, (total_seconds - time_seconds) / 1.1))
-            pan = -0.22 if arp_step % 2 == 0 else 0.22
-            left = math.tanh((tonal * (1.0 - pan * 0.35) + rhythm) * overall_fade)
-            right = math.tanh((tonal * (1.0 + pan * 0.35) + rhythm) * overall_fade)
-            block.extend(struct.pack("<hh", int(left * 25_500), int(right * 25_500)))
+            transition_window = min(0.9, scene_duration * 0.25)
+            if scene_duration - local_time < transition_window and scene_index < scene_count - 1:
+                transition_progress = 1.0 - max(0.0, scene_duration - local_time) / transition_window
+                shimmer = noise[(sample_index * 13) % len(noise)] * (0.25 + 0.75 * transition_progress)
+                rising_tone = math.sin(2 * math.pi * (280 + 520 * transition_progress) * time_seconds)
+                transition = (shimmer * 0.08 + rising_tone * 0.035) * transition_progress
+
+            resolution = 0.0
+            if scene_index == scene_count - 1:
+                resolution_root = 55
+                resolution = sum(
+                    harmonic_tone(_midi_frequency(resolution_root + interval), time_seconds, (1.0, 0.4, 0.18))
+                    for interval in (0, 4, 7, 12)
+                ) / 4
+
+            tension_gain = 0.55 + 0.65 * arc
+            tonal = scene_envelope * (
+                string_chord * (0.17 + 0.08 * arc) * phrase_pulse
+                + high_strings * max(0.0, arc - 0.28) * 0.13
+                + sub_bass * (0.14 + 0.08 * arc)
+                + piano * (0.17 if arc < 0.7 else 0.1)
+                + ostinato * max(0.0, arc - 0.2) * 0.2
+                + brass * max(0.0, arc - 0.42) * 0.2
+                + resolution * (0.2 if scene_index == scene_count - 1 else 0.0)
+            )
+            percussion = taiko * (0.2 + 0.16 * arc) + scene_impact * (0.28 if scene_index else 0.14) + transition
+            overall_fade = min(1.0, time_seconds / 1.2, max(0.0, (total_seconds - time_seconds) / 1.7))
+            stereo_motion = 0.16 * math.sin(2 * math.pi * time_seconds / (beat_seconds * 4))
+            left = math.tanh((tonal * (1.0 - stereo_motion) + percussion) * tension_gain * overall_fade)
+            right = math.tanh((tonal * (1.0 + stereo_motion) + percussion * 0.94) * tension_gain * overall_fade)
+            block.extend(struct.pack("<hh", int(left * 24_000), int(right * 24_000)))
             if len(block) >= 65_536:
                 output.writeframesraw(block)
                 block.clear()

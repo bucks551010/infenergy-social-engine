@@ -5,6 +5,8 @@ import shutil
 import sys
 import tempfile
 import json
+import math
+import struct
 import wave
 from pathlib import Path
 from unittest.mock import Mock, patch
@@ -93,10 +95,10 @@ def test_scored_story_plan_sets_readable_timing_and_emotional_arc(tmp_path):
     )
     assert plan["pre_render_gate"] == "SCORED_STORY_READY"
     assert plan["music_score"]["emotional_arc"] == ["mystery", "danger", "relief"]
-    assert plan["music_score"]["source"] == "original_cinematic_composition"
+    assert plan["music_score"]["source"] == "original_cue_based_cinematic_composition"
+    assert plan["music_score"]["score_version"] == 2
     assert plan["music_score"]["channels"] == 2
-    assert "percussion" not in plan["music_score"]["instrumentation"]
-    assert {"kick", "snare", "hi_hat", "arpeggio"}.issubset(plan["music_score"]["instrumentation"])
+    assert {"low_strings", "felt_piano_motif", "taiko", "brass_swell", "final_resolve"}.issubset(plan["music_score"]["instrumentation"])
     assert plan["scenes"][1]["duration"] > plan["scenes"][0]["duration"]
     assert plan["scenes"][2]["start"] == plan["scenes"][1]["end"]
     assert plan["video_end_time"] == plan["scenes"][-1]["end"]
@@ -107,20 +109,39 @@ def test_scored_story_plan_sets_readable_timing_and_emotional_arc(tmp_path):
         assert artifact["story_score"]["commercial_use"] is True
 
 
-def test_cinematic_story_score_is_nonempty_stereo_music(tmp_path):
+def test_cinematic_story_score_has_cue_dynamics_stereo_motion_and_release(tmp_path):
     plan = {
         "parent_reel_id": "score-test",
-        "video_end_time": 1.2,
-        "music_score": {"tempo_bpm": 92},
-        "scenes": [{"emotion": "mystery", "start": 0.0, "end": 1.2, "duration": 1.2}],
+        "video_end_time": 6.0,
+        "music_score": {"tempo_bpm": 84},
+        "scenes": [
+            {"emotion": "mystery", "start": 0.0, "end": 1.5, "duration": 1.5},
+            {"emotion": "danger", "start": 1.5, "end": 3.0, "duration": 1.5},
+            {"emotion": "determination", "start": 3.0, "end": 4.5, "duration": 1.5},
+            {"emotion": "relief", "start": 4.5, "end": 6.0, "duration": 1.5},
+        ],
     }
     destination = tmp_path / "score.wav"
     reels._render_cinematic_score(plan, destination)
     with wave.open(str(destination), "rb") as audio:
         assert audio.getnchannels() == 2
         assert audio.getframerate() == 48_000
-        assert audio.getnframes() == 57_600
-        assert any(audio.readframes(2048))
+        assert audio.getnframes() == 288_000
+        samples = struct.unpack(f"<{audio.getnframes() * 2}h", audio.readframes(audio.getnframes()))
+
+    left = samples[0::2]
+    right = samples[1::2]
+
+    def rms(start_seconds, end_seconds):
+        start = int(start_seconds * 48_000)
+        end = int(end_seconds * 48_000)
+        section = left[start:end]
+        return math.sqrt(sum(sample * sample for sample in section) / len(section))
+
+    assert rms(3.3, 4.1) > rms(0.45, 1.15) * 1.15
+    assert max(abs(sample) for sample in left[int(3.0 * 48_000):int(3.18 * 48_000)]) > rms(3.3, 4.1) * 1.8
+    assert sum(abs(left[index] - right[index]) for index in range(0, len(left), 97)) > 100_000
+    assert rms(5.8, 5.98) < rms(4.75, 5.35) * 0.55
 
 
 def test_story_vertical_frame_is_true_reel_canvas_with_story_text(tmp_path):

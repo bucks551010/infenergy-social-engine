@@ -14,13 +14,14 @@ import random
 import shutil
 import struct
 import subprocess
+import textwrap
 import uuid
 import wave
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from PIL import Image, ImageChops, ImageDraw, ImageFont, ImageStat
+from PIL import Image, ImageChops, ImageDraw, ImageEnhance, ImageFilter, ImageFont, ImageStat
 
 
 REEL_WIDTH = 1080
@@ -271,6 +272,35 @@ def _story_frame(source_path: str, destination: Path, *, square: bool = False) -
         canvas.save(destination, format="JPEG", quality=94, subsampling=0)
 
 
+def _story_vertical_frame(scene: dict[str, Any], destination: Path, *, scene_count: int) -> None:
+    with Image.open(scene["asset_path"]) as source:
+        source = source.convert("RGB")
+        background = source.resize((REEL_WIDTH, REEL_HEIGHT), Image.Resampling.LANCZOS)
+        background = background.filter(ImageFilter.GaussianBlur(34))
+        background = ImageEnhance.Brightness(background).enhance(0.34)
+        canvas = background.copy()
+        foreground = source.copy()
+        foreground.thumbnail((1000, 1250), Image.Resampling.LANCZOS)
+        foreground_x = (REEL_WIDTH - foreground.width) // 2
+        foreground_y = 238
+        canvas.paste(foreground, (foreground_x, foreground_y))
+        draw = ImageDraw.Draw(canvas, "RGBA")
+        draw.rectangle((0, 0, REEL_WIDTH, 205), fill=(8, 15, 18, 218))
+        draw.rectangle((0, 1518, REEL_WIDTH, REEL_HEIGHT), fill=(8, 15, 18, 228))
+        draw.rounded_rectangle(
+            (foreground_x - 4, foreground_y - 4, foreground_x + foreground.width + 4, foreground_y + foreground.height + 4),
+            radius=4, outline=(205, 255, 68, 215), width=4,
+        )
+        draw.text((54, 52), "INFENERGY  •  MICRO MISSION", fill=(205, 255, 68, 255), font=_font(38))
+        counter = f"{int(scene['index']) + 1:02d} / {scene_count:02d}"
+        counter_width = draw.textbbox((0, 0), counter, font=_font(34))[2]
+        draw.text((REEL_WIDTH - 54 - counter_width, 58), counter, fill=(255, 255, 255, 245), font=_font(34))
+        caption = _text(scene.get("caption"), 180)
+        wrapped = "\n".join(textwrap.wrap(caption, width=42, break_long_words=False)[:4])
+        draw.multiline_text((58, 1570), wrapped, fill=(255, 255, 255, 255), font=_font(43), spacing=13)
+        canvas.save(destination, format="JPEG", quality=95, subsampling=0)
+
+
 def _midi_frequency(note: int) -> float:
     return 440.0 * (2.0 ** ((note - 69) / 12.0))
 
@@ -353,6 +383,11 @@ def render_scored_story_reel(plan: dict[str, Any], *, data_dir: str | None = Non
     static_path = media_dir / f"{stem}_static.jpg"
     score_path = media_dir / f"{stem}_score.wav"
     scenes = plan["scenes"]
+    scene_frames = []
+    for scene in scenes:
+        frame_path = media_dir / f"{stem}_scene_{int(scene['index']) + 1:02d}.jpg"
+        _story_vertical_frame(scene, frame_path, scene_count=len(scenes))
+        scene_frames.append(frame_path)
     _story_frame(scenes[0]["asset_path"], cover_path)
     _story_frame(scenes[-1]["asset_path"], final_path)
     _story_frame(scenes[-1]["asset_path"], static_path, square=True)
@@ -361,8 +396,8 @@ def render_scored_story_reel(plan: dict[str, Any], *, data_dir: str | None = Non
     if not narration_path and bool(plan.get("auto_narration")):
         narration_path = render_story_narration(plan, output_path=str(media_dir / f"{stem}_narration.wav"))
     command = [_ffmpeg(), "-y"]
-    for scene in scenes:
-        command.extend(["-loop", "1", "-framerate", str(REEL_FPS), "-t", str(scene["duration"]), "-i", scene["asset_path"]])
+    for scene, frame_path in zip(scenes, scene_frames):
+        command.extend(["-loop", "1", "-framerate", str(REEL_FPS), "-t", str(scene["duration"]), "-i", str(frame_path)])
     command.extend(["-i", str(score_path)])
     if narration_path:
         if not os.path.isfile(narration_path):
@@ -374,14 +409,9 @@ def render_scored_story_reel(plan: dict[str, Any], *, data_dir: str | None = Non
     for index, scene in enumerate(scenes):
         frames = max(1, int(math.ceil(float(scene["duration"]) * REEL_FPS)))
         zoom_step = (0.00018 + intensity * 0.00032) * (1 if scene["movement"] == "slow_push" else -1)
-        zoom = f"min(zoom+{zoom_step:.6f},1.08)" if zoom_step > 0 else f"max(zoom{zoom_step:.6f},1.0)"
+        zoom = f"min(zoom+{zoom_step:.6f},1.025)" if zoom_step > 0 else f"max(zoom{zoom_step:.6f},1.0)"
         filters.append(
-            f"[{index}:v]split=2[bg{index}][fg{index}];"
-            f"[bg{index}]scale={REEL_WIDTH}:{REEL_HEIGHT}:force_original_aspect_ratio=increase,"
-            f"crop={REEL_WIDTH}:{REEL_HEIGHT},gblur=sigma=28,eq=brightness=-0.32:saturation=0.72[back{index}];"
-            f"[fg{index}]scale=1000:1250:force_original_aspect_ratio=decrease[front{index}];"
-            f"[back{index}][front{index}]overlay=(W-w)/2:(H-h)/2,"
-            f"drawbox=x=38:y=333:w=1004:h=1254:color=white@0.82:t=4,"
+            f"[{index}:v]scale={REEL_WIDTH}:{REEL_HEIGHT},"
             f"zoompan=z='{zoom}':d={frames}:s={REEL_WIDTH}x{REEL_HEIGHT}:fps={REEL_FPS},"
             f"trim=duration={scene['duration']},setpts=PTS-STARTPTS[v{index}]"
         )

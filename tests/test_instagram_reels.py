@@ -123,6 +123,20 @@ def test_cinematic_story_score_is_nonempty_stereo_music(tmp_path):
         assert any(audio.readframes(2048))
 
 
+def test_story_vertical_frame_is_true_reel_canvas_with_story_text(tmp_path):
+    source = tmp_path / "slide.png"
+    Image.new("RGB", (1080, 1350), (48, 66, 52)).save(source)
+    destination = tmp_path / "scene.jpg"
+    reels._story_vertical_frame(
+        {"asset_path": str(source), "index": 2, "caption": "The warning vanished before the building could respond."},
+        destination,
+        scene_count=9,
+    )
+    with Image.open(destination) as frame:
+        assert frame.size == (1080, 1920)
+        assert frame.getbbox() == (0, 0, 1080, 1920)
+
+
 def test_real_renderer_freezes_actual_video_when_ffmpeg_is_available():
     if not (os.environ.get("FFMPEG_BIN") or shutil.which("ffmpeg")):
         pytest.skip("FFmpeg is not installed for local acceptance")

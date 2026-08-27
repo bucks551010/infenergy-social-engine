@@ -10,6 +10,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 import publish_tiktok
 import publish_youtube
+import tiktok_oauth
 from platform_publishing import PublicationError, connection_health, list_platforms, validate_content
 
 
@@ -59,17 +60,21 @@ def test_tiktok_refreshes_oauth_and_initializes_direct_post():
     token_response = Mock()
     token_response.raise_for_status.return_value = None
     token_response.json.return_value = {"access_token": "access"}
+    creator_response = Mock()
+    creator_response.raise_for_status.return_value = None
+    creator_response.json.return_value = {"data": {"privacy_level_options": ["SELF_ONLY"]}, "error": {"code": "ok"}}
     publish_response = Mock()
     publish_response.raise_for_status.return_value = None
     publish_response.json.return_value = {"data": {"publish_id": "tt-123"}, "error": {"code": "ok"}}
     with patch.dict(os.environ, {
         "TIKTOK_ACCESS_TOKEN": "", "TIKTOK_CLIENT_KEY": "key", "TIKTOK_CLIENT_SECRET": "secret", "TIKTOK_REFRESH_TOKEN": "refresh",
-    }, clear=False), patch.object(publish_tiktok.requests, "post", side_effect=[token_response, publish_response]) as post:
+    }, clear=False), patch.object(publish_tiktok.requests, "post", side_effect=[token_response, creator_response, publish_response]) as post:
         result = publish_tiktok.publish(_content())
     assert result["id"] == "tt-123"
     assert result["status"] == "PROCESSING"
     assert post.call_args_list[0].kwargs["data"]["grant_type"] == "refresh_token"
-    assert post.call_args_list[1].kwargs["json"]["source_info"]["source"] == "PULL_FROM_URL"
+    assert post.call_args_list[1].args[0] == tiktok_oauth.CREATOR_INFO_URL
+    assert post.call_args_list[2].kwargs["json"]["source_info"]["source"] == "PULL_FROM_URL"
 
 
 def test_platform_registry_gates_video_publishers_and_never_exposes_secrets():

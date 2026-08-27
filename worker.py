@@ -9,7 +9,7 @@ import subprocess
 import traceback
 import uuid
 import urllib.request
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import urlparse, parse_qs, urlencode
 import schedule
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from datetime import datetime, timezone, timedelta
@@ -1021,6 +1021,61 @@ class HealthHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         parsed = urlparse(self.path)
 
+        if parsed.path == "/api/auth/tiktok/connect":
+            params = parse_qs(parsed.query)
+            authorized, status_code, error_payload = _os_authorized(self, params)
+            if not authorized:
+                self._send_json(status_code, error_payload)
+                return
+            try:
+                from tiktok_oauth import create_authorization
+                authorization = create_authorization()
+                if str(params.get("format", [""])[0]).lower() == "json":
+                    self._send_json(200, authorization)
+                else:
+                    self.send_response(302)
+                    self.send_header("Location", authorization["authorization_url"])
+                    self.send_header("Cache-Control", "no-store")
+                    self.send_header("Content-Length", "0")
+                    self.end_headers()
+            except Exception:
+                self._send_json(503, {"error": "TikTok connection is not configured"})
+            return
+
+        if parsed.path == "/api/auth/tiktok/callback":
+            params = parse_qs(parsed.query)
+            state = str(params.get("state", [""])[0]).strip()
+            try:
+                from tiktok_oauth import TikTokOAuthError, complete_authorization, consume_state
+                consume_state(state)
+                provider_error = str(params.get("error", [""])[0]).strip()
+                if provider_error:
+                    location = "/os?" + urlencode({"view": "social", "tiktok": "error", "reason": "authorization_denied"})
+                else:
+                    complete_authorization(str(params.get("code", [""])[0]).strip())
+                    location = "/os?" + urlencode({"view": "social", "tiktok": "connected"})
+                self.send_response(302)
+                self.send_header("Location", location)
+                self.send_header("Cache-Control", "no-store")
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+            except (TikTokOAuthError, ValueError):
+                self._send_json(400, {"error": "TikTok authorization could not be completed"})
+            return
+
+        if parsed.path == "/api/auth/tiktok/status":
+            params = parse_qs(parsed.query)
+            authorized, status_code, error_payload = _os_authorized(self, params)
+            if not authorized:
+                self._send_json(status_code, error_payload)
+                return
+            try:
+                from tiktok_oauth import public_status
+                self._send_json(200, public_status())
+            except Exception:
+                self._send_json(200, {"platform": "tiktok", "status": "ERROR", "connected": False})
+            return
+
         if parsed.path == "/" and "text/html" in str(self.headers.get("Accept", "")).lower():
             self.send_response(302)
             self.send_header("Location", "/os")
@@ -2021,6 +2076,18 @@ class HealthHandler(BaseHTTPRequestHandler):
             self.do_GET()
             return
         parsed = urlparse(self.path)
+        if parsed.path == "/api/auth/tiktok/disconnect":
+            params = parse_qs(parsed.query)
+            authorized, status_code, error_payload = _os_authorized(self, params)
+            if not authorized:
+                self._send_json(status_code, error_payload)
+                return
+            try:
+                from tiktok_oauth import disconnect
+                self._send_json(200, disconnect())
+            except Exception:
+                self._send_json(502, {"error": "TikTok disconnect could not be completed"})
+            return
         if parsed.path.startswith("/api/os/"):
             params = parse_qs(parsed.query)
             authorized, status_code, error_payload = _os_authorized(self, params)
@@ -2083,6 +2150,15 @@ class HealthHandler(BaseHTTPRequestHandler):
 
     def log_message(self, format, *args):
         return
+
+    def _send_json(self, status_code: int, payload: dict) -> None:
+        body = json.dumps(payload, default=str).encode("utf-8")
+        self.send_response(status_code)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
 
 
 def start_health_server() -> None:

@@ -10,6 +10,8 @@ YouTube uses OAuth refresh credentials and the YouTube Data API v3. Uploads use 
 
 TikTok uses the Content Posting API direct-post initialization contract with `PULL_FROM_URL`, returns `PROCESSING`, and exposes a status lookup. The feature defaults to disabled and `SELF_ONLY`. Native TikTok photo carousel publishing is not enabled because the current official account/app eligibility and API contract could not be verified from this environment.
 
+Command Intelligence OS includes a single-owner TikTok Login Kit Web connection flow. OAuth state is one-time and expires after ten minutes. Access and refresh tokens are encrypted at rest on the Railway volume, never returned to the browser, refreshed shortly before access-token expiry, and atomically replaced when TikTok rotates the refresh token. The existing `TIKTOK_REFRESH_TOKEN` variable remains a fallback for pre-OAuth deployments only.
+
 Both video adapters fail before upload when their feature flag is disabled, credentials are incomplete, or the media is not a public HTTPS MP4. Provider failures are normalized into authentication, rate-limit, network, media, policy, processing, content-validation, or unknown categories with retryability metadata.
 
 Command Intelligence OS exposes `platforms.status`, a machine-readable capability that reports connection health and action-required states without exposing credentials.
@@ -33,15 +35,17 @@ The code refreshes and uses an existing authorization grant. A user-facing OAuth
 ### TikTok
 
 1. Create a TikTok for Developers application owned by Infenergy.
-2. Apply for the current Content Posting API products and required scopes for Direct Post.
-3. Configure the exact production redirect URI and verify the public media domain TikTok will pull from.
+2. Add Login Kit for Web and Content Posting API products, then request `user.info.basic`, `video.upload`, and `video.publish`.
+3. In the TikTok developer portal, register this exact Web redirect URI: `https://jubilant-harmony-production-5bd1.up.railway.app/api/auth/tiktok/callback`.
 4. Complete TikTok app review/audit and comply with any private-only restrictions applied to unaudited clients.
-5. Authorize the target creator account and place the client key, client secret, and refresh token in Railway secrets.
-6. Confirm the account's creator information, privacy choices, duration limits, music/content disclosure rules, and commercial-content requirements against the current official API before enabling public posts.
-7. Keep `TIKTOK_PRIVACY_LEVEL=SELF_ONLY` during acceptance testing.
-8. Set `TIKTOK_PUBLISHING_ENABLED=true` only after status polling confirms a test post completed.
+5. Verify the public media domain TikTok will pull from, then place the client key and client secret in Railway sealed variables.
+6. Set `TIKTOK_REDIRECT_URI` to the exact URI above and set `TIKTOK_TOKEN_ENCRYPTION_KEY` to a stable high-entropy secret. Changing that encryption key invalidates stored credentials.
+7. Open Command Intelligence OS → Social and choose **Connect TikTok**. Confirm the connected creator identity shown after the callback. Do not manually copy tokens into the browser or logs.
+8. Confirm the account's creator information, privacy choices, duration limits, music/content disclosure rules, and commercial-content requirements against the current official API before enabling public posts.
+9. Keep `TIKTOK_PRIVACY_LEVEL=SELF_ONLY` and `TIKTOK_PUBLISHING_ENABLED=false` until app approval. Set `TIKTOK_PUBLISH_MODE=draft` to test upload-to-inbox separately from Direct Post.
+10. Set `TIKTOK_PUBLISHING_ENABLED=true` only after authorization, app approval, and a private test whose status polling reaches success.
 
-TikTok's official documentation pages did not yield extractable reference content in this engineering environment. Endpoint assumptions in the adapter must therefore be revalidated in the owner-accessible developer portal before production enablement. Native photo carousel and analytics ingestion remain disabled until those contracts, scopes, app review, and account eligibility are verified.
+TikTok's developer portal remains authoritative for app-specific review status and allowed redirect URIs. Native photo carousel and analytics ingestion remain disabled until those contracts, scopes, app review, and account eligibility are verified.
 
 ## Railway Variables
 

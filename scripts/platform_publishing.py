@@ -47,16 +47,29 @@ def connection_health(platform: str) -> dict[str, Any]:
     capability = CAPABILITIES[platform]
     flag_enabled = capability.feature_flag is None or os.environ.get(capability.feature_flag, "false").strip().lower() == "true"
     missing = [name for name in capability.required_credentials if not _configured(name)]
+    account = None
+    account_status = ""
+    if platform == "tiktok":
+        try:
+            from tiktok_oauth import public_status
+            account = public_status()
+            account_status = str(account.get("status") or "")
+            if account.get("connected"):
+                missing = [name for name in missing if name != "TIKTOK_REFRESH_TOKEN"]
+        except Exception:
+            account = {"platform": "tiktok", "status": "ERROR", "connected": False}
     if not flag_enabled:
         status = "DISABLED"
     elif missing:
         status = "REAUTH_REQUIRED"
     else:
         status = "CONNECTED"
-    return {
+    if flag_enabled and account_status in {"REAUTHORIZATION_REQUIRED", "ERROR"}:
+        status = "REAUTH_REQUIRED" if account_status == "REAUTHORIZATION_REQUIRED" else "ERROR"
+    result = {
         "platform": platform,
         "status": status,
-        "publishing_enabled": flag_enabled and not missing,
+        "publishing_enabled": flag_enabled and not missing and status == "CONNECTED",
         "missing_configuration": missing,
         "capabilities": {
             "formats": list(capability.formats),
@@ -64,6 +77,9 @@ def connection_health(platform: str) -> dict[str, Any]:
             "status_monitoring": capability.supports_status,
         },
     }
+    if account is not None:
+        result["account"] = account
+    return result
 
 
 def list_platforms() -> list[dict[str, Any]]:

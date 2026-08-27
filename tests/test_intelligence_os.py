@@ -659,8 +659,8 @@ def test_command_center_and_api_are_served(tmp_path):
     assert content_type.startswith("text/html")
     assert b"Infenergy Intelligence OS" in page
     assert b'id="mobile-nav"' in page
-    assert b'app.js?v=11' in page
-    assert b'styles.css?v=11' in page
+    assert b'app.js?v=12' in page
+    assert b'styles.css?v=12' in page
     assert b'data-view="master"' in page
     assert b'id="master-capabilities"' in page
     assert b'id="master-form"' in page

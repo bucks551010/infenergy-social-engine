@@ -5,8 +5,11 @@ from typing import Any
 
 import requests
 
+from tiktok_oauth import access_token, creator_info
+
 TOKEN_URL = "https://open.tiktokapis.com/v2/oauth/token/"
 PUBLISH_URL = "https://open.tiktokapis.com/v2/post/publish/video/init/"
+UPLOAD_URL = "https://open.tiktokapis.com/v2/post/publish/inbox/video/init/"
 STATUS_URL = "https://open.tiktokapis.com/v2/post/publish/status/fetch/"
 
 
@@ -18,25 +21,7 @@ def _required(name: str) -> str:
 
 
 def _access_token() -> str:
-    configured = os.environ.get("TIKTOK_ACCESS_TOKEN", "").strip()
-    if configured and configured.upper() not in {"REPLACE_ME", "SET_ME"}:
-        return configured
-    response = requests.post(
-        TOKEN_URL,
-        data={
-            "client_key": _required("TIKTOK_CLIENT_KEY"),
-            "client_secret": _required("TIKTOK_CLIENT_SECRET"),
-            "refresh_token": _required("TIKTOK_REFRESH_TOKEN"),
-            "grant_type": "refresh_token",
-        },
-        headers={"Content-Type": "application/x-www-form-urlencoded"},
-        timeout=30,
-    )
-    response.raise_for_status()
-    token = str(response.json().get("access_token") or "").strip()
-    if not token:
-        raise RuntimeError("tiktok_oauth_refresh_returned_no_access_token")
-    return token
+    return access_token()
 
 
 def _video_url(content: dict[str, Any]) -> str:
@@ -54,20 +39,31 @@ def publish(content: dict[str, Any], dry_run: bool = False) -> dict[str, Any]:
     if dry_run:
         return {"id": "dry-run", "media_type": "VIDEO", "platform": "tiktok"}
     token = _access_token()
+    publish_mode = os.environ.get("TIKTOK_PUBLISH_MODE", "direct").strip().lower()
+    if publish_mode not in {"direct", "draft"}:
+        raise RuntimeError("tiktok_publish_mode_must_be_direct_or_draft")
+    request_url = PUBLISH_URL if publish_mode == "direct" else UPLOAD_URL
+    request_body: dict[str, Any] = {
+        "source_info": {"source": "PULL_FROM_URL", "video_url": video_url},
+    }
+    if publish_mode == "direct":
+        settings = creator_info(token)
+        privacy_level = os.environ.get("TIKTOK_PRIVACY_LEVEL", "SELF_ONLY").strip() or "SELF_ONLY"
+        allowed_privacy = settings.get("privacy_level_options") if isinstance(settings.get("privacy_level_options"), list) else []
+        if allowed_privacy and privacy_level not in allowed_privacy:
+            raise RuntimeError("tiktok_privacy_level_not_available_for_creator")
+        request_body["post_info"] = {
+            "title": title,
+            "privacy_level": privacy_level,
+            "disable_duet": False,
+            "disable_comment": False,
+            "disable_stitch": False,
+            "video_cover_timestamp_ms": 1000,
+        }
     response = requests.post(
-        PUBLISH_URL,
+        request_url,
         headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json; charset=UTF-8"},
-        json={
-            "post_info": {
-                "title": title,
-                "privacy_level": os.environ.get("TIKTOK_PRIVACY_LEVEL", "PUBLIC_TO_EVERYONE").strip() or "PUBLIC_TO_EVERYONE",
-                "disable_duet": False,
-                "disable_comment": False,
-                "disable_stitch": False,
-                "video_cover_timestamp_ms": 1000,
-            },
-            "source_info": {"source": "PULL_FROM_URL", "video_url": video_url},
-        },
+        json=request_body,
         timeout=60,
     )
     response.raise_for_status()
@@ -79,7 +75,7 @@ def publish(content: dict[str, Any], dry_run: bool = False) -> dict[str, Any]:
     publish_id = str(data.get("publish_id") or "").strip()
     if not publish_id:
         raise RuntimeError("tiktok_publish_returned_no_publish_id")
-    return {"id": publish_id, "publish_id": publish_id, "media_type": "VIDEO", "status": "PROCESSING"}
+    return {"id": publish_id, "publish_id": publish_id, "media_type": "VIDEO", "status": "PROCESSING", "publish_mode": publish_mode}
 
 
 def get_status(publish_id: str) -> dict[str, Any]:

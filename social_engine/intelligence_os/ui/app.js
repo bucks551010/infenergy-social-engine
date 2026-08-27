@@ -1,4 +1,4 @@
-const state = { data: null, conversationId: null, renderedConversationId: null, jobQuery: '', creatives: [], creativeId: null, creativeSaveTimer: null, capabilities: [], transactions: [], masterCapabilityId: null, token: sessionStorage.getItem('infenergyToken') || '' };
+const state = { data: null, conversationId: null, renderedConversationId: null, jobQuery: '', creatives: [], creativeId: null, creativeSaveTimer: null, capabilities: [], transactions: [], masterCapabilityId: null, tiktokAccount: null, token: sessionStorage.getItem('infenergyToken') || '' };
 const $ = (selector) => document.querySelector(selector);
 const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[char]));
 
@@ -245,7 +245,24 @@ function renderAutomations(automations, watches, runs) {
   $('#automation-runs').innerHTML = runs.length ? `<div class="data-table"><div class="table-head"><span>Automation</span><span>Status</span><span>Started</span><span>Result</span></div>${runs.map((run) => `<div class="table-row"><div><strong>${esc(run.automation_id || 'Automation run')}</strong></div><div>${pill(run.status)}</div><div>${esc(relativeTime(run.started_at))}</div><div>${esc(run.error || (run.finished_at ? 'Completed' : 'In progress'))}</div></div>`).join('')}</div>` : empty('No automation runs yet');
 }
 
+function renderTikTokConnection() {
+  const account = state.tiktokAccount || { status: 'ERROR', connected: false };
+  const status = String(account.status || 'ERROR');
+  const states = {
+    NOT_CONNECTED: ['Not connected', 'Authorize the Infenergy TikTok account to enable approved video workflows.'],
+    CONNECTED: ['Connected', account.display_name ? `Authorized as ${account.display_name}.` : 'TikTok authorization is active.'],
+    REAUTHORIZATION_REQUIRED: ['Reauthorization required', 'The TikTok grant expired or can no longer be refreshed.'],
+    ERROR: ['Connection error', 'TikTok connection status could not be verified.'],
+  };
+  const [title, detail] = states[status] || states.ERROR;
+  const action = status === 'CONNECTED'
+    ? '<button type="button" class="ghost" data-tiktok-disconnect>Disconnect</button>'
+    : '<button type="button" data-tiktok-connect>Connect TikTok</button>';
+  $('#tiktok-connection').innerHTML = `<article class="account-connection ${tone(status)}"><div class="account-mark">T</div><div><span class="kicker">Connected account</span><h3>TikTok · ${esc(title)}</h3><p>${esc(detail)}</p>${account.access_token_expires_at ? `<small>Authorization refreshes automatically · access valid through ${esc(dateTime(account.access_token_expires_at))}</small>` : ''}</div><div class="account-action">${pill(status)}${action}</div></article>`;
+}
+
 function renderSocial(today) {
+  renderTikTokConnection();
   if (!today) { $('#social-content').innerHTML = empty('No social schedule loaded'); return; }
   const slots = Array.isArray(today.slots) ? today.slots : Object.entries(today.by_slot || {}).map(([slot, value]) => ({ slot, ...value }));
   const summary = [['Required', today.required || 0], ['Ready', today.ready || 0], ['Published', today.published || 0], ['Missing', today.missing || 0]];
@@ -284,7 +301,8 @@ function render(data) {
   renderToday(attention, data.recent_events || []); renderJobs(jobs); renderResearch(data.research_findings || []); renderAutomations(data.automations || [], data.watches || [], data.automation_runs || []); renderSocial(health.social_today); renderStrategy(policies); renderActivity(data.recent_activity || []); renderHealth(health); renderPermissions(policies);
 }
 
-async function load() { try { const [data] = await Promise.all([api('/api/os/state'), loadCreatives(), loadMaster()]); state.data = data; state.conversationId = data.conversation?.id; syncConversation(data.conversation); render(data); $('#system-dot').className = 'dot ok'; $('#system-label').textContent = 'Master OS connected'; } catch (error) { $('#system-dot').className = 'dot bad'; $('#system-label').textContent = 'Connection blocked'; toast(error.message); } }
+async function loadTikTokStatus() { try { state.tiktokAccount = await api('/api/auth/tiktok/status'); } catch { state.tiktokAccount = { status: 'ERROR', connected: false }; } }
+async function load() { try { const [data] = await Promise.all([api('/api/os/state'), loadCreatives(), loadMaster(), loadTikTokStatus()]); state.data = data; state.conversationId = data.conversation?.id; syncConversation(data.conversation); render(data); $('#system-dot').className = 'dot ok'; $('#system-label').textContent = 'Master OS connected'; } catch (error) { $('#system-dot').className = 'dot bad'; $('#system-label').textContent = 'Connection blocked'; toast(error.message); } }
 function activateView(view) {
   const button = document.querySelector(`#nav button[data-view="${view}"]`);
   const target = $(`#${view}`);
@@ -316,6 +334,22 @@ $('#logout').addEventListener('click', () => {
   showLogin();
 });
 $('#refresh').addEventListener('click', load);
+document.addEventListener('click', async (event) => {
+  const connect = event.target.closest('[data-tiktok-connect]');
+  const disconnect = event.target.closest('[data-tiktok-disconnect]');
+  if (!connect && !disconnect) return;
+  if (connect) {
+    try {
+      connect.disabled = true; connect.textContent = 'Opening TikTok…';
+      const authorization = await api('/api/auth/tiktok/connect?format=json');
+      window.location.assign(authorization.authorization_url);
+    } catch (error) { connect.disabled = false; connect.textContent = 'Connect TikTok'; toast(error.message); }
+    return;
+  }
+  if (!window.confirm('Disconnect TikTok and revoke the stored authorization?')) return;
+  try { disconnect.disabled = true; await api('/api/auth/tiktok/disconnect', { method: 'POST', body: '{}' }); await loadTikTokStatus(); renderTikTokConnection(); toast('TikTok disconnected'); }
+  catch (error) { disconnect.disabled = false; toast(error.message); }
+});
 $('#master-search').addEventListener('input', renderMasterCapabilities);
 $('#master-domain').addEventListener('change', renderMasterCapabilities);
 $('#master-capabilities').addEventListener('click', (event) => { const button = event.target.closest('[data-master-capability]'); if (button) selectMasterCapability(button.dataset.masterCapability); });
@@ -436,4 +470,5 @@ document.addEventListener('click', async (event) => {
     await load();
   } catch (error) { button.disabled = false; button.textContent = approved ? 'Approve & run once' : 'Reject'; message('assistant', 'Approval action failed: ' + error.message, 'blocked'); }
 });
-if (state.token) { showApp(); load(); } else showLogin();
+const callbackResult = new URLSearchParams(window.location.search).get('tiktok');
+if (state.token) { showApp(); load().then(() => { if (callbackResult) { activateView('social'); toast(callbackResult === 'connected' ? 'TikTok connected' : 'TikTok authorization was not completed'); history.replaceState({}, '', '/os'); } }); } else showLogin();

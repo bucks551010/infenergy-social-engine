@@ -277,6 +277,9 @@ def _story_frame(source_path: str, destination: Path, *, square: bool = False) -
 def _story_vertical_frame(scene: dict[str, Any], destination: Path, *, scene_count: int) -> None:
     with Image.open(scene["asset_path"]) as source:
         source = source.convert("RGB")
+        if source.size == (REEL_WIDTH, REEL_HEIGHT):
+            source.save(destination, format="JPEG", quality=95, subsampling=0)
+            return
         background = source.resize((REEL_WIDTH, REEL_HEIGHT), Image.Resampling.LANCZOS)
         background = background.filter(ImageFilter.GaussianBlur(34))
         background = ImageEnhance.Brightness(background).enhance(0.34)

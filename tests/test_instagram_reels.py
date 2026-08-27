@@ -158,6 +158,22 @@ def test_story_vertical_frame_is_true_reel_canvas_with_story_text(tmp_path):
         assert frame.getbbox() == (0, 0, 1080, 1920)
 
 
+def test_native_reel_scene_stays_full_bleed_without_carousel_wrapper(tmp_path):
+    source = tmp_path / "native-reel.png"
+    image = Image.new("RGB", (1080, 1920), (18, 24, 30))
+    image.paste((220, 20, 30), (0, 0, 120, 120))
+    image.paste((20, 210, 80), (960, 1800, 1080, 1920))
+    image.save(source)
+    destination = tmp_path / "native-scene.jpg"
+
+    reels._story_vertical_frame({"asset_path": str(source), "index": 0, "caption": "Native scene"}, destination, scene_count=1)
+
+    with Image.open(destination) as frame:
+        assert frame.size == (1080, 1920)
+        assert frame.getpixel((40, 40))[0] > 180
+        assert frame.getpixel((1040, 1880))[1] > 170
+
+
 def test_font_fallback_honors_requested_size(monkeypatch):
     monkeypatch.setattr(reels.os.path, "exists", lambda _path: False)
 

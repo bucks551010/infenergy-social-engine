@@ -212,6 +212,7 @@ def build_scored_story_plan(
     emotions: list[str] | None = None,
     narration_path: str | None = None,
     motion_intensity: float = 0.55,
+    auto_narration: bool = False,
 ) -> dict[str, Any]:
     """Turn ordered carousel assets into a readable, emotionally scored story timeline."""
     if len(carousel_assets) < 2:
@@ -226,7 +227,7 @@ def build_scored_story_plan(
             raise ValueError(f"scored_story_slide_missing_local_path:{index + 1}")
         text = _text(texts[index] if index < len(texts) else asset.get("caption") or asset.get("title"), 500)
         words = len(text.split())
-        duration = round(min(7.0, max(2.8, 2.4 + words * 0.22)), 2)
+        duration = round(min(10.0, max(5.0, 3.6 + words * 0.32)), 2)
         emotion = _text(requested_emotions[index] if index < len(requested_emotions) else STORY_EMOTIONS[index % len(STORY_EMOTIONS)], 24).lower()
         if emotion not in EMOTION_HARMONY:
             raise ValueError(f"unsupported_story_emotion:{emotion}")
@@ -246,14 +247,15 @@ def build_scored_story_plan(
         "video_end_time": round(cursor, 2),
         "motion_intensity": max(0.0, min(float(motion_intensity), 1.0)),
         "narration_path": narration_path,
+        "auto_narration": bool(auto_narration),
         "scenes": scenes,
         "music_score": {
             "source": "original_cue_based_cinematic_composition",
             "license": "original_generated_audio",
             "commercial_use": True,
-            "score_version": 2,
-            "tempo_bpm": 84,
-            "instrumentation": ["low_strings", "felt_piano_motif", "string_ostinato", "sub_bass", "taiko", "brass_swell", "cymbal_riser", "final_resolve"],
+            "score_version": 3,
+            "tempo_bpm": 68,
+            "instrumentation": ["low_strings", "felt_piano_motif", "sub_bass", "restrained_taiko", "late_brass_swell", "transition_swell", "final_resolve"],
             "channels": 2,
             "emotional_arc": [scene["emotion"] for scene in scenes],
             "cue_arc": ["suspense", "threat", "investigation", "stakes", "plan", "pursuit", "reversal", "resolution"][:len(scenes)],
@@ -321,7 +323,7 @@ def _render_cinematic_score(plan: dict[str, Any], destination: Path) -> None:
     scene_index = 0
     noise = [randomizer.uniform(-1.0, 1.0) for _ in range(4096)]
     scene_count = len(scenes)
-    motif_intervals = (0, 3, 7, 10, 7, 3)
+    motif_intervals = (0, 3, 7, 10)
 
     def harmonic_tone(frequency: float, time_seconds: float, harmonics: tuple[float, ...]) -> float:
         return sum(
@@ -361,22 +363,23 @@ def _render_cinematic_score(plan: dict[str, Any], destination: Path) -> None:
             bass_frequency = _midi_frequency(root - 24)
             sub_bass = harmonic_tone(bass_frequency, time_seconds, (1.0, 0.22, 0.08))
 
-            motif_step_seconds = beat_seconds * (1.0 if arc < 0.45 else 0.5)
+            motif_step_seconds = beat_seconds * (2.0 if arc < 0.55 else 1.0)
             motif_step = int(time_seconds / motif_step_seconds)
             motif_phase = time_seconds % motif_step_seconds
             motif_note = root + 12 + motif_intervals[motif_step % len(motif_intervals)]
             piano_envelope = math.exp(-4.8 * motif_phase / motif_step_seconds)
             piano = harmonic_tone(_midi_frequency(motif_note), time_seconds, (1.0, 0.5, 0.22, 0.12, 0.07)) * piano_envelope
 
-            eighth_seconds = beat_seconds / 2
+            eighth_seconds = beat_seconds
             ostinato_step = int(time_seconds / eighth_seconds)
             ostinato_phase = time_seconds % eighth_seconds
             ostinato_note = root - 12 + (0, 7, 3, 7)[ostinato_step % 4]
-            ostinato = triangle_tone(_midi_frequency(ostinato_note), time_seconds) * math.exp(-5.5 * ostinato_phase / eighth_seconds)
+            ostinato = harmonic_tone(_midi_frequency(ostinato_note), time_seconds, (1.0, 0.24, 0.08)) * math.exp(-4.2 * ostinato_phase / eighth_seconds)
 
             beat_phase = time_seconds % beat_seconds
             beat_number = int(time_seconds / beat_seconds)
-            taiko_active = scene_index >= 1 and (scene_index >= scene_count - 2 or beat_number % 2 == 0)
+            act_turns = {max(1, scene_count // 3), max(2, (scene_count * 2) // 3), scene_count - 2}
+            taiko_active = scene_index in act_turns and beat_number % 2 == 0
             taiko = 0.0
             if taiko_active and beat_phase < 0.42:
                 taiko_frequency = 76.0 - 38.0 * min(1.0, beat_phase / 0.3)
@@ -384,7 +387,7 @@ def _render_cinematic_score(plan: dict[str, Any], destination: Path) -> None:
                 taiko += noise[(sample_index * 5) % len(noise)] * math.exp(-34 * beat_phase) * 0.14
 
             scene_impact = 0.0
-            if local_time < 0.8:
+            if scene_index in {0, max(1, scene_count // 2), scene_count - 1} and local_time < 0.8:
                 scene_impact = harmonic_tone(42.0, local_time, (1.0, 0.32, 0.15)) * math.exp(-4.2 * local_time)
             brass = 0.0
             if scene_index >= max(2, scene_count // 2):
@@ -400,7 +403,7 @@ def _render_cinematic_score(plan: dict[str, Any], destination: Path) -> None:
                 transition_progress = 1.0 - max(0.0, scene_duration - local_time) / transition_window
                 shimmer = noise[(sample_index * 13) % len(noise)] * (0.25 + 0.75 * transition_progress)
                 rising_tone = math.sin(2 * math.pi * (280 + 520 * transition_progress) * time_seconds)
-                transition = (shimmer * 0.08 + rising_tone * 0.035) * transition_progress
+                transition = (shimmer * 0.045 + rising_tone * 0.018) * transition_progress
 
             resolution = 0.0
             if scene_index == scene_count - 1:
@@ -413,12 +416,12 @@ def _render_cinematic_score(plan: dict[str, Any], destination: Path) -> None:
             tension_gain = 0.55 + 0.65 * arc
             tonal = scene_envelope * (
                 string_chord * (0.17 + 0.08 * arc) * phrase_pulse
-                + high_strings * max(0.0, arc - 0.28) * 0.13
+                + high_strings * max(0.0, arc - 0.42) * 0.09
                 + sub_bass * (0.14 + 0.08 * arc)
                 + piano * (0.17 if arc < 0.7 else 0.1)
-                + ostinato * max(0.0, arc - 0.2) * 0.2
-                + brass * max(0.0, arc - 0.42) * 0.2
-                + resolution * (0.2 if scene_index == scene_count - 1 else 0.0)
+                + ostinato * max(0.0, arc - 0.36) * 0.12
+                + brass * max(0.0, arc - 0.58) * 0.24
+                + resolution * (0.28 if scene_index == scene_count - 1 else 0.0)
             )
             percussion = taiko * (0.2 + 0.16 * arc) + scene_impact * (0.28 if scene_index else 0.14) + transition
             overall_fade = min(1.0, time_seconds / 1.2, max(0.0, (total_seconds - time_seconds) / 1.7))
@@ -472,7 +475,7 @@ def render_scored_story_reel(plan: dict[str, Any], *, data_dir: str | None = Non
     intensity = float(plan.get("motion_intensity") or 0.55)
     for index, scene in enumerate(scenes):
         frames = max(1, int(math.ceil(float(scene["duration"]) * REEL_FPS)))
-        zoom_step = (0.00018 + intensity * 0.00032) * (1 if scene["movement"] == "slow_push" else -1)
+        zoom_step = (0.00009 + intensity * 0.00016) * (1 if scene["movement"] == "slow_push" else -1)
         zoom = f"min(zoom+{zoom_step:.6f},1.025)" if zoom_step > 0 else f"max(zoom{zoom_step:.6f},1.0)"
         filters.append(
             f"[{index}:v]scale={REEL_WIDTH}:{REEL_HEIGHT},"

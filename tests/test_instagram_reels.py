@@ -97,9 +97,12 @@ def test_scored_story_plan_sets_readable_timing_and_emotional_arc(tmp_path):
     assert plan["pre_render_gate"] == "SCORED_STORY_READY"
     assert plan["music_score"]["emotional_arc"] == ["mystery", "danger", "relief"]
     assert plan["music_score"]["source"] == "original_cue_based_cinematic_composition"
-    assert plan["music_score"]["score_version"] == 2
+    assert plan["music_score"]["score_version"] == 3
+    assert plan["music_score"]["tempo_bpm"] == 68
     assert plan["music_score"]["channels"] == 2
-    assert {"low_strings", "felt_piano_motif", "taiko", "brass_swell", "final_resolve"}.issubset(plan["music_score"]["instrumentation"])
+    assert {"low_strings", "felt_piano_motif", "restrained_taiko", "late_brass_swell", "final_resolve"}.issubset(plan["music_score"]["instrumentation"])
+    assert plan["auto_narration"] is False
+    assert plan["scenes"][0]["duration"] >= 5.0
     assert plan["scenes"][1]["duration"] > plan["scenes"][0]["duration"]
     assert plan["scenes"][2]["start"] == plan["scenes"][1]["end"]
     assert plan["video_end_time"] == plan["scenes"][-1]["end"]
@@ -108,6 +111,17 @@ def test_scored_story_plan_sets_readable_timing_and_emotional_arc(tmp_path):
         assert reels.technical_qa(artifact, plan)["status"] == "PASS"
         assert artifact["reel_type"] == "SCORED_STORY_REEL"
         assert artifact["story_score"]["commercial_use"] is True
+
+
+def test_scored_story_narration_is_only_enabled_explicitly(tmp_path):
+    assets = [{"local_path": str(tmp_path / "slide.png")} for _ in range(2)]
+    Image.new("RGB", (1080, 1920), (24, 36, 48)).save(tmp_path / "slide.png")
+
+    silent = reels.build_scored_story_plan(post_id="silent", carousel_assets=assets)
+    narrated = reels.build_scored_story_plan(post_id="narrated", carousel_assets=assets, auto_narration=True)
+
+    assert silent["auto_narration"] is False
+    assert narrated["auto_narration"] is True
 
 
 def test_scored_story_reel_accepts_30_native_scenes_but_not_31():

@@ -224,8 +224,8 @@ def _compose_scored_story(payload: dict) -> tuple[int, dict]:
             slide_texts=[str(item) for item in payload.get("slide_texts", [])],
             emotions=[str(item) for item in payload.get("emotions", [])],
             motion_intensity=float(payload.get("motion_intensity", 0.55)),
+            auto_narration=bool(payload.get("auto_narration", False)),
         )
-        plan["auto_narration"] = bool(payload.get("auto_narration", True))
         artifact = render_scored_story_reel(plan, data_dir=_data_dir())
         qa = technical_qa(artifact, plan)
         if qa["status"] != "PASS":

@@ -28,6 +28,7 @@ from social_visuals import (  # noqa: E402
     _gemini_plate_quality,
     _has_scanline_corruption,
     _normalize_reference_image,
+    _platform_visual_spec,
     generate_visuals,
     normalize_brand_text,
     review_rendered_visual,
@@ -317,6 +318,10 @@ class PublisherVisualTests(unittest.TestCase):
         self.assertEqual(result["media_type"], "STORY")
         self.assertEqual(post_with_retry.call_args_list[0].args[1]["media_type"], "STORIES")
         self.assertEqual(post_with_retry.call_args_list[1].args[1]["creation_id"], "story-container")
+
+    def test_iis_delivery_profiles_require_native_carousel_and_reel_dimensions(self) -> None:
+        self.assertEqual(_platform_visual_spec("iis_carousel")["target"], (1080, 1350))
+        self.assertEqual(_platform_visual_spec("iis_reel_cover")["target"], (1080, 1920))
 
     def test_style_reference_must_decode_as_an_image(self) -> None:
         from PIL import Image

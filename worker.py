@@ -280,7 +280,7 @@ def _publish_custom_post(payload: dict) -> tuple[int, dict]:
         provenance_issues = _verify_iis_publish_package(source_system, iis_creative_id, image_url, image_urls, reel_video_url, reel_cover_url)
         if provenance_issues:
             return 422, {"status": "quality_repair_required", "error": "iis_publish_package_verification_failed", "issues": provenance_issues}
-        preflight_issues = _custom_post_artifact_preflight(image_url, image_urls, reel_video_url, reel_cover_url)
+        preflight_issues = _custom_post_artifact_preflight(image_url, image_urls, reel_video_url, reel_cover_url, source_system)
         if preflight_issues:
             return 422, {"status": "quality_repair_required", "error": "custom_post_artifact_preflight_failed", "issues": preflight_issues}
     with CUSTOM_POST_LOCK:
@@ -420,11 +420,14 @@ def _verify_iis_publish_package(source_system: str, creative_id: str, image_url:
     return issues
 
 
-def _custom_post_artifact_preflight(image_url: str, image_urls: list[str], reel_video_url: str, reel_cover_url: str) -> list[str]:
+def _custom_post_artifact_preflight(image_url: str, image_urls: list[str], reel_video_url: str, reel_cover_url: str, source_system: str = "") -> list[str]:
     issues = []
-    visual_urls = list(dict.fromkeys([image_url, *image_urls, *([reel_cover_url] if reel_cover_url else [])]))
+    carousel_profile = "iis_carousel" if source_system == "iis" else "custom_post"
+    visual_urls = [(url, carousel_profile) for url in dict.fromkeys([image_url, *image_urls]) if url]
+    if reel_cover_url:
+        visual_urls.append((reel_cover_url, "iis_reel_cover" if source_system == "iis" else "custom_post"))
     with tempfile.TemporaryDirectory(prefix="custom-post-preflight-") as temp_dir:
-        for index, url in enumerate(visual_urls):
+        for index, (url, review_profile) in enumerate(visual_urls):
             try:
                 response = requests.get(url, timeout=45, stream=True)
                 response.raise_for_status()
@@ -443,7 +446,7 @@ def _custom_post_artifact_preflight(image_url: str, image_urls: list[str], reel_
                 if total < 1024:
                     issues.append(f"visual_{index + 1}_empty_or_truncated")
                     continue
-                review = review_rendered_visual(path, "custom_post")
+                review = review_rendered_visual(path, review_profile)
                 if review.get("verdict") != "PASS":
                     details = ",".join(str(item) for item in review.get("issues", [])) or "visual_review_not_passed"
                     issues.append(f"visual_{index + 1}_{details}")

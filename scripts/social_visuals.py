@@ -391,6 +391,22 @@ def _extract_inline_image_bytes(response: Any) -> bytes:
 
 
 def _platform_visual_spec(platform: str) -> dict[str, Any]:
+    if platform == "iis_carousel":
+        return {
+            "target": (1080, 1350),
+            "aspect_ratio": "4:5",
+            "copy_zone": "inside the carousel safe area",
+            "product_zone": "inside the carousel safe area",
+            "scene": "approved IIS carousel frame",
+        }
+    if platform == "iis_reel_cover":
+        return {
+            "target": (1080, 1920),
+            "aspect_ratio": "9:16",
+            "copy_zone": "inside the vertical safe area",
+            "product_zone": "inside the vertical safe area",
+            "scene": "approved IIS Reel cover",
+        }
     if platform == "linkedin":
         return {
             "target": (1200, 627),

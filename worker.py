@@ -9,6 +9,7 @@ import subprocess
 import traceback
 import uuid
 import urllib.request
+import tempfile
 from urllib.parse import urlparse, parse_qs, urlencode
 import schedule
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -25,6 +26,7 @@ import intelligence_packages
 from build_monthly_content import build_monthly_calendar, latest_monthly_calendar, prepare_monthly_gemini_prompts
 from content_operations import daily_status, init_content_operations, reconcile_confirmed_transactions, reconcile_ready_inventory, reconcile_stale_claims
 from campaign_runtime import eligible_channels_for_slot, load_channel_schedule, load_funnel_config, stage_for_slot
+from social_visuals import review_rendered_visual
 
 RUN_LOCK = threading.Lock()
 LAST_RUN = {
@@ -270,6 +272,10 @@ def _publish_custom_post(payload: dict) -> tuple[int, dict]:
         return 400, {"error": "youtube and tiktok require a rendered Reel video"}
 
     dry_run = not bool(payload.get("live", False))
+    if not dry_run:
+        preflight_issues = _custom_post_artifact_preflight(image_url, image_urls, reel_video_url, reel_cover_url)
+        if preflight_issues:
+            return 422, {"status": "quality_repair_required", "error": "custom_post_artifact_preflight_failed", "issues": preflight_issues}
     with CUSTOM_POST_LOCK:
         history = _load_json(_custom_post_history_path(), {})
         if not isinstance(history, dict):
@@ -293,7 +299,7 @@ def _publish_custom_post(payload: dict) -> tuple[int, dict]:
             "wp_title": caption[:180],
             "topic": "IIS scheduled post",
             "primary_publish_image_url": image_url,
-            "owner_supplied_visual": True,
+            "owner_supplied_visual": False,
             "carousel_assets": [
                 {"public_url": item, "render_engine": "owner"}
                 for item in image_urls
@@ -368,6 +374,46 @@ def _publish_custom_post(payload: dict) -> tuple[int, dict]:
         response_status = "partial_failure" if failed else "processing" if processing else "published"
         response = {"status": response_status, "external_id": external_id, "platforms": results, "failed_platforms": failed, "processing_platforms": processing, "time_utc": _utc_now()}
         return (502 if failed else 202 if processing else 200), response
+
+
+def _custom_post_artifact_preflight(image_url: str, image_urls: list[str], reel_video_url: str, reel_cover_url: str) -> list[str]:
+    issues = []
+    visual_urls = list(dict.fromkeys([image_url, *image_urls, *([reel_cover_url] if reel_cover_url else [])]))
+    with tempfile.TemporaryDirectory(prefix="custom-post-preflight-") as temp_dir:
+        for index, url in enumerate(visual_urls):
+            try:
+                response = requests.get(url, timeout=45, stream=True)
+                response.raise_for_status()
+                content_type = str(response.headers.get("Content-Type") or "").lower()
+                if "image" not in content_type and "octet-stream" not in content_type:
+                    issues.append(f"visual_{index + 1}_invalid_content_type")
+                    continue
+                path = os.path.join(temp_dir, f"visual-{index + 1}.img")
+                total = 0
+                with open(path, "wb") as artifact:
+                    for chunk in response.iter_content(1024 * 256):
+                        total += len(chunk)
+                        if total > 30 * 1024 * 1024:
+                            raise RuntimeError("artifact_exceeds_30mb")
+                        artifact.write(chunk)
+                if total < 1024:
+                    issues.append(f"visual_{index + 1}_empty_or_truncated")
+                    continue
+                review = review_rendered_visual(path, "custom_post")
+                if review.get("verdict") != "PASS":
+                    details = ",".join(str(item) for item in review.get("issues", [])) or "visual_review_not_passed"
+                    issues.append(f"visual_{index + 1}_{details}")
+            except Exception as exc:
+                issues.append(f"visual_{index + 1}_unavailable:{type(exc).__name__}")
+    if reel_video_url:
+        try:
+            response = requests.head(reel_video_url, allow_redirects=True, timeout=30)
+            content_type = str(response.headers.get("Content-Type") or "").lower()
+            if not response.ok or ("video" not in content_type and "octet-stream" not in content_type):
+                issues.append("reel_video_unreachable_or_invalid")
+        except Exception as exc:
+            issues.append(f"reel_video_unavailable:{type(exc).__name__}")
+    return issues
 
 
 def _mask_token(value: str) -> str:

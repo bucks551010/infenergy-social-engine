@@ -9,6 +9,10 @@ import requests
 import worker
 
 
+def setup_function():
+    worker._custom_post_artifact_preflight = lambda *_args: []
+
+
 def _payload():
     return {
         "external_id": "iis-schedule-1",
@@ -260,7 +264,7 @@ def test_custom_post_marks_skipped_publisher_result_as_failed():
     assert response["platforms"]["instagram"]["error"] == "image_unavailable"
 
 
-def test_custom_post_marks_visual_as_owner_supplied():
+def test_custom_post_requires_final_artifact_review_without_owner_bypass():
     payload = _payload()
     payload["platforms"] = ["facebook"]
     with tempfile.TemporaryDirectory() as data_dir, patch.dict(os.environ, {"DATA_DIR": data_dir}, clear=False), \
@@ -268,7 +272,21 @@ def test_custom_post_marks_visual_as_owner_supplied():
         status, _ = worker._publish_custom_post(payload)
 
     assert status == 200
-    assert facebook.call_args.args[0]["owner_supplied_visual"] is True
+    assert facebook.call_args.args[0]["owner_supplied_visual"] is False
+
+
+def test_custom_post_stops_before_publish_when_artifact_preflight_requires_repair():
+    payload = _payload()
+    payload["platforms"] = ["facebook"]
+    with tempfile.TemporaryDirectory() as data_dir, patch.dict(os.environ, {"DATA_DIR": data_dir}, clear=False), \
+        patch.object(worker, "_custom_post_artifact_preflight", return_value=["visual_1_originality_review_not_passed"]), \
+        patch("publish_facebook.publish") as facebook:
+        status, response = worker._publish_custom_post(payload)
+
+    assert status == 422
+    assert response["status"] == "quality_repair_required"
+    assert response["issues"] == ["visual_1_originality_review_not_passed"]
+    facebook.assert_not_called()
 
 
 def test_custom_post_retries_legacy_published_skipped_checkpoint():

@@ -206,6 +206,11 @@ def _compose_scored_story(payload: dict) -> tuple[int, dict]:
     image_urls = [str(item).strip() for item in image_urls if str(item).strip()]
     if not _valid_scored_story_urls(image_urls):
         return 400, {"error": "image_urls must contain 2 to 30 public HTTPS URLs"}
+    if bool(payload.get("auto_narration", False)):
+        return 400, {"error": "carousel_story_narration_is_disabled"}
+    visual_readings = payload.get("visual_readings") if isinstance(payload.get("visual_readings"), list) else []
+    if len(visual_readings) != len(image_urls):
+        return 400, {"error": "visual_readings must contain one reading for every image URL"}
     media_dir = os.path.join(_data_dir(), "public_media")
     os.makedirs(media_dir, exist_ok=True)
     request_id = uuid.uuid4().hex
@@ -241,7 +246,8 @@ def _compose_scored_story(payload: dict) -> tuple[int, dict]:
             slide_texts=[str(item) for item in payload.get("slide_texts", [])],
             emotions=[str(item) for item in payload.get("emotions", [])],
             motion_intensity=float(payload.get("motion_intensity", 0.55)),
-            auto_narration=bool(payload.get("auto_narration", False)),
+            auto_narration=False,
+            visual_readings=visual_readings,
         )
         if music_path:
             plan["music_path"] = music_path

@@ -30,6 +30,8 @@ REEL_FPS = 30
 MIN_REEL_SECONDS = 3.0
 MAX_REEL_SECONDS = 15 * 60.0
 STORY_EMOTIONS = ("mystery", "eerie", "tension", "danger", "discovery", "relief", "triumph", "reflection")
+STORY_ROLES = ("setup", "pressure", "evidence", "reveal", "adaptation", "response", "resolution", "reflection")
+CAMERA_MOVES = ("push", "pull", "pan_left", "pan_right", "pan_up", "pan_down", "hold")
 EMOTION_HARMONY = {
     "mystery": (50, (0, 3, 7)), "eerie": (47, (0, 1, 7)), "tension": (45, (0, 3, 6)),
     "danger": (43, (0, 1, 6)), "discovery": (52, (0, 4, 7)), "relief": (55, (0, 4, 7)),
@@ -213,12 +215,18 @@ def build_scored_story_plan(
     narration_path: str | None = None,
     motion_intensity: float = 0.55,
     auto_narration: bool = False,
+    visual_readings: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Turn ordered carousel assets into a readable, emotionally scored story timeline."""
     if len(carousel_assets) < 2:
         raise ValueError("scored_story_reel_requires_at_least_two_slides")
+    if auto_narration or narration_path:
+        raise ValueError("carousel_story_narration_is_disabled")
     texts = slide_texts or []
     requested_emotions = emotions or []
+    readings = visual_readings or []
+    if len(readings) != len(carousel_assets):
+        raise ValueError("scored_story_requires_one_visual_reading_per_frame")
     scenes = []
     cursor = 0.0
     for index, asset in enumerate(carousel_assets):
@@ -231,11 +239,29 @@ def build_scored_story_plan(
         emotion = _text(requested_emotions[index] if index < len(requested_emotions) else STORY_EMOTIONS[index % len(STORY_EMOTIONS)], 24).lower()
         if emotion not in EMOTION_HARMONY:
             raise ValueError(f"unsupported_story_emotion:{emotion}")
+        reading = readings[index] if isinstance(readings[index], dict) else {}
+        story_role = _text(reading.get("story_role"), 24).lower()
+        camera_move = _text(reading.get("camera_move"), 24).lower()
+        if story_role not in STORY_ROLES:
+            raise ValueError(f"unsupported_story_role:{story_role or 'missing'}")
+        if camera_move not in CAMERA_MOVES:
+            raise ValueError(f"unsupported_camera_move:{camera_move or 'missing'}")
+        focal_x = float(reading.get("focal_x", -1))
+        focal_y = float(reading.get("focal_y", -1))
+        if not 0.0 <= focal_x <= 1.0 or not 0.0 <= focal_y <= 1.0:
+            raise ValueError("scored_story_focal_point_out_of_bounds")
+        visual_summary = _text(reading.get("visual_summary"), 240)
+        narrative_change = _text(reading.get("narrative_change"), 240)
+        if not visual_summary or not narrative_change:
+            raise ValueError("scored_story_visual_reading_is_incomplete")
         scenes.append({
             "index": index, "asset_path": local_path, "public_url": str(asset.get("public_url") or ""),
             "caption": text, "emotion": emotion, "start": round(cursor, 2),
             "end": round(cursor + duration, 2), "duration": duration,
-            "movement": "slow_push" if index % 2 == 0 else "slow_pull",
+            "movement": camera_move, "story_role": story_role,
+            "focal_x": focal_x, "focal_y": focal_y,
+            "visual_summary": visual_summary, "narrative_change": narrative_change,
+            "reading_order": [_text(item, 80) for item in reading.get("reading_order", []) if _text(item, 80)],
         })
         cursor += duration
     return {
@@ -246,8 +272,8 @@ def build_scored_story_plan(
         "target_duration": round(cursor, 2),
         "video_end_time": round(cursor, 2),
         "motion_intensity": max(0.0, min(float(motion_intensity), 1.0)),
-        "narration_path": narration_path,
-        "auto_narration": bool(auto_narration),
+        "narration_path": None,
+        "auto_narration": False,
         "scenes": scenes,
         "music_score": {
             "source": "original_cue_based_cinematic_composition",
@@ -306,6 +332,27 @@ def _story_vertical_frame(scene: dict[str, Any], destination: Path, *, scene_cou
         wrapped = "\n".join(textwrap.wrap(caption, width=42, break_long_words=False)[:4])
         draw.multiline_text((58, 1570), wrapped, fill=(255, 255, 255, 255), font=_font(43), spacing=13)
         canvas.save(destination, format="JPEG", quality=95, subsampling=0)
+
+
+def _story_camera_filter(scene: dict[str, Any], intensity: float, frames: int) -> str:
+    movement = str(scene["movement"])
+    focal_x = float(scene["focal_x"])
+    focal_y = float(scene["focal_y"])
+    progress = f"on/{max(1, frames - 1)}"
+    zoom_step = 0.00009 + intensity * 0.00016
+    if movement == "push":
+        zoom = f"min(zoom+{zoom_step:.6f},1.025)"
+    elif movement == "pull":
+        zoom = f"if(eq(on,0),1.025,max(zoom-{zoom_step:.6f},1.0))"
+    elif movement == "hold":
+        zoom = "1.0"
+    else:
+        zoom = "1.018"
+    horizontal = {"pan_left": f"18*(0.5-{progress})", "pan_right": f"18*({progress}-0.5)"}.get(movement, "0")
+    vertical = {"pan_up": f"28*(0.5-{progress})", "pan_down": f"28*({progress}-0.5)"}.get(movement, "0")
+    x = f"max(0,min(iw-iw/zoom,iw*{focal_x:.4f}-iw/zoom/2+{horizontal}))"
+    y = f"max(0,min(ih-ih/zoom,ih*{focal_y:.4f}-ih/zoom/2+{vertical}))"
+    return f"zoompan=z='{zoom}':x='{x}':y='{y}':d={frames}:s={REEL_WIDTH}x{REEL_HEIGHT}:fps={REEL_FPS}"
 
 
 def _midi_frequency(note: int) -> float:
@@ -477,11 +524,9 @@ def render_scored_story_reel(plan: dict[str, Any], *, data_dir: str | None = Non
     intensity = float(plan.get("motion_intensity") or 0.55)
     for index, scene in enumerate(scenes):
         frames = max(1, int(math.ceil(float(scene["duration"]) * REEL_FPS)))
-        zoom_step = (0.00009 + intensity * 0.00016) * (1 if scene["movement"] == "slow_push" else -1)
-        zoom = f"min(zoom+{zoom_step:.6f},1.025)" if zoom_step > 0 else f"max(zoom{zoom_step:.6f},1.0)"
         filters.append(
             f"[{index}:v]scale={REEL_WIDTH}:{REEL_HEIGHT},"
-            f"zoompan=z='{zoom}':d={frames}:s={REEL_WIDTH}x{REEL_HEIGHT}:fps={REEL_FPS},"
+            f"{_story_camera_filter(scene, intensity, frames)},"
             f"trim=duration={scene['duration']},setpts=PTS-STARTPTS[v{index}]"
         )
         video_labels.append(f"[v{index}]")

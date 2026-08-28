@@ -93,6 +93,11 @@ def test_scored_story_plan_sets_readable_timing_and_emotional_arc(tmp_path):
         post_id="micro-mission-1", carousel_assets=assets,
         slide_texts=["The lights went out.", "Something moved downstairs behind the breaker panel.", "We found the emergency power kit."],
         emotions=["mystery", "danger", "relief"],
+        visual_readings=[
+            {"story_role": "setup", "camera_move": "push", "focal_x": 0.5, "focal_y": 0.4, "visual_summary": "A dark room establishes the outage.", "narrative_change": "The normal world loses power.", "reading_order": ["room", "caption"]},
+            {"story_role": "reveal", "camera_move": "pan_down", "focal_x": 0.55, "focal_y": 0.7, "visual_summary": "Movement appears behind the breaker panel.", "narrative_change": "The outage gains a visible cause.", "reading_order": ["figure", "breaker", "dialogue"]},
+            {"story_role": "resolution", "camera_move": "pull", "focal_x": 0.48, "focal_y": 0.5, "visual_summary": "The emergency kit is recovered.", "narrative_change": "The characters can respond.", "reading_order": ["kit", "characters", "caption"]},
+        ],
     )
     assert plan["pre_render_gate"] == "SCORED_STORY_READY"
     assert plan["music_score"]["emotional_arc"] == ["mystery", "danger", "relief"]
@@ -117,11 +122,43 @@ def test_scored_story_narration_is_only_enabled_explicitly(tmp_path):
     assets = [{"local_path": str(tmp_path / "slide.png")} for _ in range(2)]
     Image.new("RGB", (1080, 1920), (24, 36, 48)).save(tmp_path / "slide.png")
 
-    silent = reels.build_scored_story_plan(post_id="silent", carousel_assets=assets)
-    narrated = reels.build_scored_story_plan(post_id="narrated", carousel_assets=assets, auto_narration=True)
+    readings = [{"story_role": "setup", "camera_move": "hold", "focal_x": 0.5, "focal_y": 0.5, "visual_summary": "A readable frame.", "narrative_change": "The story begins."} for _ in assets]
+    silent = reels.build_scored_story_plan(post_id="silent", carousel_assets=assets, visual_readings=readings)
 
     assert silent["auto_narration"] is False
-    assert narrated["auto_narration"] is True
+    with pytest.raises(ValueError, match="carousel_story_narration_is_disabled"):
+        reels.build_scored_story_plan(post_id="narrated", carousel_assets=assets, auto_narration=True, visual_readings=readings)
+
+
+def test_scored_story_rejects_blind_motion_without_visual_readings(tmp_path):
+    source = tmp_path / "slide.png"
+    Image.new("RGB", (1080, 1920), (24, 36, 48)).save(source)
+    assets = [{"local_path": str(source)} for _ in range(2)]
+
+    with pytest.raises(ValueError, match="one_visual_reading_per_frame"):
+        reels.build_scored_story_plan(post_id="blind", carousel_assets=assets)
+
+
+def test_story_camera_filter_tracks_visual_focal_point_and_direction():
+    scene = {"movement": "pan_right", "focal_x": 0.72, "focal_y": 0.31}
+
+    camera_filter = reels._story_camera_filter(scene, 0.2, 240)
+
+    assert "iw*0.7200" in camera_filter
+    assert "ih*0.3100" in camera_filter
+    assert "on/239" in camera_filter
+    assert "1.018" in camera_filter
+
+
+def test_scored_story_endpoint_rejects_voice_and_missing_visual_readings_before_download():
+    urls = ["https://media.example/one.png", "https://media.example/two.png"]
+
+    voice_status, voice_result = worker._compose_scored_story({"image_urls": urls, "auto_narration": True})
+    blind_status, blind_result = worker._compose_scored_story({"image_urls": urls})
+
+    assert (voice_status, voice_result["error"]) == (400, "carousel_story_narration_is_disabled")
+    assert blind_status == 400
+    assert "one reading" in blind_result["error"]
 
 
 def test_scored_story_uses_provenance_bound_music_when_supplied(tmp_path):

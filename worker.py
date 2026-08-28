@@ -243,6 +243,7 @@ def _publish_custom_post(payload: dict) -> tuple[int, dict]:
     reel = payload.get("reel") if isinstance(payload.get("reel"), dict) else {}
     reel_video_url = str(reel.get("video_url", "")).strip()
     reel_cover_url = str(reel.get("cover_url", "")).strip()
+    instagram_story = bool(payload.get("instagram_story", False))
     platforms = payload.get("platforms") if isinstance(payload.get("platforms"), list) else []
     platforms = list(dict.fromkeys(str(item).strip().lower() for item in platforms))
     allowed = {"facebook", "instagram", "linkedin", "youtube", "tiktok"}
@@ -261,6 +262,8 @@ def _publish_custom_post(payload: dict) -> tuple[int, dict]:
         return 400, {"error": "image_urls must contain 2 to 10 public HTTPS URLs"}
     if reel and (not reel_video_url.startswith("https://") or not reel_cover_url.startswith("https://")):
         return 400, {"error": "reel video_url and cover_url must be public HTTPS URLs"}
+    if instagram_story and ("instagram" not in platforms or not reel):
+        return 400, {"error": "instagram_story requires the instagram platform and a rendered Reel video"}
     if not platforms or any(item not in allowed for item in platforms):
         return 400, {"error": "platforms must contain facebook, instagram, linkedin, youtube, or tiktok"}
     if any(platform in {"youtube", "tiktok"} for platform in platforms) and not reel:
@@ -305,6 +308,7 @@ def _publish_custom_post(payload: dict) -> tuple[int, dict]:
         }
         if reel:
             content["instagram_reel"] = {"public_urls": {"video": reel_video_url, "cover": reel_cover_url}}
+            content["publish_instagram_story"] = instagram_story
             content["platform_posts"]["instagram"]["media_type"] = "REEL"
             content["platform_posts"]["facebook"]["media_type"] = "REEL"
         for platform in platforms:

@@ -297,6 +297,27 @@ class PublisherVisualTests(unittest.TestCase):
         self.assertEqual(result["id"], "post-1")
         review.assert_not_called()
 
+    def test_instagram_story_uses_story_container_and_publish_protocol(self) -> None:
+        create_response = Mock(ok=True)
+        create_response.json.return_value = {"id": "story-container"}
+        publish_response = Mock(ok=True)
+        publish_response.json.return_value = {"id": "story-media"}
+        with patch.object(
+            publish_instagram, "_post_with_retry", side_effect=[create_response, publish_response]
+        ) as post_with_retry, patch.object(
+            publish_instagram, "_wait_for_media_container", return_value=(True, "finished")
+        ):
+            result = publish_instagram._publish_story_video(
+                "https://media.example/story.mp4",
+                ig_user_id="ig-user",
+                access_token="token",
+            )
+
+        self.assertEqual(result["id"], "story-media")
+        self.assertEqual(result["media_type"], "STORY")
+        self.assertEqual(post_with_retry.call_args_list[0].args[1]["media_type"], "STORIES")
+        self.assertEqual(post_with_retry.call_args_list[1].args[1]["creation_id"], "story-container")
+
     def test_style_reference_must_decode_as_an_image(self) -> None:
         from PIL import Image
         from io import BytesIO

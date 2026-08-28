@@ -112,6 +112,22 @@ def test_custom_post_routes_reel_to_facebook_and_instagram():
     assert instagram_content["platform_posts"]["instagram"]["media_type"] == "REEL"
 
 
+def test_custom_post_routes_optional_instagram_story_with_reel():
+    payload = _carousel_payload(6)
+    payload["platforms"] = ["instagram"]
+    payload["instagram_story"] = True
+    payload["reel"] = {
+        "video_url": "https://media.example/story.mp4",
+        "cover_url": "https://media.example/story-cover.jpg",
+    }
+    with tempfile.TemporaryDirectory() as data_dir, patch.dict(os.environ, {"DATA_DIR": data_dir}, clear=False), \
+        patch("publish_instagram.publish", return_value={"id": "ig-reel", "story_id": "ig-story"}) as instagram:
+        status, _ = worker._publish_custom_post(payload)
+
+    assert status == 200
+    assert instagram.call_args.args[0]["publish_instagram_story"] is True
+
+
 def test_custom_post_routes_reel_to_youtube_and_tiktok():
     payload = _carousel_payload(6)
     payload["platforms"] = ["youtube", "tiktok"]

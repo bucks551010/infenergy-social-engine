@@ -148,7 +148,7 @@ def _publish_reel(content: dict, *, dry_run: bool) -> dict:
         raise RuntimeError("instagram_reel_public_artifact_preflight_failed")
     if dry_run:
         print("[DRY RUN] Instagram: would publish Reel container")
-        return {"id": "dry-run", "media_type": "REEL"}
+        return {"id": "dry-run", "media_type": "REEL", "story_id": "dry-run" if content.get("publish_instagram_story") else None}
     ig_user_id = _required_env("META_IG_USER_ID")
     access_token = _required_env("META_PAGE_ACCESS_TOKEN")
     response = _post_with_retry(
@@ -182,7 +182,42 @@ def _publish_reel(content: dict, *, dry_run: bool) -> dict:
     if not media_id:
         raise RuntimeError("instagram_reel_publish_missing_id")
     print(f"[Instagram] Reel posted: {media_id}")
-    return {"id": media_id, "container_id": creation_id, "media_type": "REEL"}
+    result = {"id": media_id, "container_id": creation_id, "media_type": "REEL"}
+    if content.get("publish_instagram_story"):
+        try:
+            story = _publish_story_video(video_url, ig_user_id=ig_user_id, access_token=access_token)
+            result.update({"story_id": story["id"], "story_container_id": story["container_id"]})
+        except Exception as exc:
+            result["story_error"] = str(exc)
+    return result
+
+
+def _publish_story_video(video_url: str, *, ig_user_id: str, access_token: str) -> dict:
+    response = _post_with_retry(
+        f"{GRAPH_BASE}/{ig_user_id}/media",
+        {"media_type": "STORIES", "video_url": video_url, "access_token": access_token},
+        timeout=45,
+    )
+    if not response.ok:
+        raise RuntimeError(f"instagram_story_container_create_failed_http_{response.status_code}: {_graph_error_text(response)}")
+    creation_id = str(response.json().get("id") or "").strip()
+    if not creation_id:
+        raise RuntimeError("instagram_story_container_missing_id")
+    ready, reason = _wait_for_media_container(ig_user_id, creation_id, access_token, timeout_sec=300)
+    if not ready:
+        raise RuntimeError(f"instagram_story_container_not_ready:{reason}")
+    published = _post_with_retry(
+        f"{GRAPH_BASE}/{ig_user_id}/media_publish",
+        {"creation_id": creation_id, "access_token": access_token},
+        timeout=45,
+    )
+    if not published.ok:
+        raise RuntimeError(f"instagram_story_publish_failed_http_{published.status_code}: {_graph_error_text(published)}")
+    media_id = str(published.json().get("id") or "").strip()
+    if not media_id:
+        raise RuntimeError("instagram_story_publish_missing_id")
+    print(f"[Instagram] Story posted: {media_id}")
+    return {"id": media_id, "container_id": creation_id, "media_type": "STORY"}
 
 
 def _dedupe_keep_order(items: list[str]) -> list[str]:

@@ -246,6 +246,36 @@ class PublisherVisualTests(unittest.TestCase):
         self.assertEqual(result["id"], "post-1")
         review.assert_not_called()
 
+    def test_facebook_reel_uses_start_upload_and_finish_protocol(self) -> None:
+        start_response = Mock(ok=True)
+        start_response.json.return_value = {"video_id": "video-1", "upload_url": "https://upload.facebook.test/reel"}
+        upload_response = Mock(ok=True)
+        finish_response = Mock(ok=True)
+        finish_response.json.return_value = {"success": True}
+        with patch.object(
+            publish_facebook, "_post_with_retry", side_effect=[start_response, finish_response]
+        ) as post_with_retry, patch.object(
+            publish_facebook.requests, "post", return_value=upload_response
+        ) as upload:
+            result = publish_facebook._publish_reel(
+                page_id="page-1",
+                token="token-1",
+                description="Mission caption",
+                video_url="https://media.example/reel.mp4",
+            )
+
+        self.assertEqual(result["id"], "video-1")
+        self.assertEqual(result["media_type"], "REEL")
+        self.assertEqual(post_with_retry.call_count, 2)
+        self.assertEqual(post_with_retry.call_args_list[0].args[1]["upload_phase"], "start")
+        self.assertEqual(post_with_retry.call_args_list[1].args[1]["upload_phase"], "finish")
+        self.assertEqual(post_with_retry.call_args_list[1].args[1]["video_state"], "PUBLISHED")
+        upload.assert_called_once_with(
+            "https://upload.facebook.test/reel",
+            headers={"Authorization": "OAuth token-1", "file_url": "https://media.example/reel.mp4"},
+            timeout=120,
+        )
+
     def test_instagram_owner_supplied_visual_bypasses_generated_artifact_gate(self) -> None:
         create_response = Mock(ok=True)
         create_response.json.return_value = {"id": "container-1"}

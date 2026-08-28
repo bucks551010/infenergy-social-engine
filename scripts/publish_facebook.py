@@ -182,6 +182,42 @@ def _publish_feed_with_photo_urls(*, page_id: str, token: str, message: str, ima
     return feed.json()
 
 
+def _publish_reel(*, page_id: str, token: str, description: str, video_url: str) -> dict:
+    start = _post_with_retry(
+        f"{GRAPH_BASE}/{page_id}/video_reels",
+        {"upload_phase": "start", "access_token": token},
+        timeout=30,
+    )
+    _raise_with_body(start)
+    start_payload = start.json()
+    video_id = str(start_payload.get("video_id") or "").strip()
+    upload_url = str(start_payload.get("upload_url") or "").strip()
+    if not video_id or not upload_url:
+        raise RuntimeError("facebook_reel_start_missing_upload_contract")
+
+    upload = requests.post(
+        upload_url,
+        headers={"Authorization": f"OAuth {token}", "file_url": video_url},
+        timeout=120,
+    )
+    _raise_with_body(upload)
+
+    finish = _post_with_retry(
+        f"{GRAPH_BASE}/{page_id}/video_reels",
+        {
+            "upload_phase": "finish",
+            "video_id": video_id,
+            "video_state": "PUBLISHED",
+            "description": description,
+            "access_token": token,
+        },
+        timeout=60,
+    )
+    _raise_with_body(finish)
+    payload = finish.json()
+    return {**payload, "id": str(payload.get("id") or video_id), "video_id": video_id, "media_type": "REEL"}
+
+
 def publish(content: dict, wp_link: str, dry_run: bool = False) -> dict:
     facebook_package = (content.get("platform_posts") or {}).get("facebook") or {}
     message = str(facebook_package.get("final_caption") or content["fb_caption"])
@@ -195,6 +231,19 @@ def publish(content: dict, wp_link: str, dry_run: bool = False) -> dict:
     generation = content.get("gemini_generation") if isinstance(content.get("gemini_generation"), dict) else {}
     owner_supplied_visual = content.get("owner_supplied_visual") is True and image_url.startswith("https://")
     require_gemini = not owner_supplied_visual and (generation.get("strict_provider") is True or _env_flag("LIVE_REQUIRE_GEMINI_VISUAL", False))
+
+    media_type = str(facebook_package.get("media_type") or "").strip().upper()
+    if media_type == "REEL":
+        reel = content.get("instagram_reel") if isinstance(content.get("instagram_reel"), dict) else {}
+        urls = reel.get("public_urls") if isinstance(reel.get("public_urls"), dict) else {}
+        video_url = str(urls.get("video") or "").strip()
+        if not video_url.startswith("https://"):
+            raise RuntimeError("facebook_reel_public_video_missing")
+        if dry_run:
+            return {"id": "dry-run", "media_type": "REEL"}
+        page_id = _required_env("META_PAGE_ID")
+        token = _resolve_page_access_token(_required_env("META_PAGE_ACCESS_TOKEN"), page_id)
+        return _publish_reel(page_id=page_id, token=token, description=message, video_url=video_url)
 
     if dry_run:
         print(f"[DRY RUN] Facebook: would post:\n{message[:150]}...\n")

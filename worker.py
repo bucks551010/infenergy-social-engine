@@ -306,6 +306,7 @@ def _publish_custom_post(payload: dict) -> tuple[int, dict]:
         if reel:
             content["instagram_reel"] = {"public_urls": {"video": reel_video_url, "cover": reel_cover_url}}
             content["platform_posts"]["instagram"]["media_type"] = "REEL"
+            content["platform_posts"]["facebook"]["media_type"] = "REEL"
         for platform in platforms:
             previous = results.get(platform)
             if isinstance(previous, dict) and previous.get("status") == "processing":

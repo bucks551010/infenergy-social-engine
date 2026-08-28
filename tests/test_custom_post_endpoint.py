@@ -91,7 +91,7 @@ def test_custom_post_passes_eight_owner_carousel_assets_to_publishers():
     assert [asset["public_url"] for asset in instagram.call_args.args[0]["carousel_assets"]] == payload["image_urls"]
 
 
-def test_custom_post_routes_reel_to_instagram_and_keeps_facebook_carousel():
+def test_custom_post_routes_reel_to_facebook_and_instagram():
     payload = _carousel_payload(6)
     payload["platforms"] = ["facebook", "instagram"]
     payload["reel"] = {
@@ -106,9 +106,10 @@ def test_custom_post_routes_reel_to_instagram_and_keeps_facebook_carousel():
     assert status == 200
     facebook_content = facebook.call_args.args[0]
     instagram_content = instagram.call_args.args[0]
+    assert "instagram_reel" in facebook_content
+    assert facebook_content["platform_posts"]["facebook"]["media_type"] == "REEL"
     assert "instagram_reel" in instagram_content
     assert instagram_content["platform_posts"]["instagram"]["media_type"] == "REEL"
-    assert [asset["public_url"] for asset in facebook_content["carousel_assets"]] == payload["image_urls"]
 
 
 def test_custom_post_routes_reel_to_youtube_and_tiktok():

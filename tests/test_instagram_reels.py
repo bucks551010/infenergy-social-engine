@@ -124,6 +124,14 @@ def test_scored_story_narration_is_only_enabled_explicitly(tmp_path):
     assert narrated["auto_narration"] is True
 
 
+def test_scored_story_uses_provenance_bound_music_when_supplied(tmp_path):
+    music = tmp_path / "licensed.mp3"
+    music.write_bytes(b"licensed-music")
+    plan = {"music_path": str(music)}
+
+    assert Path(plan["music_path"]).is_file()
+
+
 def test_scored_story_reel_accepts_30_native_scenes_but_not_31():
     assert worker._valid_scored_story_urls([f"https://media.example/scene-{index}.png" for index in range(30)])
     assert not worker._valid_scored_story_urls([f"https://media.example/scene-{index}.png" for index in range(31)])

@@ -1,4 +1,5 @@
 import os
+import hashlib
 import sys
 import time
 import json
@@ -219,6 +220,22 @@ def _compose_scored_story(payload: dict) -> tuple[int, dict]:
                     raise ValueError("slide exceeds 15 MB")
                 destination.write(data)
             assets.append({"local_path": path, "public_url": url})
+        music = payload.get("music") if isinstance(payload.get("music"), dict) else {}
+        music_url = str(music.get("url") or "").strip()
+        music_path = ""
+        if music_url:
+            if not music_url.startswith("https://"):
+                raise ValueError("scored_story_music_requires_public_https_url")
+            music_path = os.path.join(media_dir, f"studio_{request_id}_music.mp3")
+            request = urllib.request.Request(music_url, headers={"User-Agent": "Infenergy-Scored-Story/1.0"})
+            with urllib.request.urlopen(request, timeout=30) as response, open(music_path, "wb") as destination:
+                data = response.read(20 * 1024 * 1024 + 1)
+                if len(data) > 20 * 1024 * 1024:
+                    raise ValueError("music exceeds 20 MB")
+                expected_sha256 = str(music.get("sha256") or "").strip().lower()
+                if expected_sha256 and hashlib.sha256(data).hexdigest() != expected_sha256:
+                    raise ValueError("scored_story_music_sha256_mismatch")
+                destination.write(data)
         plan = build_scored_story_plan(
             post_id=str(payload.get("post_id") or f"studio-{request_id}"), carousel_assets=assets,
             slide_texts=[str(item) for item in payload.get("slide_texts", [])],
@@ -226,6 +243,17 @@ def _compose_scored_story(payload: dict) -> tuple[int, dict]:
             motion_intensity=float(payload.get("motion_intensity", 0.55)),
             auto_narration=bool(payload.get("auto_narration", False)),
         )
+        if music_path:
+            plan["music_path"] = music_path
+            plan["music_score"].update({
+                "source": "licensed_stock_music",
+                "title": str(music.get("title") or "").strip(),
+                "artist": str(music.get("artist") or "").strip(),
+                "source_url": music_url,
+                "source_page": str(music.get("source_page") or "").strip(),
+                "license_url": str(music.get("license_url") or "").strip(),
+                "sha256": str(music.get("sha256") or "").strip().lower(),
+            })
         artifact = render_scored_story_reel(plan, data_dir=_data_dir())
         qa = technical_qa(artifact, plan)
         if qa["status"] != "PASS":

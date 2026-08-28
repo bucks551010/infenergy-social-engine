@@ -448,7 +448,10 @@ def render_scored_story_reel(plan: dict[str, Any], *, data_dir: str | None = Non
     cover_path = media_dir / f"{stem}_cover.jpg"
     final_path = media_dir / f"{stem}_final_frame.jpg"
     static_path = media_dir / f"{stem}_static.jpg"
-    score_path = media_dir / f"{stem}_score.wav"
+    score_path = Path(str(plan.get("music_path") or "").strip())
+    if not score_path.is_file():
+        score_path = media_dir / f"{stem}_score.wav"
+        _render_cinematic_score(plan, score_path)
     scenes = plan["scenes"]
     scene_frames = []
     for scene in scenes:
@@ -458,7 +461,6 @@ def render_scored_story_reel(plan: dict[str, Any], *, data_dir: str | None = Non
     _story_frame(scenes[0]["asset_path"], cover_path)
     _story_frame(scenes[-1]["asset_path"], final_path)
     _story_frame(scenes[-1]["asset_path"], static_path, square=True)
-    _render_cinematic_score(plan, score_path)
     narration_path = str(plan.get("narration_path") or "").strip()
     if not narration_path and bool(plan.get("auto_narration")):
         narration_path = render_story_narration(plan, output_path=str(media_dir / f"{stem}_narration.wav"))
@@ -485,10 +487,17 @@ def render_scored_story_reel(plan: dict[str, Any], *, data_dir: str | None = Non
         video_labels.append(f"[v{index}]")
     filters.append(f"{''.join(video_labels)}concat=n={len(scenes)}:v=1:a=0,format=yuv420p[v]")
     score_index = len(scenes)
-    audio_map = f"{score_index}:a"
+    duration = float(plan["video_end_time"])
+    fade_start = max(0.0, duration - 4.0)
+    filters.append(
+        f"[{score_index}:a]atrim=0:{duration:.2f},asetpts=PTS-STARTPTS,"
+        f"loudnorm=I=-16:TP=-1.5:LRA=11,aresample=48000,"
+        f"afade=t=in:st=0:d=1.2,afade=t=out:st={fade_start:.2f}:d=4[score]"
+    )
+    audio_map = "[score]"
     if narration_path:
         narration_index = score_index + 1
-        filters.append(f"[{score_index}:a]volume=0.32[ducked];[{narration_index}:a]volume=1.0[narration];[ducked][narration]amix=inputs=2:duration=first:dropout_transition=1[aout]")
+        filters.append(f"[score]volume=0.32[ducked];[{narration_index}:a]volume=1.0[narration];[ducked][narration]amix=inputs=2:duration=first:dropout_transition=1[aout]")
         audio_map = "[aout]"
     command.extend([
         "-filter_complex", ";".join(filters), "-map", "[v]", "-map", audio_map,
@@ -593,8 +602,9 @@ def render_reel(plan: dict[str, Any], *, source_image: str | None, data_dir: str
     command = [
         _ffmpeg(), "-y", "-loop", "1", "-framerate", "1", "-t", "1", "-i", str(opener_path),
         "-loop", "1", "-framerate", str(REEL_FPS), "-t", str(plan["freeze_hold_duration"]), "-i", str(final_path),
+        "-f", "lavfi", "-t", str(plan["video_end_time"]), "-i", "anullsrc=r=48000:cl=stereo",
         "-filter_complex", f"[0:v]zoompan=z='min(zoom+0.0007,1.06)':d={motion_frames}:s={REEL_WIDTH}x{REEL_HEIGHT}:fps={REEL_FPS},trim=duration={plan['motion_end_time']},setpts=PTS-STARTPTS[motion];[1:v]setpts=PTS-STARTPTS[hold];[motion][hold]concat=n=2:v=1:a=0,format=yuv420p[v]",
-        "-map", "[v]", "-r", str(REEL_FPS), "-frames:v", str(total_frames), "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23", "-movflags", "+faststart", "-pix_fmt", "yuv420p", str(video_path),
+        "-map", "[v]", "-map", "2:a", "-r", str(REEL_FPS), "-frames:v", str(total_frames), "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23", "-c:a", "aac", "-ar", "48000", "-ac", "2", "-b:a", "128k", "-shortest", "-movflags", "+faststart", "-pix_fmt", "yuv420p", str(video_path),
     ]
     result = _run(command)
     if result.returncode != 0 or not video_path.exists():

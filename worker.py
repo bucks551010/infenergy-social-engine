@@ -246,6 +246,8 @@ def _publish_custom_post(payload: dict) -> tuple[int, dict]:
     reel_video_url = str(reel.get("video_url", "")).strip()
     reel_cover_url = str(reel.get("cover_url", "")).strip()
     instagram_story = bool(payload.get("instagram_story", False))
+    source_system = str(payload.get("source_system", "")).strip().lower()
+    iis_creative_id = str(payload.get("iis_creative_id", "")).strip()
     platforms = payload.get("platforms") if isinstance(payload.get("platforms"), list) else []
     platforms = list(dict.fromkeys(str(item).strip().lower() for item in platforms))
     allowed = {"facebook", "instagram", "linkedin", "youtube", "tiktok"}
@@ -266,6 +268,8 @@ def _publish_custom_post(payload: dict) -> tuple[int, dict]:
         return 400, {"error": "reel video_url and cover_url must be public HTTPS URLs"}
     if instagram_story and ("instagram" not in platforms or not reel):
         return 400, {"error": "instagram_story requires the instagram platform and a rendered Reel video"}
+    if source_system == "iis" and not iis_creative_id:
+        return 400, {"error": "iis_creative_id is required for IIS content"}
     if not platforms or any(item not in allowed for item in platforms):
         return 400, {"error": "platforms must contain facebook, instagram, linkedin, youtube, or tiktok"}
     if any(platform in {"youtube", "tiktok"} for platform in platforms) and not reel:
@@ -273,6 +277,9 @@ def _publish_custom_post(payload: dict) -> tuple[int, dict]:
 
     dry_run = not bool(payload.get("live", False))
     if not dry_run:
+        provenance_issues = _verify_iis_publish_package(source_system, iis_creative_id, image_url, image_urls, reel_video_url, reel_cover_url)
+        if provenance_issues:
+            return 422, {"status": "quality_repair_required", "error": "iis_publish_package_verification_failed", "issues": provenance_issues}
         preflight_issues = _custom_post_artifact_preflight(image_url, image_urls, reel_video_url, reel_cover_url)
         if preflight_issues:
             return 422, {"status": "quality_repair_required", "error": "custom_post_artifact_preflight_failed", "issues": preflight_issues}
@@ -300,6 +307,8 @@ def _publish_custom_post(payload: dict) -> tuple[int, dict]:
             "topic": "IIS scheduled post",
             "primary_publish_image_url": image_url,
             "owner_supplied_visual": False,
+            "source_system": source_system or "custom",
+            "source_creative_id": iis_creative_id or None,
             "carousel_assets": [
                 {"public_url": item, "render_engine": "owner"}
                 for item in image_urls
@@ -374,6 +383,41 @@ def _publish_custom_post(payload: dict) -> tuple[int, dict]:
         response_status = "partial_failure" if failed else "processing" if processing else "published"
         response = {"status": response_status, "external_id": external_id, "platforms": results, "failed_platforms": failed, "processing_platforms": processing, "time_utc": _utc_now()}
         return (502 if failed else 202 if processing else 200), response
+
+
+def _asset_url_identity(url: str) -> str:
+    parsed = urlparse(str(url or "").strip())
+    return f"{parsed.netloc.lower()}{parsed.path}"
+
+
+def _verify_iis_publish_package(source_system: str, creative_id: str, image_url: str, image_urls: list[str], reel_video_url: str, reel_cover_url: str) -> list[str]:
+    if source_system != "iis":
+        return []
+    studio_url = os.environ.get("IIS_STUDIO_URL", "https://infenergy-image-studio-production.up.railway.app").rstrip("/")
+    try:
+        response = requests.get(f"{studio_url}/api/export/{creative_id}", timeout=45)
+        response.raise_for_status()
+        package = response.json()
+    except Exception as exc:
+        return [f"approved_iis_package_unavailable:{type(exc).__name__}"]
+    if str((package.get("creative") or {}).get("id") or "") != creative_id or str((package.get("qa") or {}).get("status") or "").upper() != "PASS":
+        return ["iis_package_not_current_and_approved"]
+    delivery = package.get("delivery") if isinstance(package.get("delivery"), dict) else {}
+    approved_images = {
+        _asset_url_identity(item.get("url"))
+        for item in delivery.get("carousel", []) or []
+        if isinstance(item, dict)
+    }
+    submitted_images = {_asset_url_identity(url) for url in [image_url, *image_urls] if url}
+    issues = []
+    if not submitted_images or not submitted_images.issubset(approved_images):
+        issues.append("submitted_images_not_in_approved_iis_package")
+    approved_reel = delivery.get("reel") if isinstance(delivery.get("reel"), dict) else {}
+    if reel_video_url and _asset_url_identity(reel_video_url) != _asset_url_identity(approved_reel.get("videoUrl")):
+        issues.append("submitted_reel_not_in_approved_iis_package")
+    if reel_cover_url and _asset_url_identity(reel_cover_url) != _asset_url_identity(approved_reel.get("coverUrl")):
+        issues.append("submitted_reel_cover_not_in_approved_iis_package")
+    return issues
 
 
 def _custom_post_artifact_preflight(image_url: str, image_urls: list[str], reel_video_url: str, reel_cover_url: str) -> list[str]:

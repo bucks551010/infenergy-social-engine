@@ -11,6 +11,7 @@ import worker
 
 def setup_function():
     worker._custom_post_artifact_preflight = lambda *_args: []
+    worker._verify_iis_publish_package = lambda *_args: []
 
 
 def _payload():
@@ -286,6 +287,19 @@ def test_custom_post_stops_before_publish_when_artifact_preflight_requires_repai
     assert status == 422
     assert response["status"] == "quality_repair_required"
     assert response["issues"] == ["visual_1_originality_review_not_passed"]
+    facebook.assert_not_called()
+
+
+def test_custom_post_stops_before_publish_when_iis_provenance_is_not_current():
+    payload = _payload()
+    payload.update({"platforms": ["facebook"], "source_system": "iis", "iis_creative_id": "creative-1"})
+    with tempfile.TemporaryDirectory() as data_dir, patch.dict(os.environ, {"DATA_DIR": data_dir}, clear=False), \
+        patch.object(worker, "_verify_iis_publish_package", return_value=["submitted_images_not_in_approved_iis_package"]), \
+        patch("publish_facebook.publish") as facebook:
+        status, response = worker._publish_custom_post(payload)
+
+    assert status == 422
+    assert response["error"] == "iis_publish_package_verification_failed"
     facebook.assert_not_called()
 
 

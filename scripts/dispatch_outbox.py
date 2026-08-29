@@ -351,16 +351,42 @@ def dispatch_due(*, data_dir: str = DATA_DIR, now_utc: str | None = None) -> dic
         return {"status": "EXTERNAL_ACTION_REQUIRED", "outbox_id": outbox_id, "platforms": results, "error": error}
     if retry_errors:
         error = " | ".join(retry_errors)
-        release_outbox(data_dir, outbox_id, error)
+        attempt_count = int(claimed.get("attempt_count") or 1)
+        max_attempts = max(1, int(os.environ.get("OUTBOX_MAX_ATTEMPTS", "4")))
+        if attempt_count >= max_attempts:
+            terminal_status = "EXTERNAL_ACTION_REQUIRED" if any(
+                result.get("state") == "CONFIRMED_SUCCESS" for result in results.values()
+            ) else "FAILED"
+            finalize_outbox(data_dir, outbox_id, status=terminal_status, error=error)
+            return {"status": terminal_status, "outbox_id": outbox_id, "platforms": results, "error": error}
+        retry_at = datetime.fromisoformat(now_utc.replace("Z", "+00:00")) if now_utc else datetime.now(timezone.utc)
+        retry_at += timedelta(seconds=min(1800, 30 * (2 ** (attempt_count - 1))))
+        release_outbox(data_dir, outbox_id, error, next_attempt_at=retry_at.isoformat())
         return {"status": "PARTIAL_RETRY", "outbox_id": outbox_id, "platforms": results, "error": error}
 
     finalize_outbox(data_dir, outbox_id, status="PUBLISHED")
     return {"status": "PUBLISHED", "outbox_id": outbox_id, "platforms": results}
 
 
+def dispatch_due_batch(*, data_dir: str = DATA_DIR, now_utc: str | None = None, limit: int = 25) -> dict[str, Any]:
+    results: list[dict[str, Any]] = []
+    for _ in range(max(1, limit)):
+        result = dispatch_due(data_dir=data_dir, now_utc=now_utc)
+        if result.get("status") == "IDLE":
+            break
+        results.append(result)
+    return {
+        "status": "COMPLETE",
+        "processed": len(results),
+        "published": sum(1 for result in results if result.get("status") == "PUBLISHED"),
+        "failed": sum(1 for result in results if result.get("status") in {"FAILED", "EXTERNAL_ACTION_REQUIRED"}),
+        "results": results,
+    }
+
+
 def main() -> None:
     action = str(os.environ.get("OUTBOX_ACTION", "dispatch")).strip().lower()
-    result = pregenerate_upcoming() if action == "pregenerate" else dispatch_due()
+    result = pregenerate_upcoming() if action == "pregenerate" else dispatch_due_batch()
     print(json.dumps(result, ensure_ascii=True))
 
 

@@ -21,7 +21,7 @@ from content_operations import (  # noqa: E402
 )
 
 
-def _ready_package(data_dir: str, platforms: list[str]) -> str:
+def _ready_package(data_dir: str, platforms: list[str], slot: str = "morning") -> str:
     day = date(2026, 8, 19).isoformat()
     schedule = {
         "morning": f"{day}T13:00:00+00:00",
@@ -32,7 +32,7 @@ def _ready_package(data_dir: str, platforms: list[str]) -> str:
     decision_id = create_council_session(
         data_dir,
         content_date=day,
-        slot="morning",
+        slot=slot,
         blackboard={"human_reality": "real", "brain": {}, "heart": {}, "content_job": "TEACH"},
     )
     package = {
@@ -55,8 +55,8 @@ def _ready_package(data_dir: str, platforms: list[str]) -> str:
     return mark_ready(
         data_dir,
         content_date=day,
-        slot="morning",
-        scheduled_at=schedule["morning"],
+        slot=slot,
+        scheduled_at=schedule[slot],
         decision_id=decision_id,
         package=package,
     )
@@ -86,11 +86,43 @@ def test_partial_retry_never_resends_confirmed_platform(tmp_path):
         assert first["status"] == "PARTIAL_RETRY"
         instagram.side_effect = None
         instagram.return_value = {"id": "ig-1"}
-        second = dispatch_outbox.dispatch_due(data_dir=data_dir, now_utc="2026-08-19T13:00:02+00:00")
+        second = dispatch_outbox.dispatch_due(data_dir=data_dir, now_utc="2026-08-19T13:00:32+00:00")
 
     assert second["status"] == "PUBLISHED"
     assert facebook.call_count == 1
     assert instagram.call_count == 2
+
+
+def test_due_batch_does_not_let_failed_oldest_post_starve_later_post(tmp_path):
+    data_dir = str(tmp_path)
+    first_outbox = _ready_package(data_dir, ["facebook"])
+    second_outbox = _ready_package(data_dir, ["facebook"], "midday")
+
+    responses = iter([{"id": "skipped", "reason": "temporary"}, {"id": "fb-later"}])
+    with patch.object(dispatch_outbox.publish_facebook, "publish", side_effect=lambda *_, **__: next(responses)):
+        result = dispatch_outbox.dispatch_due_batch(
+            data_dir=data_dir,
+            now_utc="2026-08-19T17:00:01+00:00",
+        )
+
+    assert result["processed"] == 2
+    assert [item["status"] for item in result["results"]] == ["PARTIAL_RETRY", "PUBLISHED"], result["results"]
+    assert result["published"] == 1, result
+    assert result["results"][0]["status"] == "PARTIAL_RETRY"
+    assert result["results"][1]["status"] == "PUBLISHED"
+    assert platform_transaction(data_dir, second_outbox, "facebook")["external_id"] == "fb-later"
+
+
+def test_outbox_stops_retrying_after_configured_attempt_limit(tmp_path, monkeypatch):
+    data_dir = str(tmp_path)
+    _ready_package(data_dir, ["facebook"])
+    monkeypatch.setenv("OUTBOX_MAX_ATTEMPTS", "1")
+
+    with patch.object(dispatch_outbox.publish_facebook, "publish", return_value={"id": "skipped", "reason": "invalid payload"}):
+        result = dispatch_outbox.dispatch_due(data_dir=data_dir, now_utc="2026-08-19T13:00:01+00:00")
+
+    assert result["status"] == "FAILED"
+    assert dispatch_outbox.dispatch_due(data_dir=data_dir, now_utc="2026-08-19T13:30:01+00:00")["status"] == "IDLE"
 
 
 def test_external_success_remains_after_aggregate_persistence_error(tmp_path):

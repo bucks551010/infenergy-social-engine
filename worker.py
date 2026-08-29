@@ -46,7 +46,7 @@ VISUAL_REPO_BOOTSTRAP = {
 }
 MONTHLY_SUMMARY_KEYS = (
     "status", "created_at_utc", "knowledge_id", "knowledge_version",
-    "knowledge_digest", "campaign_id", "editorial_standard", "knowledge_refresh", "start_date", "end_date", "days", "queued",
+    "knowledge_digest", "campaign_id", "editorial_standard", "knowledge_refresh", "start_date", "end_date", "days", "coverage_days", "queued",
     "skipped_existing", "cancelled_legacy_outbox", "single_image_posts", "carousel_posts", "product_posts",
     "statement_graphics", "current_event_posts", "superhero_posts", "micro_mission_posts", "historical_mission_posts", "content_plan", "calendar_path",
 )
@@ -2557,6 +2557,7 @@ def dispatch_scheduled_slot(slot: str) -> None:
     if not RUN_LOCK.acquire(blocking=False):
         print(f"[DISPATCH] {slot} deferred because another content operation is active")
         return
+    recovery_needed = False
     try:
         env = os.environ.copy()
         env["DATA_DIR"] = _data_dir()
@@ -2567,8 +2568,18 @@ def dispatch_scheduled_slot(slot: str) -> None:
         )
         output = ((completed.stdout or "") + "\n" + (completed.stderr or "")).strip()
         print(f"[DISPATCH] {slot}: exit={completed.returncode} {output[-2000:]}")
+        if completed.returncode == 0 and output:
+            try:
+                result = json.loads(output.splitlines()[-1])
+                if int(result.get("processed") or 0) > 0 and int(result.get("published") or 0) == 0:
+                    print(f"[DELIVERY_WATCHDOG] {slot}: zero confirmed publications; requesting replacement inventory")
+                    recovery_needed = True
+            except (TypeError, ValueError, json.JSONDecodeError):
+                print(f"[DELIVERY_WATCHDOG] {slot}: dispatcher output was not valid JSON")
     finally:
         RUN_LOCK.release()
+    if recovery_needed:
+        _start_factory_thread()
 
 
 def pregenerate_scheduled_content() -> None:
@@ -2603,6 +2614,28 @@ def _start_pregeneration_thread() -> None:
     threading.Thread(target=pregenerate_scheduled_content, daemon=True, name="content-pregeneration").start()
 
 
+def run_delivery_watchdog() -> dict:
+    today = datetime.now(timezone.utc).date()
+    summary = daily_status(_data_dir(), today)
+    terminal_failures = [
+        slot for slot in summary.get("slots", [])
+        if slot.get("status") in {"FAILED", "EXTERNAL_ACTION_REQUIRED"}
+    ]
+    needs_inventory = int(summary.get("missing") or 0) > 0 or bool(terminal_failures)
+    result = {
+        "date": today.isoformat(),
+        "published": int(summary.get("published") or 0),
+        "ready": int(summary.get("ready") or 0),
+        "missing": int(summary.get("missing") or 0),
+        "terminal_failures": len(terminal_failures),
+        "recovery_requested": needs_inventory,
+    }
+    if needs_inventory:
+        print(f"[DELIVERY_WATCHDOG] coverage gap: {json.dumps(result, sort_keys=True)}")
+        _start_factory_thread()
+    return result
+
+
 def register_scheduled_jobs() -> None:
     schedule.clear()
     if os.environ.get("CONTENT_DISPATCH_ENABLED", "true").lower() in {"1", "true", "yes", "on"}:
@@ -2613,6 +2646,7 @@ def register_scheduled_jobs() -> None:
         schedule.every(10).minutes.do(_start_pregeneration_thread)
     if os.environ.get("CONTENT_FACTORY_ENABLED", "true").lower() in {"1", "true", "yes", "on"}:
         schedule.every(30).minutes.do(_start_factory_thread)
+        schedule.every(10).minutes.do(run_delivery_watchdog)
     schedule.every(6).hours.do(run_intelligence_enrichment)
     schedule.every().day.at(intelligence_light_utc).do(run_intelligence_heartbeat, "LIGHT_HEARTBEAT")
     schedule.every().day.at("10:00").do(run_candidate_batch)
@@ -2655,6 +2689,7 @@ def main() -> None:
     if os.environ.get("CONTENT_DISPATCH_ENABLED", "true").lower() in {"1", "true", "yes", "on"}:
         _start_dispatch_thread("startup_sweep")
         _start_pregeneration_thread()
+        run_delivery_watchdog()
 
     if os.environ.get("RUN_FACTORY_ON_STARTUP", "false").lower() in {"1", "true", "yes", "on"}:
         _start_factory_thread()

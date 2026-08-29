@@ -275,6 +275,7 @@ def test_weekly_brand_mix_survives_real_queue_and_prompt_preparation(tmp_path, m
     prepared = prepare_monthly_gemini_prompts(str(tmp_path))
 
     assert calendar["queued"] == 7
+    assert calendar["coverage_days"] == 7
     assert calendar["product_posts"] == 3
     assert calendar["current_event_posts"] == 1
     assert calendar["superhero_posts"] == 1
@@ -378,6 +379,19 @@ def test_prompt_preparation_ignores_preserved_entries_without_outbox_ids(tmp_pat
     assert mixed["skipped_existing"] == 1
     assert result["prepared_entries"] == 1
     assert result["prepared_prompts"] == 6
+
+
+def test_month_builder_queues_a_duplicate_concept_when_the_requested_day_is_unplanned(tmp_path, monkeypatch):
+    _seed_knowledge(tmp_path)
+    monkeypatch.setenv("PUBLIC_BASE_URL", "https://example.test")
+    preview = build_monthly_calendar(data_dir=str(tmp_path), start_date="2026-12-10", days=1, enqueue=False)
+    monkeypatch.setattr("build_monthly_content._existing_content_ids", lambda _data_dir: {preview["entries"][0]["content_id"]})
+
+    calendar = build_monthly_calendar(data_dir=str(tmp_path), start_date="2026-12-10", days=1, enqueue=True)
+
+    assert calendar["queued"] == 1
+    assert calendar["coverage_days"] == 1
+    assert daily_status(str(tmp_path), "2026-12-10")["ready"] == 1
 
 
 def test_all_monthly_gemini_prompts_are_unique_and_overlay_ready():

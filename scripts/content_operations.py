@@ -101,6 +101,7 @@ def init_content_operations(data_dir: str) -> str:
                 created_at TEXT NOT NULL,
                 ready_at TEXT NOT NULL,
                 claimed_at TEXT,
+                next_attempt_at TEXT,
                 published_at TEXT,
                 last_error TEXT
             );
@@ -125,6 +126,9 @@ def init_content_operations(data_dir: str) -> str:
             );
             """
         )
+        columns = {row[1] for row in connection.execute("PRAGMA table_info(content_outbox)").fetchall()}
+        if "next_attempt_at" not in columns:
+            connection.execute("ALTER TABLE content_outbox ADD COLUMN next_attempt_at TEXT")
         connection.commit()
         return get_db_path(data_dir)
     finally:
@@ -379,10 +383,11 @@ def claim_due(data_dir: str, now_utc: str | None = None) -> dict[str, Any] | Non
         row = connection.execute(
             """
             SELECT * FROM content_outbox
-            WHERE status IN ('READY', 'DUE') AND scheduled_at <= ?
+                        WHERE status IN ('READY', 'DUE') AND scheduled_at <= ?
+                            AND (next_attempt_at IS NULL OR next_attempt_at <= ?)
             ORDER BY scheduled_at, created_at LIMIT 1
             """,
-            (now,),
+                        (now, now),
         ).fetchone()
         if not row:
             connection.commit()
@@ -409,6 +414,7 @@ def claim_due(data_dir: str, now_utc: str | None = None) -> dict[str, Any] | Non
         result = dict(row)
         result["status"] = "CLAIMED"
         result["claimed_at"] = claimed_at
+        result["attempt_count"] = int(result.get("attempt_count") or 0) + 1
         result["package"] = _decode(result.pop("package_json"), {})
         return result
     except Exception:
@@ -555,14 +561,14 @@ def complete_platform_transaction(
         connection.close()
 
 
-def release_outbox(data_dir: str, outbox_id: str, error: str) -> None:
+def release_outbox(data_dir: str, outbox_id: str, error: str, *, next_attempt_at: str | None = None) -> None:
     now = _now()
     connection = _connect(data_dir)
     try:
         connection.execute("BEGIN IMMEDIATE")
         connection.execute(
-            "UPDATE content_outbox SET status='READY', claimed_at=NULL, last_error=? WHERE outbox_id=?",
-            (error, outbox_id),
+            "UPDATE content_outbox SET status='READY', claimed_at=NULL, next_attempt_at=?, last_error=? WHERE outbox_id=?",
+            (next_attempt_at, error, outbox_id),
         )
         connection.execute(
             "UPDATE daily_slots SET status='READY', claimed_at=NULL, last_error=?, updated_at=? WHERE outbox_id=?",
@@ -720,7 +726,7 @@ def finalize_outbox(
     status: str,
     error: str = "",
 ) -> None:
-    allowed = {"PUBLISHED", "EXTERNAL_ACTION_REQUIRED"}
+    allowed = {"PUBLISHED", "FAILED", "EXTERNAL_ACTION_REQUIRED"}
     if status not in allowed:
         raise ValueError(f"invalid outbox final status: {status}")
     now = _now()

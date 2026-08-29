@@ -17,7 +17,7 @@ from typing import Any
 from PIL import Image, ImageDraw, ImageFont
 
 from company_knowledge import agent_specialization, knowledge_digest, load_company_knowledge, refresh_persistent_company_knowledge
-from content_operations import archive_candidate, cancel_unpublished_inventory, create_council_session, ensure_daily_slots, mark_ready, replace_unpublished_slot
+from content_operations import archive_candidate, cancel_unpublished_inventory, create_council_session, daily_status, ensure_daily_slots, mark_ready, replace_unpublished_slot
 from agents.learning_context import load_operational_learning
 from inventory_db import get_db_path
 from social.carousel_director import OFFICIAL_LOGO_URL, normalize_slide_dicts
@@ -773,8 +773,18 @@ def build_monthly_calendar(
                 },
                 platform_policy={"platforms": list(PLATFORMS), "source": "company_truth_month"},
             )
-            if package["content_id"] in existing_ids:
+            midday = next(
+                (slot for slot in daily_status(data_dir, day)["slots"] if slot["slot"] == "midday"),
+                None,
+            )
+            date_already_covered = bool(
+                midday
+                and midday.get("outbox_id")
+                and midday.get("status") in {"READY", "DUE", "CLAIMED", "PUBLISHING", "PUBLISHED"}
+            )
+            if package["content_id"] in existing_ids and date_already_covered:
                 skipped_existing += 1
+                entry["queue_status"] = f"PRESERVED_{midday.get('status')}"
             else:
                 if not replace_unpublished_slot(data_dir, day.isoformat(), "midday"):
                     entry["queue_status"] = "ACTIVE_OR_PUBLISHED_SLOT_PRESERVED"
@@ -813,6 +823,19 @@ def build_monthly_calendar(
                 entry["queue_status"] = "READY"
         entries.append(entry)
 
+    covered_dates: list[str] = []
+    if enqueue:
+        publishable_states = {"READY", "DUE", "CLAIMED", "PUBLISHING", "PUBLISHED"}
+        for index in range(days):
+            requested_date = (start + timedelta(days=index)).isoformat()
+            midday = next(
+                (slot for slot in daily_status(data_dir, requested_date)["slots"] if slot["slot"] == "midday"),
+                None,
+            )
+            if not midday or midday.get("status") not in publishable_states or not midday.get("outbox_id"):
+                raise RuntimeError(f"monthly_schedule_coverage_incomplete:{requested_date}:midday")
+            covered_dates.append(requested_date)
+
     payload = {
         "status": "READY",
         "created_at_utc": datetime.now(timezone.utc).isoformat(),
@@ -825,6 +848,7 @@ def build_monthly_calendar(
         "start_date": start.isoformat(),
         "end_date": (start + timedelta(days=days - 1)).isoformat(),
         "days": days,
+        "coverage_days": len(covered_dates),
         "content_plan": content_plan or "elite_monthly_slate",
         "queued": queued,
         "skipped_existing": skipped_existing,

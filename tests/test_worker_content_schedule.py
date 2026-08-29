@@ -36,11 +36,13 @@ def test_publication_clocks_dispatch_and_never_generate():
     pregeneration_jobs = [job for job in jobs if job.job_func.func is worker._start_pregeneration_thread]
     factory_jobs = [job for job in jobs if job.job_func.func is worker._start_factory_thread]
     legacy_clock_jobs = [job for job in jobs if job.job_func.func is worker.run_slot]
+    watchdog_jobs = [job for job in jobs if job.job_func.func is worker.run_delivery_watchdog]
 
     assert len(dispatch_jobs) == 4
     assert len(pregeneration_jobs) == 1
     assert len(factory_jobs) == 1
     assert legacy_clock_jobs == []
+    assert len(watchdog_jobs) == 1
     assert {job.job_func.args[0] for job in dispatch_jobs} == {"morning", "midday", "evening", "due_sweep"}
 
 
@@ -71,6 +73,40 @@ def test_factory_schedule_can_be_disabled_when_month_is_prebuilt(monkeypatch):
 
     factory_jobs = [job for job in worker.schedule.jobs if job.job_func.func is worker._start_factory_thread]
     assert factory_jobs == []
+
+
+def test_delivery_watchdog_requests_factory_when_today_has_no_publishable_inventory(monkeypatch):
+    recoveries = []
+    monkeypatch.setattr(worker, "_data_dir", lambda: "unused")
+    monkeypatch.setattr(worker, "daily_status", lambda *_: {
+        "published": 0,
+        "ready": 0,
+        "missing": 3,
+        "slots": [],
+    })
+    monkeypatch.setattr(worker, "_start_factory_thread", lambda: recoveries.append("requested"))
+
+    result = worker.run_delivery_watchdog()
+
+    assert result["recovery_requested"] is True
+    assert recoveries == ["requested"]
+
+
+def test_delivery_watchdog_does_not_replace_covered_inventory(monkeypatch):
+    recoveries = []
+    monkeypatch.setattr(worker, "_data_dir", lambda: "unused")
+    monkeypatch.setattr(worker, "daily_status", lambda *_: {
+        "published": 1,
+        "ready": 2,
+        "missing": 0,
+        "slots": [{"status": "PUBLISHED"}, {"status": "READY"}, {"status": "READY"}],
+    })
+    monkeypatch.setattr(worker, "_start_factory_thread", lambda: recoveries.append("requested"))
+
+    result = worker.run_delivery_watchdog()
+
+    assert result["recovery_requested"] is False
+    assert recoveries == []
 
 
 def test_main_runs_due_sweep_immediately_on_startup(monkeypatch):

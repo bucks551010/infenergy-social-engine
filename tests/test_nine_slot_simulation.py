@@ -149,8 +149,11 @@ def test_three_day_nine_slot_simulation_converges_with_failures_and_restarts(tmp
     with patch.object(dispatch_outbox.publish_facebook, "publish", side_effect=lambda *_args, **_kwargs: {"id": "fb-confirmed"}), \
         patch.object(dispatch_outbox.publish_instagram, "publish", side_effect=instagram_publish), \
         patch.object(dispatch_outbox.publish_linkedin, "publish", side_effect=lambda *_args, **_kwargs: {"id": "li-confirmed"}):
-        for _ in range(12):
-            dispatch_outbox.dispatch_due(data_dir=data_dir, now_utc="2026-08-23T00:00:00+00:00")
+        for attempt in range(12):
+            dispatch_outbox.dispatch_due(
+                data_dir=data_dir,
+                now_utc=(datetime(2026, 8, 23, tzinfo=timezone.utc) + timedelta(minutes=attempt)).isoformat(),
+            )
 
     for day_offset in range(3):
         day = (start + timedelta(days=day_offset)).date().isoformat()

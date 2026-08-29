@@ -112,6 +112,23 @@ class PublisherVisualTests(unittest.TestCase):
         self.assertEqual(review["verdict"], "REGENERATE_VISUAL")
         self.assertIn("rendered_scanline_corruption", review["issues"])
 
+    def test_iis_carousel_reuses_studio_qa_for_branded_scanlines(self) -> None:
+        from PIL import Image, ImageDraw
+
+        image = Image.new("RGB", (1080, 1350), "#263746")
+        draw = ImageDraw.Draw(image)
+        draw.rectangle((80, 100, 1000, 145), fill="#b7ff00")
+        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as image_file:
+            image_path = image_file.name
+        try:
+            image.save(image_path, format="PNG")
+            review = review_rendered_visual(image_path, "iis_carousel")
+        finally:
+            os.unlink(image_path)
+
+        self.assertTrue(_has_scanline_corruption(image))
+        self.assertEqual(review["verdict"], "PASS")
+
     def test_instagram_strict_gemini_mode_never_uses_catalog_fallback(self) -> None:
         with patch.dict(
             os.environ,

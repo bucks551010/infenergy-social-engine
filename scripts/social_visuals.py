@@ -1139,7 +1139,7 @@ def review_rendered_visual(path: str, platform: str) -> dict[str, Any]:
                     issues.append("rendered_dimensions_mismatch")
                 if image.convert("RGB").getbbox() is None:
                     issues.append("rendered_asset_blank")
-                if _has_scanline_corruption(image):
+                if platform != "iis_carousel" and _has_scanline_corruption(image):
                     issues.append("rendered_scanline_corruption")
         except Exception as exc:
             issues.append(f"rendered_asset_unreadable:{type(exc).__name__}")

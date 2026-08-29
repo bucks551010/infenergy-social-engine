@@ -86,12 +86,16 @@ def test_custom_post_rejects_non_https_carousel_url():
 
 def test_custom_post_passes_eight_owner_carousel_assets_to_publishers():
     payload = _carousel_payload(8)
+    payload["source_system"] = "iis"
+    payload["iis_creative_id"] = "approved-iis-creative"
     payload["platforms"] = ["facebook", "instagram"]
     with tempfile.TemporaryDirectory() as data_dir, patch.dict(os.environ, {"DATA_DIR": data_dir}, clear=False), \
         patch("publish_facebook.publish", return_value={"id": "fb-carousel"}) as facebook, \
         patch("publish_instagram.publish", return_value={"id": "ig-carousel"}) as instagram:
         status, _ = worker._publish_custom_post(payload)
     assert status == 200
+    assert facebook.call_args.args[0]["owner_supplied_visual"] is True
+    assert instagram.call_args.args[0]["owner_supplied_visual"] is True
     assert [asset["public_url"] for asset in facebook.call_args.args[0]["carousel_assets"]] == payload["image_urls"]
     assert [asset["public_url"] for asset in instagram.call_args.args[0]["carousel_assets"]] == payload["image_urls"]
 

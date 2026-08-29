@@ -340,7 +340,7 @@ def _publish_custom_post(payload: dict) -> tuple[int, dict]:
             "wp_title": caption[:180],
             "topic": "IIS scheduled post",
             "primary_publish_image_url": image_url,
-            "owner_supplied_visual": False,
+            "owner_supplied_visual": source_system == "iis",
             "source_system": source_system or "custom",
             "source_creative_id": iis_creative_id or None,
             "carousel_assets": [

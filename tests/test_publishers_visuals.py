@@ -152,8 +152,6 @@ class PublisherVisualTests(unittest.TestCase):
             clear=False,
         ), patch.object(
             publish_instagram, "review_rendered_visual", return_value={"verdict": "PASS", "issues": []}
-        ), patch.object(
-            publish_instagram.publish_wordpress, "upload_media", side_effect=RuntimeError("not configured")
         ):
             result = publish_instagram.publish(
                 {
@@ -800,10 +798,11 @@ class PublisherVisualTests(unittest.TestCase):
         self.assertEqual(profile["role"], "backup power station")
         self.assertIn("runtime", profile["proof_intro"])
 
-    def test_instagram_prefers_generated_visual_upload(self) -> None:
+    def test_instagram_publishes_native_media_without_wordpress(self) -> None:
         with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
             tmp.write(b"fakepng")
             image_path = tmp.name
+        native_url = "https://social.example/media/generated.png"
         try:
             first = Mock()
             first.ok = True
@@ -823,10 +822,6 @@ class PublisherVisualTests(unittest.TestCase):
                 },
                 clear=False,
             ), patch.object(
-                publish_instagram.publish_wordpress,
-                "upload_media",
-                return_value={"source_url": "https://example.com/generated.png"},
-            ), patch.object(
                 publish_instagram,
                 "_post_with_retry",
                 side_effect=[first, second],
@@ -839,18 +834,42 @@ class PublisherVisualTests(unittest.TestCase):
                     {
                         "ig_caption": "Caption text",
                         "generated_visuals": {"instagram": image_path},
+                        "primary_publish_image_url": native_url,
                         "product_image_url": "https://example.com/fallback.png",
                     },
                     dry_run=False,
                 )
 
             self.assertEqual(result["id"], "ig_123")
-            self.assertEqual(mock_post.call_args_list[0].args[1]["image_url"], "https://example.com/generated.png")
+            self.assertEqual(mock_post.call_args_list[0].args[1]["image_url"], native_url)
+            self.assertFalse(hasattr(publish_instagram, "publish_wordpress"))
         finally:
             try:
                 os.remove(image_path)
             except OSError:
                 pass
+
+    def test_instagram_preflight_accepts_native_media_from_data_volume(self) -> None:
+        with tempfile.TemporaryDirectory() as data_dir:
+            media_dir = os.path.join(data_dir, "public_media")
+            os.makedirs(media_dir)
+            with open(os.path.join(media_dir, "generated.png"), "wb") as image_file:
+                image_file.write(b"fakepng")
+
+            with patch.dict(
+                os.environ,
+                {
+                    "DATA_DIR": data_dir,
+                    "RAILWAY_PUBLIC_DOMAIN": "social.example",
+                },
+                clear=False,
+            ), patch.object(publish_instagram.requests, "head") as mock_head:
+                reachable = publish_instagram._is_reachable_image_url(
+                    "https://social.example/media/generated.png"
+                )
+
+            self.assertTrue(reachable)
+            mock_head.assert_not_called()
 
 
 if __name__ == "__main__":

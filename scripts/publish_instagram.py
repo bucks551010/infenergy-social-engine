@@ -5,7 +5,6 @@ import mimetypes
 import requests
 from urllib.parse import urljoin, urlparse
 
-import publish_wordpress
 from social_visuals import review_rendered_visual
 from url_safety import is_safe_http_url
 
@@ -98,9 +97,31 @@ def _is_valid_public_image(url: str) -> bool:
     return True
 
 
+def _local_public_media_path(url: str) -> str:
+    parsed = urlparse(url)
+    public_hosts = {
+        host
+        for host in (
+            _env("RAILWAY_PUBLIC_DOMAIN"),
+            urlparse(_env("PUBLIC_BASE_URL")).hostname or "",
+        )
+        if host
+    }
+    if parsed.hostname not in public_hosts or not parsed.path.startswith("/media/"):
+        return ""
+    file_name = os.path.basename(parsed.path[len("/media/"):]).strip()
+    if not file_name:
+        return ""
+    return os.path.join(_env("DATA_DIR", "/data"), "public_media", file_name)
+
+
 def _is_reachable_image_url(url: str, timeout: int = 10) -> bool:
     if not is_safe_http_url(url):
         return False
+    media_path = _local_public_media_path(url)
+    if media_path:
+        content_type = (mimetypes.guess_type(media_path)[0] or "").lower()
+        return os.path.isfile(media_path) and os.path.getsize(media_path) > 0 and "image" in content_type
     try:
         head = requests.head(url, allow_redirects=True, timeout=timeout)
         if head.status_code < 400:
@@ -123,12 +144,10 @@ def _is_reachable_public_url(url: str, *, media_kind: str, timeout: int = 15) ->
     if not is_safe_http_url(url):
         return False
     expected = "video" if media_kind == "video" else "image"
-    parsed = urlparse(url)
-    if parsed.hostname == _env("RAILWAY_PUBLIC_DOMAIN") and parsed.path.startswith("/media/"):
-        file_name = os.path.basename(parsed.path[len("/media/"):]).strip()
-        media_path = os.path.join(_env("DATA_DIR", "/data"), "public_media", file_name)
+    media_path = _local_public_media_path(url)
+    if media_path:
         content_type = (mimetypes.guess_type(media_path)[0] or "").lower()
-        return bool(file_name and os.path.isfile(media_path) and os.path.getsize(media_path) > 0 and expected in content_type)
+        return os.path.isfile(media_path) and os.path.getsize(media_path) > 0 and expected in content_type
     try:
         response = requests.head(url, allow_redirects=True, timeout=timeout)
         if response.status_code >= 400 or int(response.headers.get("Content-Length") or "1") <= 0:
@@ -300,16 +319,6 @@ def publish(content: dict, dry_run: bool = False) -> dict:
                 return {"id": "skipped", "reason": f"strict_gemini_artifact_invalid:{issues}"}
             if str(render_engines.get("instagram") or "") == "gemini" and primary_publish_image_url.startswith("http"):
                 strict_public_urls.add(primary_publish_image_url)
-        try:
-            if hasattr(publish_wordpress, "upload_media"):
-                media_result = publish_wordpress.upload_media(generated_image_path, dry_run=dry_run)
-                hosted_generated = str(media_result.get("source_url", "")).strip()
-                if _is_valid_public_image(hosted_generated):
-                    candidates.append(hosted_generated)
-            else:
-                print("[Instagram] Warning: publish_wordpress.upload_media unavailable; skipping generated visual upload")
-        except Exception as e:
-            print(f"[Instagram] Warning: generated visual upload failed; trying the hosted generated asset: {e}")
     if _is_valid_public_image(primary_publish_image_url) and (not require_gemini or primary_publish_image_url in strict_public_urls):
         candidates.append(primary_publish_image_url)
     if not require_gemini:

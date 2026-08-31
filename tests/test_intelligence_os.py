@@ -482,6 +482,41 @@ def test_120_day_approval_route_returns_while_builder_runs(tmp_path, monkeypatch
         release_builder.set()
 
 
+def test_job_control_approval_route_returns_while_continuation_runs(tmp_path, monkeypatch):
+    service = bootstrap(str(tmp_path))
+    conversation = service.create_conversation()
+    job = service.jobs.create(job_type="campaign", objective="Build campaign", plan=["build"])
+    pending = service.execute_capability("jobs.control", {"job_id": job["id"], "action": "continue"})
+    continuation_started = threading.Event()
+    release_continuation = threading.Event()
+
+    def continue_job(self, conversation_id, approved, actor="owner"):
+        continuation_started.set()
+        assert release_continuation.wait(2)
+        return {"status": "COMPLETED"}
+
+    monkeypatch.setattr(
+        "social_engine.intelligence_os.service.IntelligenceOS.continue_approved_job",
+        continue_job,
+    )
+    try:
+        status, _, response = handle(
+            "POST",
+            f"/api/os/approvals/{pending['approval_id']}",
+            {"approved": True, "execute": True, "decided_by": "owner", "conversation_id": conversation["id"]},
+            str(tmp_path),
+        )
+        result = json.loads(response)
+
+        assert status == 200
+        assert continuation_started.wait(1)
+        assert result["approval"]["status"] == "CONSUMED"
+        assert result["execution"]["result"]["job"]["status"] == "RUNNING"
+        assert result["continuation_dispatched"] is True
+    finally:
+        release_continuation.set()
+
+
 def test_scored_story_capability_returns_instagram_schedule_package(tmp_path, monkeypatch):
     service = bootstrap(str(tmp_path))
     artifact = {

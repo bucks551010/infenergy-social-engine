@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import re
+import threading
 import uuid
 from typing import Any
 
@@ -419,6 +420,16 @@ class IntelligenceOS:
                 "message": content, "approval": approved["approval"], "execution": execution,
                 "continuation_error": f"{type(exc).__name__}: {exc}",
             }
+
+    def dispatch_approved_job_continuation(
+        self, conversation_id: str, approved: dict[str, Any], actor: str = "owner",
+    ) -> None:
+        threading.Thread(
+            target=self.continue_approved_job,
+            args=(conversation_id, approved, actor),
+            name=f"approved-job-{approved['approval']['id'][:8]}",
+            daemon=True,
+        ).start()
 
     def _command_prompt(self, message: str, conversation: dict[str, Any], actor: str) -> str:
         messages = conversation.get("messages", [])[-20:]

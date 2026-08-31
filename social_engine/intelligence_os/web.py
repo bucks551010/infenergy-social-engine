@@ -97,7 +97,8 @@ def handle(method: str, path: str, body: dict[str, Any] | None, data_dir: str) -
                     and job.get("status") != "COMPLETED"
                     and conversation_id
                 ):
-                    return _json(200, service.continue_approved_job(str(conversation_id), approved, actor))
+                    service.dispatch_approved_job_continuation(str(conversation_id), approved, actor)
+                    approved["continuation_dispatched"] = True
                 return _json(200, approved)
             result = service.policies.decide_approval(
                 approval_id, approved=bool(payload.get("approved", False)),

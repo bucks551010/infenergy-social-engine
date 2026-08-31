@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import json
+import threading
+import time
 from datetime import datetime, timezone
 from types import SimpleNamespace
 
@@ -389,9 +391,13 @@ def test_approved_job_survives_continuation_provider_failure(tmp_path, monkeypat
 def test_120_day_capability_runs_real_builder_and_completes_job(tmp_path, monkeypatch):
     service = bootstrap(str(tmp_path))
     captured = {}
+    builder_started = threading.Event()
+    release_builder = threading.Event()
 
     def build_calendar(**kwargs):
         captured.update(kwargs)
+        builder_started.set()
+        assert release_builder.wait(2)
         return {
             "calendar_path": str(tmp_path / "calendar.json"), "queued": 120,
             "cancelled_outbox": 90, "single_image_posts": 103, "carousel_posts": 17,
@@ -415,6 +421,16 @@ def test_120_day_capability_runs_real_builder_and_completes_job(tmp_path, monkey
 
     job = result["execution"]["result"]["job"]
     assert result["execution"]["status"] == "COMPLETED"
+    assert result["execution"]["result"]["dispatched"] is True
+    assert result["approval"]["status"] == "CONSUMED"
+    assert builder_started.wait(1)
+    assert job["status"] == "RUNNING"
+    release_builder.set()
+    for _ in range(100):
+        job = service.jobs.get(job["id"])
+        if job["status"] == "COMPLETED":
+            break
+        time.sleep(0.01)
     assert job["status"] == "COMPLETED"
     assert job["progress"] == 1.0
     assert job["result"]["queued"] == 120
@@ -423,6 +439,47 @@ def test_120_day_capability_runs_real_builder_and_completes_job(tmp_path, monkey
         "data_dir": str(tmp_path), "start_date": "2026-08-27", "days": 120,
         "enqueue": True, "replace_unpublished": True, "content_plan": "weekly_brand_mix",
     }
+
+
+def test_120_day_approval_route_returns_while_builder_runs(tmp_path, monkeypatch):
+    service = bootstrap(str(tmp_path))
+    conversation = service.create_conversation()
+    pending = service.execute_capability(
+        "content.plan_120_days",
+        {"objective": "Build the next 120 days", "replace_unpublished": True},
+    )
+    builder_started = threading.Event()
+    release_builder = threading.Event()
+
+    def build_calendar(**kwargs):
+        builder_started.set()
+        assert release_builder.wait(2)
+        return {"calendar_path": str(tmp_path / "calendar.json"), "queued": 120}
+
+    def unexpected_continuation(*args, **kwargs):
+        raise AssertionError("asynchronous capabilities must not start model continuation in the approval request")
+
+    monkeypatch.setattr("build_monthly_content.build_monthly_calendar", build_calendar)
+    monkeypatch.setattr("build_monthly_content.prepare_monthly_gemini_prompts", lambda data_dir: {})
+    monkeypatch.setattr(
+        "social_engine.intelligence_os.service.IntelligenceOS.continue_approved_job",
+        unexpected_continuation,
+    )
+    try:
+        status, _, response = handle(
+            "POST",
+            f"/api/os/approvals/{pending['approval_id']}",
+            {"approved": True, "execute": True, "decided_by": "owner", "conversation_id": conversation["id"]},
+            str(tmp_path),
+        )
+        result = json.loads(response)
+
+        assert status == 200
+        assert builder_started.wait(1)
+        assert result["approval"]["status"] == "CONSUMED"
+        assert result["execution"]["result"]["job"]["status"] == "RUNNING"
+    finally:
+        release_builder.set()
 
 
 def test_scored_story_capability_returns_instagram_schedule_package(tmp_path, monkeypatch):

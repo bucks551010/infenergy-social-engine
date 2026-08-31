@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import re
 import sys
+import threading
 import uuid
 from dataclasses import asdict, is_dataclass
 from datetime import date, datetime, timedelta, timezone
@@ -356,52 +357,62 @@ def register_core_capabilities(registry: CapabilityRegistry, policies: PolicyEng
             objective=str(payload.get("objective", "Build adaptive 120-day content system")),
             plan=plan, operation_id=context.operation_id,
         )
-        try:
-            jobs.transition(job["id"], "RUNNING", progress=0.05)
-            jobs.checkpoint(
-                job["id"], 0, status="COMPLETED",
-                checkpoint={"builder": "build_monthly_calendar", "days": 120},
-            )
-            calendar = build_monthly_calendar(
-                data_dir=context.data_dir,
-                start_date=payload.get("start_date"),
-                days=120,
-                enqueue=True,
-                replace_unpublished=bool(payload.get("replace_unpublished", True)),
-                content_plan=str(payload.get("content_plan") or "weekly_brand_mix"),
-            )
-            prepared = prepare_monthly_gemini_prompts(context.data_dir)
-            result = {
-                "calendar_path": calendar.get("calendar_path"),
-                "queued": int(calendar.get("queued") or 0),
-                "cancelled_outbox": int(calendar.get("cancelled_outbox") or 0),
-                "single_image_posts": int(calendar.get("single_image_posts") or 0),
-                "carousel_posts": int(calendar.get("carousel_posts") or 0),
-                "product_posts": int(calendar.get("product_posts") or 0),
-                "current_event_posts": int(calendar.get("current_event_posts") or 0),
-                "superhero_posts": int(calendar.get("superhero_posts") or 0),
-                "micro_mission_posts": int(calendar.get("micro_mission_posts") or 0),
-                "historical_mission_posts": int(calendar.get("historical_mission_posts") or 0),
-                "prepared_entries": int(prepared.get("prepared_entries") or 0),
-                "prepared_prompts": int(prepared.get("prepared_prompts") or 0),
-                "content_plan": str(payload.get("content_plan") or "weekly_brand_mix"),
-                "replace_unpublished": bool(payload.get("replace_unpublished", True)),
-            }
-            for step in jobs.get(job["id"])["steps"]:
-                if step["status"] not in {"COMPLETED", "SKIPPED"}:
-                    jobs.checkpoint(
-                        job["id"], int(step["ordinal"]), status="COMPLETED",
-                        checkpoint={"builder": "build_monthly_calendar", "calendar_path": result["calendar_path"]},
-                        result={"queued": result["queued"]},
-                    )
-            completed = jobs.transition(job["id"], "COMPLETED", progress=1.0, result=result)
-            return {"job": completed, "calendar": result, "horizons": horizons, "locked_days": int(payload.get("locked_days", 7))}
-        except Exception as exc:
-            jobs.transition(
-                job["id"], "FAILED",
-                result={"error": f"{type(exc).__name__}: {exc}", "builder": "build_monthly_calendar"},
-            )
-            raise
+        jobs.transition(job["id"], "RUNNING", progress=0.05)
+        jobs.checkpoint(
+            job["id"], 0, status="COMPLETED",
+            checkpoint={"builder": "build_monthly_calendar", "days": 120},
+        )
+
+        def build_in_background() -> None:
+            try:
+                calendar = build_monthly_calendar(
+                    data_dir=context.data_dir,
+                    start_date=payload.get("start_date"),
+                    days=120,
+                    enqueue=True,
+                    replace_unpublished=bool(payload.get("replace_unpublished", True)),
+                    content_plan=str(payload.get("content_plan") or "weekly_brand_mix"),
+                )
+                prepared = prepare_monthly_gemini_prompts(context.data_dir)
+                result = {
+                    "calendar_path": calendar.get("calendar_path"),
+                    "queued": int(calendar.get("queued") or 0),
+                    "cancelled_outbox": int(calendar.get("cancelled_outbox") or 0),
+                    "single_image_posts": int(calendar.get("single_image_posts") or 0),
+                    "carousel_posts": int(calendar.get("carousel_posts") or 0),
+                    "product_posts": int(calendar.get("product_posts") or 0),
+                    "current_event_posts": int(calendar.get("current_event_posts") or 0),
+                    "superhero_posts": int(calendar.get("superhero_posts") or 0),
+                    "micro_mission_posts": int(calendar.get("micro_mission_posts") or 0),
+                    "historical_mission_posts": int(calendar.get("historical_mission_posts") or 0),
+                    "prepared_entries": int(prepared.get("prepared_entries") or 0),
+                    "prepared_prompts": int(prepared.get("prepared_prompts") or 0),
+                    "content_plan": str(payload.get("content_plan") or "weekly_brand_mix"),
+                    "replace_unpublished": bool(payload.get("replace_unpublished", True)),
+                }
+                for step in jobs.get(job["id"])["steps"]:
+                    if step["status"] not in {"COMPLETED", "SKIPPED"}:
+                        jobs.checkpoint(
+                            job["id"], int(step["ordinal"]), status="COMPLETED",
+                            checkpoint={"builder": "build_monthly_calendar", "calendar_path": result["calendar_path"]},
+                            result={"queued": result["queued"]},
+                        )
+                jobs.transition(job["id"], "COMPLETED", progress=1.0, result=result)
+            except Exception as exc:
+                jobs.transition(
+                    job["id"], "FAILED",
+                    result={"error": f"{type(exc).__name__}: {exc}", "builder": "build_monthly_calendar"},
+                )
+
+        threading.Thread(
+            target=build_in_background,
+            name=f"content-120-{job['id'][:8]}",
+            daemon=True,
+        ).start()
+        return {
+            "job": jobs.get(job["id"]), "horizons": horizons,
+            "locked_days": int(payload.get("locked_days", 7)), "dispatched": True,
+        }
 
     def research_news(payload: dict[str, Any], _: ExecutionContext) -> dict[str, Any]:
         return external_research.search_news(

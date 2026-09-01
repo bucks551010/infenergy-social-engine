@@ -130,6 +130,36 @@ def test_main_runs_due_sweep_immediately_on_startup(monkeypatch):
     assert pregenerations == ["started"]
 
 
+def test_dispatch_sweep_records_publication_result(monkeypatch):
+    result = {
+        "status": "COMPLETE",
+        "processed": 1,
+        "published": 1,
+        "failed": 0,
+        "results": [{
+            "status": "PUBLISHED",
+            "outbox_id": "outbox-1",
+            "platforms": {"facebook": {"state": "CONFIRMED_SUCCESS", "external_id": "fb-1"}},
+        }],
+    }
+    monkeypatch.setattr(worker, "RUN_LOCK", worker.threading.Lock())
+    monkeypatch.setattr(worker, "_data_dir", lambda: "unused")
+    monkeypatch.setattr(
+        worker.subprocess,
+        "run",
+        lambda *args, **kwargs: SimpleNamespace(returncode=0, stdout=worker.json.dumps(result), stderr=""),
+    )
+
+    worker.dispatch_scheduled_slot("startup_sweep")
+
+    assert worker.LAST_DISPATCH["status"] == "complete"
+    assert worker.LAST_DISPATCH["trigger"] == "startup_sweep"
+    assert worker.LAST_DISPATCH["exit_code"] == 0
+    assert worker.LAST_DISPATCH["result"] == result
+    assert worker.LAST_DISPATCH["started_at_utc"]
+    assert worker.LAST_DISPATCH["finished_at_utc"]
+
+
 def test_manual_monthly_generation_builds_prepares_and_pregenerates_to_idle(monkeypatch, tmp_path):
     monkeypatch.setenv("DATA_DIR", str(tmp_path))
     monkeypatch.setattr(worker, "build_monthly_calendar", lambda **kwargs: {

@@ -37,6 +37,15 @@ LAST_RUN = {
     "finished_at_utc": None,
     "error": None,
 }
+LAST_DISPATCH = {
+    "status": "idle",
+    "trigger": None,
+    "started_at_utc": None,
+    "finished_at_utc": None,
+    "exit_code": None,
+    "result": None,
+    "error": None,
+}
 STARTED_AT = datetime.now(timezone.utc)
 VISUAL_REPO_BOOTSTRAP = {
     "status": "not_run",
@@ -1318,6 +1327,7 @@ class HealthHandler(BaseHTTPRequestHandler):
                 "time_utc": _utc_now(),
                 "uptime_seconds": _uptime_seconds(),
                 "last_run": LAST_RUN,
+                "last_dispatch": LAST_DISPATCH,
                 "candidate_pool_depth": _candidate_pool_depth(),
                 "dry_run": os.environ.get("SOCIAL_DRY_RUN", "true"),
                 "shadow_mode": os.environ.get("SOCIAL_SHADOW_MODE", "false"),
@@ -2558,6 +2568,10 @@ def dispatch_scheduled_slot(slot: str) -> None:
         print(f"[DISPATCH] {slot} deferred because another content operation is active")
         return
     recovery_needed = False
+    LAST_DISPATCH.update({
+        "status": "running", "trigger": slot, "started_at_utc": _utc_now(),
+        "finished_at_utc": None, "exit_code": None, "result": None, "error": None,
+    })
     try:
         env = os.environ.copy()
         env["DATA_DIR"] = _data_dir()
@@ -2567,16 +2581,32 @@ def dispatch_scheduled_slot(slot: str) -> None:
             timeout=int(os.environ.get("DISPATCH_TIMEOUT_SEC", "360")), check=False,
         )
         output = ((completed.stdout or "") + "\n" + (completed.stderr or "")).strip()
+        LAST_DISPATCH["exit_code"] = completed.returncode
         print(f"[DISPATCH] {slot}: exit={completed.returncode} {output[-2000:]}")
         if completed.returncode == 0 and output:
             try:
                 result = json.loads(output.splitlines()[-1])
+                LAST_DISPATCH["result"] = result
+                LAST_DISPATCH["status"] = "complete"
                 if int(result.get("processed") or 0) > 0 and int(result.get("published") or 0) == 0:
                     print(f"[DELIVERY_WATCHDOG] {slot}: zero confirmed publications; requesting replacement inventory")
                     recovery_needed = True
             except (TypeError, ValueError, json.JSONDecodeError):
+                LAST_DISPATCH["status"] = "error"
+                LAST_DISPATCH["error"] = "dispatcher_output_was_not_valid_json"
                 print(f"[DELIVERY_WATCHDOG] {slot}: dispatcher output was not valid JSON")
+        elif completed.returncode != 0:
+            LAST_DISPATCH["status"] = "error"
+            LAST_DISPATCH["error"] = output[-1500:] or f"dispatcher_exit_{completed.returncode}"
+        else:
+            LAST_DISPATCH["status"] = "error"
+            LAST_DISPATCH["error"] = "dispatcher_produced_no_output"
+    except Exception as exc:
+        LAST_DISPATCH["status"] = "error"
+        LAST_DISPATCH["error"] = f"{type(exc).__name__}:{exc}"
+        print(f"[DISPATCH] {slot} failed: {LAST_DISPATCH['error']}")
     finally:
+        LAST_DISPATCH["finished_at_utc"] = _utc_now()
         RUN_LOCK.release()
     if recovery_needed:
         _start_factory_thread()

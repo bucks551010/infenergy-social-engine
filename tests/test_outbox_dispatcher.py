@@ -217,6 +217,34 @@ def test_recent_outbox_activity_exposes_persisted_publication_receipts(tmp_path)
     }]
 
 
+def test_strict_generation_failure_is_only_attempted_once_per_batch(tmp_path, monkeypatch):
+    data_dir = str(tmp_path)
+    outbox_id = _ready_package(data_dir, ["facebook"])
+    connection = sqlite3.connect(get_db_path(data_dir))
+    package = json.loads(connection.execute(
+        "SELECT package_json FROM content_outbox WHERE outbox_id=?", (outbox_id,)
+    ).fetchone()[0])
+    package["gemini_generation"] = {"strict_provider": True}
+    connection.execute(
+        "UPDATE content_outbox SET package_json=? WHERE outbox_id=?", (json.dumps(package), outbox_id)
+    )
+    connection.commit()
+    connection.close()
+    monkeypatch.setattr(
+        dispatch_outbox, "_prepare_gemini_assets",
+        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("429 RESOURCE_EXHAUSTED")),
+    )
+
+    result = dispatch_outbox.dispatch_due_batch(
+        data_dir=data_dir, now_utc="2026-08-19T13:00:01+00:00", limit=25,
+    )
+
+    assert result["processed"] == 1
+    assert result["published"] == 0
+    assert result["results"][0]["status"] == "RETRYABLE_FAILURE"
+    assert result["results"][0]["next_attempt_at"] == "2026-08-19T13:30:01+00:00"
+
+
 def test_partial_retry_never_resends_confirmed_platform(tmp_path):
     data_dir = str(tmp_path)
     _ready_package(data_dir, ["facebook", "instagram"])

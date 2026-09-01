@@ -9,6 +9,7 @@ from dataclasses import asdict, is_dataclass
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from .governance import PolicyEngine
 from .intelligence import AutomationService, ResearchIntelligence
@@ -20,6 +21,7 @@ from .registry import Capability, CapabilityRegistry, ExecutionContext
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPTS = ROOT / "scripts"
+CENTRAL_TIME = ZoneInfo("America/Chicago")
 if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 
@@ -93,9 +95,17 @@ def register_core_capabilities(registry: CapabilityRegistry, policies: PolicyEng
         slot = str(payload.get("slot", "midday")).strip().lower()
         if slot not in {"morning", "midday", "evening"}:
             raise ValueError("slot_must_be_morning_midday_or_evening")
-        default_times = {"morning": "13:00:00+00:00", "midday": "17:00:00+00:00", "evening": "23:00:00+00:00"}
-        scheduled_at = str(payload.get("scheduled_at") or f"{content_date}T{default_times[slot]}")
-        scheduled_datetime = datetime.fromisoformat(scheduled_at.replace("Z", "+00:00"))
+        default_hours = {"morning": 8, "midday": 12, "evening": 18}
+        requested_at = str(payload.get("scheduled_at") or "").strip()
+        if requested_at:
+            scheduled_datetime = datetime.fromisoformat(requested_at.replace("Z", "+00:00"))
+            if scheduled_datetime.tzinfo is None:
+                scheduled_datetime = scheduled_datetime.replace(tzinfo=CENTRAL_TIME)
+        else:
+            scheduled_datetime = datetime.combine(
+                date.fromisoformat(content_date), datetime.min.time(), CENTRAL_TIME,
+            ).replace(hour=default_hours[slot])
+        scheduled_at = scheduled_datetime.isoformat()
         if scheduled_datetime.date().isoformat() != content_date:
             raise ValueError("scheduled_at_must_match_content_date")
         package = dict(payload["package"])
@@ -116,11 +126,10 @@ def register_core_capabilities(registry: CapabilityRegistry, policies: PolicyEng
         }
         if context.dry_run:
             return {"plan": plan, "would_schedule": {"content_date": content_date, "slot": slot, "scheduled_at": scheduled_at}}
-        day_start = scheduled_datetime
+        day_start = datetime.combine(date.fromisoformat(content_date), datetime.min.time(), CENTRAL_TIME)
         schedule = {
-            "morning": day_start.replace(hour=13, minute=0).isoformat(),
-            "midday": day_start.replace(hour=17, minute=0).isoformat(),
-            "evening": day_start.replace(hour=23, minute=0).isoformat(),
+            name: day_start.replace(hour=hour).isoformat()
+            for name, hour in default_hours.items()
         }
         schedule[slot] = scheduled_at
         ensure_daily_slots(context.data_dir, content_date, schedule, package.get("platform_policy", {}))

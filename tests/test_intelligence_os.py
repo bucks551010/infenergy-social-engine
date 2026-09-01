@@ -153,6 +153,40 @@ def test_approved_schedule_is_transactional_and_rollbackable(tmp_path):
     assert rolled_back["status"] == "ROLLED_BACK"
 
 
+@pytest.mark.parametrize(("content_date", "expected_offset"), [
+    ("2026-09-01", "-05:00"),
+    ("2026-12-01", "-06:00"),
+])
+def test_schedule_localizes_creative_studio_wall_time_to_central(
+    tmp_path, content_date, expected_offset,
+):
+    service = bootstrap(str(tmp_path))
+    service.policies.create_policy(
+        capability="social.schedule",
+        rule="Test autonomous scheduling.",
+        approval_level="AUTONOMOUS",
+        created_by="owner",
+    )
+
+    result = service.execute_capability(
+        "social.schedule",
+        {
+            "content_date": content_date,
+            "slot": "midday",
+            "scheduled_at": f"{content_date}T13:00:00",
+            "package": {"post_id": f"central-{content_date}", "platforms": ["facebook"]},
+        },
+    )
+    from content_operations import daily_status
+    scheduled_at = next(
+        item["scheduled_at"] for item in daily_status(str(tmp_path), content_date)["slots"]
+        if item["slot"] == "midday"
+    )
+
+    assert result["status"] == "COMPLETED"
+    assert scheduled_at == f"{content_date}T13:00:00{expected_offset}"
+
+
 def test_carousel_generation_executes_without_approval_and_schedules_with_one(tmp_path, monkeypatch):
     service = bootstrap(str(tmp_path))
     monkeypatch.setenv("GEMINI_API_KEY", "")

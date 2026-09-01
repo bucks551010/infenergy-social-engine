@@ -279,8 +279,19 @@ def dispatch_due(*, data_dir: str = DATA_DIR, now_utc: str | None = None) -> dic
             update_claimed_package(data_dir, outbox_id, package)
         except Exception as exc:
             error = f"{type(exc).__name__}:{exc}"
-            release_outbox(data_dir, outbox_id, error)
-            return {"status": "RETRYABLE_FAILURE", "outbox_id": outbox_id, "error": error}
+            attempt_count = int(claimed.get("attempt_count") or 1)
+            max_attempts = max(1, int(os.environ.get("OUTBOX_MAX_ATTEMPTS", "4")))
+            if attempt_count >= max_attempts:
+                finalize_outbox(data_dir, outbox_id, status="EXTERNAL_ACTION_REQUIRED", error=error)
+                return {"status": "EXTERNAL_ACTION_REQUIRED", "outbox_id": outbox_id, "error": error}
+            retry_at = datetime.fromisoformat(now_utc.replace("Z", "+00:00")) if now_utc else datetime.now(timezone.utc)
+            base_seconds = max(30, int(os.environ.get("OUTBOX_GENERATION_RETRY_BASE_SECONDS", "1800")))
+            retry_at += timedelta(seconds=min(21600, base_seconds * (2 ** (attempt_count - 1))))
+            release_outbox(data_dir, outbox_id, error, next_attempt_at=retry_at.isoformat())
+            return {
+                "status": "RETRYABLE_FAILURE", "outbox_id": outbox_id,
+                "next_attempt_at": retry_at.isoformat(), "error": error,
+            }
 
     for platform in platforms:
         artifact_error = _strict_publish_artifact_error(package, platform)

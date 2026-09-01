@@ -70,6 +70,61 @@ function richText(content) {
   return output.join('');
 }
 function message(role, content, status = '') { const wrap = document.createElement('div'); wrap.className = `message ${role} ${status}`; wrap.innerHTML = role === 'assistant' ? `<span class="avatar">I</span><div><strong>Infenergy Intelligence</strong><div class="rich-message">${richText(content)}</div></div>` : `<div><strong>Owner</strong><p>${esc(content)}</p></div>`; $('#messages').append(wrap); $('#messages').scrollTop = $('#messages').scrollHeight; }
+function operationOutput(source) {
+  const execution = source?.execution || source || {};
+  const candidates = [execution.result?.output, execution.result, execution.after_state?.output, execution.after_state];
+  return candidates.find((item) => item?.package) || null;
+}
+function mediaUrl(path) {
+  const fileName = String(path || '').replaceAll('\\', '/').split('/').pop();
+  return fileName ? `/media/${encodeURIComponent(fileName)}` : '';
+}
+function executionMessage() {
+  const wrap = document.createElement('div');
+  wrap.className = 'message assistant';
+  wrap.innerHTML = '<span class="avatar">I</span><div class="execution-message"><strong>Infenergy Intelligence</strong><div class="execution-live" role="status"><span class="execution-spinner"></span><div><b>Approval accepted</b><small>Waiting for the durable transaction to start…</small></div></div></div>';
+  $('#messages').append(wrap);
+  $('#messages').scrollTop = $('#messages').scrollHeight;
+  return wrap;
+}
+function updateExecutionMessage(wrap, transaction) {
+  const status = transaction?.status || 'PLANNING';
+  const running = ['PLANNING', 'RUNNING'].includes(status);
+  const title = status === 'RUNNING' ? 'Creating and validating deliverables' : status === 'FAILED' ? 'Execution failed' : status === 'COMPLETED' ? 'Deliverables complete' : 'Approval accepted';
+  const detail = transaction?.id ? `Transaction ${transaction.id} · ${humanize(status)} · updated ${relativeTime(transaction.updated_at)}` : 'Waiting for the durable transaction to start…';
+  wrap.querySelector('.execution-live').className = `execution-live ${tone(status)}`;
+  wrap.querySelector('.execution-live').innerHTML = `${running ? '<span class="execution-spinner"></span>' : `<span class="execution-state">${status === 'FAILED' ? '!' : '✓'}</span>`}<div><b>${esc(title)}</b><small>${esc(detail)}</small></div>`;
+}
+function renderDeliverables(source, target = null) {
+  const execution = source?.execution || source || {};
+  const output = operationOutput(source);
+  if (!output) return false;
+  const packageValue = output.package || {};
+  const slides = packageValue.carousel_slides || [];
+  const assets = packageValue.carousel_assets || output.assets || [];
+  const copies = packageValue.platform_posts || {};
+  const validation = output.asset_validation || [];
+  const transactionId = execution.transaction_id || execution.id || source?.id || '';
+  const rollbackAvailable = Boolean(execution.rollback_available || execution.rollback_data && Object.keys(execution.rollback_data).length);
+  const images = assets.map((asset, index) => {
+    const url = mediaUrl(asset.local_path || asset.path || asset.url);
+    const slide = slides[index] || {};
+    return `<article class="deliverable-slide">${url ? `<a href="${esc(url)}" target="_blank" rel="noopener"><img src="${esc(url)}" alt="Carousel slide ${index + 1}" loading="lazy"></a>` : ''}<div><b>${index + 1}/${Math.max(assets.length, slides.length)}</b><strong>${esc(slide.on_image_headline || slide.headline || `Slide ${index + 1}`)}</strong><span>${esc(slide.on_image_subline || slide.supporting || '')}</span></div></article>`;
+  }).join('');
+  const captions = Object.entries(copies).map(([platform, value]) => `<article><strong>${esc(humanize(platform))}</strong><p>${esc(value?.final_caption || value || '')}</p></article>`).join('');
+  const validCount = validation.filter((item) => item.valid).length;
+  const html = `<div class="deliverables"><div class="deliverables-head"><div><span class="kicker">Generated work</span><h3>${esc(packageValue.title || packageValue.objective || 'Carousel package')}</h3></div>${pill(output.status || execution.status || 'COMPLETED')}</div><div class="deliverable-facts"><span><b>${slides.length || assets.length}</b> slides</span><span><b>${validCount || assets.length}/${validation.length || assets.length}</b> assets validated</span><span><b>${Object.keys(copies).length}</b> platform captions</span></div><div class="publication-safety"><b>Not scheduled · Not published</b><span>The generated package is ready for your review. Publishing still requires a separate action.</span></div>${images ? `<div class="section-label spaced">Rendered slides · select an image to open full size</div><div class="deliverable-grid">${images}</div>` : ''}${captions ? `<div class="section-label spaced">Platform captions</div><div class="platform-copy-grid">${captions}</div>` : ''}<footer><code>${esc(transactionId)}</code><span>${rollbackAvailable ? 'Rollback available' : 'Durable result recorded'}</span></footer></div>`;
+  if (target) {
+    target.querySelector('.execution-message').innerHTML = `<strong>Infenergy Intelligence</strong>${html}`;
+  } else {
+    const wrap = document.createElement('div');
+    wrap.className = 'message assistant';
+    wrap.innerHTML = `<span class="avatar">I</span><div class="execution-message"><strong>Infenergy Intelligence</strong>${html}</div>`;
+    $('#messages').append(wrap);
+  }
+  $('#messages').scrollTop = $('#messages').scrollHeight;
+  return true;
+}
 function syncConversation(conversation) {
   if (!conversation?.id || state.renderedConversationId === conversation.id) return;
   $('#messages').innerHTML = '';
@@ -199,7 +254,7 @@ function renderMasterTransactions() {
     ['Rollback ready', state.capabilities.filter((item) => item.supports_rollback).length],
     ['Undo available', reversible],
   ].map(([label, value]) => `<div class="metric panel"><b>${value}</b><span>${esc(label)}</span></div>`).join('');
-  $('#master-transactions').innerHTML = state.transactions.length ? `<div class="master-transaction-list">${state.transactions.slice(0, 30).map((item) => { const operation = item.operations?.[0] || {}; const canRollback = item.status === 'COMPLETED' && !item.dry_run && item.rollback_data && Object.keys(item.rollback_data).length; return `<article><div><strong>${esc(operation.capability || item.name || 'Operation')}</strong><code>${esc(item.id)}</code></div>${pill(item.status)}<span>${esc(relativeTime(item.updated_at))}</span>${canRollback ? `<button data-master-rollback="${esc(item.id)}">Rollback</button>` : '<small>Recorded</small>'}</article>`; }).join('')}</div>` : empty('No transactions recorded');
+  $('#master-transactions').innerHTML = state.transactions.length ? `<div class="master-transaction-list">${state.transactions.slice(0, 30).map((item) => { const operation = item.operations?.[0] || {}; const canRollback = item.status === 'COMPLETED' && !item.dry_run && item.rollback_data && Object.keys(item.rollback_data).length; const hasDeliverables = Boolean(operationOutput(item)); return `<article><div><strong>${esc(operation.capability || item.name || 'Operation')}</strong><code>${esc(item.id)}</code></div>${pill(item.status)}<span>${esc(relativeTime(item.updated_at))}</span><div class="transaction-actions">${hasDeliverables ? `<button data-view-deliverables="${esc(item.id)}">View deliverables</button>` : ''}${canRollback ? `<button class="secondary" data-master-rollback="${esc(item.id)}">Rollback</button>` : !hasDeliverables ? '<small>Recorded</small>' : ''}</div></article>`; }).join('')}</div>` : empty('No transactions recorded');
 }
 
 async function loadMaster() {
@@ -392,6 +447,13 @@ document.addEventListener('click', async (event) => {
     toast('Operation rolled back');
   } catch (error) { button.disabled = false; button.textContent = 'Rollback'; toast(error.message); }
 });
+document.addEventListener('click', (event) => {
+  const button = event.target.closest('[data-view-deliverables]');
+  if (!button) return;
+  const transaction = state.transactions.find((item) => item.id === button.dataset.viewDeliverables);
+  if (!transaction || !renderDeliverables(transaction)) return toast('No generated package is stored on this transaction.');
+  activateView('command');
+});
 document.addEventListener('click', async (event) => {
   const button = event.target.closest('[data-master-preset]');
   if (!button) return;
@@ -460,15 +522,29 @@ document.addEventListener('click', async (event) => {
   if (!button) return;
   const approved = button.dataset.decision === 'approve';
   button.disabled = true; button.textContent = approved ? 'Executing…' : 'Rejecting…';
+  const progressMessage = approved ? executionMessage() : null;
+  let polling = Boolean(approved);
+  const poll = approved ? window.setInterval(async () => {
+    if (!polling) return;
+    try {
+      const response = await api('/api/os/transactions');
+      const transaction = (response.transactions || []).find((item) => item.approval_id === button.dataset.approval);
+      if (transaction) updateExecutionMessage(progressMessage, transaction);
+    } catch { /* The approval request remains authoritative; the next poll can recover. */ }
+  }, 1000) : null;
   try {
     const result = await api(`/api/os/approvals/${button.dataset.approval}`, { method: 'POST', body: JSON.stringify({ approved, execute: approved, decided_by: 'owner', conversation_id: state.conversationId }) });
     if (approved) {
       const execution = result.execution || {};
       const job = execution.result?.job;
-      message('assistant', result.message || (job ? `Approval executed once. Durable job \`${job.id}\` is now **${job.status}** with ${job.steps?.length || 0} tracked steps. Transaction: \`${execution.transaction_id}\`.` : `Approval executed once. **${execution.capability || 'Operation'}** finished with status **${execution.status}**. Transaction: \`${execution.transaction_id}\`.`));
+      if (!renderDeliverables(result, progressMessage)) {
+        progressMessage.remove();
+        message('assistant', result.message || (job ? `Approval executed once. Durable job \`${job.id}\` is now **${job.status}** with ${job.steps?.length || 0} tracked steps. Transaction: \`${execution.transaction_id}\`.` : `Approval executed once. **${execution.capability || 'Operation'}** finished with status **${execution.status}**. Transaction: \`${execution.transaction_id}\`.`));
+      }
     } else message('assistant', 'The pending operation was rejected and will not execute.');
     await load();
-  } catch (error) { button.disabled = false; button.textContent = approved ? 'Approve & run once' : 'Reject'; message('assistant', 'Approval action failed: ' + error.message, 'blocked'); }
+  } catch (error) { if (progressMessage) progressMessage.remove(); button.disabled = false; button.textContent = approved ? 'Approve & run once' : 'Reject'; message('assistant', 'Approval action failed: ' + error.message, 'blocked'); }
+  finally { polling = false; if (poll) window.clearInterval(poll); }
 });
 const callbackResult = new URLSearchParams(window.location.search).get('tiktok');
 if (state.token) { showApp(); load().then(() => { if (callbackResult) { activateView('social'); toast(callbackResult === 'connected' ? 'TikTok connected' : 'TikTok authorization was not completed'); history.replaceState({}, '', '/os'); } }); } else showLogin();

@@ -954,8 +954,8 @@ def test_command_center_and_api_are_served(tmp_path):
     assert content_type.startswith("text/html")
     assert b"Infenergy Intelligence OS" in page
     assert b'id="mobile-nav"' in page
-    assert b'app.js?v=12' in page
-    assert b'styles.css?v=12' in page
+    assert b'app.js?v=13' in page
+    assert b'styles.css?v=13' in page
     assert b'data-view="master"' in page
     assert b'id="master-capabilities"' in page
     assert b'id="master-form"' in page
@@ -970,6 +970,11 @@ def test_command_center_and_api_are_served(tmp_path):
     assert b'id="login-password"' in page
     assert b'id="logout"' in page
     assert b'id="job-search"' in page
+    assert b"function operationOutput(source)" in javascript
+    assert b"data-view-deliverables" in javascript
+    assert b"Not scheduled \xc2\xb7 Not published" in javascript
+    assert b"/api/os/transactions" in javascript
+    assert b".deliverable-grid" in stylesheet
     assert api_status == 200
     assert api_type.startswith("application/json")
     assert b"system.health" in payload

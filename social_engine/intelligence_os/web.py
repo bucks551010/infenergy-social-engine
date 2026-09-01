@@ -65,6 +65,14 @@ def handle(method: str, path: str, body: dict[str, Any] | None, data_dir: str) -
             return _json(200, {"conversation": service.archive_conversation(conversation_id)})
         if method == "GET" and path == "/api/os/transactions":
             return _json(200, {"transactions": service.transactions.list()})
+        if method == "POST" and path == "/api/os/calendar":
+            from content_operations import scheduled_calendar
+
+            return _json(200, scheduled_calendar(
+                data_dir,
+                start_date=payload.get("start_date"),
+                days=int(payload.get("days", 42)),
+            ))
         if method == "POST" and path == "/api/os/command":
             message = str(payload.get("message", "")).strip()
             if not message:

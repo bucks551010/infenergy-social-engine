@@ -190,6 +190,47 @@ def test_carousel_generation_executes_without_approval_and_schedules_with_one(tm
     assert approved["execution"]["result"]["outbox_id"]
 
 
+def test_calendar_returns_exact_persisted_scheduled_post(tmp_path):
+    service = bootstrap(str(tmp_path))
+    service.policies.create_policy(
+        capability="social.schedule",
+        rule="Test autonomous scheduling.",
+        approval_level="AUTONOMOUS",
+        created_by="owner",
+    )
+    result = service.execute_capability(
+        "social.schedule",
+        {
+            "content_date": "2026-09-03",
+            "slot": "midday",
+            "scheduled_at": "2026-09-03T13:00:00-05:00",
+            "package": {
+                "post_id": "calendar-proof",
+                "title": "Exact scheduled post",
+                "platforms": ["facebook", "instagram"],
+                "platform_posts": {
+                    "facebook": {"final_caption": "Exact Facebook caption."},
+                    "instagram": {"final_caption": "Exact Instagram caption."},
+                },
+            },
+        },
+    )
+
+    status, content_type, response = handle(
+        "POST", "/api/os/calendar", {"start_date": "2026-09-01", "days": 7}, str(tmp_path)
+    )
+    calendar = json.loads(response)
+    post = next(day["posts"][0] for day in calendar["days"] if day["posts"])
+
+    assert status == 200
+    assert content_type.startswith("application/json")
+    assert calendar["scheduled_count"] == 1
+    assert post["outbox_id"] == result["result"]["outbox_id"]
+    assert post["scheduled_at"] == "2026-09-03T13:00:00-05:00"
+    assert post["platforms"] == ["facebook", "instagram"]
+    assert post["package"]["platform_posts"]["facebook"]["final_caption"] == "Exact Facebook caption."
+
+
 def test_creative_idea_persists_and_title_can_be_renamed(tmp_path):
     service = bootstrap(str(tmp_path))
     created = service.create_creative(title="Untitled creative")
@@ -954,8 +995,8 @@ def test_command_center_and_api_are_served(tmp_path):
     assert content_type.startswith("text/html")
     assert b"Infenergy Intelligence OS" in page
     assert b'id="mobile-nav"' in page
-    assert b'app.js?v=13' in page
-    assert b'styles.css?v=13' in page
+    assert b'app.js?v=14' in page
+    assert b'styles.css?v=14' in page
     assert b'data-view="master"' in page
     assert b'id="master-capabilities"' in page
     assert b'id="master-form"' in page
@@ -975,6 +1016,10 @@ def test_command_center_and_api_are_served(tmp_path):
     assert b"Not scheduled \xc2\xb7 Not published" in javascript
     assert b"/api/os/transactions" in javascript
     assert b".deliverable-grid" in stylesheet
+    assert b'id="social-calendar"' in page
+    assert b"/api/os/calendar" in javascript
+    assert b"View exact post" in javascript
+    assert b".calendar-days" in stylesheet
     assert api_status == 200
     assert api_type.startswith("application/json")
     assert b"system.health" in payload

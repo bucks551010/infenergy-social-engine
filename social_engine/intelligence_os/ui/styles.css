@@ -273,6 +273,44 @@ p { line-height: 1.55; }
 .account-action { display: flex; align-items: center; gap: 10px; }
 .social-summary > div { padding: 15px 18px; border-right: 1px solid var(--line); } .social-summary > div:last-child { border: 0; }
 .social-summary b, .social-summary span { display: block; } .social-summary b { font-size: 22px; } .social-summary span { color: var(--muted); font-size: 10px; text-transform: uppercase; }
+.social-calendar-panel { padding: 20px; }
+.calendar-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin-bottom: 18px; }
+.calendar-toolbar h2 { font-size: 20px; }
+.calendar-actions { display: flex; gap: 6px; }
+.calendar-actions .ghost { min-width: 42px; text-align: center; }
+.social-calendar { overflow-x: auto; }
+.calendar-weekdays, .calendar-days { display: grid; grid-template-columns: repeat(7, minmax(120px, 1fr)); min-width: 840px; }
+.calendar-weekdays { color: var(--muted); font-size: 9px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
+.calendar-weekdays span { padding: 8px 10px; border-bottom: 1px solid var(--line); }
+.calendar-day { min-height: 190px; padding: 9px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); background: #0a1513; }
+.calendar-day:nth-child(7n) { border-right: 0; }
+.calendar-day.outside { opacity: .45; }
+.calendar-day.today { box-shadow: inset 0 0 0 1px var(--accent); }
+.calendar-day > header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.calendar-day > header b { display: grid; width: 25px; height: 25px; place-items: center; border-radius: 50%; }
+.calendar-day.today > header b { color: #171208; background: var(--accent); }
+.calendar-day > header span { color: var(--muted); font-size: 9px; }
+.calendar-empty { margin: 20px 0; color: #59716b; font-size: 9px; text-align: center; }
+.calendar-post { overflow: hidden; margin-bottom: 7px; border: 1px solid #2f5b4b; border-radius: 8px; background: var(--panel2); }
+.calendar-post.bad { border-color: #673a37; }
+.calendar-post > img { display: block; width: 100%; aspect-ratio: 1.3; object-fit: cover; }
+.calendar-post-main { padding: 8px; }
+.calendar-post-time { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.calendar-post-time strong { color: var(--accent); font-size: 11px; }
+.calendar-post-time .pill { padding: 3px 5px; font-size: 7px; }
+.calendar-post h3 { margin: 7px 0; font-size: 10px; }
+.calendar-platforms { display: flex; flex-wrap: wrap; gap: 3px; }
+.calendar-platforms span { padding: 3px 5px; color: var(--muted); font-size: 7px; border: 1px solid var(--line); border-radius: 4px; }
+.calendar-post details { margin-top: 8px; font-size: 9px; }
+.calendar-post summary { color: var(--green); font-weight: 800; cursor: pointer; }
+.calendar-post details p { color: #c9d9d5; font-size: 9px; white-space: pre-wrap; }
+.calendar-captions section { padding: 8px 0; border-top: 1px solid var(--line); }
+.calendar-captions b { color: var(--accent); }
+.calendar-slides { display: grid; gap: 5px; margin: 8px 0; }
+.calendar-slides span { display: grid; gap: 2px; padding: 6px; border-left: 2px solid var(--accent); background: #08110f; }
+.calendar-slides span b { color: var(--accent); }
+.calendar-slides small { color: var(--muted); }
+.calendar-post details code { display: block; color: #79aaa0; font-size: 7px; overflow-wrap: anywhere; }
 .slot-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
 .slot-card { min-height: 190px; border-top: 3px solid var(--muted); } .slot-card.good { border-top-color: var(--green); } .slot-card.warn { border-top-color: var(--yellow); } .slot-card.bad { border-top-color: var(--red); }
 .slot-time { font-size: 11px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
@@ -357,6 +395,9 @@ p { line-height: 1.55; }
   .transaction-actions { justify-content: flex-start; }
   .composer { padding: 12px; } .composer > div { gap: 8px; } .composer > div > span { display: none; } .composer button { width: 100%; }
   .toast { right: 12px; bottom: 12px; left: 12px; text-align: center; }
+  .calendar-toolbar { align-items: flex-start; flex-direction: column; }
+  .calendar-actions { width: 100%; }
+  .calendar-actions .ghost { flex: 1; }
 }
 @media (max-width: 430px) {
   .metric-grid, .social-summary, .confidence-grid { grid-template-columns: minmax(0, 1fr); }

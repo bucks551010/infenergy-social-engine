@@ -823,6 +823,53 @@ def daily_status(data_dir: str, content_date: str | date | None = None) -> dict[
         connection.close()
 
 
+def scheduled_calendar(
+    data_dir: str,
+    start_date: str | date | None = None,
+    days: int = 42,
+) -> dict[str, Any]:
+    start = start_date if isinstance(start_date, date) else date.fromisoformat(str(start_date or date.today().isoformat()))
+    day_count = max(1, min(int(days), 120))
+    end = start + timedelta(days=day_count - 1)
+    connection = _connect(data_dir)
+    try:
+        rows = connection.execute(
+            """
+            SELECT slots.*, outbox.package_json, outbox.status AS outbox_status
+            FROM daily_slots AS slots
+            LEFT JOIN content_outbox AS outbox ON outbox.outbox_id = slots.outbox_id
+            WHERE slots.content_date BETWEEN ? AND ? AND slots.outbox_id IS NOT NULL
+            ORDER BY slots.scheduled_at, slots.slot
+            """,
+            (start.isoformat(), end.isoformat()),
+        ).fetchall()
+        posts_by_date: dict[str, list[dict[str, Any]]] = {}
+        for row in rows:
+            item = dict(row)
+            package = _decode(item.pop("package_json"), {})
+            item["platform_policy"] = _decode(item.pop("platform_policy_json"), {})
+            item["package"] = package
+            item["platforms"] = (
+                package.get("platforms")
+                or package.get("platform_policy", {}).get("platforms")
+                or item["platform_policy"].get("platforms")
+                or []
+            )
+            posts_by_date.setdefault(item["content_date"], []).append(item)
+        calendar_days = []
+        for offset in range(day_count):
+            current = (start + timedelta(days=offset)).isoformat()
+            calendar_days.append({"date": current, "posts": posts_by_date.get(current, [])})
+        return {
+            "start_date": start.isoformat(),
+            "end_date": end.isoformat(),
+            "days": calendar_days,
+            "scheduled_count": sum(len(item["posts"]) for item in calendar_days),
+        }
+    finally:
+        connection.close()
+
+
 def content_detail(data_dir: str, decision_id: str) -> dict[str, Any]:
     connection = _connect(data_dir)
     try:

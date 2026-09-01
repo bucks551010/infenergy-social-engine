@@ -1,4 +1,4 @@
-const state = { data: null, conversationId: null, renderedConversationId: null, jobQuery: '', creatives: [], creativeId: null, creativeSaveTimer: null, capabilities: [], transactions: [], masterCapabilityId: null, tiktokAccount: null, token: sessionStorage.getItem('infenergyToken') || '' };
+const state = { data: null, conversationId: null, renderedConversationId: null, jobQuery: '', creatives: [], creativeId: null, creativeSaveTimer: null, capabilities: [], transactions: [], masterCapabilityId: null, tiktokAccount: null, calendarDate: new Date(new Date().getFullYear(), new Date().getMonth(), 1), token: sessionStorage.getItem('infenergyToken') || '' };
 const $ = (selector) => document.querySelector(selector);
 const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[char]));
 
@@ -324,6 +324,40 @@ function renderSocial(today) {
   $('#social-content').innerHTML = `<div class="social-summary">${summary.map(([label, value]) => `<div><b>${esc(value)}</b><span>${esc(label)}</span></div>`).join('')}</div><div class="slot-grid">${['morning', 'midday', 'evening'].map((name) => { const slot = slots.find((item) => String(item.slot).toLowerCase() === name) || { slot: name, status: 'UNPLANNED' }; const platforms = slot.platform_policy?.platforms || Object.keys(slot.platform_results || {}); return `<article class="slot-card ${tone(slot.status)}"><div class="card-top"><span class="slot-time">${esc(humanize(name))}</span>${pill(slot.status || 'UNPLANNED')}</div><h3>${slot.content_id ? 'Content package ready' : 'No content assigned'}</h3><p>${slot.scheduled_at ? esc(dateTime(slot.scheduled_at)) : 'Schedule not available'}</p><div class="platforms">${platforms.length ? platforms.map((platform) => `<span title="${esc(humanize(platform))}">${esc(platform.slice(0, 1).toUpperCase())}</span>`).join('') : '<small>No channels assigned</small>'}</div>${slot.last_error ? `<div class="inline-alert">${esc(slot.last_error)}</div>` : ''}</article>`; }).join('')}</div>`;
 }
 
+function calendarIso(dateValue) {
+  const year = dateValue.getFullYear();
+  const month = String(dateValue.getMonth() + 1).padStart(2, '0');
+  const day = String(dateValue.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function calendarPost(post) {
+  const packageValue = post.package || {};
+  const copies = packageValue.platform_posts || {};
+  const slides = packageValue.carousel_slides || [];
+  const assets = packageValue.carousel_assets || [];
+  const title = packageValue.title || packageValue.objective || packageValue.post_id || 'Scheduled post';
+  const platforms = post.platforms || [];
+  const firstAsset = assets[0]?.local_path || assets[0]?.path || assets[0]?.url;
+  const captionEntries = Object.entries(copies);
+  return `<article class="calendar-post ${tone(post.status)}">${firstAsset ? `<img src="${esc(mediaUrl(firstAsset))}" alt="${esc(title)}" loading="lazy">` : ''}<div class="calendar-post-main"><div class="calendar-post-time"><strong>${esc(new Date(post.scheduled_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }))}</strong>${pill(post.status)}</div><h3>${esc(title)}</h3><div class="calendar-platforms">${platforms.map((platform) => `<span>${esc(humanize(platform))}</span>`).join('')}</div><details><summary>View exact post</summary>${captionEntries.length ? `<div class="calendar-captions">${captionEntries.map(([platform, value]) => `<section><b>${esc(humanize(platform))}</b><p>${esc(value?.final_caption || value || '')}</p></section>`).join('')}</div>` : `<p>${esc(packageValue.fb_caption || packageValue.ig_caption || packageValue.li_text || 'No caption stored.')}</p>`}${slides.length ? `<div class="calendar-slides">${slides.map((slide, index) => `<span><b>${index + 1}</b>${esc(slide.on_image_headline || slide.headline || '')}<small>${esc(slide.on_image_subline || slide.supporting || '')}</small></span>`).join('')}</div>` : ''}<code>${esc(post.outbox_id)}</code></details></div></article>`;
+}
+
+function renderSocialCalendar(calendar) {
+  const title = state.calendarDate.toLocaleDateString([], { month: 'long', year: 'numeric' });
+  $('#calendar-title').textContent = `${title} · ${calendar.scheduled_count || 0} scheduled`;
+  const today = calendarIso(new Date());
+  $('#social-calendar').innerHTML = `<div class="calendar-weekdays">${['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => `<span>${day}</span>`).join('')}</div><div class="calendar-days">${(calendar.days || []).map((day) => { const dateValue = new Date(`${day.date}T12:00:00`); const outsideMonth = dateValue.getMonth() !== state.calendarDate.getMonth(); return `<section class="calendar-day ${outsideMonth ? 'outside' : ''} ${day.date === today ? 'today' : ''}"><header><b>${dateValue.getDate()}</b><span>${dateValue.toLocaleDateString([], { weekday: 'short' })}</span></header>${day.posts.length ? day.posts.map(calendarPost).join('') : '<p class="calendar-empty">No post scheduled</p>'}</section>`; }).join('')}</div>`;
+}
+
+async function loadSocialCalendar() {
+  const monthStart = new Date(state.calendarDate.getFullYear(), state.calendarDate.getMonth(), 1);
+  const start = new Date(monthStart);
+  start.setDate(start.getDate() - start.getDay());
+  const result = await api('/api/os/calendar', { method: 'POST', body: JSON.stringify({ start_date: calendarIso(start), days: 42 }) });
+  renderSocialCalendar(result);
+}
+
 function renderActivity(activity) {
   if (!activity.length) { $('#activity-table').innerHTML = empty('No audited activity'); return; }
   $('#activity-table').innerHTML = `<div class="data-table"><div class="table-head"><span>Action</span><span>Actor</span><span>Status</span><span>Time</span></div>${activity.map((item) => `<div class="table-row"><div><strong>${esc(humanize(item.action))}</strong><small>${esc(humanize(item.model_or_tool || 'system'))}</small></div><div>${esc(humanize(item.actor || 'system'))}</div><div>${pill(item.status)}</div><div><span>${esc(relativeTime(item.created_at))}</span><small>${esc(dateTime(item.created_at))}</small></div></div>`).join('')}</div>`;
@@ -357,7 +391,7 @@ function render(data) {
 }
 
 async function loadTikTokStatus() { try { state.tiktokAccount = await api('/api/auth/tiktok/status'); } catch { state.tiktokAccount = { status: 'ERROR', connected: false }; } }
-async function load() { try { const [data] = await Promise.all([api('/api/os/state'), loadCreatives(), loadMaster(), loadTikTokStatus()]); state.data = data; state.conversationId = data.conversation?.id; syncConversation(data.conversation); render(data); $('#system-dot').className = 'dot ok'; $('#system-label').textContent = 'Master OS connected'; } catch (error) { $('#system-dot').className = 'dot bad'; $('#system-label').textContent = 'Connection blocked'; toast(error.message); } }
+async function load() { try { const [data] = await Promise.all([api('/api/os/state'), loadCreatives(), loadMaster(), loadTikTokStatus(), loadSocialCalendar()]); state.data = data; state.conversationId = data.conversation?.id; syncConversation(data.conversation); render(data); $('#system-dot').className = 'dot ok'; $('#system-label').textContent = 'Master OS connected'; } catch (error) { $('#system-dot').className = 'dot bad'; $('#system-label').textContent = 'Connection blocked'; toast(error.message); } }
 function activateView(view) {
   const button = document.querySelector(`#nav button[data-view="${view}"]`);
   const target = $(`#${view}`);
@@ -389,6 +423,14 @@ $('#logout').addEventListener('click', () => {
   showLogin();
 });
 $('#refresh').addEventListener('click', load);
+document.addEventListener('click', (event) => {
+  const move = event.target.closest('[data-calendar-move]');
+  const today = event.target.closest('[data-calendar-today]');
+  if (!move && !today) return;
+  state.calendarDate = today ? new Date(new Date().getFullYear(), new Date().getMonth(), 1) : new Date(state.calendarDate.getFullYear(), state.calendarDate.getMonth() + Number(move.dataset.calendarMove), 1);
+  $('#social-calendar').innerHTML = empty('Loading calendar');
+  loadSocialCalendar().catch((error) => { $('#social-calendar').innerHTML = `<div class="inline-alert">${esc(error.message)}</div>`; });
+});
 document.addEventListener('click', async (event) => {
   const connect = event.target.closest('[data-tiktok-connect]');
   const disconnect = event.target.closest('[data-tiktok-disconnect]');

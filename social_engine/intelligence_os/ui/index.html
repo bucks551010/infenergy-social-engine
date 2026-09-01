@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Infenergy Intelligence OS</title>
-  <link rel="stylesheet" href="/os/assets/styles.css?v=13">
+  <link rel="stylesheet" href="/os/assets/styles.css?v=14">
 </head>
 <body>
   <section id="login-screen" class="login-screen">
@@ -158,7 +158,13 @@
       <section id="jobs" class="view"><article class="panel"><div class="panel-title job-toolbar"><div><h2>Execution fabric</h2><p class="muted">Search completed and active jobs, then open persisted deliverables.</p></div><div class="job-actions"><input id="job-search" type="search" placeholder="Search job ID, objective, or status" aria-label="Search jobs"><button class="ghost" data-action="plan120">Dry-run 120-day plan</button></div></div><div id="jobs-table" class="table"></div></article></section>
       <section id="research" class="view"><article class="panel"><div class="panel-title"><h2>Intelligence Library</h2></div><p class="muted">Current findings retain source identity, credibility, freshness, expiration, and limitations.</p><div id="research-content" class="cards"></div></article></section>
       <section id="automations" class="view"><article class="panel"><div class="panel-title"><h2>Automations and watches</h2></div><div id="automations-content" class="cards"></div></article><article class="panel"><div class="panel-title"><h2>Recent automation runs</h2></div><div id="automation-runs" class="table"></div></article></section>
-      <section id="social" class="view"><article class="panel"><div class="panel-title"><h2>Social operations</h2></div><div id="tiktok-connection"></div><div id="social-content" class="cards"></div></article></section>
+      <section id="social" class="view">
+        <article class="panel"><div class="panel-title"><h2>Social operations</h2></div><div id="tiktok-connection"></div><div id="social-content" class="cards"></div></article>
+        <article class="panel social-calendar-panel">
+          <div class="calendar-toolbar"><div><p class="kicker">Persisted publishing plan</p><h2 id="calendar-title">Content calendar</h2></div><div class="calendar-actions"><button class="ghost" data-calendar-move="-1" aria-label="Previous month">←</button><button class="ghost" data-calendar-today>Today</button><button class="ghost" data-calendar-move="1" aria-label="Next month">→</button></div></div>
+          <div id="social-calendar" class="social-calendar"></div>
+        </article>
+      </section>
       <section id="strategy" class="view"><article class="panel"><div class="panel-title"><h2>Goals and strategy</h2></div><div id="strategy-content" class="cards"></div></article></section>
       <section id="activity" class="view"><article class="panel"><div class="panel-title"><h2>Auditable activity</h2></div><div id="activity-table" class="table"></div></article></section>
       <section id="health" class="view"><article class="panel"><div class="panel-title"><h2>Provider and system health</h2></div><div id="health-content" class="cards"></div></article></section>
@@ -166,6 +172,6 @@
     </main>
   </div>
   <div id="toast" class="toast"></div>
-  <script src="/os/assets/app.js?v=13"></script>
+  <script src="/os/assets/app.js?v=14"></script>
 </body>
 </html>

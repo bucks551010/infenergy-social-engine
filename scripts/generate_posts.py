@@ -61,6 +61,59 @@ def _pipeline_mode(explicit: str = "") -> str:
     return _PIPELINE_ALIASES.get(raw, "legacy")
 
 
+def _product_consumer_context(product: dict[str, Any] | None, audience: str, data_dir: str = "") -> dict[str, Any]:
+    if not product:
+        return {}
+    roots = [
+        data_dir or os.environ.get("DATA_DIR") or os.environ.get("BI_DATA_DIR") or "",
+        os.path.join(os.path.dirname(__file__), "..", "data"),
+    ]
+    catalog: dict[str, Any] = {}
+    for root in roots:
+        if not root:
+            continue
+        path = os.path.abspath(os.path.join(root, "marketing", "product_consumer_profiles.json"))
+        try:
+            with open(path, "r", encoding="utf-8") as fh:
+                payload = json.load(fh)
+        except (OSError, json.JSONDecodeError):
+            continue
+        catalog = payload.get("profiles", {}) if isinstance(payload, dict) else {}
+        if catalog:
+            break
+    keys = [str(product.get(key) or "").strip() for key in ("sku", "id", "product_id")]
+    profile = next((catalog[key] for key in keys if key and isinstance(catalog.get(key), dict)), {})
+    personas = [item for item in profile.get("personas", []) if isinstance(item, dict)]
+    audience_terms = set(re.findall(r"[a-z]+", str(audience).lower()))
+    selected = next(
+        (
+            persona for persona in personas
+            if audience_terms.intersection(re.findall(r"[a-z]+", str(persona.get("identity") or persona.get("name") or "").lower()))
+        ),
+        personas[0] if personas else {},
+    )
+    return {"profile": profile, "persona": selected}
+
+
+def _product_consumer_prompt_context(context: dict[str, Any]) -> str:
+    profile = context.get("profile") if isinstance(context.get("profile"), dict) else {}
+    persona = context.get("persona") if isinstance(context.get("persona"), dict) else {}
+    if not profile or not persona:
+        return ""
+    return (
+        "CONSUMER PROFILE FOR THIS PRODUCT POST:\n"
+        "- Write to exactly this one person; do not blend audiences or use cases.\n"
+        f"- Selected persona: {json.dumps(persona, sort_keys=True)}\n"
+        f"- Product positioning: {profile.get('positioning_statement', '')}\n"
+        f"- Infenergy reason why: {profile.get('infenergy_reason_why', '')}\n"
+        f"- Value pillars: {json.dumps(profile.get('value_pillars', []))}\n"
+        f"- Content mandates: {json.dumps(profile.get('content_mandates', []))}\n"
+        f"- Content boundaries: {json.dumps(profile.get('content_boundaries', []))}\n"
+        "Open in the persona's lived situation, connect one verified capability to the desired outcome, "
+        "answer one stated objection, and close with the persona's call to action."
+    )
+
+
 def run_social_intelligence(count: int = 1, platform: str = "instagram_feed", **kw: Any) -> list[dict[str, Any]]:
     """Generate ``count`` posts through the new Social Intelligence layer.
 
@@ -71,8 +124,16 @@ def run_social_intelligence(count: int = 1, platform: str = "instagram_feed", **
         # Ensure the profile is fresh before the orchestrator reads it.
         try:
             from business_intelligence import api as bi_api
+            from business_intelligence import paths as bi_paths
             from business_intelligence import profile as bi_profile
-            if not bi_profile.load_current():
+            current_profile = bi_profile.load_current()
+            cached_offerings = current_profile.get("offerings", []) if isinstance(current_profile, dict) else []
+            profile_catalog_available = os.path.isfile(bi_paths.consumer_profiles_path())
+            profile_cache_stale = profile_catalog_available and not any(
+                isinstance(offering, dict) and offering.get("consumer_profile")
+                for offering in cached_offerings
+            )
+            if not current_profile or profile_cache_stale:
                 bi_api.rebuild_profile()
         except Exception:
             pass
@@ -286,6 +347,8 @@ def _route_generate_orchestrator(
         "copy_generation_source": "social_intelligence_orchestrator",
         "business_context": first.get("business_context") or {},
         "anchored_offering": offering,
+        "consumer_profile": offering.get("consumer_profile") or {},
+        "selected_consumer_persona": (copy_pkg.get("strategy_lock") or {}).get("consumer_persona") or {},
         "product_id": offering.get("offering_id") or offering.get("sku") or None,
         "product_name": offering.get("name", ""),
         "product_sku": offering.get("sku", ""),
@@ -5196,6 +5259,17 @@ def generate(
     selected_hook = (weekly_sequence.get("hook") or "").strip()
     selected_cta = (weekly_sequence.get("primary_cta") or "").strip()
     audience_segment = (weekly_sequence.get("segment") or structured_campaign.get("audience_segment") or "Prepared Buyer").strip()
+    consumer_context = _product_consumer_context(product, audience_segment) if want_product else {}
+    selected_consumer_persona = consumer_context.get("persona") if isinstance(consumer_context.get("persona"), dict) else {}
+    if selected_consumer_persona:
+        talking_point["pain_point"] = str(selected_consumer_persona.get("problem") or talking_point.get("pain_point") or "")
+        message_angles = selected_consumer_persona.get("message_angles") or []
+        talking_point["angle"] = str((message_angles or [talking_point.get("angle", "")])[0])
+        talking_point["first_step"] = str(selected_consumer_persona.get("call_to_action") or talking_point.get("first_step") or "")
+        selected_cta = talking_point["first_step"] or selected_cta
+        product["consumer_profile"] = consumer_context.get("profile", {})
+        product["selected_consumer_persona"] = selected_consumer_persona
+    consumer_profile_context = _product_consumer_prompt_context(consumer_context)
     campaign_id = str(structured_campaign.get("campaign_id", "")).strip()
     destination_url = str(structured_campaign.get("destination_url", SITE_URL)).strip() or SITE_URL
 
@@ -6048,6 +6122,8 @@ CONTENT DIRECTIVE: {slot_guidance}
 
 {product_directive}
 
+{consumer_profile_context}
+
 {human_connection_context}
 
 {marketing_context}
@@ -6265,6 +6341,8 @@ Return ONLY valid JSON with these exact keys (no markdown, no code fences):
         }
         content = normalize_brand_content(content)
         content["post_id"] = post_id
+        content["consumer_profile"] = consumer_context.get("profile", {})
+        content["selected_consumer_persona"] = selected_consumer_persona
         content["platform_posts"] = platform_posts
         # See note above: category-template "situation" text is near-static per product
         # category and would guarantee false-positive scenario-duplicate blocks.

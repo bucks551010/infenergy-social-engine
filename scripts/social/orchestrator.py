@@ -269,6 +269,17 @@ def _bi_get_offering(product_id: str) -> dict[str, Any] | None:
         return None
 
 
+def _select_consumer_persona(offering: dict[str, Any] | None, audience: str) -> dict[str, Any]:
+    profile = (offering or {}).get("consumer_profile") or {}
+    personas = [item for item in profile.get("personas", []) if isinstance(item, dict)]
+    audience_terms = set(str(audience).lower().replace("-", " ").split())
+    for persona in personas:
+        match_text = " ".join(str(persona.get(key) or "") for key in ("name", "identity", "life_context"))
+        if audience_terms.intersection(match_text.lower().replace("-", " ").split()):
+            return persona
+    return personas[0] if personas else {}
+
+
 def _runtime_strategy_lock(brief: engines.EngineBrief, lean_context: dict[str, Any], offering: dict[str, Any] | None, data_dir: str | None = None) -> dict[str, Any]:
     """Use selected product/audience evidence when Council has not provided a lock."""
     human = lean_context.get("human_value") or {}
@@ -286,10 +297,17 @@ def _runtime_strategy_lock(brief: engines.EngineBrief, lean_context: dict[str, A
             benefit_action = replacement + benefit_action[len(prefix):]
             break
     offering_name = str((offering or {}).get("name") or "this product")
+    consumer_profile = (offering or {}).get("consumer_profile") or {}
+    persona = _select_consumer_persona(offering, brief.audience_segment)
+    persona_name = str(persona.get("name") or brief.audience_segment)
+    persona_moment = str(persona.get("life_context") or persona.get("use_case") or moment)
+    persona_need = str(persona.get("problem") or need)
+    persona_outcome = str(persona.get("desired_outcome") or human_value)
+    persona_cta = str(persona.get("call_to_action") or consumer_profile.get("primary_call_to_action") or "")
     candidate = {
-        "audience": brief.audience_segment,
-        "customer_moment": moment,
-        "human_need": need,
+        "audience": persona_name,
+        "customer_moment": persona_moment,
+        "human_need": persona_need,
         "human_value": human_value,
         "topic": brief.topic_path.get("topic", ""),
         "angle": brief.angle,
@@ -299,13 +317,17 @@ def _runtime_strategy_lock(brief: engines.EngineBrief, lean_context: dict[str, A
         "non_price_edge": {"kind": "DECISION_SUPPORT_EDGE", "reason": "helps customers choose from verified product facts"},
         "important_capability": facts[0] if facts else "verified product facts",
         "benefit": benefit,
-        "human_outcome": human_value,
+        "human_outcome": persona_outcome,
         "reader_job": brief.reader_job,
         "competitive_context": "not inferred without evidence",
         "proof": facts,
         "claim_limits": "Use only verified product facts; do not imply unsupported protection or urgency.",
         "visual_objective": "make the product-fit decision easier to understand",
-        "CTA_strategy": marketing.get("cta") or _DEFAULT_CTA_BY_JOB.get(brief.reader_job, "Learn more"),
+        "CTA_strategy": persona_cta or marketing.get("cta") or _DEFAULT_CTA_BY_JOB.get(brief.reader_job, "Learn more"),
+        "consumer_persona": persona,
+        "infenergy_reason_why": str(consumer_profile.get("infenergy_reason_why") or "practical preparedness for real life"),
+        "purchase_triggers": list(persona.get("purchase_triggers") or consumer_profile.get("purchase_triggers") or []),
+        "objections_to_answer": list(persona.get("objections") or []),
     }
     red_team = strategy_lock.red_team(
         candidate,
@@ -374,6 +396,8 @@ def _llm_copy_beats(
     forbidden = list((offering or {}).get("forbidden_claims") or []) or _bi_forbidden_claims(bi_ctx)
     benefits = list((offering or {}).get("functional_benefits") or [])
     pain_points = list((offering or {}).get("problems_addressed") or [])
+    consumer_profile = (offering or {}).get("consumer_profile") or {}
+    persona = _select_consumer_persona(offering, brief.audience_segment)
 
     prompt_parts = [
         "You are the copy architect for Infenergy Power's social content engine.",
@@ -405,6 +429,19 @@ def _llm_copy_beats(
         prompt_parts.append("Core benefits to draw from: " + "; ".join(benefits) + ".")
     if pain_points:
         prompt_parts.append("Primary pain point it addresses: " + "; ".join(pain_points) + ".")
+    if persona:
+        prompt_parts.append(
+            "Write to this one consumer, not a broad market: "
+            + json.dumps(persona, sort_keys=True)
+            + ". Connect the product to this person's lifestyle, profession, leisure, or family responsibility; "
+            "answer the stated objection and use the persona-specific call to action."
+        )
+    if consumer_profile.get("infenergy_reason_why"):
+        prompt_parts.append(
+            "Connect the post naturally to Infenergy's reason why: "
+            + str(consumer_profile["infenergy_reason_why"])
+            + "."
+        )
     if brief.misconception:
         prompt_parts.append(f"Misconception to correct: {brief.misconception}.")
     if voice.get("brand_personality"):

@@ -10,6 +10,7 @@ data/marketing/campaigns/*.json
 !data/marketing/founder_brand_manifesto.json
 !data/marketing/infenergy_company_knowledge.json
 !data/marketing/elite_monthly_slate.json
+!data/marketing/product_consumer_profiles.json
 data/agents/**/*.json
 data/post_history.json
 data/business_intelligence/compiled/

@@ -100,6 +100,13 @@ def social_dir() -> str:
     return d
 
 
+def consumer_profiles_path() -> str:
+    candidate = os.path.join(data_dir(), "marketing", "product_consumer_profiles.json")
+    if os.path.isfile(candidate) or os.environ.get("BI_DATA_DIR"):
+        return candidate
+    return os.path.join(_repo_data_dir(), "marketing", "product_consumer_profiles.json")
+
+
 def research_dir() -> str:
     d = os.path.join(bi_dir(), "research")
     os.makedirs(d, exist_ok=True)

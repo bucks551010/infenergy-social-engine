@@ -79,6 +79,16 @@ def _load_briefs() -> dict[str, dict[str, Any]]:
     return out
 
 
+def _load_consumer_profiles() -> dict[str, dict[str, Any]]:
+    try:
+        with open(paths.consumer_profiles_path(), "r", encoding="utf-8") as fh:
+            payload = json.load(fh)
+    except (OSError, json.JSONDecodeError):
+        return {}
+    profiles = payload.get("profiles", {}) if isinstance(payload, dict) else {}
+    return {str(key): value for key, value in profiles.items() if isinstance(value, dict)}
+
+
 # --- CSV → Offering ------------------------------------------------------
 
 
@@ -104,6 +114,7 @@ def build_from_csv() -> list[Offering]:
     Merges the per-SKU JSON briefs when they exist.
     """
     briefs = _load_briefs()
+    consumer_profiles = _load_consumer_profiles()
     all_offerings: dict[str, Offering] = {}
 
     for src in sources.CsvCatalogAdapter().discover():
@@ -163,6 +174,14 @@ def build_from_csv() -> list[Offering]:
                 offering.forbidden_claims = list(brief.get("forbidden_claims", []))
                 offering.claim_constraints = [brief.get("proof_rule", "")] if brief.get("proof_rule") else []
                 offering.content_opportunities = list(brief.get("hashtag_themes", []))
+            profile_key = str((brief or {}).get("product_id") or sku or product_id)
+            offering.consumer_profile = dict(
+                consumer_profiles.get(profile_key)
+                or consumer_profiles.get(sku)
+                or consumer_profiles.get(product_id)
+                or (brief or {}).get("consumer_profile")
+                or {}
+            )
             all_offerings[product_id] = offering
 
     return list(all_offerings.values())

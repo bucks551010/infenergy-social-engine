@@ -108,6 +108,7 @@ class Offering:
     proof: list[str] = field(default_factory=list)
     claim_constraints: list[str] = field(default_factory=list)
     customer_fit: list[str] = field(default_factory=list)
+    consumer_profile: dict[str, Any] = field(default_factory=dict)
     purchase_context: list[str] = field(default_factory=list)
     content_opportunities: list[str] = field(default_factory=list)
     verified_facts: list[str] = field(default_factory=list)

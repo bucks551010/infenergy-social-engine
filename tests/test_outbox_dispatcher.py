@@ -335,7 +335,11 @@ def test_publish_adapts_platform_posts_to_legacy_caption_keys():
         dispatch_outbox._publish(package, "instagram")
         dispatch_outbox._publish(package, "linkedin")
 
-    assert facebook.call_args.args[0]["fb_caption"] == "Facebook exact"
+        empty_package = {"platform_posts": {"facebook": {"final_caption": ""}}}
+        dispatch_outbox._publish(empty_package, "facebook")
+        assert facebook.call_args.args[0]["fb_caption"] == ""
+
+    assert facebook.call_args_list[0].args[0]["fb_caption"] == "Facebook exact"
     assert instagram.call_args.args[0]["ig_caption"] == "Instagram exact"
     assert linkedin.call_args.args[0]["li_text"] == "LinkedIn exact"
 

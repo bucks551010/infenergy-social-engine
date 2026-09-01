@@ -70,8 +70,7 @@ def _publish(package: dict[str, Any], platform: str) -> dict[str, Any]:
     delivery_package = dict(package)
     final_caption = str(post.get("final_caption") or post.get("caption") or "")
     caption_keys = {"facebook": "fb_caption", "instagram": "ig_caption", "linkedin": "li_text"}
-    if final_caption:
-        delivery_package[caption_keys[platform]] = final_caption
+    delivery_package[caption_keys[platform]] = final_caption
     destination = str(post.get("utm_url") or post.get("destination_url") or package.get("destination_url") or "")
     if platform == "facebook":
         return publish_facebook.publish(delivery_package, destination, dry_run=False)

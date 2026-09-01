@@ -299,10 +299,10 @@ def test_growth_schedule_migrates_ready_inventory_with_central_dst(tmp_path):
 
     assert first == {"updated": 1}
     assert second == {"updated": 1}
-    assert row[0] == "2026-08-19T09:05:00-05:00"
+    assert row[0] == "2026-08-19T08:05:00-05:00"
     assert package["platform_schedule"] == {
-        "facebook": "2026-08-19T09:05:00-05:00",
-        "instagram": "2026-08-19T17:05:00-05:00",
+        "facebook": "2026-08-19T08:05:00-05:00",
+        "instagram": "2026-08-19T12:05:00-05:00",
         "linkedin": "2026-08-19T16:05:00-05:00",
     }
 

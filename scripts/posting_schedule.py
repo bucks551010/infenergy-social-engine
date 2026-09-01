@@ -8,9 +8,9 @@ from zoneinfo import ZoneInfo
 CENTRAL_TIME = ZoneInfo("America/Chicago")
 
 # Monday is 0. Minutes avoid the competition spike at exactly :00.
-FACEBOOK_TIMES = ("09:05", "09:05", "09:05", "09:05", "09:05", "08:05", "08:05")
-INSTAGRAM_TIMES = ("18:05", "17:05", "17:05", "16:05", "16:05", "11:05", "13:05")
-LINKEDIN_TIMES = ("11:05", "08:05", "16:05", "16:05", "16:05", "16:05", "16:05")
+FACEBOOK_TIMES = ("21:05", "08:05", "08:05", "09:05", "08:05", "22:05", "10:05")
+INSTAGRAM_TIMES = ("19:05", "19:05", "12:05", "09:05", "22:05", "21:05", "21:05")
+LINKEDIN_TIMES = ("22:05", "16:05", "16:05", "17:05", "15:05", "09:05", "22:05")
 
 PLATFORM_TIMES = {
     "facebook": FACEBOOK_TIMES,

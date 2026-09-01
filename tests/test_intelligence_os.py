@@ -1019,6 +1019,7 @@ def test_command_center_and_api_are_served(tmp_path):
     assert b'id="social-calendar"' in page
     assert b"/api/os/calendar" in javascript
     assert b"View exact post" in javascript
+    assert b"timeZoneName: 'short'" in javascript
     assert b".calendar-days" in stylesheet
     assert api_status == 200
     assert api_type.startswith("application/json")

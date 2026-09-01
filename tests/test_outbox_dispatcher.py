@@ -19,6 +19,7 @@ from content_operations import (  # noqa: E402
     mark_ready,
     platform_transaction,
     reconcile_confirmed_transactions,
+    reconcile_ready_inventory,
 )
 
 
@@ -138,6 +139,60 @@ def test_dispatcher_recovers_existing_no_routed_platforms_failure(tmp_path):
     assert result["outbox_id"] == outbox_id
     assert facebook.call_count == 1
     assert platform_transaction(data_dir, outbox_id, "facebook")["external_id"] == "fb-recovered"
+
+
+def test_dispatcher_recovers_intelligence_os_package_stranded_by_inventory_reconciliation(tmp_path):
+    data_dir = str(tmp_path)
+    outbox_id = _ready_package(data_dir, ["facebook"])
+    connection = sqlite3.connect(get_db_path(data_dir))
+    package = {
+        "post_id": "recover-reconciled-intelligence-os-post",
+        "platform_policy": {"platforms": ["facebook"]},
+        "platform_posts": {"facebook": {"final_caption": "Recovered reconciled post"}},
+    }
+    connection.execute(
+        "UPDATE content_outbox SET package_json=?, status='RECOVERING', last_error='ready_package_has_no_routed_platforms' WHERE outbox_id=?",
+        (json.dumps(package), outbox_id),
+    )
+    connection.execute(
+        "UPDATE daily_slots SET status='RECOVERING', last_error='ready_package_has_no_routed_platforms' WHERE outbox_id=?",
+        (outbox_id,),
+    )
+    connection.commit()
+    connection.close()
+
+    with patch.object(dispatch_outbox.publish_facebook, "publish", return_value={"id": "fb-reconciled"}) as facebook:
+        result = dispatch_outbox.dispatch_due(data_dir=data_dir, now_utc="2026-08-19T13:00:01+00:00")
+
+    assert result["status"] == "PUBLISHED"
+    assert result["outbox_id"] == outbox_id
+    assert facebook.call_count == 1
+    assert platform_transaction(data_dir, outbox_id, "facebook")["external_id"] == "fb-reconciled"
+
+
+def test_inventory_reconciliation_accepts_intelligence_os_platform_policy(tmp_path):
+    data_dir = str(tmp_path)
+    outbox_id = _ready_package(data_dir, ["facebook"])
+    connection = sqlite3.connect(get_db_path(data_dir))
+    package = {
+        "post_id": "valid-intelligence-os-post",
+        "platform_policy": {"platforms": ["facebook"]},
+        "platform_posts": {"facebook": {"final_caption": "Scheduled post"}},
+    }
+    connection.execute(
+        "UPDATE content_outbox SET package_json=? WHERE outbox_id=?",
+        (json.dumps(package), outbox_id),
+    )
+    connection.commit()
+    connection.close()
+
+    assert reconcile_ready_inventory(data_dir) == []
+    connection = sqlite3.connect(get_db_path(data_dir))
+    status = connection.execute(
+        "SELECT status FROM content_outbox WHERE outbox_id=?", (outbox_id,)
+    ).fetchone()[0]
+    connection.close()
+    assert status == "READY"
 
 
 def test_partial_retry_never_resends_confirmed_platform(tmp_path):

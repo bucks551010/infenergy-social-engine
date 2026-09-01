@@ -15,6 +15,17 @@ SLOTS = ("morning", "midday", "evening")
 PLATFORMS = ("facebook", "instagram", "linkedin")
 
 
+def configured_platforms(package: dict[str, Any]) -> list[str]:
+    routing = package.get("routing") if isinstance(package.get("routing"), dict) else {}
+    configured = routing.get("platforms") if isinstance(routing.get("platforms"), list) else []
+    if not configured and isinstance(package.get("platforms"), list):
+        configured = package["platforms"]
+    platform_policy = package.get("platform_policy") if isinstance(package.get("platform_policy"), dict) else {}
+    if not configured and isinstance(platform_policy.get("platforms"), list):
+        configured = platform_policy["platforms"]
+    return [platform for platform in PLATFORMS if platform in configured]
+
+
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -386,6 +397,7 @@ def claim_due(data_dir: str, now_utc: str | None = None) -> dict[str, Any] | Non
                         WHERE (
                             status IN ('READY', 'DUE')
                             OR (status='EXTERNAL_ACTION_REQUIRED' AND last_error='no_routed_platforms')
+                            OR (status='RECOVERING' AND last_error='ready_package_has_no_routed_platforms')
                         ) AND datetime(scheduled_at) <= datetime(?)
                             AND (next_attempt_at IS NULL OR datetime(next_attempt_at) <= datetime(?))
             ORDER BY datetime(scheduled_at), created_at LIMIT 1
@@ -402,6 +414,7 @@ def claim_due(data_dir: str, now_utc: str | None = None) -> dict[str, Any] | Non
             WHERE outbox_id=? AND (
                 status IN ('READY', 'DUE')
                 OR (status='EXTERNAL_ACTION_REQUIRED' AND last_error='no_routed_platforms')
+                OR (status='RECOVERING' AND last_error='ready_package_has_no_routed_platforms')
             )
             """,
             (claimed_at, row["outbox_id"]),
@@ -627,8 +640,7 @@ def reconcile_ready_inventory(data_dir: str) -> list[dict[str, str]]:
         connection.close()
     for row in rows:
         package = _decode(row["package_json"], {})
-        routing = package.get("routing") if isinstance(package.get("routing"), dict) else {}
-        platforms = routing.get("platforms") if isinstance(routing.get("platforms"), list) else []
+        platforms = configured_platforms(package)
         issue = ""
         if not platforms:
             issue = "ready_package_has_no_routed_platforms"
@@ -704,8 +716,7 @@ def reconcile_confirmed_transactions(data_dir: str) -> list[dict[str, str]]:
     reconciled: list[dict[str, str]] = []
     for row in rows:
         package = _decode(row["package_json"], {})
-        routing = package.get("routing") if isinstance(package.get("routing"), dict) else {}
-        platforms = routing.get("platforms") if isinstance(routing.get("platforms"), list) else []
+        platforms = configured_platforms(package)
         if not platforms:
             continue
         connection = _connect(data_dir)

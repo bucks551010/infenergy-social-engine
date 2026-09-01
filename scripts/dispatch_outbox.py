@@ -18,6 +18,7 @@ from content_operations import (
     begin_platform_transaction,
     claim_due,
     complete_platform_transaction,
+    configured_platforms,
     finalize_outbox,
     platform_transaction,
     recover_outbox,
@@ -37,14 +38,7 @@ def _delivery_enforced() -> bool:
 def _enabled_platforms(package: dict[str, Any]) -> list[str]:
     if _delivery_enforced():
         return list(PLATFORMS)
-    routing = package.get("routing") if isinstance(package.get("routing"), dict) else {}
-    configured = routing.get("platforms") if isinstance(routing.get("platforms"), list) else []
-    if not configured and isinstance(package.get("platforms"), list):
-        configured = package["platforms"]
-    platform_policy = package.get("platform_policy") if isinstance(package.get("platform_policy"), dict) else {}
-    if not configured and isinstance(platform_policy.get("platforms"), list):
-        configured = platform_policy["platforms"]
-    return [platform for platform in PLATFORMS if platform in configured]
+    return configured_platforms(package)
 
 
 def _payload(package: dict[str, Any], platform: str) -> dict[str, Any]:

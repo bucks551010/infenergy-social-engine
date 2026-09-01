@@ -86,7 +86,14 @@ class CopilotMaster:
     @staticmethod
     def _is_missing_session_resource(exc: Exception) -> bool:
         message = str(exc).lower()
-        return "resource you requested was not found" in message or "session resource not found" in message
+        return any(
+            marker in message
+            for marker in (
+                "resource you requested was not found",
+                "session resource not found",
+                "session not found:",
+            )
+        )
 
     async def converse(
         self,

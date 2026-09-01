@@ -778,7 +778,14 @@ def test_copilot_master_uses_autopilot_and_extended_wait(tmp_path, monkeypatch):
     assert calls["timeout"] == 300.0
 
 
-def test_copilot_master_replaces_missing_session_resource_once(tmp_path, monkeypatch):
+@pytest.mark.parametrize(
+    "missing_error",
+    [
+        "CAPError: 400 The resource you requested was not found.",
+        "JsonRpcError: JSON-RPC Error -32603: Request session.resume failed with message: Session not found: infenergy-stale",
+    ],
+)
+def test_copilot_master_replaces_missing_session_resource_once(tmp_path, monkeypatch, missing_error):
     calls = []
 
     class FakeSession:
@@ -796,7 +803,7 @@ def test_copilot_master_replaces_missing_session_resource_once(tmp_path, monkeyp
 
         async def resume_session(self, session_id, **kwargs):
             calls.append(("resume", session_id))
-            raise Exception("CAPError: 400 The resource you requested was not found.")
+            raise Exception(missing_error)
 
         async def create_session(self, **kwargs):
             calls.append(("create", kwargs.get("session_id")))
@@ -829,6 +836,47 @@ def test_copilot_master_replaces_missing_session_resource_once(tmp_path, monkeyp
     assert result["session_recovered"] is True
     assert calls == [("resume", "missing-session"), ("create", None)]
     assert result["session_id"] == "sdk-created-session"
+
+
+def test_copilot_master_does_not_retry_unrelated_json_rpc_error(tmp_path, monkeypatch):
+    calls = []
+
+    class FakeClient:
+        async def start(self):
+            return None
+
+        async def resume_session(self, session_id, **kwargs):
+            calls.append(("resume", session_id))
+            raise Exception("JsonRpcError: JSON-RPC Error -32603: Request session.resume failed with message: Internal error")
+
+        async def create_session(self, **kwargs):
+            calls.append(("create", kwargs.get("session_id")))
+
+        async def stop(self):
+            return None
+
+    copilot = ModuleType("copilot")
+    copilot.CopilotClient = FakeClient
+    copilot_session = ModuleType("copilot.session")
+    copilot_session.PermissionDecisionUserNotAvailable = type("PermissionDecisionUserNotAvailable", (), {})
+    monkeypatch.setitem(sys.modules, "copilot", copilot)
+    monkeypatch.setitem(sys.modules, "copilot.session", copilot_session)
+
+    available = ModelStatus(
+        provider="github-copilot-sdk", configured_model="gpt-5.6-sol",
+        authenticated=True, available=True, available_models=[{"id": "gpt-5.6-sol"}],
+        reason="available", checked_at=datetime.now(timezone.utc).isoformat(),
+    )
+    master = CopilotMaster(str(tmp_path))
+
+    async def available_status():
+        return available
+
+    monkeypatch.setattr(master, "status_async", available_status)
+    with pytest.raises(Exception, match="Internal error"):
+        asyncio.run(master.converse("Do not retry", session_id="active-session", system_message="Operate."))
+
+    assert calls == [("resume", "active-session")]
 
 
 def test_command_center_and_api_are_served(tmp_path):

@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import asyncio
 import json
+import sys
 import threading
 import time
 from datetime import datetime, timezone
-from types import SimpleNamespace
+from types import ModuleType, SimpleNamespace
 
 import pytest
 
@@ -696,6 +697,27 @@ def test_master_continues_durable_conversation_context(tmp_path, monkeypatch):
     assert "do not restart discovery" in prompts[1]["prompt"]
 
 
+def test_master_persists_recovered_session_id(tmp_path, monkeypatch):
+    service = bootstrap(str(tmp_path))
+    conversation = service.create_conversation()
+
+    async def converse(prompt, **kwargs):
+        return {
+            "content": "Recovered and completed.",
+            "model": "gpt-5.6-sol",
+            "provider": "github-copilot-sdk",
+            "session_id": "infenergy-recovered-session",
+            "session_recovered": True,
+        }
+
+    monkeypatch.setattr(service.master, "converse", converse)
+    monkeypatch.setattr(service, "_copilot_tools", lambda actor: [])
+    result = service.command("Continue the work", conversation_id=conversation["id"])
+
+    assert result["status"] == "COMPLETED"
+    assert service.get_conversation(conversation["id"])["copilot_session_id"] == "infenergy-recovered-session"
+
+
 def test_master_timeout_is_preserved_as_resumable_conversation_state(tmp_path, monkeypatch):
     service = bootstrap(str(tmp_path))
 
@@ -754,6 +776,56 @@ def test_copilot_master_uses_autopilot_and_extended_wait(tmp_path, monkeypatch):
     assert result["content"] == "Verified completion"
     assert calls["agent_mode"] == "autopilot"
     assert calls["timeout"] == 300.0
+
+
+def test_copilot_master_replaces_missing_session_resource_once(tmp_path, monkeypatch):
+    session_ids = []
+
+    class FakeSession:
+        async def send_and_wait(self, prompt, **kwargs):
+            return SimpleNamespace(data=SimpleNamespace(content="Recovered completion"))
+
+        async def disconnect(self):
+            return None
+
+    class FakeClient:
+        async def start(self):
+            return None
+
+        async def create_session(self, **kwargs):
+            session_ids.append(kwargs["session_id"])
+            if len(session_ids) == 1:
+                raise Exception("CAPError: 400 The resource you requested was not found.")
+            return FakeSession()
+
+        async def stop(self):
+            return None
+
+    copilot = ModuleType("copilot")
+    copilot.CopilotClient = FakeClient
+    copilot_session = ModuleType("copilot.session")
+    copilot_session.PermissionDecisionUserNotAvailable = type("PermissionDecisionUserNotAvailable", (), {})
+    monkeypatch.setitem(sys.modules, "copilot", copilot)
+    monkeypatch.setitem(sys.modules, "copilot.session", copilot_session)
+
+    available = ModelStatus(
+        provider="github-copilot-sdk", configured_model="gpt-5.6-sol",
+        authenticated=True, available=True, available_models=[{"id": "gpt-5.6-sol"}],
+        reason="available", checked_at=datetime.now(timezone.utc).isoformat(),
+    )
+    master = CopilotMaster(str(tmp_path))
+
+    async def available_status():
+        return available
+
+    monkeypatch.setattr(master, "status_async", available_status)
+    result = asyncio.run(master.converse("Retry", session_id="missing-session", system_message="Operate."))
+
+    assert result["content"] == "Recovered completion"
+    assert result["session_recovered"] is True
+    assert session_ids[0] == "missing-session"
+    assert session_ids[1].startswith("infenergy-")
+    assert result["session_id"] == session_ids[1]
 
 
 def test_command_center_and_api_are_served(tmp_path):

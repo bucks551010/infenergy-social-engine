@@ -97,6 +97,17 @@ class IntelligenceOS:
             raise KeyError(conversation_id)
         return self.get_conversation(conversation_id)
 
+    def _persist_copilot_session(self, conversation_id: str, response: dict[str, Any]) -> None:
+        session_id = str(response.get("session_id") or "").strip()
+        if not session_id:
+            return
+        with connect(self.data_dir) as connection:
+            connection.execute(
+                "UPDATE os_conversations SET copilot_session_id=?, updated_at=? WHERE id=?",
+                (session_id, utc_now(), conversation_id),
+            )
+            connection.commit()
+
     def create_creative(
         self,
         *,
@@ -319,6 +330,7 @@ class IntelligenceOS:
                 )
             )
             content = response["content"]
+            self._persist_copilot_session(conversation["id"], response)
             self._message(conversation["id"], "assistant", content, response)
             self.audit.record(
                 actor=actor, model_or_tool=response["model"], action="MASTER_RESPONSE",
@@ -395,6 +407,7 @@ class IntelligenceOS:
                 tools=self._copilot_tools(actor),
             ))
             content = response["content"]
+            self._persist_copilot_session(conversation_id, response)
             self._message(conversation_id, "assistant", content, {**response, "continued_after_approval": True})
             return {
                 "status": "COMPLETED", "conversation_id": conversation_id,

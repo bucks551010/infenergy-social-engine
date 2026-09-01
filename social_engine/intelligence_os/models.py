@@ -83,6 +83,11 @@ class CopilotMaster:
     def status(self) -> ModelStatus:
         return asyncio.run(self.status_async())
 
+    @staticmethod
+    def _is_missing_session_resource(exc: Exception) -> bool:
+        message = str(exc).lower()
+        return "resource you requested was not found" in message or "session resource not found" in message
+
     async def converse(
         self,
         prompt: str,
@@ -103,24 +108,43 @@ class CopilotMaster:
         client = CopilotClient()
         try:
             await client.start()
-            session = await client.create_session(
-                model=self.model,
-                session_id=session_id,
-                client_name="infenergy-intelligence-os",
-                tools=tools or [],
-                system_message={"mode": "append", "content": system_message},
-                available_tools=[f"custom:{getattr(tool, 'name', '')}" for tool in (tools or [])],
-                on_permission_request=reject_ambient_tools,
-                working_directory=str(Path(__file__).resolve().parents[2]),
-            )
-            response = await session.send_and_wait(
-                prompt,
-                agent_mode="autopilot",
-                timeout=self.command_timeout,
-            )
-            content = str(getattr(getattr(response, "data", None), "content", "") or "")
-            await session.disconnect()
-            return {"content": content, "model": self.model, "provider": "github-copilot-sdk", "session_id": session_id}
+            active_session_id = session_id
+            session_recovered = False
+            for attempt in range(2):
+                session = None
+                try:
+                    session = await client.create_session(
+                        model=self.model,
+                        session_id=active_session_id,
+                        client_name="infenergy-intelligence-os",
+                        tools=tools or [],
+                        system_message={"mode": "append", "content": system_message},
+                        available_tools=[f"custom:{getattr(tool, 'name', '')}" for tool in (tools or [])],
+                        on_permission_request=reject_ambient_tools,
+                        working_directory=str(Path(__file__).resolve().parents[2]),
+                    )
+                    response = await session.send_and_wait(
+                        prompt,
+                        agent_mode="autopilot",
+                        timeout=self.command_timeout,
+                    )
+                    content = str(getattr(getattr(response, "data", None), "content", "") or "")
+                    return {
+                        "content": content, "model": self.model, "provider": "github-copilot-sdk",
+                        "session_id": active_session_id, "session_recovered": session_recovered,
+                    }
+                except Exception as exc:
+                    if attempt == 0 and self._is_missing_session_resource(exc):
+                        active_session_id = new_session_id()
+                        session_recovered = True
+                        continue
+                    raise
+                finally:
+                    if session is not None:
+                        try:
+                            await session.disconnect()
+                        except Exception:
+                            pass
         finally:
             await client.stop()
 

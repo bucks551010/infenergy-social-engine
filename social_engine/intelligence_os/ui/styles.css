@@ -301,6 +301,9 @@ p { line-height: 1.55; }
 .calendar-post h3 { margin: 7px 0; font-size: 10px; }
 .calendar-platforms { display: flex; flex-wrap: wrap; gap: 3px; }
 .calendar-platforms span { padding: 3px 5px; color: var(--muted); font-size: 7px; border: 1px solid var(--line); border-radius: 4px; }
+.calendar-platform-times { display: grid; gap: 3px; }
+.calendar-platform-times span { display: flex; justify-content: space-between; gap: 6px; padding: 3px 5px; color: var(--muted); font-size: 8px; border: 1px solid var(--line); border-radius: 4px; }
+.calendar-platform-times b { color: var(--text); font-size: inherit; }
 .calendar-post details { margin-top: 8px; font-size: 9px; }
 .calendar-post summary { color: var(--green); font-weight: 800; cursor: pointer; }
 .calendar-post details p { color: #c9d9d5; font-size: 9px; white-space: pre-wrap; }

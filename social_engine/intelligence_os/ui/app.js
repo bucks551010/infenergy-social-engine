@@ -333,6 +333,7 @@ function calendarIso(dateValue) {
 
 function calendarPost(post) {
   const packageValue = post.package || {};
+  const platformSchedule = packageValue.platform_schedule || {};
   const copies = packageValue.platform_posts || {};
   const slides = packageValue.carousel_slides || [];
   const assets = packageValue.carousel_assets || [];
@@ -340,7 +341,9 @@ function calendarPost(post) {
   const platforms = post.platforms || [];
   const firstAsset = assets[0]?.local_path || assets[0]?.path || assets[0]?.url;
   const captionEntries = Object.entries(copies);
-  return `<article class="calendar-post ${tone(post.status)}">${firstAsset ? `<img src="${esc(mediaUrl(firstAsset))}" alt="${esc(title)}" loading="lazy">` : ''}<div class="calendar-post-main"><div class="calendar-post-time"><strong>${esc(new Date(post.scheduled_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', timeZoneName: 'short' }))}</strong>${pill(post.status)}</div><h3>${esc(title)}</h3><div class="calendar-platforms">${platforms.map((platform) => `<span>${esc(humanize(platform))}</span>`).join('')}</div><details><summary>View exact post</summary>${captionEntries.length ? `<div class="calendar-captions">${captionEntries.map(([platform, value]) => `<section><b>${esc(humanize(platform))}</b><p>${esc(value?.final_caption || value || '')}</p></section>`).join('')}</div>` : `<p>${esc(packageValue.fb_caption || packageValue.ig_caption || packageValue.li_text || 'No caption stored.')}</p>`}${slides.length ? `<div class="calendar-slides">${slides.map((slide, index) => `<span><b>${index + 1}</b>${esc(slide.on_image_headline || slide.headline || '')}<small>${esc(slide.on_image_subline || slide.supporting || '')}</small></span>`).join('')}</div>` : ''}<code>${esc(post.outbox_id)}</code></details></div></article>`;
+  const scheduledEntries = platforms.filter((platform) => platformSchedule[platform]).map((platform) => [platform, platformSchedule[platform]]);
+  const timeLabel = (value) => new Date(value).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', timeZoneName: 'short' });
+  return `<article class="calendar-post ${tone(post.status)}">${firstAsset ? `<img src="${esc(mediaUrl(firstAsset))}" alt="${esc(title)}" loading="lazy">` : ''}<div class="calendar-post-main"><div class="calendar-post-time"><strong>${esc(timeLabel(post.scheduled_at))}</strong>${pill(post.status)}</div><h3>${esc(title)}</h3>${scheduledEntries.length ? `<div class="calendar-platform-times">${scheduledEntries.map(([platform, value]) => `<span><b>${esc(humanize(platform))}</b>${esc(timeLabel(value))}</span>`).join('')}</div>` : `<div class="calendar-platforms">${platforms.map((platform) => `<span>${esc(humanize(platform))}</span>`).join('')}</div>`}<details><summary>View exact post</summary>${captionEntries.length ? `<div class="calendar-captions">${captionEntries.map(([platform, value]) => `<section><b>${esc(humanize(platform))}</b><p>${esc(value?.final_caption || value || '')}</p></section>`).join('')}</div>` : `<p>${esc(packageValue.fb_caption || packageValue.ig_caption || packageValue.li_text || 'No caption stored.')}</p>`}${slides.length ? `<div class="calendar-slides">${slides.map((slide, index) => `<span><b>${index + 1}</b>${esc(slide.on_image_headline || slide.headline || '')}<small>${esc(slide.on_image_subline || slide.supporting || '')}</small></span>`).join('')}</div>` : ''}<code>${esc(post.outbox_id)}</code></details></div></article>`;
 }
 
 function renderSocialCalendar(calendar) {

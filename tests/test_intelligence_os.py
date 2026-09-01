@@ -1029,8 +1029,8 @@ def test_command_center_and_api_are_served(tmp_path):
     assert content_type.startswith("text/html")
     assert b"Infenergy Intelligence OS" in page
     assert b'id="mobile-nav"' in page
-    assert b'app.js?v=14' in page
-    assert b'styles.css?v=14' in page
+    assert b'app.js?v=15' in page
+    assert b'styles.css?v=15' in page
     assert b'data-view="master"' in page
     assert b'id="master-capabilities"' in page
     assert b'id="master-form"' in page
@@ -1053,6 +1053,8 @@ def test_command_center_and_api_are_served(tmp_path):
     assert b'id="social-calendar"' in page
     assert b"/api/os/calendar" in javascript
     assert b"View exact post" in javascript
+    assert b"platform_schedule" in javascript
+    assert b".calendar-platform-times" in stylesheet
     assert b"timeZoneName: 'short'" in javascript
     assert b".calendar-days" in stylesheet
     assert api_status == 200

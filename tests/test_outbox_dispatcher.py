@@ -11,7 +11,9 @@ _REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(_REPO, "scripts"))
 
 import dispatch_outbox  # noqa: E402
+from posting_schedule import growth_schedule  # noqa: E402
 from content_operations import (  # noqa: E402
+    apply_growth_schedule_to_ready_inventory,
     content_detail,
     create_council_session,
     ensure_daily_slots,
@@ -243,6 +245,76 @@ def test_strict_generation_failure_is_only_attempted_once_per_batch(tmp_path, mo
     assert result["published"] == 0
     assert result["results"][0]["status"] == "RETRYABLE_FAILURE"
     assert result["results"][0]["next_attempt_at"] == "2026-08-19T13:30:01+00:00"
+
+
+def test_daily_package_publishes_each_platform_at_its_own_growth_window(tmp_path):
+    data_dir = str(tmp_path)
+    outbox_id = _ready_package(data_dir, ["facebook", "instagram", "linkedin"])
+    connection = sqlite3.connect(get_db_path(data_dir))
+    package = json.loads(connection.execute(
+        "SELECT package_json FROM content_outbox WHERE outbox_id=?", (outbox_id,)
+    ).fetchone()[0])
+    package["platform_schedule"] = {
+        "facebook": "2026-08-19T09:05:00-05:00",
+        "linkedin": "2026-08-19T16:05:00-05:00",
+        "instagram": "2026-08-19T17:05:00-05:00",
+    }
+    connection.execute(
+        "UPDATE content_outbox SET package_json=?, scheduled_at=? WHERE outbox_id=?",
+        (json.dumps(package), package["platform_schedule"]["facebook"], outbox_id),
+    )
+    connection.commit()
+    connection.close()
+
+    with (
+        patch.object(dispatch_outbox.publish_facebook, "publish", return_value={"id": "fb-window"}) as facebook,
+        patch.object(dispatch_outbox.publish_linkedin, "publish", return_value={"id": "li-window"}) as linkedin,
+        patch.object(dispatch_outbox.publish_instagram, "publish", return_value={"id": "ig-window"}) as instagram,
+    ):
+        morning = dispatch_outbox.dispatch_due(data_dir=data_dir, now_utc="2026-08-19T14:05:01+00:00")
+        afternoon = dispatch_outbox.dispatch_due(data_dir=data_dir, now_utc="2026-08-19T21:05:01+00:00")
+        evening = dispatch_outbox.dispatch_due(data_dir=data_dir, now_utc="2026-08-19T22:05:01+00:00")
+
+    assert morning["status"] == "PARTIAL_SCHEDULED"
+    assert afternoon["status"] == "PARTIAL_SCHEDULED"
+    assert evening["status"] == "PUBLISHED"
+    assert facebook.call_count == linkedin.call_count == instagram.call_count == 1
+    assert platform_transaction(data_dir, outbox_id, "facebook")["external_id"] == "fb-window"
+    assert platform_transaction(data_dir, outbox_id, "linkedin")["external_id"] == "li-window"
+    assert platform_transaction(data_dir, outbox_id, "instagram")["external_id"] == "ig-window"
+
+
+def test_growth_schedule_migrates_ready_inventory_with_central_dst(tmp_path):
+    data_dir = str(tmp_path)
+    outbox_id = _ready_package(data_dir, ["facebook", "instagram", "linkedin"])
+
+    first = apply_growth_schedule_to_ready_inventory(data_dir, "2026-08-19")
+    second = apply_growth_schedule_to_ready_inventory(data_dir, "2026-08-19")
+    connection = sqlite3.connect(get_db_path(data_dir))
+    row = connection.execute(
+        "SELECT scheduled_at, package_json FROM content_outbox WHERE outbox_id=?", (outbox_id,)
+    ).fetchone()
+    connection.close()
+    package = json.loads(row[1])
+
+    assert first == {"updated": 1}
+    assert second == {"updated": 1}
+    assert row[0] == "2026-08-19T09:05:00-05:00"
+    assert package["platform_schedule"] == {
+        "facebook": "2026-08-19T09:05:00-05:00",
+        "instagram": "2026-08-19T17:05:00-05:00",
+        "linkedin": "2026-08-19T16:05:00-05:00",
+    }
+
+
+def test_growth_schedule_covers_every_platform_every_day():
+    expected_platforms = {"facebook", "instagram", "linkedin"}
+
+    for day in range(19, 26):
+        schedule = growth_schedule(f"2026-08-{day}")
+        assert set(schedule) == expected_platforms
+        assert all(value.startswith(f"2026-08-{day:02d}T") for value in schedule.values())
+        assert all(value.endswith("-05:00") for value in schedule.values())
 
 
 def test_partial_retry_never_resends_confirmed_platform(tmp_path):

@@ -26,6 +26,54 @@ def configured_platforms(package: dict[str, Any]) -> list[str]:
     return [platform for platform in PLATFORMS if platform in configured]
 
 
+def apply_growth_schedule_to_ready_inventory(data_dir: str, start_date: str | date | None = None) -> dict[str, int]:
+    from posting_schedule import CENTRAL_TIME, growth_schedule
+
+    first_date = start_date.isoformat() if isinstance(start_date, date) else str(
+        start_date or datetime.now(CENTRAL_TIME).date().isoformat()
+    )
+    connection = _connect(data_dir)
+    updated = 0
+    try:
+        connection.execute("BEGIN IMMEDIATE")
+        rows = connection.execute(
+            """
+            SELECT outbox_id, content_date, package_json FROM content_outbox
+            WHERE content_date >= ? AND status IN ('READY', 'DUE')
+            """,
+            (first_date,),
+        ).fetchall()
+        for row in rows:
+            package = _decode(row["package_json"], {})
+            platforms = configured_platforms(package)
+            if not platforms:
+                continue
+            platform_schedule = growth_schedule(str(row["content_date"]))
+            package["platform_schedule"] = {
+                platform: platform_schedule[platform] for platform in platforms
+            }
+            first_due = min(package["platform_schedule"].values(), key=datetime.fromisoformat)
+            connection.execute(
+                """
+                UPDATE content_outbox SET package_json=?, scheduled_at=?, next_attempt_at=NULL
+                WHERE outbox_id=?
+                """,
+                (_json(package), first_due, row["outbox_id"]),
+            )
+            connection.execute(
+                "UPDATE daily_slots SET scheduled_at=?, updated_at=? WHERE outbox_id=?",
+                (first_due, _now(), row["outbox_id"]),
+            )
+            updated += 1
+        connection.commit()
+        return {"updated": updated}
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
+
+
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 

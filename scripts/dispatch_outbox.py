@@ -41,6 +41,13 @@ def _enabled_platforms(package: dict[str, Any]) -> list[str]:
     return configured_platforms(package)
 
 
+def _platform_due_at(package: dict[str, Any], platform: str, fallback: str) -> datetime:
+    schedule = package.get("platform_schedule") if isinstance(package.get("platform_schedule"), dict) else {}
+    value = str(schedule.get(platform) or fallback)
+    parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+
+
 def _payload(package: dict[str, Any], platform: str) -> dict[str, Any]:
     platform_posts = package.get("platform_posts") if isinstance(package.get("platform_posts"), dict) else {}
     post = platform_posts.get(platform) if isinstance(platform_posts.get(platform), dict) else {}
@@ -267,6 +274,17 @@ def dispatch_due(*, data_dir: str = DATA_DIR, now_utc: str | None = None) -> dic
     if not platforms:
         finalize_outbox(data_dir, outbox_id, status="EXTERNAL_ACTION_REQUIRED", error="no_routed_platforms")
         return {"status": "EXTERNAL_ACTION_REQUIRED", "outbox_id": outbox_id, "error": "no_routed_platforms"}
+    now = datetime.fromisoformat(now_utc.replace("Z", "+00:00")) if now_utc else datetime.now(timezone.utc)
+    if now.tzinfo is None:
+        now = now.replace(tzinfo=timezone.utc)
+    due_platforms = [
+        platform for platform in platforms
+        if _platform_due_at(package, platform, str(claimed["scheduled_at"])) <= now
+    ]
+    if not due_platforms:
+        next_due = min(_platform_due_at(package, platform, str(claimed["scheduled_at"])) for platform in platforms)
+        release_outbox(data_dir, outbox_id, "", next_attempt_at=next_due.isoformat())
+        return {"status": "DEFERRED", "outbox_id": outbox_id, "next_attempt_at": next_due.isoformat()}
     creative_error = "" if _delivery_enforced() else _creative_package_error(package, platforms)
     if creative_error:
         recover_outbox(data_dir, outbox_id, creative_error)
@@ -293,7 +311,7 @@ def dispatch_due(*, data_dir: str = DATA_DIR, now_utc: str | None = None) -> dic
                 "next_attempt_at": retry_at.isoformat(), "error": error,
             }
 
-    for platform in platforms:
+    for platform in due_platforms:
         artifact_error = _strict_publish_artifact_error(package, platform)
         if artifact_error:
             release_outbox(data_dir, outbox_id, artifact_error)
@@ -302,7 +320,7 @@ def dispatch_due(*, data_dir: str = DATA_DIR, now_utc: str | None = None) -> dic
     results: dict[str, Any] = {}
     retry_errors: list[str] = []
     ambiguous: list[str] = []
-    for platform in platforms:
+    for platform in due_platforms:
         existing = platform_transaction(data_dir, outbox_id, platform)
         if existing.get("state") == "CONFIRMED_SUCCESS":
             results[platform] = {"state": "CONFIRMED_SUCCESS", "external_id": existing.get("external_id"), "reused": True}
@@ -369,11 +387,23 @@ def dispatch_due(*, data_dir: str = DATA_DIR, now_utc: str | None = None) -> dic
             ) else "FAILED"
             finalize_outbox(data_dir, outbox_id, status=terminal_status, error=error)
             return {"status": terminal_status, "outbox_id": outbox_id, "platforms": results, "error": error}
-        retry_at = datetime.fromisoformat(now_utc.replace("Z", "+00:00")) if now_utc else datetime.now(timezone.utc)
+        retry_at = now
         retry_at += timedelta(seconds=min(1800, 30 * (2 ** (attempt_count - 1))))
         release_outbox(data_dir, outbox_id, error, next_attempt_at=retry_at.isoformat())
         return {"status": "PARTIAL_RETRY", "outbox_id": outbox_id, "platforms": results, "error": error}
 
+    remaining = [
+        platform for platform in platforms
+        if platform_transaction(data_dir, outbox_id, platform).get("state") != "CONFIRMED_SUCCESS"
+    ]
+    if remaining:
+        next_due = min(_platform_due_at(package, platform, str(claimed["scheduled_at"])) for platform in remaining)
+        release_outbox(data_dir, outbox_id, "", next_attempt_at=next_due.isoformat())
+        return {
+            "status": "PARTIAL_SCHEDULED", "outbox_id": outbox_id,
+            "platforms": results, "remaining_platforms": remaining,
+            "next_attempt_at": next_due.isoformat(),
+        }
     finalize_outbox(data_dir, outbox_id, status="PUBLISHED")
     return {"status": "PUBLISHED", "outbox_id": outbox_id, "platforms": results}
 

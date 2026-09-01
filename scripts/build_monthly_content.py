@@ -21,6 +21,7 @@ from content_operations import archive_candidate, cancel_unpublished_inventory, 
 from agents.learning_context import load_operational_learning
 from inventory_db import get_db_path
 from social.carousel_director import OFFICIAL_LOGO_URL, normalize_slide_dicts
+from posting_schedule import first_scheduled_at, growth_schedule
 
 
 DATA_DIR = os.environ.get("DATA_DIR", os.path.join(os.path.dirname(__file__), "..", "data"))
@@ -750,7 +751,8 @@ def build_monthly_calendar(
         day = start + timedelta(days=index)
         thought = thoughts[index]
         package = packages[index]
-        scheduled = datetime.combine(day, time(17, 0), tzinfo=timezone.utc).isoformat()
+        scheduled = first_scheduled_at(day)
+        package["platform_schedule"] = growth_schedule(day)
         entry = {
             "date": day.isoformat(),
             "scheduled_at": scheduled,

@@ -63,6 +63,58 @@ def test_approved_carousel_agent_accepts_structured_parameters(tmp_path, monkeyp
     assert len(approved["execution"]["result"]["output"]["slides"]) == 4
 
 
+def test_approved_carousel_agent_normalizes_objective_alias(tmp_path, monkeypatch):
+    service = bootstrap(str(tmp_path))
+    monkeypatch.setenv("GEMINI_API_KEY", "")
+    pending = service.execute_capability(
+        "agents.run",
+        {
+            "name": "carousel_slide_writer",
+            "params": {
+                "objective": "Rebuild the existing Tropical Storm Edouard drafts",
+                "platform": "instagram_feed",
+                "slide_count": 6,
+            },
+        },
+    )
+
+    approved = service.approve_and_execute(pending["approval_id"])
+
+    assert approved["execution"]["status"] == "COMPLETED"
+    output = approved["execution"]["result"]["output"]
+    assert approved["execution"]["result"]["delegated_capability"] == "creative.carousel.generate"
+    assert output["package"]["objective"] == "Rebuild the existing Tropical Storm Edouard drafts"
+    assert len(output["package"]["carousel_slides"]) == 6
+    assert len(output["assets"]) == 6
+    assert output["all_assets_valid"] is True
+    assert all(item["valid"] for item in output["asset_validation"])
+    assert output["next_action"].startswith("Call social.schedule")
+    assert approved["execution"]["rollback_available"] is True
+    assert all(
+        operation["capability"] != "social.schedule"
+        for transaction in service.transactions.list()
+        for operation in transaction["operations"]
+    )
+
+
+def test_carousel_generation_fails_closed_when_an_asset_is_invalid(tmp_path, monkeypatch):
+    service = bootstrap(str(tmp_path))
+    monkeypatch.setenv("GEMINI_API_KEY", "")
+    invalid_asset = {"local_path": str(tmp_path / "missing.png"), "public_url": ""}
+    monkeypatch.setattr(
+        "build_monthly_content._render_assets",
+        lambda data_dir, thought, index: {"primary": invalid_asset, "slides": [invalid_asset, invalid_asset]},
+    )
+
+    with pytest.raises(RuntimeError, match="carousel_asset_validation_failed:1,2"):
+        service.execute_capability(
+            "creative.carousel.generate",
+            {"objective": "Validate every frame", "slide_count": 2},
+        )
+
+    assert service.transactions.list()[0]["status"] == "FAILED"
+
+
 def test_approved_schedule_is_transactional_and_rollbackable(tmp_path):
     service = bootstrap(str(tmp_path))
     arguments = {
@@ -119,6 +171,9 @@ def test_carousel_generation_executes_without_approval_and_schedules_with_one(tm
     assert generated["result"]["slide_count"] == 8
     assert len(generated["result"]["assets"]) == 8
     assert all(item["local_path"] for item in generated["result"]["assets"])
+    assert generated["result"]["all_assets_valid"] is True
+    assert len(generated["result"]["asset_validation"]) == 8
+    assert all(item["valid"] for item in generated["result"]["asset_validation"])
 
     pending = service.execute_capability(
         "social.schedule",

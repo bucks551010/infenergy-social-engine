@@ -1338,7 +1338,7 @@ def _conversion_caption_gate(platform_posts: dict, talking_point: dict, want_pro
         low = caption.lower()
         if pain and pain not in low:
             reasons.append(f"{platform_name}:missing_pain_point")
-        if first_step and first_step not in low:
+        if want_product and first_step and first_step not in low:
             reasons.append(f"{platform_name}:missing_next_step")
         # Numeric specs evidence only applies to product-led posts — business-first, no-product
         # posts have nothing to cite a spec/number for and shouldn't be penalized for that.
@@ -3798,6 +3798,7 @@ def _build_post_components(
     product_intelligence: dict | None = None,
     logical_strategy: dict | None = None,
     editorial_framework: dict | None = None,
+    resolved_pain_point: str = "",
 ) -> dict:
     product_name = (product or {}).get("name", "Infenergy preparedness solution")
     product_id = (product or {}).get("id", "")
@@ -3823,10 +3824,12 @@ def _build_post_components(
         audiences = product_intelligence.get("best_fit_audiences", [])
         benefits = product_intelligence.get("core_benefits", [])
         proofs = product_intelligence.get("proof_points", [])
+        product_brief = product_intelligence.get("product_brief", {})
         sales_angle = str(product_intelligence.get("sales_angle", "")).strip()
         audience_line = str(audiences[0]).strip() if isinstance(audiences, list) and audiences else "buyers preparing for outages"
         proof_line = str(proofs[0]).strip() if isinstance(proofs, list) and proofs else f"{m1} and {m2}"
-        situation = f"{audience_line} often hit the same issue: the product gets picked before the actual job, compatibility, or limits are mapped."
+        brief_pain = str(product_brief.get("primary_pain_point", "")).strip() if isinstance(product_brief, dict) else ""
+        situation = brief_pain or f"{audience_line} often hit the same issue: the product gets picked before the actual job, compatibility, or limits are mapped."
         info = f"{proof_line} is a practical anchor for comparing real fit before purchase."
         why = str(profile.get("benefit", "match real usage to the right product specs"))
         product_connection = (
@@ -3835,6 +3838,9 @@ def _build_post_components(
             else f"{product_name} is most effective when matched to verified daily-load needs."
         )
         proof = f"The specs that matter here: {proof_line}."
+
+    if str(resolved_pain_point).strip():
+        situation = str(resolved_pain_point).strip()
 
     benefit_fragment = _normalize_benefit_fragment(why)
 
@@ -6225,6 +6231,7 @@ Return ONLY valid JSON with these exact keys (no markdown, no code fences):
             funnel_stage,
             product_intelligence=product_intelligence,
             logical_strategy=logical_strategy,
+            resolved_pain_point=str(talking_point.get("pain_point", "")),
         )
         platform_posts = _build_platform_posts(
             post_id=post_id,
@@ -6251,6 +6258,11 @@ Return ONLY valid JSON with these exact keys (no markdown, no code fences):
         }
         platform_posts = normalize_brand_content(platform_posts)
         platform_posts = _apply_platform_presentation_priority(platform_posts, components)
+        conversion_gate_posts = {
+            platform: {"caption": str(package.get("caption", ""))}
+            for platform, package in platform_posts.items()
+            if isinstance(package, dict)
+        }
         content = normalize_brand_content(content)
         content["post_id"] = post_id
         content["platform_posts"] = platform_posts
@@ -6568,6 +6580,7 @@ Return ONLY valid JSON with these exact keys (no markdown, no code fences):
         funnel_stage,
         product_intelligence=product_intelligence,
         logical_strategy=logical_strategy,
+        resolved_pain_point=str(talking_point.get("pain_point", "")),
     )
     platform_posts = _build_platform_posts(
         post_id=post_id,
@@ -6594,6 +6607,11 @@ Return ONLY valid JSON with these exact keys (no markdown, no code fences):
     }
     platform_posts = normalize_brand_content(platform_posts)
     platform_posts = _apply_platform_presentation_priority(platform_posts, components)
+    conversion_gate_posts = {
+        platform: {"caption": str(package.get("caption", ""))}
+        for platform, package in platform_posts.items()
+        if isinstance(package, dict)
+    }
     content = normalize_brand_content(content)
     content["post_id"] = post_id
     content["platform_posts"] = platform_posts

@@ -57,9 +57,9 @@ def test_prepare_gemini_assets_generates_every_carousel_slide_once(tmp_path, mon
     monkeypatch.setattr(dispatch_outbox, "generate_strict_gemini_image", generate)
     prepared = dispatch_outbox._prepare_gemini_assets(_package(carousel=True), str(tmp_path))
 
-    assert calls == [1, 2, 3, 4]
+    assert calls == [1, 2, 3, 4, 5, 6]
     assert prepared["gemini_generation"]["status"] == "COMPLETE"
-    assert prepared["gemini_generation"]["actual_image_count"] == 4
+    assert prepared["gemini_generation"]["actual_image_count"] == 6
     assert all(asset["render_engine"] == "gemini" for asset in prepared["carousel_assets"])
     assert all(platform == "gemini" for platform in prepared["generated_visuals"]["render_engines"].values())
 

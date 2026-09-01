@@ -592,6 +592,7 @@ def _engagement_editorial(
         ]
         instagram_paragraphs = [
             curiosity or hook,
+            _sentence(situation),
             "Try this three-part check:\n" + "\n".join(actions),
             _sentence(f"Keep in mind: {transformation}"),
             f"👉 {final_cta}",
@@ -638,6 +639,7 @@ def _engagement_editorial(
         ]
         instagram_paragraphs = [
             curiosity or question,
+            _sentence(situation),
             _sentence(f"A useful reframe: {insight}"),
             _sentence(f"Keep in mind: {transformation}"),
             f"👉 {final_cta}",

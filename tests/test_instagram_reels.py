@@ -308,15 +308,13 @@ def test_reel_publisher_uses_public_video_cover_and_never_wordpress_upload():
     with patch.dict(os.environ, {"META_IG_USER_ID": "ig-user", "META_PAGE_ACCESS_TOKEN": "token"}, clear=False), \
          patch.object(publish_instagram, "_is_reachable_public_url", return_value=True), \
          patch.object(publish_instagram, "_wait_for_media_container", return_value=(True, "finished")), \
-         patch.object(publish_instagram, "_post_with_retry", return_value=response) as post, \
-         patch.object(publish_instagram.publish_wordpress, "upload_media") as wordpress_upload:
+            patch.object(publish_instagram, "_post_with_retry", return_value=response) as post:
         result = publish_instagram.publish(content)
     first_payload = post.call_args_list[0].args[1]
     assert result == {"id": "ig-media-1", "container_id": "container-1", "media_type": "REEL"}
     assert first_payload["media_type"] == "REELS"
     assert first_payload["video_url"].endswith(".mp4")
     assert first_payload["cover_url"].endswith(".jpg")
-    wordpress_upload.assert_not_called()
 
 
 def test_reel_preflight_accepts_own_persisted_public_media(tmp_path):

@@ -7,6 +7,7 @@ requests and by tests to invoke agents uniformly.
 
 from __future__ import annotations
 
+import inspect
 from typing import Any, Callable
 
 from . import (
@@ -52,9 +53,56 @@ _REGISTRY: dict[str, Callable[..., dict]] = {
     "retention": retention.run,
 }
 
+_PARAMETER_ALIASES: dict[str, dict[str, str]] = {
+    "carousel_slide_writer": {
+        "archetype": "archetype_key",
+        "audience_archetype": "archetype_key",
+        "brief": "creative_brief",
+        "idea": "creative_brief",
+        "objective": "creative_brief",
+        "product_data": "product",
+        "slides": "slide_count",
+    },
+    "hashtag_intelligence": {
+        "archetype": "archetype_key",
+        "audience_archetype": "archetype_key",
+        "product_data": "product",
+    },
+    "product_intelligence": {
+        "audience": "audience_segment",
+        "product_data": "product",
+    },
+    "product_matcher": {
+        "archetype": "archetype_key",
+        "audience_archetype": "archetype_key",
+    },
+    "visual_qa_reviewer": {"visual_direction": "direction"},
+}
+
 
 def available_agents() -> list[str]:
     return sorted(_REGISTRY.keys())
+
+
+def agent_contracts() -> dict[str, dict[str, Any]]:
+    contracts: dict[str, dict[str, Any]] = {}
+    for name, fn in sorted(_REGISTRY.items()):
+        signature = inspect.signature(fn)
+        parameters = [
+            parameter.name
+            for parameter in signature.parameters.values()
+            if parameter.name != "data_dir"
+            and parameter.kind not in {inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD}
+        ]
+        contracts[name] = {
+            "parameters": parameters,
+            "aliases": dict(_PARAMETER_ALIASES.get(name, {})),
+            "accepts_additional_parameters": any(
+                parameter.kind == inspect.Parameter.VAR_KEYWORD
+                for parameter in signature.parameters.values()
+            ),
+        }
+    return contracts
 
 
 def _coerce(value: Any) -> Any:
@@ -71,6 +119,45 @@ def _coerce(value: Any) -> Any:
         return value
 
 
+def _normalize_parameters(name: str, fn: Callable[..., dict], params: dict, query_params: bool) -> tuple[dict[str, Any], dict[str, Any] | None]:
+    aliases = _PARAMETER_ALIASES.get(name, {})
+    kwargs: dict[str, Any] = {}
+    parameter_sources: dict[str, str] = {}
+    for key, values in params.items():
+        if key in {"token", "ts", "name"} or values is None or values == "" or values == []:
+            continue
+        normalized_key = aliases.get(key, key)
+        if normalized_key in kwargs and parameter_sources[normalized_key] != key:
+            return {}, {
+                "error": f"agent_argument_error:{name}",
+                "detail": f"conflicting_parameters:{parameter_sources[normalized_key]},{key}",
+            }
+        raw = values[0] if query_params and isinstance(values, list) else values
+        kwargs[normalized_key] = _coerce(raw)
+        parameter_sources[normalized_key] = key
+
+    signature = inspect.signature(fn)
+    accepts_additional = any(
+        parameter.kind == inspect.Parameter.VAR_KEYWORD
+        for parameter in signature.parameters.values()
+    )
+    accepted = {
+        parameter.name
+        for parameter in signature.parameters.values()
+        if parameter.name != "data_dir"
+        and parameter.kind not in {inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD}
+    }
+    unexpected = sorted(set(kwargs) - accepted) if not accepts_additional else []
+    if unexpected:
+        return {}, {
+            "error": f"agent_argument_error:{name}",
+            "detail": f"unexpected_parameters:{','.join(unexpected)}",
+            "accepted_parameters": sorted(accepted),
+            "aliases": dict(aliases),
+        }
+    return kwargs, None
+
+
 def run_agent(
     name: str,
     data_dir: str,
@@ -81,14 +168,9 @@ def run_agent(
     fn = _REGISTRY.get(name)
     if not fn:
         return {"error": f"unknown_agent:{name}", "available": available_agents()}
-    kwargs: dict[str, Any] = {}
-    for key, values in (params or {}).items():
-        if key in {"token", "ts", "name"}:
-            continue
-        if not values:
-            continue
-        raw = values[0] if query_params and isinstance(values, list) else values
-        kwargs[key] = _coerce(raw)
+    kwargs, validation_error = _normalize_parameters(name, fn, params or {}, query_params)
+    if validation_error:
+        return validation_error
     try:
         return fn(data_dir, **kwargs)
     except TypeError as e:

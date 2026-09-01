@@ -106,7 +106,7 @@ class LogicalEmotionalFrameworkTests(unittest.TestCase):
                 "asset_3_ai_image_prompt_bank",
             },
         )
-        self.assertEqual(len(assets["asset_2_carousel_campaign"]["slides"]), 5)
+        self.assertEqual(len(assets["asset_2_carousel_campaign"]["slides"]), 7)
         self.assertEqual(len(assets["asset_3_ai_image_prompt_bank"]), 3)
         self.assertEqual(
             assets["asset_1_single_image_social_ads"]["instagram"]["hashtags"],

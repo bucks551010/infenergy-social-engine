@@ -32,7 +32,7 @@ from agents import (  # noqa: E402
     topic_intelligence,
     visual_qa_reviewer,
 )
-from agents.dispatcher import available_agents, run_agent  # noqa: E402
+from agents.dispatcher import agent_contracts, available_agents, run_agent  # noqa: E402
 from agent_control_plane import validate_agent_output  # noqa: E402
 
 
@@ -105,6 +105,48 @@ class AgentsTests(unittest.TestCase):
             result = run_agent("list_agent", self._tmp, {"items": ["one", "two"]})
 
         self.assertEqual(result["items"], ["one", "two"])
+
+    def test_dispatcher_normalizes_carousel_model_aliases(self) -> None:
+        with patch.dict(os.environ, {"GEMINI_API_KEY": ""}, clear=False):
+            result = run_agent(
+                "carousel_slide_writer",
+                self._tmp,
+                {
+                    "objective": "Rebuild the Tropical Storm Edouard drafts",
+                    "audience_archetype": "preparedness_buyer",
+                    "slides": 6,
+                },
+            )
+
+        self.assertNotIn("error", result)
+        self.assertEqual(result["creative_brief"], "Rebuild the Tropical Storm Edouard drafts")
+        self.assertEqual(result["slide_count"], 6)
+
+    def test_dispatcher_reports_unknown_parameters_before_invocation(self) -> None:
+        result = run_agent("carousel_slide_writer", self._tmp, {"unsupported_draft_key": "value"})
+
+        self.assertEqual(result["error"], "agent_argument_error:carousel_slide_writer")
+        self.assertEqual(result["detail"], "unexpected_parameters:unsupported_draft_key")
+        self.assertIn("creative_brief", result["accepted_parameters"])
+        self.assertEqual(result["aliases"]["objective"], "creative_brief")
+
+    def test_dispatcher_rejects_alias_conflicts_in_either_order(self) -> None:
+        for params in (
+            {"objective": "first", "creative_brief": "second"},
+            {"creative_brief": "first", "objective": "second"},
+        ):
+            with self.subTest(params=params):
+                result = run_agent("carousel_slide_writer", self._tmp, params)
+                self.assertEqual(result["error"], "agent_argument_error:carousel_slide_writer")
+                self.assertIn("conflicting_parameters:", result["detail"])
+
+    def test_dispatcher_contracts_match_every_registered_signature(self) -> None:
+        contracts = agent_contracts()
+
+        self.assertEqual(sorted(contracts), available_agents())
+        self.assertEqual(contracts["carousel_slide_writer"]["aliases"]["objective"], "creative_brief")
+        self.assertIn("slide_count", contracts["carousel_slide_writer"]["parameters"])
+        self.assertTrue(contracts["candidate_pool"]["accepts_additional_parameters"])
 
     def test_engagement_ingestion_no_history_returns_zero(self) -> None:
         with patch.dict(os.environ, {"META_PAGE_ACCESS_TOKEN": ""}, clear=False):

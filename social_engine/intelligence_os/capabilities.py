@@ -500,18 +500,28 @@ def register_core_capabilities(registry: CapabilityRegistry, policies: PolicyEng
         }
 
     def agents_list(_: dict[str, Any], __: ExecutionContext) -> dict[str, Any]:
-        from agents.dispatcher import available_agents
-        return {"agents": available_agents()}
+        from agents.dispatcher import agent_contracts, available_agents
+        return {"agents": available_agents(), "contracts": agent_contracts()}
 
     def agent_run(payload: dict[str, Any], context: ExecutionContext) -> dict[str, Any]:
         from agents.dispatcher import run_agent
+        name = str(payload["name"])
+        params = dict(payload.get("params", {}))
         if context.dry_run:
-            return {"would_run": payload["name"], "params": payload.get("params", {}), "production_mutated": False}
-        result = run_agent(str(payload["name"]), context.data_dir, dict(payload.get("params", {})))
+            return {"would_run": name, "params": params, "production_mutated": False}
+        if name == "carousel_slide_writer" and str(params.get("objective", "")).strip():
+            result = creative_carousel_generate(params, context)
+            return {
+                "agent": name,
+                "delegated_capability": "creative.carousel.generate",
+                "output": result,
+                "_rollback": result.pop("_rollback", {}),
+            }
+        result = run_agent(name, context.data_dir, params)
         if result.get("error"):
             detail = str(result.get("detail") or "").strip()
             raise ValueError(": ".join(part for part in (str(result["error"]), detail) if part))
-        return {"agent": payload["name"], "output": result}
+        return {"agent": name, "output": result}
 
     def creative_carousel_generate(payload: dict[str, Any], context: ExecutionContext) -> dict[str, Any]:
         from agents.carousel_slide_writer import PLATFORM_LIMITS, run as write_slides
@@ -556,15 +566,52 @@ def register_core_capabilities(registry: CapabilityRegistry, policies: PolicyEng
             "visual_motif": str(payload.get("visual_motif", "premium editorial energy story")),
             "slides": [
                 {
-                    "role": slide["slide_role"],
+                    "role": (
+                        "COVER" if index == 0
+                        else "FINALE" if index == len(authored["slides"]) - 1
+                        else slide["slide_role"]
+                    ),
                     "headline": slide["on_image_headline"],
                     "supporting": slide["on_image_subline"],
                 }
-                for slide in authored["slides"]
+                for index, slide in enumerate(authored["slides"])
             ],
+            "cta": str(payload.get("cta", "What will you prepare first?")),
         }
         rendered = _render_assets(context.data_dir, thought, 0)
         assets = rendered["slides"]
+        from PIL import Image
+        asset_validation = []
+        for index, asset in enumerate(assets, start=1):
+            path = Path(str(asset.get("local_path", "")))
+            validation = {
+                "slide": index,
+                "local_path": str(path),
+                "exists": path.is_file(),
+                "size_bytes": path.stat().st_size if path.is_file() else 0,
+                "decodable": False,
+                "width": 0,
+                "height": 0,
+            }
+            if validation["exists"] and validation["size_bytes"] > 0:
+                try:
+                    with Image.open(path) as image:
+                        validation["width"], validation["height"] = image.size
+                        image.verify()
+                    validation["decodable"] = True
+                except Exception:
+                    pass
+            validation["valid"] = bool(
+                validation["exists"]
+                and validation["size_bytes"] > 0
+                and validation["decodable"]
+                and validation["width"] > 0
+                and validation["height"] > 0
+            )
+            asset_validation.append(validation)
+        invalid_assets = [item["slide"] for item in asset_validation if not item["valid"]]
+        if invalid_assets:
+            raise RuntimeError(f"carousel_asset_validation_failed:{','.join(str(item) for item in invalid_assets)}")
         supporting = str(payload.get("supporting_message") or "").strip()
         cta = str(payload.get("cta") or "What would you protect first?").strip()
         facebook_caption = str(payload.get("caption") or "\n\n".join(part for part in (title, objective, supporting, cta) if part)).strip()
@@ -604,6 +651,8 @@ def register_core_capabilities(registry: CapabilityRegistry, policies: PolicyEng
             "platform_limit": platform_limit,
             "package": package,
             "assets": assets,
+            "asset_validation": asset_validation,
+            "all_assets_valid": True,
             "next_action": "Call social.schedule with this package; one owner approval will schedule it.",
             "_rollback": {"asset_paths": [item["local_path"] for item in assets]},
         }
@@ -622,6 +671,24 @@ def register_core_capabilities(registry: CapabilityRegistry, policies: PolicyEng
                 for slide in package.get("carousel_slides", [])
                 if isinstance(slide, dict)
             ]
+        visual_readings = payload.get("visual_readings")
+        if not isinstance(visual_readings, list):
+            visual_readings = package.get("visual_readings")
+        if not isinstance(visual_readings, list) or len(visual_readings) != len(carousel_assets):
+            story_roles = ("setup", "pressure", "evidence", "reveal", "adaptation", "response", "resolution", "reflection")
+            camera_moves = ("push", "pan_right", "pull", "pan_left", "hold")
+            visual_readings = []
+            for index, asset in enumerate(carousel_assets):
+                text = str(slide_texts[index] if index < len(slide_texts) else "").strip()
+                visual_readings.append({
+                    "story_role": story_roles[min(index, len(story_roles) - 1)],
+                    "camera_move": camera_moves[index % len(camera_moves)],
+                    "focal_x": 0.5,
+                    "focal_y": 0.5,
+                    "visual_summary": text or f"Carousel frame {index + 1}",
+                    "narrative_change": f"Advance the ordered story to frame {index + 1} of {len(carousel_assets)}.",
+                    "reading_order": [text] if text else [str(asset.get("local_path") or f"frame {index + 1}")],
+                })
         plan = build_scored_story_plan(
             post_id=str(package.get("post_id") or uuid.uuid4().hex),
             carousel_assets=carousel_assets,
@@ -629,6 +696,7 @@ def register_core_capabilities(registry: CapabilityRegistry, policies: PolicyEng
             emotions=[str(item) for item in payload.get("emotions", [])],
             narration_path=str(payload.get("narration_path") or "") or None,
             motion_intensity=float(payload.get("motion_intensity", 0.55)),
+            visual_readings=visual_readings,
         )
         plan["auto_narration"] = bool(payload.get("auto_narration", True))
         if context.dry_run:
@@ -764,9 +832,9 @@ def register_core_capabilities(registry: CapabilityRegistry, policies: PolicyEng
         Capability("risks.get", "Get risks", "Return ranked, evidence-bearing Infenergy risks and mitigations.", "BUSINESS_INTELLIGENCE", risks_get),
         Capability("creative.score", "Score creative", "Evaluate supplied content with the preserved platform-native quality rubric without generating or publishing anything.", "CREATIVE_STUDIO", creative_score, object_schema({"content": {"type": "object"}, "platforms": {"type": "array"}}, ["content"])),
         Capability("creative.carousel.generate", "Generate carousel package", "Author and render a complete platform-safe carousel package with a caller-selected 2-to-10 slide count. This creates draft assets but does not schedule or publish them.", "CREATIVE_STUDIO", creative_carousel_generate, object_schema({"objective": {"type": "string"}, "title": {"type": "string"}, "platform": {"type": "string"}, "platforms": {"type": "array"}, "slide_count": {"type": "integer"}, "product_id": {"type": "string"}, "product": {"type": "object"}, "principle_key": {"type": "string"}, "archetype_key": {"type": "string"}, "supporting_message": {"type": "string"}, "caption": {"type": "string"}, "cta": {"type": "string"}, "pillar": {"type": "string"}, "visual_motif": {"type": "string"}}, ["objective"]), risk_level="INTERNAL_MUTATION", cost_class="MEDIUM", permission_requirement="AUTONOMOUS", supports_rollback=True, rollback_handler=rollback_creative),
-        Capability("creative.scored_story_reel.generate", "Render scored story Reel", "Animate an existing ordered carousel into a vertical H.264 story Reel with readable timing, emotional scoring, free local narration, and Instagram-ready media. Facebook and LinkedIn retain carousel assets until their video upload paths are enabled.", "CREATIVE_STUDIO", creative_scored_story_reel, object_schema({"package": {"type": "object"}, "slide_texts": {"type": "array"}, "emotions": {"type": "array"}, "narration_path": {"type": "string"}, "auto_narration": {"type": "boolean"}, "motion_intensity": {"type": "number"}}, ["package"]), risk_level="INTERNAL_MUTATION", cost_class="LOW", permission_requirement="EXECUTE_WITH_APPROVAL", supports_rollback=True, rollback_handler=rollback_creative),
-        Capability("agents.list", "List operational agents", "List every preserved specialist agent available to the operating system.", "OPERATIONS", agents_list),
-        Capability("agents.run", "Run operational agent", "Run any registered specialist agent with supplied parameters. Mutation-capable agent execution remains owner-approved.", "OPERATIONS", agent_run, object_schema({"name": {"type": "string"}, "params": {"type": "object"}}, ["name"]), risk_level="INTERNAL_MUTATION", permission_requirement="EXECUTE_WITH_APPROVAL"),
+        Capability("creative.scored_story_reel.generate", "Render scored story Reel", "Animate an existing ordered carousel into a vertical H.264 story Reel with readable timing, emotional scoring, free local narration, and Instagram-ready media. Facebook and LinkedIn retain carousel assets until their video upload paths are enabled.", "CREATIVE_STUDIO", creative_scored_story_reel, object_schema({"package": {"type": "object"}, "slide_texts": {"type": "array"}, "emotions": {"type": "array"}, "visual_readings": {"type": "array"}, "narration_path": {"type": "string"}, "auto_narration": {"type": "boolean"}, "motion_intensity": {"type": "number"}}, ["package"]), risk_level="INTERNAL_MUTATION", cost_class="LOW", permission_requirement="EXECUTE_WITH_APPROVAL", supports_rollback=True, rollback_handler=rollback_creative),
+        Capability("agents.list", "List operational agents", "List every preserved specialist agent and its accepted parameters and aliases.", "OPERATIONS", agents_list),
+        Capability("agents.run", "Run operational agent", "Run a registered specialist with parameters from agents.list. For a complete rendered carousel package, carousel_slide_writer with objective delegates to creative.carousel.generate and validates every asset without scheduling or publishing. Mutation-capable agent execution remains owner-approved.", "OPERATIONS", agent_run, object_schema({"name": {"type": "string"}, "params": {"type": "object"}}, ["name"]), risk_level="INTERNAL_MUTATION", permission_requirement="EXECUTE_WITH_APPROVAL", supports_rollback=True, rollback_handler=rollback_creative),
         Capability("publication.operations.get", "Get publication operations", "Inspect exact daily slots, candidate decisions, outbox state, platform transactions, failures, and readiness actions.", "SOCIAL", publication_operations, object_schema({"content_date": {"type": "string"}, "lead_hours": {"type": "integer"}})),
         Capability("publication.detail.get", "Get publication decision detail", "Retrieve one content council decision with candidates, rationale, outbox packages, and provider transaction evidence.", "SOCIAL", publication_detail, object_schema({"decision_id": {"type": "string"}}, ["decision_id"])),
         Capability("publication.dispatch", "Dispatch due publications", "Dispatch due approved outbox packages through preserved idempotent platform publishers; preview safely with dry run.", "SOCIAL", publication_dispatch, object_schema({}), risk_level="EXTERNAL_IRREVERSIBLE", cost_class="MEDIUM", permission_requirement="EXECUTE_WITH_APPROVAL", supports_rollback=False),

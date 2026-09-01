@@ -60,7 +60,15 @@ def test_command_center_produces_six_card_canonical_typography_story(tmp_path, m
                         "assets": asset_ids,
                         "generationMetadata": {
                             "canonReferenceAssetIds": ["canon-face", "canon-suit"],
-                            "candidateEvaluations": [{"assetId": "asset-1", "qaStatus": "PASS"}],
+                            "candidateEvaluations": [
+                                {"assetId": f"candidate-{index}", "rank": index, "selected": index == 1, "qaStatus": "PASS" if index == 1 else "FAIL"}
+                                for index in range(1, 5)
+                            ],
+                            "creativeQA": {
+                                "status": "PASS",
+                                "testsPerformed": ["CANON_QA", "TEXT_QA", "STORY_QA", "VISUAL_QA", "CONTINUITY_QA", "ORIGINALITY_QA", "EMOTIONAL_QA"],
+                                "scores": {"overall": 1.0}, "failures": [], "repairPlan": [], "attempts": 1,
+                            },
                             "platformVariants": [{"platform": "instagram", "qa": {"status": "PASS"}}],
                         },
                         "qualityDecision": {"decision": "AUTO_APPROVE"},
@@ -90,6 +98,12 @@ def test_command_center_produces_six_card_canonical_typography_story(tmp_path, m
     assert request["productionStrategy"]["candidate_count"] == 4
     assert creative["canon_reference_asset_ids"] == ["canon-face", "canon-suit"]
     assert creative["quality_decision"]["decision"] == "AUTO_APPROVE"
+    persisted = service.get_creative(creative["creative_id"])
+    assert persisted["status"] == "DELIVERED"
+    assert persisted["package"]["creative_contract"]["request_id"] == contract["request_id"]
+    assert persisted["preflight"]["passed"] is True
+    content_memory = json.loads((tmp_path / "social" / "content_memory.json").read_text(encoding="utf-8"))
+    assert content_memory["records"][-1]["creative_id"] == creative["creative_id"]
     assert creative["package"]["carousel_assets"] == [
         {"public_url": f"https://studio.test/api/assets/{asset_id}", "local_path": ""}
         for asset_id in asset_ids
@@ -124,6 +138,73 @@ def test_command_center_develops_quotes_but_preserves_owner_text():
     assert developed["integrated_typography"] is True
     assert supplied["exact_visible_text"] == ["OWNER WORDS"]
     assert supplied["quote_development"] == {}
+
+
+def test_flagship_resolves_and_transports_named_product_evidence(tmp_path, monkeypatch):
+    marketing = tmp_path / "marketing"
+    marketing.mkdir()
+    (marketing / "product_consumer_profiles.json").write_text(json.dumps({
+        "profiles": {
+            "PCP-5IN1": {
+                "schema_version": "1.0", "product_id": "PCP-5IN1", "product_name": "PowerCharge Pro",
+                "market_role": "portable charging continuity", "core_customer_truth": "Device access keeps responsibilities moving.",
+                "personas": [
+                    {"persona_id": "travelers", "name": "Travelers", "use_case": "travel", "why_it_matters": "Travel depends on device access."},
+                    {"persona_id": "commuters", "name": "Commuters", "use_case": "commuting", "why_it_matters": "Commuting depends on device access."},
+                ],
+            },
+        },
+    }), encoding="utf-8")
+    product_briefs = tmp_path / "product_briefs"
+    product_briefs.mkdir()
+    (product_briefs / "PCP-5IN1.json").write_text(json.dumps({
+        "product_id": "PCP-5IN1", "verified_facts": ["10,000mAh"],
+        "source_image_url": "https://example.test/powercharge.png", "updated_at_utc": "2026-09-01T00:00:00+00:00",
+    }), encoding="utf-8")
+    service = bootstrap(str(tmp_path))
+    captured = {}
+
+    class StudioProvider:
+        base_url = "https://studio.test"
+
+        def generate(self, **kwargs):
+            captured.update(kwargs)
+            request = kwargs["art_direction"]["creative_request"]
+            assets = [f"asset-{index}" for index in range(1, max(2, len(kwargs["art_direction"]["sequence_briefs"]) + 1))]
+            candidate_count = request["productionStrategy"]["candidate_count"]
+            return VisualResult(
+                provider="entertainment_studio", kind="generated_image", asset_path="https://studio.test/api/assets/asset-1",
+                provider_meta={"creative_result": {
+                    "status": "APPROVED", "assets": assets,
+                    "generationMetadata": {
+                        "canonReferenceAssetIds": ["canon-product"],
+                        "candidateEvaluations": [
+                            {"assetId": f"candidate-{index}", "selected": index == 1, "qaStatus": "PASS" if index == 1 else "FAIL"}
+                            for index in range(1, candidate_count + 1)
+                        ],
+                        "creativeQA": {"status": "PASS", "testsPerformed": request["qualityGovernance"]["requiredGates"]},
+                    },
+                }},
+            )
+
+    monkeypatch.setattr("social.visual_provider.default_provider", lambda: StudioProvider())
+
+    grounded = service.execute_capability(
+        "creative.command.produce", {"command": "Create a PowerCharge Pro post for commuters"}, dry_run=True,
+    )["result"]
+    generic = service.execute_capability(
+        "creative.command.produce", {"command": "Create today's Infenergy quote about momentum"}, dry_run=True,
+    )["result"]
+    delivered = service.command("Create a PowerCharge Pro post for commuters")
+
+    assert grounded["product_context"]["profile"]["product_id"] == "PCP-5IN1"
+    assert grounded["product_context"]["persona"]["persona_id"] == "commuters"
+    assert grounded["product_context"]["evidence"]["verified_facts"] == ["10,000mAh"]
+    assert generic["product_context"] == {}
+    assert delivered["status"] == "DELIVERED"
+    assert captured["art_direction"]["creative_request"]["referencePackage"]["product_asset_urls"] == [
+        "https://example.test/powercharge.png",
+    ]
 
 
 def test_approved_carousel_agent_accepts_structured_parameters(tmp_path, monkeypatch):

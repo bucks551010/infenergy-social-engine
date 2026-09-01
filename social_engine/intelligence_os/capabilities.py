@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
+from .db import connect, encode, utc_now
 from .governance import PolicyEngine
 from .intelligence import AutomationService, ResearchIntelligence
 from .knowledge import ResearchService, StrategyService, WorldModel
@@ -668,12 +669,20 @@ def register_core_capabilities(registry: CapabilityRegistry, policies: PolicyEng
 
     def flagship_creative_produce(payload: dict[str, Any], context: ExecutionContext) -> dict[str, Any]:
         from social.command_center import compile_command
+        from social.command_context import originality_context, resolve_product_context
+        from social.memory_intelligence import append_content_record, append_visual_record
         from social.visual_provider import default_provider
 
         command = str(payload["command"]).strip()
         contract = compile_command(command)
+        product_context = resolve_product_context(command, context.data_dir)
+        originality_references = originality_context(command, context.data_dir)
         if context.dry_run:
-            return {"production_status": "CONTRACT_READY", "creative_contract": contract, "production_mutated": False}
+            return {
+                "production_status": "CONTRACT_READY", "creative_contract": contract,
+                "product_context": product_context, "originality_references": originality_references,
+                "production_mutated": False,
+            }
 
         exact_strings = list(contract["exact_visible_text"])
         headline = exact_strings[0] if exact_strings else command[:300]
@@ -686,6 +695,9 @@ def register_core_capabilities(registry: CapabilityRegistry, policies: PolicyEng
             "escalation": story_beats[3]["prompt"] if len(story_beats) > 3 else "The action reveals the true system problem.",
             "payoff": story_beats[-1]["prompt"] if story_beats else "The visible action earns the resolution.",
         }
+        profile = product_context.get("profile", {})
+        persona = product_context.get("persona", {})
+        product_evidence = product_context.get("evidence", {})
         creative_request = {
             "requestId": contract["request_id"],
             "contentId": f"command-center-{uuid.uuid4().hex[:12]}",
@@ -694,14 +706,18 @@ def register_core_capabilities(registry: CapabilityRegistry, policies: PolicyEng
             "platform": contract["platform"],
             "format": contract["format"],
             "requestedRoute": contract["creative_mode"],
-            "humanTruth": "Energy matters because it keeps people connected to the life, work, family, and experiences that matter.",
-            "humanTension": "A relatable interruption, uncertainty, or misconception needs a meaningful response.",
-            "dominantIdea": exact_strings[0] if exact_strings else command,
-            "audienceReaction": "I recognize that moment, and I want to see what Infenergy does next.",
+            "humanTruth": persona.get("why_it_matters") or profile.get("core_customer_truth") or "Energy matters because it keeps people connected to the life, work, family, and experiences that matter.",
+            "humanTension": persona.get("problem") or "A relatable interruption, uncertainty, or misconception needs a meaningful response.",
+            "dominantIdea": exact_strings[0] if exact_strings else persona.get("desired_outcome") or profile.get("primary_promise") or command,
+            "audienceReaction": persona.get("emotional_driver") or "I recognize that moment, and I want to see what Infenergy does next.",
             "emotionalMode": contract["emotional_mode"],
             "characters": contract["characters"],
             "canonRequired": contract["canon_required"],
             "story": story,
+            "product": profile.get("product_name") or "",
+            "productRole": persona.get("product_role") or profile.get("market_role") or "",
+            "verifiedProof": [str(item) for item in product_evidence.get("verified_facts", [])],
+            "productTruthVersion": product_evidence.get("updated_at_utc") or profile.get("schema_version") or "",
             "visualStandard": (
                 "Cinematic 3D photorealism; premium superhero-film key art; believable anatomy, skin, armor, lighting, "
                 "depth, body mechanics, cape physics, material response, and environmental energy illumination."
@@ -711,12 +727,16 @@ def register_core_capabilities(registry: CapabilityRegistry, policies: PolicyEng
             "mustInclude": [
                 "Infenergy causes the visual outcome through a physically legible action",
                 "implied before, present action, and after",
+                *([f"Connect {profile.get('product_name')} to {persona.get('use_case') or persona.get('life_context') or profile.get('market_role')}"] if profile else []),
                 *([f'Exact visible text: {value}' for value in exact_strings]),
             ],
             "mustAvoid": [
                 "generic superhero redesign", "static mannequin pose", "cheap plastic CGI", "random neon",
                 "hallucinated words, logos, signs, or numbering", "unrelated additional wording",
+                *[str(item) for item in profile.get("content_boundaries", [])],
+                *[f"Do not repeat prior creative execution: {item}" for item in originality_references],
             ],
+            "referenceAssetIds": [],
             "continuityRequirements": contract["continuity_requirements"],
             "oneSecondMessage": headline,
             "imageJob": contract["infenergy_action"],
@@ -732,12 +752,23 @@ def register_core_capabilities(registry: CapabilityRegistry, policies: PolicyEng
             "humanBehavior": "The human consequence is visible through behavior, not exposition.",
             "beforeFrame": "The problem exists and has a recognizable consequence.",
             "afterFrame": "Infenergy's earned action changes the situation.",
-            "composition": {"aspectRatio": contract["aspect_ratio"], "cardCount": contract["card_count"], "exactStrings": exact_strings},
+            "composition": {"aspectRatio": contract["aspect_ratio"], "cardCount": contract["card_count"], "exactStrings": exact_strings, "negative_space": "platform-safe headline region integrated with the focal action"},
             "camera": {"language": "cinematic shot variety serving sequential story continuity"},
             "lighting": "Physically believable cinematic light with motivated green energy spill and controlled violet only at high output.",
             "colorCharacter": "realistic environmental color; controlled Infenergy green energy; no indiscriminate neon coating",
+            "productVisibility": 2 if profile else 0,
+            "productInteraction": persona.get("product_role") or profile.get("market_role") or "none",
+            "productVisualLock": {"required": bool(profile), **({"product": profile.get("product_name")} if profile else {})},
             "textMode": "HEADLINE" if exact_strings else "NONE",
             "layoutArchetype": "INTEGRATED_PHYSICAL_TYPOGRAPHY" if contract["integrated_typography"] else "CINEMATIC_STORY",
+            "referencePackage": {
+                "platform_targets": [contract["platform"]],
+                "product_asset_urls": [product_evidence["source_image_url"]] if product_evidence.get("source_image_url") else [],
+                "consumer_profile_id": profile.get("product_id"),
+                "persona_id": persona.get("persona_id"),
+                "persona_call_to_action": persona.get("call_to_action") or profile.get("primary_call_to_action"),
+                "infenergy_reason_why": profile.get("infenergy_reason_why"),
+            },
             "productionStrategy": {
                 "strategy": "REFERENCE_GUIDED" if contract["canon_required"] else "CONCEPT_GUIDED",
                 "candidate_count": 4 if contract["canon_required"] else 2,
@@ -785,7 +816,7 @@ def register_core_capabilities(registry: CapabilityRegistry, policies: PolicyEng
                 "failure": "finished_asset_provider_unavailable",
                 "next_action": "Restore Entertainment Studio credentials/provider capacity, then retry this same command.",
             }
-        if studio_status and studio_status != "APPROVED":
+        if studio_status != "APPROVED":
             return {
                 "production_status": "REPAIR_REQUIRED" if studio_status != "REJECTED" else "VALIDATION_FAILED",
                 "creative_contract": contract,
@@ -801,6 +832,44 @@ def register_core_capabilities(registry: CapabilityRegistry, policies: PolicyEng
                 "studio_result": studio_result,
                 "failure": f"expected_{expected_assets}_assets_received_{len(assets)}",
             }
+        generation_metadata = studio_result.get("generationMetadata") or {}
+        canon_reference_ids = generation_metadata.get("canonReferenceAssetIds") or []
+        candidate_evaluations = generation_metadata.get("candidateEvaluations") or []
+        creative_qa = generation_metadata.get("creativeQA") or {}
+        selected_candidates = [
+            item for item in candidate_evaluations
+            if isinstance(item, dict) and item.get("selected") and item.get("qaStatus") in {"PASS", "TECHNICAL_PASS"}
+        ]
+        required_candidate_count = int(creative_request["productionStrategy"]["candidate_count"])
+        if contract["canon_required"] and not canon_reference_ids:
+            return {
+                "production_status": "VALIDATION_FAILED", "creative_contract": contract,
+                "assets": assets, "studio_result": studio_result,
+                "failure": "canon_reference_provenance_missing",
+            }
+        if len(candidate_evaluations) < required_candidate_count or not selected_candidates:
+            return {
+                "production_status": "VALIDATION_FAILED", "creative_contract": contract,
+                "assets": assets, "studio_result": studio_result,
+                "failure": "candidate_evaluation_provenance_incomplete",
+            }
+        performed_gates = {str(item).upper() for item in creative_qa.get("testsPerformed", [])}
+        required_gates = {str(item).upper() for item in contract["quality_gates"]}
+        if creative_qa.get("status") != "PASS" or not required_gates.issubset(performed_gates):
+            return {
+                "production_status": "VALIDATION_FAILED", "creative_contract": contract,
+                "assets": assets, "studio_result": studio_result,
+                "failure": "final_pixel_qa_provenance_incomplete",
+            }
+        platform_variants = generation_metadata.get("platformVariants") or []
+        platform_variant_assets = [
+            {
+                **item,
+                "public_url": f"{provider.base_url}/api/assets/{item['assetId']}",
+            }
+            for item in platform_variants
+            if isinstance(item, dict) and item.get("assetId") and hasattr(provider, "base_url")
+        ]
         package = {
             "post_id": creative_request["contentId"],
             "objective": command,
@@ -812,8 +881,37 @@ def register_core_capabilities(registry: CapabilityRegistry, policies: PolicyEng
             "platforms": [contract["platform"]],
             "platform_policy": {"platforms": [contract["platform"]]},
             "quality_decision": studio_result.get("qualityDecision", {}),
-            "generation_metadata": studio_result.get("generationMetadata", {}),
+            "generation_metadata": generation_metadata,
+            "product_context": product_context,
+            "platform_variant_assets": platform_variant_assets,
         }
+        creative_id = creative_request["contentId"]
+        now = utc_now()
+        preflight = {
+            "passed": True,
+            "studio_status": studio_status,
+            "quality_decision": studio_result.get("qualityDecision", {}),
+            "canon_reference_asset_ids": canon_reference_ids,
+            "candidate_evaluations": candidate_evaluations,
+            "platform_variants": platform_variants,
+        }
+        with connect(context.data_dir) as connection:
+            connection.execute(
+                "INSERT OR REPLACE INTO os_creatives VALUES (?, ?, ?, ?, ?, ?, ?, 'DELIVERED', ?, ?, '{}', ?, ?)",
+                (
+                    creative_id, context.actor, headline, command, contract["platform"],
+                    encode([contract["platform"]]), expected_assets, encode(package), encode(preflight), now, now,
+                ),
+            )
+            connection.commit()
+        memory_record = {
+            "source": "creative.command.produce", "creative_id": creative_id, "objective": command,
+            "product_id": profile.get("product_id"), "persona_id": persona.get("persona_id"),
+            "visual_signature": f"{contract['creative_mode']}|{contract['emotional_mode']}|{contract['infenergy_action']}",
+            "created_at": now,
+        }
+        append_content_record(memory_record, data_dir=context.data_dir)
+        append_visual_record({**memory_record, "assets": assets, "platform": contract["platform"]}, data_dir=context.data_dir)
         return {
             "production_status": "DELIVERED",
             "creative_contract": contract,
@@ -821,9 +919,11 @@ def register_core_capabilities(registry: CapabilityRegistry, policies: PolicyEng
             "assets": assets,
             "asset_count": len(assets),
             "studio_status": studio_status or "APPROVED",
-            "canon_reference_asset_ids": (studio_result.get("generationMetadata") or {}).get("canonReferenceAssetIds", []),
-            "candidate_evaluations": (studio_result.get("generationMetadata") or {}).get("candidateEvaluations", []),
-            "platform_variants": (studio_result.get("generationMetadata") or {}).get("platformVariants", []),
+            "creative_id": creative_id,
+            "product_context": product_context,
+            "canon_reference_asset_ids": canon_reference_ids,
+            "candidate_evaluations": candidate_evaluations,
+            "platform_variants": platform_variants,
             "quality_decision": studio_result.get("qualityDecision", {}),
             "next_action": "Review the delivered assets; scheduling remains a separate owner-approved action.",
         }

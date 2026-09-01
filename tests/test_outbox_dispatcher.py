@@ -317,6 +317,58 @@ def test_growth_schedule_covers_every_platform_every_day():
         assert all(value.endswith("-05:00") for value in schedule.values())
 
 
+def test_publish_adapts_platform_posts_to_legacy_caption_keys():
+    package = {
+        "platform_posts": {
+            "facebook": {"final_caption": "Facebook exact"},
+            "instagram": {"final_caption": "Instagram exact"},
+            "linkedin": {"final_caption": "LinkedIn exact"},
+        },
+    }
+
+    with (
+        patch.object(dispatch_outbox.publish_facebook, "publish", return_value={"id": "fb"}) as facebook,
+        patch.object(dispatch_outbox.publish_instagram, "publish", return_value={"id": "ig"}) as instagram,
+        patch.object(dispatch_outbox.publish_linkedin, "publish", return_value={"id": "li"}) as linkedin,
+    ):
+        dispatch_outbox._publish(package, "facebook")
+        dispatch_outbox._publish(package, "instagram")
+        dispatch_outbox._publish(package, "linkedin")
+
+    assert facebook.call_args.args[0]["fb_caption"] == "Facebook exact"
+    assert instagram.call_args.args[0]["ig_caption"] == "Instagram exact"
+    assert linkedin.call_args.args[0]["li_text"] == "LinkedIn exact"
+
+
+def test_growth_schedule_requeues_only_fixed_caption_adapter_failures(tmp_path):
+    data_dir = str(tmp_path)
+    recoverable_id = _ready_package(data_dir, ["facebook"], slot="morning")
+    unrelated_id = _ready_package(data_dir, ["facebook"], slot="evening")
+    connection = sqlite3.connect(get_db_path(data_dir))
+    connection.execute(
+        "UPDATE content_outbox SET status='FAILED', attempt_count=4, last_error=? WHERE outbox_id=?",
+        ("facebook:KeyError:'fb_caption'", recoverable_id),
+    )
+    connection.execute(
+        "UPDATE content_outbox SET status='FAILED', attempt_count=4, last_error=? WHERE outbox_id=?",
+        ("facebook:provider_rejected_post", unrelated_id),
+    )
+    connection.commit()
+    connection.close()
+
+    result = apply_growth_schedule_to_ready_inventory(data_dir, "2026-08-19")
+    connection = sqlite3.connect(get_db_path(data_dir))
+    rows = dict(connection.execute(
+        "SELECT outbox_id, status || ':' || attempt_count FROM content_outbox WHERE outbox_id IN (?, ?)",
+        (recoverable_id, unrelated_id),
+    ).fetchall())
+    connection.close()
+
+    assert result == {"updated": 1}
+    assert rows[recoverable_id] == "READY:0"
+    assert rows[unrelated_id] == "FAILED:4"
+
+
 def test_partial_retry_never_resends_confirmed_platform(tmp_path):
     data_dir = str(tmp_path)
     _ready_package(data_dir, ["facebook", "instagram"])

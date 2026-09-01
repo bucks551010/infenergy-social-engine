@@ -38,8 +38,14 @@ def apply_growth_schedule_to_ready_inventory(data_dir: str, start_date: str | da
         connection.execute("BEGIN IMMEDIATE")
         rows = connection.execute(
             """
-            SELECT outbox_id, content_date, package_json FROM content_outbox
-            WHERE content_date >= ? AND status IN ('READY', 'DUE')
+            SELECT outbox_id, content_date, package_json, status, last_error FROM content_outbox
+            WHERE content_date >= ? AND (
+                status IN ('READY', 'DUE')
+                OR (
+                    status='FAILED'
+                    AND (last_error LIKE '%fb_caption%' OR last_error LIKE '%ig_caption%' OR last_error LIKE '%li_text%')
+                )
+            )
             """,
             (first_date,),
         ).fetchall()
@@ -55,13 +61,15 @@ def apply_growth_schedule_to_ready_inventory(data_dir: str, start_date: str | da
             first_due = min(package["platform_schedule"].values(), key=datetime.fromisoformat)
             connection.execute(
                 """
-                UPDATE content_outbox SET package_json=?, scheduled_at=?, next_attempt_at=NULL
+                UPDATE content_outbox SET package_json=?, scheduled_at=?, status='READY',
+                    attempt_count=CASE WHEN status='FAILED' THEN 0 ELSE attempt_count END,
+                    next_attempt_at=NULL, last_error=NULL
                 WHERE outbox_id=?
                 """,
                 (_json(package), first_due, row["outbox_id"]),
             )
             connection.execute(
-                "UPDATE daily_slots SET scheduled_at=?, updated_at=? WHERE outbox_id=?",
+                "UPDATE daily_slots SET scheduled_at=?, status='READY', last_error=NULL, updated_at=? WHERE outbox_id=?",
                 (first_due, _now(), row["outbox_id"]),
             )
             updated += 1

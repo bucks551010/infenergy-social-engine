@@ -53,6 +53,37 @@ def test_public_media_head_returns_reel_preflight_headers():
     assert response.content == b""
 
 
+def test_agents_endpoint_marks_query_parameters_for_coercion():
+    captured = {}
+
+    def run_agent(name, data_dir, params, *, query_params=False):
+        captured.update({"name": name, "params": params, "query_params": query_params})
+        return {"slide_count": int(params["slide_count"][0])}
+
+    with tempfile.TemporaryDirectory() as data_dir, patch.dict(
+        os.environ,
+        {"DATA_DIR": data_dir, "MANUAL_RUN_TOKEN": "test-token"},
+        clear=False,
+    ), patch("agents.dispatcher.run_agent", run_agent):
+        server = HTTPServer(("127.0.0.1", 0), worker.HealthHandler)
+        thread = threading.Thread(target=server.handle_request)
+        thread.start()
+        try:
+            response = requests.get(
+                f"http://127.0.0.1:{server.server_port}/agents/run",
+                params={"name": "carousel_slide_writer", "slide_count": "6", "token": "test-token"},
+                timeout=5,
+            )
+        finally:
+            thread.join(timeout=5)
+            server.server_close()
+
+    assert response.status_code == 200
+    assert response.json()["slide_count"] == 6
+    assert captured["name"] == "carousel_slide_writer"
+    assert captured["query_params"] is True
+
+
 def test_custom_post_validates_required_fields():
     status, response = worker._publish_custom_post({})
     assert status == 400

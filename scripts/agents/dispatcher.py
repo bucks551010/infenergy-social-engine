@@ -57,7 +57,9 @@ def available_agents() -> list[str]:
     return sorted(_REGISTRY.keys())
 
 
-def _coerce(value: str) -> Any:
+def _coerce(value: Any) -> Any:
+    if not isinstance(value, str):
+        return value
     low = value.strip().lower()
     if low in ("true", "false"):
         return low == "true"
@@ -69,7 +71,13 @@ def _coerce(value: str) -> Any:
         return value
 
 
-def run_agent(name: str, data_dir: str, params: dict | None = None) -> dict:
+def run_agent(
+    name: str,
+    data_dir: str,
+    params: dict | None = None,
+    *,
+    query_params: bool = False,
+) -> dict:
     fn = _REGISTRY.get(name)
     if not fn:
         return {"error": f"unknown_agent:{name}", "available": available_agents()}
@@ -79,8 +87,8 @@ def run_agent(name: str, data_dir: str, params: dict | None = None) -> dict:
             continue
         if not values:
             continue
-        raw = values[0] if isinstance(values, list) else values
-        kwargs[key] = _coerce(str(raw))
+        raw = values[0] if query_params and isinstance(values, list) else values
+        kwargs[key] = _coerce(raw)
     try:
         return fn(data_dir, **kwargs)
     except TypeError as e:

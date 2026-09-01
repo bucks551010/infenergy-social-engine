@@ -1417,7 +1417,7 @@ class HealthHandler(BaseHTTPRequestHandler):
                 self.end_headers()
                 self.wfile.write(body)
                 return
-            result = run_agent(name, _data_dir(), params)
+            result = run_agent(name, _data_dir(), params, query_params=True)
             code = 400 if isinstance(result, dict) and "error" in result else 200
             body = json.dumps(result, default=str).encode("utf-8")
             self.send_response(code)

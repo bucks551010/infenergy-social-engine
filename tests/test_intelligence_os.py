@@ -37,6 +37,31 @@ def test_bootstrap_registers_foundation_and_preserves_default_deny(tmp_path):
     assert blocked["approval_id"]
 
 
+def test_approved_carousel_agent_accepts_structured_parameters(tmp_path, monkeypatch):
+    service = bootstrap(str(tmp_path))
+    monkeypatch.setenv("GEMINI_API_KEY", "")
+    pending = service.execute_capability(
+        "agents.run",
+        {
+            "name": "carousel_slide_writer",
+            "params": {
+                "product": {"name": "PowerFlex", "metrics": ["400W"]},
+                "thought": {
+                    "statement": "Prepare before the storm",
+                    "expansion": "Protect one essential routine.",
+                },
+                "slide_count": 4,
+            },
+        },
+    )
+
+    approved = service.approve_and_execute(pending["approval_id"])
+
+    assert approved["execution"]["status"] == "COMPLETED"
+    assert approved["execution"]["result"]["output"]["product_name"] == "PowerFlex"
+    assert len(approved["execution"]["result"]["output"]["slides"]) == 4
+
+
 def test_approved_schedule_is_transactional_and_rollbackable(tmp_path):
     service = bootstrap(str(tmp_path))
     arguments = {

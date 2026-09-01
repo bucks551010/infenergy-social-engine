@@ -71,6 +71,41 @@ class AgentsTests(unittest.TestCase):
         result = run_agent("does_not_exist", self._tmp, {})
         self.assertIn("error", result)
 
+    def test_dispatcher_preserves_structured_agent_parameters(self) -> None:
+        with patch.dict(os.environ, {"GEMINI_API_KEY": ""}, clear=False):
+            result = run_agent(
+                "carousel_slide_writer",
+                self._tmp,
+                {
+                    "product": {"name": "PowerFlex", "metrics": ["400W"]},
+                    "thought": {"statement": "Prepare before the storm", "expansion": "Protect one routine."},
+                    "slide_count": 4,
+                },
+            )
+
+        self.assertNotIn("error", result)
+        self.assertEqual(result["product_name"], "PowerFlex")
+        self.assertEqual(result["content_mode"], "company_thought")
+        self.assertEqual(len(result["slides"]), 4)
+
+    def test_dispatcher_still_coerces_query_string_parameters(self) -> None:
+        with patch.dict(os.environ, {"GEMINI_API_KEY": ""}, clear=False):
+            result = run_agent(
+                "carousel_slide_writer",
+                self._tmp,
+                {"slide_count": ["6"], "platform": ["instagram_feed"]},
+                query_params=True,
+            )
+
+        self.assertNotIn("error", result)
+        self.assertEqual(result["slide_count"], 6)
+
+    def test_dispatcher_preserves_native_list_parameters(self) -> None:
+        with patch("agents.dispatcher._REGISTRY", {"list_agent": lambda data_dir, items: {"items": items}}):
+            result = run_agent("list_agent", self._tmp, {"items": ["one", "two"]})
+
+        self.assertEqual(result["items"], ["one", "two"])
+
     def test_engagement_ingestion_no_history_returns_zero(self) -> None:
         with patch.dict(os.environ, {"META_PAGE_ACCESS_TOKEN": ""}, clear=False):
             result = engagement_ingestion.run(self._tmp)

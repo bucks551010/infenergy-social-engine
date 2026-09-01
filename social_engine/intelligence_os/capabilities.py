@@ -509,7 +509,8 @@ def register_core_capabilities(registry: CapabilityRegistry, policies: PolicyEng
             return {"would_run": payload["name"], "params": payload.get("params", {}), "production_mutated": False}
         result = run_agent(str(payload["name"]), context.data_dir, dict(payload.get("params", {})))
         if result.get("error"):
-            raise ValueError(str(result["error"]))
+            detail = str(result.get("detail") or "").strip()
+            raise ValueError(": ".join(part for part in (str(result["error"]), detail) if part))
         return {"agent": payload["name"], "output": result}
 
     def creative_carousel_generate(payload: dict[str, Any], context: ExecutionContext) -> dict[str, Any]:

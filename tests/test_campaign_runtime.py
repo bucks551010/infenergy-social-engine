@@ -137,6 +137,10 @@ class CampaignRuntimeTests(unittest.TestCase):
         self.assertEqual(selected["series"]["cadence"], "twice_weekly")
         self.assertTrue(selected["series"]["product_required"])
         self.assertEqual(recurring_series_for_slot("Wednesday", "midday", now_utc=tuesday), {})
+        friday_format = recurring_series_for_slot("Friday", "morning", now_utc=tuesday)["preferred_format"]
+        next_tuesday = datetime(2026, 9, 8, 12, 0, tzinfo=timezone.utc)
+        next_format = recurring_series_for_slot("Tuesday", "midday", now_utc=next_tuesday)["preferred_format"]
+        self.assertNotEqual(friday_format, next_format)
 
 
 if __name__ == "__main__":

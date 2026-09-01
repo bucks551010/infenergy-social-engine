@@ -523,7 +523,7 @@ def recurring_series_for_slot(day: str, slot: str, now_utc: datetime | None = No
         "name": "Infenergy Intervention",
         "archetype": "character_led_edutainment",
         "cadence": "twice_weekly",
-        "preferred_format": formats[(now.isocalendar().week + occurrence) % len(formats)],
+        "preferred_format": formats[((now.isocalendar().week * len(targets)) + occurrence) % len(formats)],
         "format_rotation": formats,
         "product_rotation": "least_recently_used_catalog",
         "product_required": True,

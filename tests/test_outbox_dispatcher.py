@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import sqlite3
 import sys
@@ -75,6 +76,68 @@ def test_dispatcher_publishes_archived_payload_without_generation(tmp_path):
     assert instagram.call_args.args[0]["platform_posts"]["instagram"]["final_caption"].count("\n\n") == 1
     assert linkedin.call_args.args[0]["platform_posts"]["linkedin"]["final_caption"].count("\n\n") == 1
     assert platform_transaction(data_dir, outbox_id, "facebook")["external_id"] == "fb-1"
+
+
+def test_dispatcher_routes_intelligence_os_package_without_legacy_routing(tmp_path):
+    data_dir = str(tmp_path)
+    outbox_id = _ready_package(data_dir, ["facebook", "instagram"])
+    connection = sqlite3.connect(get_db_path(data_dir))
+    package = {
+        "post_id": "intelligence-os-carousel",
+        "platforms": ["facebook", "instagram"],
+        "platform_policy": {"platforms": ["facebook", "instagram"]},
+        "platform_posts": {
+            "facebook": {"final_caption": "Facebook final"},
+            "instagram": {"final_caption": "Instagram final"},
+        },
+        "carousel_assets": [],
+    }
+    connection.execute(
+        "UPDATE content_outbox SET package_json=?, scheduled_at=? WHERE outbox_id=?",
+        (json.dumps(package), "2026-08-19T13:00:00-05:00", outbox_id),
+    )
+    connection.commit()
+    connection.close()
+
+    with patch.object(dispatch_outbox.publish_facebook, "publish", return_value={"id": "fb-os"}) as facebook, \
+        patch.object(dispatch_outbox.publish_instagram, "publish", return_value={"id": "ig-os"}) as instagram:
+        before_due = dispatch_outbox.dispatch_due(data_dir=data_dir, now_utc="2026-08-19T17:59:59+00:00")
+        result = dispatch_outbox.dispatch_due(data_dir=data_dir, now_utc="2026-08-19T18:00:01+00:00")
+
+    assert before_due["status"] == "IDLE"
+    assert result["status"] == "PUBLISHED"
+    assert result["outbox_id"] == outbox_id
+    assert facebook.call_count == 1
+    assert instagram.call_count == 1
+
+
+def test_dispatcher_recovers_existing_no_routed_platforms_failure(tmp_path):
+    data_dir = str(tmp_path)
+    outbox_id = _ready_package(data_dir, ["facebook"])
+    connection = sqlite3.connect(get_db_path(data_dir))
+    package = {
+        "post_id": "recover-intelligence-os-post",
+        "platforms": ["facebook"],
+        "platform_posts": {"facebook": {"final_caption": "Recovered post"}},
+    }
+    connection.execute(
+        "UPDATE content_outbox SET package_json=?, status='EXTERNAL_ACTION_REQUIRED', last_error='no_routed_platforms' WHERE outbox_id=?",
+        (json.dumps(package), outbox_id),
+    )
+    connection.execute(
+        "UPDATE daily_slots SET status='EXTERNAL_ACTION_REQUIRED', last_error='no_routed_platforms' WHERE outbox_id=?",
+        (outbox_id,),
+    )
+    connection.commit()
+    connection.close()
+
+    with patch.object(dispatch_outbox.publish_facebook, "publish", return_value={"id": "fb-recovered"}) as facebook:
+        result = dispatch_outbox.dispatch_due(data_dir=data_dir, now_utc="2026-08-19T13:00:01+00:00")
+
+    assert result["status"] == "PUBLISHED"
+    assert result["outbox_id"] == outbox_id
+    assert facebook.call_count == 1
+    assert platform_transaction(data_dir, outbox_id, "facebook")["external_id"] == "fb-recovered"
 
 
 def test_partial_retry_never_resends_confirmed_platform(tmp_path):

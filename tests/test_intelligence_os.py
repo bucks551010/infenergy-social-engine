@@ -751,7 +751,7 @@ def test_copilot_master_uses_autopilot_and_extended_wait(tmp_path, monkeypatch):
         async def start(self):
             return None
 
-        async def create_session(self, **kwargs):
+        async def resume_session(self, session_id, **kwargs):
             calls["session"] = kwargs
             return FakeSession()
 
@@ -779,9 +779,11 @@ def test_copilot_master_uses_autopilot_and_extended_wait(tmp_path, monkeypatch):
 
 
 def test_copilot_master_replaces_missing_session_resource_once(tmp_path, monkeypatch):
-    session_ids = []
+    calls = []
 
     class FakeSession:
+        session_id = "sdk-created-session"
+
         async def send_and_wait(self, prompt, **kwargs):
             return SimpleNamespace(data=SimpleNamespace(content="Recovered completion"))
 
@@ -792,10 +794,12 @@ def test_copilot_master_replaces_missing_session_resource_once(tmp_path, monkeyp
         async def start(self):
             return None
 
+        async def resume_session(self, session_id, **kwargs):
+            calls.append(("resume", session_id))
+            raise Exception("CAPError: 400 The resource you requested was not found.")
+
         async def create_session(self, **kwargs):
-            session_ids.append(kwargs["session_id"])
-            if len(session_ids) == 1:
-                raise Exception("CAPError: 400 The resource you requested was not found.")
+            calls.append(("create", kwargs.get("session_id")))
             return FakeSession()
 
         async def stop(self):
@@ -823,9 +827,8 @@ def test_copilot_master_replaces_missing_session_resource_once(tmp_path, monkeyp
 
     assert result["content"] == "Recovered completion"
     assert result["session_recovered"] is True
-    assert session_ids[0] == "missing-session"
-    assert session_ids[1].startswith("infenergy-")
-    assert result["session_id"] == session_ids[1]
+    assert calls == [("resume", "missing-session"), ("create", None)]
+    assert result["session_id"] == "sdk-created-session"
 
 
 def test_command_center_and_api_are_served(tmp_path):

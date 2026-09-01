@@ -113,16 +113,20 @@ class CopilotMaster:
             for attempt in range(2):
                 session = None
                 try:
-                    session = await client.create_session(
-                        model=self.model,
-                        session_id=active_session_id,
-                        client_name="infenergy-intelligence-os",
-                        tools=tools or [],
-                        system_message={"mode": "append", "content": system_message},
-                        available_tools=[f"custom:{getattr(tool, 'name', '')}" for tool in (tools or [])],
-                        on_permission_request=reject_ambient_tools,
-                        working_directory=str(Path(__file__).resolve().parents[2]),
-                    )
+                    session_options = {
+                        "model": self.model,
+                        "client_name": "infenergy-intelligence-os",
+                        "tools": tools or [],
+                        "system_message": {"mode": "append", "content": system_message},
+                        "available_tools": [f"custom:{getattr(tool, 'name', '')}" for tool in (tools or [])],
+                        "on_permission_request": reject_ambient_tools,
+                        "working_directory": str(Path(__file__).resolve().parents[2]),
+                    }
+                    if attempt == 0:
+                        session = await client.resume_session(active_session_id, **session_options)
+                    else:
+                        session = await client.create_session(**session_options)
+                        active_session_id = str(session.session_id)
                     response = await session.send_and_wait(
                         prompt,
                         agent_mode="autopilot",
@@ -135,7 +139,6 @@ class CopilotMaster:
                     }
                 except Exception as exc:
                     if attempt == 0 and self._is_missing_session_resource(exc):
-                        active_session_id = new_session_id()
                         session_recovered = True
                         continue
                     raise

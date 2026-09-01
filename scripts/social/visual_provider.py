@@ -233,6 +233,17 @@ class EntertainmentStudioVisualProvider:
             "provider": os.environ.get("ENTERTAINMENT_STUDIO_IMAGE_PROVIDER", "openai").strip().lower() or "openai",
             "promptPrefix": positive_prompt[:2000],
         }
+        sequence_briefs = art_direction.get("sequence_briefs")
+        if isinstance(sequence_briefs, list) and len(sequence_briefs) >= 2:
+            production["sequenceBriefs"] = [
+                {
+                    "title": str(item.get("title") or f"Frame {index + 1}")[:180],
+                    "prompt": str(item.get("prompt") or "Continue the same cinematic story.")[:3000],
+                    "useCanon": bool(item.get("useCanon", True)),
+                }
+                for index, item in enumerate(sequence_briefs[:10])
+                if isinstance(item, dict)
+            ]
         try:
             response = requests.post(
                 f"{self.base_url}/api/creative-requests",

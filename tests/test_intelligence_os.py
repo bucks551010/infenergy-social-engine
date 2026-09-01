@@ -17,6 +17,7 @@ from social_engine.intelligence_os.knowledge import WorldModel
 from social_engine.intelligence_os.models import CopilotMaster, MasterModelUnavailable, ModelStatus
 from social_engine.intelligence_os.operations import JobService
 from social_engine.intelligence_os.web import handle
+from social.visual_provider import VisualResult
 
 
 def test_bootstrap_registers_foundation_and_preserves_default_deny(tmp_path):
@@ -28,6 +29,7 @@ def test_bootstrap_registers_foundation_and_preserves_default_deny(tmp_path):
     assert "social.schedule" in capabilities
     assert "social.schedule_job_campaign" in capabilities
     assert "creative.carousel.generate" in capabilities
+    assert "creative.command.produce" in capabilities
     assert "agents.run" in capabilities
     assert "content.plan_120_days" in capabilities
     blocked = service.execute_capability(
@@ -36,6 +38,92 @@ def test_bootstrap_registers_foundation_and_preserves_default_deny(tmp_path):
     )
     assert blocked["status"] == "WAITING_APPROVAL"
     assert blocked["approval_id"]
+
+
+def test_command_center_produces_six_card_canonical_typography_story(tmp_path, monkeypatch):
+    service = bootstrap(str(tmp_path))
+    captured = {}
+    asset_ids = [f"asset-{index}" for index in range(1, 7)]
+
+    class StudioProvider:
+        base_url = "https://studio.test"
+
+        def generate(self, **kwargs):
+            captured.update(kwargs)
+            return VisualResult(
+                provider="entertainment_studio",
+                kind="generated_image",
+                asset_path="https://studio.test/api/assets/asset-1",
+                provider_meta={
+                    "creative_result": {
+                        "status": "APPROVED",
+                        "assets": asset_ids,
+                        "generationMetadata": {
+                            "canonReferenceAssetIds": ["canon-face", "canon-suit"],
+                            "candidateEvaluations": [{"assetId": "asset-1", "qaStatus": "PASS"}],
+                            "platformVariants": [{"platform": "instagram", "qa": {"status": "PASS"}}],
+                        },
+                        "qualityDecision": {"decision": "AUTO_APPROVE"},
+                    },
+                },
+            )
+
+    monkeypatch.setattr("social.visual_provider.default_provider", lambda: StudioProvider())
+    response = service.command(
+        "Create a six-card Micro Mission with the superhero and text that says DEAD BATTERIES for Instagram"
+    )
+
+    creative = response["creative"]
+    contract = creative["creative_contract"]
+    request = captured["art_direction"]["creative_request"]
+    sequence = captured["art_direction"]["sequence_briefs"]
+    assert response["status"] == "DELIVERED"
+    assert creative["asset_count"] == 6
+    assert contract["characters"] == ["Infenergy"]
+    assert contract["exact_visible_text"] == ["DEAD BATTERIES"]
+    assert [item["role"] for item in sequence] == [
+        "HOOK", "DISCOVERY", "COMPLICATION", "THINKING_ADAPTATION", "PAYOFF", "RESOLUTION",
+    ]
+    assert request["canonRequired"] is True
+    assert request["textMode"] == "HEADLINE"
+    assert request["qualityGovernance"]["blocking"] is True
+    assert request["productionStrategy"]["candidate_count"] == 4
+    assert creative["canon_reference_asset_ids"] == ["canon-face", "canon-suit"]
+    assert creative["quality_decision"]["decision"] == "AUTO_APPROVE"
+    assert creative["package"]["carousel_assets"] == [
+        {"public_url": f"https://studio.test/api/assets/{asset_id}", "local_path": ""}
+        for asset_id in asset_ids
+    ]
+    assert "Produced and validated 6 finished assets" in response["message"]
+
+
+def test_command_center_does_not_claim_delivery_when_provider_falls_back(tmp_path, monkeypatch):
+    service = bootstrap(str(tmp_path))
+    monkeypatch.setattr(
+        "social.visual_provider.default_provider",
+        lambda: type("Fallback", (), {"generate": lambda self, **kwargs: VisualResult(provider="template_render", kind="template_recipe")})(),
+    )
+
+    response = service.command("Create today's Infenergy quote about momentum")
+
+    assert response["status"] == "GENERATION_FAILED"
+    assert response["creative"]["failure"] == "finished_asset_provider_unavailable"
+    assert "No finished deliverable" not in response["message"]
+    assert "Produced and validated" not in response["message"]
+
+
+def test_command_center_develops_quotes_but_preserves_owner_text():
+    from social.command_center import compile_command
+
+    developed = compile_command("Create today's Infenergy quote about momentum")
+    supplied = compile_command("Create an Infenergy quote post that says OWNER WORDS")
+
+    assert developed["exact_visible_text"] == ["MOMENTUM IS ENERGY WITH DIRECTION."]
+    assert developed["quote_development"]["theme"] == "momentum"
+    assert developed["characters"] == ["Infenergy"]
+    assert developed["integrated_typography"] is True
+    assert supplied["exact_visible_text"] == ["OWNER WORDS"]
+    assert supplied["quote_development"] == {}
 
 
 def test_approved_carousel_agent_accepts_structured_parameters(tmp_path, monkeypatch):
@@ -1029,7 +1117,7 @@ def test_command_center_and_api_are_served(tmp_path):
     assert content_type.startswith("text/html")
     assert b"Infenergy Intelligence OS" in page
     assert b'id="mobile-nav"' in page
-    assert b'app.js?v=15' in page
+    assert b'app.js?v=16' in page
     assert b'styles.css?v=15' in page
     assert b'data-view="master"' in page
     assert b'id="master-capabilities"' in page
@@ -1046,6 +1134,10 @@ def test_command_center_and_api_are_served(tmp_path):
     assert b'id="logout"' in page
     assert b'id="job-search"' in page
     assert b"function operationOutput(source)" in javascript
+    assert b"source?.creative" in javascript
+    assert b"/^https?:\\/\\//i.test" in javascript
+    assert b"result.status === 'DELIVERED'" in javascript
+    assert b"renderDeliverables(result)" in javascript
     assert b"data-view-deliverables" in javascript
     assert b"Not scheduled \xc2\xb7 Not published" in javascript
     assert b"/api/os/transactions" in javascript

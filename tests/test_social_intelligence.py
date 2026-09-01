@@ -69,6 +69,8 @@ def test_creative_request_requires_earned_character_route_and_explicit_action():
 
 
 def test_entertainment_studio_provider_routes_structured_canonical_and_normal_work(monkeypatch):
+    from social.command_center import compile_command
+
     captured = {}
 
     class FakeResponse:
@@ -85,12 +87,19 @@ def test_entertainment_studio_provider_routes_structured_canonical_and_normal_wo
 
     monkeypatch.setattr(visual_provider.requests, "post", lambda url, **kwargs: captured.update({"url": url, "payload": kwargs["json"]}) or FakeResponse())
     provider = visual_provider.EntertainmentStudioVisualProvider("https://studio.test", "token", fallback=Fallback())
-    canonical = {"creative_request": {"requestedRoute": "MICRO_MISSION", "requestId": "request-1"}, "visual_message": "The one-percent mission", "visual_format": "cinematic"}
+    sequence_briefs = compile_command(
+        "Create a six-card Micro Mission with the superhero and text that says DEAD BATTERIES"
+    )["story_beats"]
+    canonical = {"creative_request": {"requestedRoute": "MICRO_MISSION", "requestId": "request-1"}, "visual_message": "The one-percent mission", "visual_format": "cinematic", "sequence_briefs": sequence_briefs}
     result = provider.generate(art_direction=canonical, positive_prompt="action", negative_prompt="static pose", platform="instagram_feed")
 
     assert result.provider == "entertainment_studio"
     assert result.asset_path == "https://studio.test/api/assets/asset-1"
     assert captured["payload"]["request"]["requestId"] == "request-1"
+    transported = captured["payload"]["production"]["sequenceBriefs"]
+    assert len(transported) == 6
+    assert [item["title"] for item in transported] == [item["title"] for item in sequence_briefs]
+    assert [item["prompt"] for item in transported] == [item["prompt"] for item in sequence_briefs]
 
     ordinary = provider.generate(art_direction={"creative_request": {"requestedRoute": "SCIENCE_VISUAL", "requestId": "request-2"}, "visual_message": "Heat changes charging behavior", "visual_format": "diagram"}, positive_prompt="thermal camera", negative_prompt="", platform="instagram_feed")
     assert ordinary.provider == "entertainment_studio"

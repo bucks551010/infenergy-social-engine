@@ -666,6 +666,168 @@ def register_core_capabilities(registry: CapabilityRegistry, policies: PolicyEng
             "_rollback": {"asset_paths": [item["local_path"] for item in assets]},
         }
 
+    def flagship_creative_produce(payload: dict[str, Any], context: ExecutionContext) -> dict[str, Any]:
+        from social.command_center import compile_command
+        from social.visual_provider import default_provider
+
+        command = str(payload["command"]).strip()
+        contract = compile_command(command)
+        if context.dry_run:
+            return {"production_status": "CONTRACT_READY", "creative_contract": contract, "production_mutated": False}
+
+        exact_strings = list(contract["exact_visible_text"])
+        headline = exact_strings[0] if exact_strings else command[:300]
+        story_beats = list(contract["story_beats"])
+        story = {
+            "setup": story_beats[0]["prompt"] if story_beats else command,
+            "trigger": "A recognizable energy, connection, preparation, or human-continuity problem becomes visible.",
+            "action": contract["infenergy_action"],
+            "obstacle": story_beats[2]["prompt"] if len(story_beats) > 2 else "The first interpretation is incomplete.",
+            "escalation": story_beats[3]["prompt"] if len(story_beats) > 3 else "The action reveals the true system problem.",
+            "payoff": story_beats[-1]["prompt"] if story_beats else "The visible action earns the resolution.",
+        }
+        creative_request = {
+            "requestId": contract["request_id"],
+            "contentId": f"command-center-{uuid.uuid4().hex[:12]}",
+            "objective": command,
+            "contentWorlds": ["ENTERTAINMENT"] if contract["characters"] else ["HUMAN_LIFE"],
+            "platform": contract["platform"],
+            "format": contract["format"],
+            "requestedRoute": contract["creative_mode"],
+            "humanTruth": "Energy matters because it keeps people connected to the life, work, family, and experiences that matter.",
+            "humanTension": "A relatable interruption, uncertainty, or misconception needs a meaningful response.",
+            "dominantIdea": exact_strings[0] if exact_strings else command,
+            "audienceReaction": "I recognize that moment, and I want to see what Infenergy does next.",
+            "emotionalMode": contract["emotional_mode"],
+            "characters": contract["characters"],
+            "canonRequired": contract["canon_required"],
+            "story": story,
+            "visualStandard": (
+                "Cinematic 3D photorealism; premium superhero-film key art; believable anatomy, skin, armor, lighting, "
+                "depth, body mechanics, cape physics, material response, and environmental energy illumination."
+            ),
+            "visualHero": "CHARACTER" if contract["characters"] else "TRANSFORMATION",
+            "whatHappens": contract["infenergy_action"],
+            "mustInclude": [
+                "Infenergy causes the visual outcome through a physically legible action",
+                "implied before, present action, and after",
+                *([f'Exact visible text: {value}' for value in exact_strings]),
+            ],
+            "mustAvoid": [
+                "generic superhero redesign", "static mannequin pose", "cheap plastic CGI", "random neon",
+                "hallucinated words, logos, signs, or numbering", "unrelated additional wording",
+            ],
+            "continuityRequirements": contract["continuity_requirements"],
+            "oneSecondMessage": headline,
+            "imageJob": contract["infenergy_action"],
+            "headlineJob": (
+                f"Render exactly {headline} as physical scene geometry with correct spelling, perspective, material, light, shadow, and interaction."
+                if contract["integrated_typography"] and exact_strings else "Add no generated text unless explicitly required."
+            ),
+            "captionJob": "Explain the human meaning and story without narrating what the image already shows.",
+            "ctaJob": "Use a proportionate participation or brand action only after the story resolves.",
+            "visualConcept": ["PHYSICAL_TYPOGRAPHY", "CHARACTER_CAUSES_OUTCOME"] if contract["integrated_typography"] else ["CINEMATIC_STORY_MOMENT"],
+            "visualGrammar": ["SINGLE_FOCAL_HIERARCHY", "ACTION_WITH_CONSEQUENCE", "IMPLIED_BEFORE_AFTER"],
+            "environment": "A scene-specific, physically believable environment chosen to make the requested metaphor immediately legible.",
+            "humanBehavior": "The human consequence is visible through behavior, not exposition.",
+            "beforeFrame": "The problem exists and has a recognizable consequence.",
+            "afterFrame": "Infenergy's earned action changes the situation.",
+            "composition": {"aspectRatio": contract["aspect_ratio"], "cardCount": contract["card_count"], "exactStrings": exact_strings},
+            "camera": {"language": "cinematic shot variety serving sequential story continuity"},
+            "lighting": "Physically believable cinematic light with motivated green energy spill and controlled violet only at high output.",
+            "colorCharacter": "realistic environmental color; controlled Infenergy green energy; no indiscriminate neon coating",
+            "textMode": "HEADLINE" if exact_strings else "NONE",
+            "layoutArchetype": "INTEGRATED_PHYSICAL_TYPOGRAPHY" if contract["integrated_typography"] else "CINEMATIC_STORY",
+            "productionStrategy": {
+                "strategy": "REFERENCE_GUIDED" if contract["canon_required"] else "CONCEPT_GUIDED",
+                "candidate_count": 4 if contract["canon_required"] else 2,
+                "max_major_revisions": contract["repair_policy"]["max_major_revisions"],
+                "fallback_ladder": ["repair_selected_candidate", "regenerate_failed_frame", "block_delivery"],
+            },
+            "qualityGovernance": {
+                "risk": "HIGH" if contract["canon_required"] else "MEDIUM",
+                "blocking": True,
+                "decision": "DO_NOT_DELIVER_UNLESS_CANON_TEXT_STORY_VISUAL_AND_CONTINUITY_GATES_PASS",
+                "requiredGates": contract["quality_gates"],
+                "exactStrings": exact_strings,
+            },
+        }
+        art_direction = {
+            "creative_request": creative_request,
+            "sequence_briefs": story_beats,
+            "visual_message": headline,
+            "visual_format": contract["format"],
+            "primary_subject": "Infenergy" if contract["characters"] else command,
+            "action": contract["infenergy_action"],
+            "must_include": creative_request["mustInclude"],
+            "must_avoid": creative_request["mustAvoid"],
+        }
+        provider = default_provider()
+        visual = provider.generate(
+            art_direction=art_direction,
+            positive_prompt=(
+                f"{contract['visual_style']}. {contract['infenergy_action']} "
+                f"Locked exact strings: {exact_strings or 'none'}. Obey the complete CreativeRequest and sequence briefs."
+            ),
+            negative_prompt="generic superhero, static pose, character drift, malformed anatomy, misspelled text, random text, weak continuity",
+            platform=contract["platform"],
+        )
+        studio_result = visual.provider_meta.get("creative_result", {}) if isinstance(visual.provider_meta, dict) else {}
+        asset_ids = [str(item) for item in studio_result.get("assets", []) if str(item).strip()]
+        assets = [f"{provider.base_url}/api/assets/{asset_id}" for asset_id in asset_ids] if hasattr(provider, "base_url") else ([visual.asset_path] if visual.asset_path else [])
+        expected_assets = contract["card_count"] if contract["deliverable"] == "carousel" else 1
+        studio_status = str(studio_result.get("status") or "")
+        if visual.kind != "generated_image":
+            return {
+                "production_status": "GENERATION_FAILED",
+                "creative_contract": contract,
+                "provider": visual.as_dict(),
+                "failure": "finished_asset_provider_unavailable",
+                "next_action": "Restore Entertainment Studio credentials/provider capacity, then retry this same command.",
+            }
+        if studio_status and studio_status != "APPROVED":
+            return {
+                "production_status": "REPAIR_REQUIRED" if studio_status != "REJECTED" else "VALIDATION_FAILED",
+                "creative_contract": contract,
+                "assets": assets,
+                "studio_result": studio_result,
+                "failure": f"studio_status:{studio_status}",
+            }
+        if len(assets) != expected_assets:
+            return {
+                "production_status": "ASSEMBLY_FAILED",
+                "creative_contract": contract,
+                "assets": assets,
+                "studio_result": studio_result,
+                "failure": f"expected_{expected_assets}_assets_received_{len(assets)}",
+            }
+        package = {
+            "post_id": creative_request["contentId"],
+            "objective": command,
+            "creative_contract": contract,
+            "creative_request": creative_request,
+            "visual_format": contract["format"].upper(),
+            "carousel_assets": [{"public_url": url, "local_path": ""} for url in assets] if expected_assets > 1 else [],
+            "generated_visuals": {contract["platform"]: assets[0]},
+            "platforms": [contract["platform"]],
+            "platform_policy": {"platforms": [contract["platform"]]},
+            "quality_decision": studio_result.get("qualityDecision", {}),
+            "generation_metadata": studio_result.get("generationMetadata", {}),
+        }
+        return {
+            "production_status": "DELIVERED",
+            "creative_contract": contract,
+            "package": package,
+            "assets": assets,
+            "asset_count": len(assets),
+            "studio_status": studio_status or "APPROVED",
+            "canon_reference_asset_ids": (studio_result.get("generationMetadata") or {}).get("canonReferenceAssetIds", []),
+            "candidate_evaluations": (studio_result.get("generationMetadata") or {}).get("candidateEvaluations", []),
+            "platform_variants": (studio_result.get("generationMetadata") or {}).get("platformVariants", []),
+            "quality_decision": studio_result.get("qualityDecision", {}),
+            "next_action": "Review the delivered assets; scheduling remains a separate owner-approved action.",
+        }
+
     def creative_scored_story_reel(payload: dict[str, Any], context: ExecutionContext) -> dict[str, Any]:
         from social.reels import build_scored_story_plan, render_scored_story_reel, technical_qa
 
@@ -840,6 +1002,7 @@ def register_core_capabilities(registry: CapabilityRegistry, policies: PolicyEng
         Capability("opportunities.get", "Get opportunities", "Return ranked, evidence-bearing Infenergy opportunities.", "BUSINESS_INTELLIGENCE", opportunities_get),
         Capability("risks.get", "Get risks", "Return ranked, evidence-bearing Infenergy risks and mitigations.", "BUSINESS_INTELLIGENCE", risks_get),
         Capability("creative.score", "Score creative", "Evaluate supplied content with the preserved platform-native quality rubric without generating or publishing anything.", "CREATIVE_STUDIO", creative_score, object_schema({"content": {"type": "object"}, "platforms": {"type": "array"}}, ["content"])),
+        Capability("creative.command.produce", "Produce flagship creative from a command", "Own a natural-language Infenergy creative request from intent through canon-aware Entertainment Studio generation, sequence assembly, blocking QA, automatic repair, and finished asset delivery. Never returns a plan as a deliverable.", "CREATIVE_STUDIO", flagship_creative_produce, object_schema({"command": {"type": "string"}}, ["command"]), risk_level="INTERNAL_MUTATION", cost_class="MEDIUM", permission_requirement="AUTONOMOUS"),
         Capability("creative.carousel.generate", "Generate carousel package", "Author and render a complete platform-safe carousel package with a caller-selected 2-to-10 slide count. This creates draft assets but does not schedule or publish them.", "CREATIVE_STUDIO", creative_carousel_generate, object_schema({"objective": {"type": "string"}, "title": {"type": "string"}, "platform": {"type": "string"}, "platforms": {"type": "array"}, "slide_count": {"type": "integer"}, "product_id": {"type": "string"}, "product": {"type": "object"}, "principle_key": {"type": "string"}, "archetype_key": {"type": "string"}, "supporting_message": {"type": "string"}, "caption": {"type": "string"}, "cta": {"type": "string"}, "pillar": {"type": "string"}, "visual_motif": {"type": "string"}}, ["objective"]), risk_level="INTERNAL_MUTATION", cost_class="MEDIUM", permission_requirement="AUTONOMOUS", supports_rollback=True, rollback_handler=rollback_creative),
         Capability("creative.scored_story_reel.generate", "Render scored story Reel", "Animate an existing ordered carousel into a vertical H.264 story Reel with readable timing, emotional scoring, free local narration, and Instagram-ready media. Facebook and LinkedIn retain carousel assets until their video upload paths are enabled.", "CREATIVE_STUDIO", creative_scored_story_reel, object_schema({"package": {"type": "object"}, "slide_texts": {"type": "array"}, "emotions": {"type": "array"}, "visual_readings": {"type": "array"}, "narration_path": {"type": "string"}, "auto_narration": {"type": "boolean"}, "motion_intensity": {"type": "number"}}, ["package"]), risk_level="INTERNAL_MUTATION", cost_class="LOW", permission_requirement="EXECUTE_WITH_APPROVAL", supports_rollback=True, rollback_handler=rollback_creative),
         Capability("agents.list", "List operational agents", "List every preserved specialist agent and its accepted parameters and aliases.", "OPERATIONS", agents_list),

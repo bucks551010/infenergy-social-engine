@@ -72,10 +72,11 @@ function richText(content) {
 function message(role, content, status = '') { const wrap = document.createElement('div'); wrap.className = `message ${role} ${status}`; wrap.innerHTML = role === 'assistant' ? `<span class="avatar">I</span><div><strong>Infenergy Intelligence</strong><div class="rich-message">${richText(content)}</div></div>` : `<div><strong>Owner</strong><p>${esc(content)}</p></div>`; $('#messages').append(wrap); $('#messages').scrollTop = $('#messages').scrollHeight; }
 function operationOutput(source) {
   const execution = source?.execution || source || {};
-  const candidates = [execution.result?.output, execution.result, execution.after_state?.output, execution.after_state];
+  const candidates = [source?.creative, execution.result?.output, execution.result, execution.after_state?.output, execution.after_state];
   return candidates.find((item) => item?.package) || null;
 }
 function mediaUrl(path) {
+  if (/^https?:\/\//i.test(String(path || ''))) return String(path);
   const fileName = String(path || '').replaceAll('\\', '/').split('/').pop();
   return fileName ? `/media/${encodeURIComponent(fileName)}` : '';
 }
@@ -107,7 +108,7 @@ function renderDeliverables(source, target = null) {
   const transactionId = execution.transaction_id || execution.id || source?.id || '';
   const rollbackAvailable = Boolean(execution.rollback_available || execution.rollback_data && Object.keys(execution.rollback_data).length);
   const images = assets.map((asset, index) => {
-    const url = mediaUrl(asset.local_path || asset.path || asset.url);
+    const url = mediaUrl(typeof asset === 'string' ? asset : asset.public_url || asset.local_path || asset.path || asset.url);
     const slide = slides[index] || {};
     return `<article class="deliverable-slide">${url ? `<a href="${esc(url)}" target="_blank" rel="noopener"><img src="${esc(url)}" alt="Carousel slide ${index + 1}" loading="lazy"></a>` : ''}<div><b>${index + 1}/${Math.max(assets.length, slides.length)}</b><strong>${esc(slide.on_image_headline || slide.headline || `Slide ${index + 1}`)}</strong><span>${esc(slide.on_image_subline || slide.supporting || '')}</span></div></article>`;
   }).join('');
@@ -409,7 +410,7 @@ $('#nav').addEventListener('click', (event) => { const button = event.target.clo
 $('#mobile-nav').addEventListener('change', (event) => activateView(event.target.value));
 $('#job-search').addEventListener('input', (event) => { state.jobQuery = event.target.value.trim(); renderJobs(state.data?.jobs || []); });
 document.addEventListener('click', (event) => { const link = event.target.closest('[data-job-id]'); if (!link) return; state.jobQuery = link.dataset.jobId; $('#job-search').value = state.jobQuery; renderJobs(state.data?.jobs || []); activateView('jobs'); });
-$('#command-form').addEventListener('submit', async (event) => { event.preventDefault(); const input = $('#command-input'), text = input.value.trim(); if (!text) return; message('user', text); input.value = ''; message('assistant', 'Working… Complex operations can take several minutes while tools finish and results are verified.'); const pending = $('#messages .message:last-child'); try { const result = await api('/api/os/command', { method: 'POST', body: JSON.stringify({ message: text, conversation_id: state.conversationId }) }); pending.remove(); message('assistant', result.message, ['BLOCKED', 'TIMED_OUT'].includes(result.status) ? 'blocked' : ''); state.conversationId = result.conversation_id; await load(); } catch (error) { pending.remove(); message('assistant', 'The command could not finish: ' + error.message, 'blocked'); } });
+$('#command-form').addEventListener('submit', async (event) => { event.preventDefault(); const input = $('#command-input'), text = input.value.trim(); if (!text) return; message('user', text); input.value = ''; message('assistant', 'Working… Complex operations can take several minutes while tools finish and results are verified.'); const pending = $('#messages .message:last-child'); try { const result = await api('/api/os/command', { method: 'POST', body: JSON.stringify({ message: text, conversation_id: state.conversationId }) }); pending.remove(); message('assistant', result.message, ['BLOCKED', 'TIMED_OUT', 'GENERATION_FAILED', 'VALIDATION_FAILED', 'ASSEMBLY_FAILED'].includes(result.status) ? 'blocked' : ''); if (result.status === 'DELIVERED') renderDeliverables(result); state.conversationId = result.conversation_id; await load(); } catch (error) { pending.remove(); message('assistant', 'The command could not finish: ' + error.message, 'blocked'); } });
 $('#command-input').addEventListener('keydown', (event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); $('#command-form').requestSubmit(); } });
 $('#login-form').addEventListener('submit', async (event) => {
   event.preventDefault();

@@ -21,7 +21,7 @@ Work like a capable senior operator, not a question-answer chatbot. Maintain con
 
 Own the objective from request to verified outcome: inspect current state, form a concise plan, invoke the registered semantic tools, evaluate their results, adapt, and continue until the objective is complete or a real external blocker remains. Prefer taking safe, reversible action over explaining what the owner could do. Use read-only tools autonomously. Use dry runs to preview mutations. If governance requires approval, create the approval request through the capability, report exactly what is waiting, and explain the single approval needed. Use social.schedule_job_campaign for a completed dated campaign instead of creating an automation or requesting approval for each individual slot. A PLANNING or RUNNING job is not a finished outcome. After an approved job exists, produce the actual requested work product and call jobs.complete with those deliverables before claiming completion. Never claim that a job, plan, publication, or automation exists unless a tool result confirms it.
 
-For creative requests, use creative.carousel.generate to produce actual draft assets rather than promising that regeneration is pending. Honor the owner's requested slide_count whenever it is within the platform limit; never impose a six-slide house limit. Then use social.schedule with the generated package so the owner sees one precise approval that both approves and schedules the finished package. Scheduling is not publishing; publication.dispatch remains a separate irreversible approval.
+For natural-language creative requests, use creative.command.produce so character resolution, canon, story, integrated typography, sequence continuity, Studio routing, blocking QA, and automatic repair remain one authoritative contract. Use creative.carousel.generate only for explicitly non-character editorial carousels. Never return a plan when the owner asked to create. Scheduling is separate and requires owner approval; publication.dispatch remains a separate irreversible approval.
 
 Infer reasonable operational details from Infenergy's goals, catalog, strategy, and conversation. Ask a clarifying question only when a missing fact would create material risk or make execution impossible; otherwise state the assumption and proceed. Be concise in chat while doing the detailed work through tools. Use authoritative internal data when available and current external research when needed. For substantial work, establish a durable job or checkpoint before a long tool chain so progress can be resumed safely. Distinguish facts, metrics, inference, forecast, hypothesis, recommendation, and owner decision. Have a point of view. Do not make the owner operate low-level tools. Do not bluff. Respect permissions, approvals, budgets, and policies. Preserve provenance and explain material actions. Never expand your own permissions. The owner is the final authority. Use only registered Infenergy semantic tools; do not use ambient shell, filesystem, credential, or deployment tools.
 """
@@ -304,6 +304,40 @@ class IntelligenceOS:
         actor: str = "owner",
     ) -> dict[str, Any]:
         conversation = self.get_conversation(conversation_id) if conversation_id else self.latest_conversation(actor)
+        from social.command_center import is_flagship_creative_command
+        if is_flagship_creative_command(message):
+            self._message(conversation["id"], "user", message)
+            execution = self.execute_capability(
+                "creative.command.produce",
+                {"command": message},
+                actor=actor,
+                operation_id=f"creative-command:{uuid.uuid4().hex}",
+            )
+            if execution.get("status") == "WAITING_APPROVAL":
+                content = "Creative production is waiting for the required owner approval. No generation or delivery is being claimed."
+                self._message(conversation["id"], "assistant", content, execution)
+                return {
+                    "status": "WAITING_APPROVAL",
+                    "conversation_id": conversation["id"],
+                    "message": content,
+                    "approval_id": execution.get("approval_id"),
+                    "execution": execution,
+                }
+            result = execution.get("result", {})
+            production_status = str(result.get("production_status") or execution.get("status") or "")
+            asset_count = int(result.get("asset_count") or len(result.get("assets", [])))
+            if production_status == "DELIVERED":
+                content = f"Produced and validated {asset_count} finished asset{'s' if asset_count != 1 else ''}. The deliverable is ready for review; scheduling and publishing were not performed."
+            else:
+                content = f"Creative production status: {production_status}. {result.get('failure') or result.get('next_action') or 'No finished deliverable is being claimed.'}"
+            self._message(conversation["id"], "assistant", content, execution)
+            return {
+                "status": production_status,
+                "conversation_id": conversation["id"],
+                "message": content,
+                "execution": execution,
+                "creative": result,
+            }
         pending = self.policies.list_approvals(actor=actor, status="PENDING", limit=1)
         if pending and self._is_approval_intent(message):
             self._message(conversation["id"], "user", message)

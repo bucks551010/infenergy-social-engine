@@ -44,6 +44,97 @@ class EditorialDirectorTests(unittest.TestCase):
         self.assertEqual(selected["_rotation_decision"]["selection_reason"], "random_recent_exclusion")
         self.assertEqual(len(choose.call_args.args[0]), 1)
 
+    def test_intervention_series_uses_least_recently_used_catalog_product(self) -> None:
+        history = _history([{
+            "product_id": "PF-1",
+            "product_name": "PowerFlex",
+            "published_at": datetime.now(timezone.utc).isoformat(),
+            "status": "published",
+        }])
+
+        selected = generate_posts._pick_series_product(PRODUCTS, history)
+
+        self.assertEqual(selected["id"], "PF-2")
+        self.assertEqual(selected["_rotation_decision"]["selection_reason"], "least_recently_used_catalog")
+
+    def test_intervention_series_format_controls_visual_and_platform_contracts(self) -> None:
+        series = {
+            "id": "infenergy_intervention",
+            "preferred_format": "product_micro_mission_comic",
+            "story_pattern": "mistake_to_intervention_to_resolution",
+            "originality_dimensions": ["scenario", "persona"],
+        }
+        visual_plan = generate_posts._apply_recurring_series_visual_plan({"gemini_image_prompt": "A grounded kitchen scene."}, series)
+        content = {}
+        platform_posts = {"facebook": {}, "instagram": {}, "linkedin": {}}
+        generate_posts._apply_recurring_series_package(content, platform_posts, series)
+
+        self.assertEqual(visual_plan["creative_route"], "PRODUCT_MICRO_MISSION_COMIC")
+        self.assertIn("complete multi-panel comic page", visual_plan["gemini_image_prompt"])
+        self.assertEqual(content["series_format"], "product_micro_mission_comic")
+        self.assertEqual(platform_posts["instagram"]["media_type"], "STATIC")
+        self.assertTrue(all(post["series_id"] == "infenergy_intervention" for post in platform_posts.values()))
+
+    def test_intervention_series_reaches_orchestrator_pipeline_with_rotated_product(self) -> None:
+        series = {"id": "infenergy_intervention", "product_required": True, "preferred_format": "cinematic_brand_poster"}
+        captured = {}
+
+        def route(*args, **kwargs):
+            captured.update(kwargs)
+            return {"status": "generated"}
+
+        with patch.object(generate_posts, "select_weekly_sequence", return_value={"series": series}), patch.object(
+            generate_posts, "load_products", return_value=PRODUCTS
+        ), patch.object(generate_posts, "load_history", return_value=_history([])), patch.object(
+            generate_posts, "_route_generate_orchestrator", side_effect=route
+        ):
+            result = generate_posts.generate("midday", pipeline_override="orchestrator")
+
+        self.assertEqual(result["status"], "generated")
+        self.assertEqual(captured["product_id_override"], "PF-1")
+        self.assertEqual(captured["recurring_series"]["id"], "infenergy_intervention")
+
+    def test_orchestrator_series_strategy_changes_copy_and_concept_brief(self) -> None:
+        captured = {}
+        series = {
+            "id": "infenergy_intervention",
+            "preferred_format": "product_micro_mission_comic",
+            "story_pattern": "mistake_to_intervention_to_resolution",
+            "originality_dimensions": ["scenario", "persona", "setting"],
+        }
+
+        with patch.object(generate_posts, "run_social_intelligence", side_effect=lambda **kwargs: captured.update(kwargs) or []), patch.object(
+            generate_posts, "_living_strategy_for_generation", return_value=({}, {})
+        ):
+            generate_posts._route_generate_orchestrator("midday", recurring_series=series)
+
+        strategy = captured["approved_strategy"]
+        self.assertEqual(strategy["series_id"], "infenergy_intervention")
+        self.assertEqual(strategy["preferred_format"], "product_micro_mission_comic")
+        self.assertEqual(strategy["originality_dimensions"], ["scenario", "persona", "setting"])
+        self.assertIn("fresh avoidable energy mistake", strategy["angle"])
+
+    def test_intervention_carousel_emits_strict_multi_slide_generation_contract(self) -> None:
+        content = {
+            "selected_hook": "Your phone is at one percent",
+            "wp_excerpt": "Preparation protects the routines that matter.",
+            "selected_cta": "Stay prepared",
+            "pillar": "everyday_power",
+        }
+        series = {"id": "infenergy_intervention", "preferred_format": "educational_story_carousel"}
+        product = {"name": "PowerFlex", "image_url": "https://example.test/powerflex.png"}
+
+        generate_posts._apply_recurring_series_generation_contract(content, {"visual_objective": "A commuter loses phone access"}, series, product)
+
+        generation = content["gemini_generation"]
+        self.assertTrue(generation["strict_provider"])
+        self.assertFalse(generation["fallback_allowed"])
+        self.assertEqual(generation["required_image_count"], len(generation["prompts"]))
+        self.assertGreaterEqual(generation["required_image_count"], 6)
+        self.assertEqual(generation["prompts"][0]["role"], "COVER")
+        self.assertEqual(generation["prompts"][-1]["role"], "FINALE")
+        self.assertIn(product["image_url"], generation["reference_image_urls"])
+
     def test_bootstrap_history_biases_to_no_product(self) -> None:
         # Fewer than 3 recent posts: bucket should default to no_product to seed a healthy mix.
         history = _history([_post("PowerFlex"), _post("PowerFlex")])

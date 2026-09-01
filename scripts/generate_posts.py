@@ -245,6 +245,7 @@ def _route_generate_orchestrator(
 ) -> dict[str, Any]:
     """Return the first orchestrated post package in the legacy payload shape used by the runtime."""
     social_platform = _social_platform_key(platform)
+    recurring_series = kw.pop("recurring_series", {}) if isinstance(kw.get("recurring_series"), dict) else {}
     no_product = bool(kw.get("no_product")) or os.environ.get("CONTENT_BUCKET_OVERRIDE", "").strip().lower() == "no_product"
     kw["no_product"] = no_product
     council_decision: dict[str, Any] = {}
@@ -257,6 +258,18 @@ def _route_generate_orchestrator(
             kw["approved_strategy"] = approved_strategy
     else:
         council_decision = {"decision": "strategy_selected", "source": "caller_override"}
+    if recurring_series.get("id") == "infenergy_intervention":
+        approved_strategy = kw.get("approved_strategy") if isinstance(kw.get("approved_strategy"), dict) else {}
+        kw["approved_strategy"] = {
+            **approved_strategy,
+            "series_id": recurring_series["id"],
+            "topic": "Infenergy Intervention",
+            "angle": "Dramatize a fresh avoidable energy mistake, then earn a product-enabled resolution through Infenergy's action.",
+            "reader_job": "Recognize the mistake, enjoy the intervention, and remember the practical solution.",
+            "preferred_format": recurring_series.get("preferred_format"),
+            "required_story_pattern": recurring_series.get("story_pattern"),
+            "originality_dimensions": recurring_series.get("originality_dimensions", []),
+        }
     batch = run_social_intelligence(count=1, platform=social_platform, **kw)
     if not batch:
         return {}
@@ -292,6 +305,7 @@ def _route_generate_orchestrator(
         "categories": [offering.get("category", "")] if offering.get("category") else [],
         "metrics": (catalog_product or {}).get("metrics", []) or list(offering.get("verified_facts", [])),
         "fact_snippet": (catalog_product or {}).get("fact_snippet", "") or offering.get("description_clean", ""),
+        "image_url": (offering.get("images") or [""])[0],
     }
     topic = str((brief.get("topic_path") or {}).get("topic") or "Product education").strip()
     components = _build_post_components(
@@ -426,6 +440,9 @@ def _route_generate_orchestrator(
     # metadata only -- it never actually calls Gemini. Reuse the same
     # generate_visuals() step the legacy pipeline uses so orchestrator
     # posts get real, product-anchored creative instead of staying empty.
+    visual_pkg = _apply_recurring_series_visual_plan(visual_pkg, recurring_series)
+    _apply_recurring_series_package(legacy, platform_posts, recurring_series)
+    _apply_recurring_series_generation_contract(legacy, visual_pkg, recurring_series, product_for_adaptation)
     legacy["visual_plan"] = visual_pkg
     legacy["generated_visuals"] = (
         {"deferred": True, "reason": "text_only_candidate_pool"}
@@ -442,6 +459,9 @@ def _route_generate_orchestrator(
     legacy["instagram_media_decision"] = instagram_decision
     platform_posts["instagram"]["media_type"] = instagram_decision["selected_format"]
     platform_posts["instagram"]["instagram_media_decision"] = instagram_decision
+    if recurring_series.get("id") == "infenergy_intervention":
+        platform_posts["instagram"]["media_type"] = "CAROUSEL" if recurring_series.get("preferred_format") == "educational_story_carousel" else "STATIC"
+        legacy["instagram_media_decision"]["selected_format"] = platform_posts["instagram"]["media_type"]
     if instagram_decision["selected_format"] == "REEL":
         reel_plan = reels.build_reel_plan(
             post_id=str(legacy.get("post_id") or ""),
@@ -2305,6 +2325,103 @@ def _pick_product(products: list[dict], history: dict) -> dict | None:
     selected.pop("_rotation_product_id", None)
     selected["_rotation_decision"] = decision
     return selected
+
+
+def _pick_series_product(products: list[dict], history: dict) -> dict | None:
+    candidates = [dict(product) for product in products if product.get("id") or product.get("sku") or product.get("name")]
+    if not candidates:
+        return None
+    ledger = build_rotation_ledger(history, load_anti_repeat_windows())
+    last_used = ledger.get("last_used_at", {}).get("product_id", {})
+
+    def rotation_key(product: dict) -> tuple[str, str]:
+        product_id = str(product.get("id") or product.get("sku") or product.get("name") or "")
+        return str(last_used.get(product_id) or ""), product_id.lower()
+
+    selected = min(candidates, key=rotation_key)
+    selected_id = str(selected.get("id") or selected.get("sku") or selected.get("name") or "")
+    selected["_rotation_decision"] = {
+        "dimension": "product_id",
+        "pool_size": len(candidates),
+        "selected": selected_id,
+        "selection_reason": "least_recently_used_catalog",
+        "last_used_at": str(last_used.get(selected_id) or ""),
+    }
+    return selected
+
+
+def _apply_recurring_series_visual_plan(visual_plan: dict, series: dict) -> dict:
+    if series.get("id") != "infenergy_intervention":
+        return visual_plan
+    preferred_format = str(series.get("preferred_format") or "cinematic_brand_poster")
+    directives = {
+        "cinematic_brand_poster": "Create one cinematic character-led brand poster with a single decisive intervention moment and a bold one-second visual hierarchy.",
+        "product_micro_mission_comic": "Create one complete multi-panel comic page: avoidable energy mistake, Infenergy confrontation, product reveal, and product-enabled resolution with readable sequential action.",
+        "educational_story_carousel": "Create a platform-native educational story carousel with distinct standalone frames for hook, mistake, consequence, intervention, product proof, and resolution.",
+    }
+    directive = directives.get(preferred_format, directives["cinematic_brand_poster"])
+    current_prompt = str(visual_plan.get("gemini_image_prompt") or "").strip()
+    visual_plan["gemini_image_prompt"] = f"INFENERGY INTERVENTION SERIES: {directive} Lock Infenergy character canon and verified product appearance. {current_prompt}".strip()
+    visual_plan["creative_route"] = preferred_format.upper()
+    visual_plan["series_id"] = series["id"]
+    visual_plan["series_story_pattern"] = series.get("story_pattern")
+    visual_plan["originality_dimensions"] = list(series.get("originality_dimensions") or [])
+    return visual_plan
+
+
+def _apply_recurring_series_package(content: dict, platform_posts: dict, series: dict) -> None:
+    if series.get("id") != "infenergy_intervention":
+        return
+    preferred_format = str(series.get("preferred_format") or "cinematic_brand_poster")
+    content["recurring_series"] = dict(series)
+    content["content_archetype"] = "character_led_edutainment"
+    content["series_format"] = preferred_format
+    for package in platform_posts.values():
+        if isinstance(package, dict):
+            package["series_id"] = series["id"]
+            package["content_format"] = preferred_format
+    instagram = platform_posts.get("instagram")
+    if isinstance(instagram, dict):
+        instagram["media_type"] = "CAROUSEL" if preferred_format == "educational_story_carousel" else "STATIC"
+
+
+def _apply_recurring_series_generation_contract(content: dict, visual_plan: dict, series: dict, product: dict | None) -> None:
+    if series.get("id") != "infenergy_intervention" or series.get("preferred_format") != "educational_story_carousel":
+        return
+    from build_monthly_content import _gemini_generation_plan
+
+    headline = str(content.get("selected_hook") or content.get("on_image_headline") or "The preventable power mistake").strip()
+    expansion = str(content.get("wp_excerpt") or content.get("educational_lesson") or "A small energy decision can protect an important routine.").strip()
+    cta = str(content.get("selected_cta") or "Stay connected. Stay prepared.").strip()
+    product_name = str((product or {}).get("name") or "the selected Infenergy product").strip()
+    scene = str(visual_plan.get("visual_objective") or visual_plan.get("gemini_image_prompt") or "A recognizable real-life energy interruption").strip()
+    product_image = str((product or {}).get("image_url") or content.get("product_image_url") or "").strip()
+    thought = {
+        "format": "carousel",
+        "statement": headline,
+        "expansion": expansion,
+        "pillar": str(content.get("pillar") or "everyday_power"),
+        "prompt": cta,
+        "cta": cta,
+        "mission_title": "INFENERGY INTERVENTION",
+        "moral": expansion,
+        "visual_motif": scene,
+        "image_scene": scene,
+        "visual_execution": "canonical Infenergy character-led educational story",
+        "characters": ["Infenergy"],
+        "reference_image_urls": [product_image] if product_image.startswith("http") else [],
+        "slides": [
+            {"role": "mistake", "headline": "The avoidable mistake", "supporting": headline},
+            {"role": "consequence", "headline": "What it interrupts", "supporting": expansion},
+            {"role": "intervention", "headline": "Infenergy steps in", "supporting": "Show the practical decision that changes the outcome."},
+            {"role": "product_proof", "headline": product_name, "supporting": "Show only verified product appearance and supported facts."},
+        ],
+    }
+    product_reference = {
+        "name": product_name,
+        "visual_direction": "Show the exact referenced product in physically credible use without redesigning it.",
+    }
+    content["gemini_generation"] = _gemini_generation_plan(thought, product_reference)
 
 
 def _pick_product_by_id(products: list[dict], product_id: str) -> dict | None:
@@ -5137,6 +5254,14 @@ def generate(
     mode = _pipeline_mode(pipeline_override)
     platform = os.environ.get("POST_PLATFORMS", "instagram_feed").split(",")[0].strip() or "instagram_feed"
     no_product = no_product or os.environ.get("CONTENT_BUCKET_OVERRIDE", "").strip().lower() == "no_product"
+    weekly_sequence = select_weekly_sequence(slot, now_utc=datetime.now(timezone.utc))
+    recurring_series = weekly_sequence.get("series", {}) if isinstance(weekly_sequence.get("series"), dict) else {}
+    if no_product:
+        recurring_series = {}
+    elif recurring_series.get("product_required") and not product_id_override:
+        series_product = _pick_series_product(load_products(), load_history())
+        if series_product:
+            product_id_override = str(series_product.get("id") or series_product.get("sku") or "")
 
     if mode == "best_of":
         return _generate_best_of(slot, funnel_stage_override=funnel_stage_override, product_id_override=product_id_override)
@@ -5149,6 +5274,7 @@ def generate(
             approved_strategy=approved_strategy,
             revision_feedback=revision_feedback,
             no_product=no_product,
+            recurring_series=recurring_series,
         )
     if mode != "legacy" and _social_intelligence_enabled():
         return _route_generate_orchestrator(
@@ -5159,6 +5285,7 @@ def generate(
             approved_strategy=approved_strategy,
             revision_feedback=revision_feedback,
             no_product=no_product,
+            recurring_series=recurring_series,
         )
 
     ensure_runtime_data()
@@ -5194,11 +5321,22 @@ def generate(
     preview_stage = funnel_stage
     products = load_products()
     business_profile = _build_business_profile(products)
-
     forced_product = _pick_product_by_id(products, product_id_override) if product_id_override else None
     if forced_product:
         # Operator explicitly requested this product (e.g. dashboard override) — always honor it.
         product = forced_product
+        preferred_pillars = _preferred_pillars_for_stage(preview_stage)
+        pillar, topic, topic_hash = _pick_topic_for_product(
+            queue,
+            history,
+            product,
+            preview_stage,
+            preferred_pillars=preferred_pillars,
+        )
+        content_bucket = "product_education"
+        want_product = True
+    elif recurring_series.get("product_required"):
+        product = _pick_series_product(products, history)
         preferred_pillars = _preferred_pillars_for_stage(preview_stage)
         pillar, topic, topic_hash = _pick_topic_for_product(
             queue,
@@ -5222,7 +5360,6 @@ def generate(
     brand_profile = load_brand_profile()
     selling_ideology = load_selling_ideology()
     structured_campaign = _load_latest_structured_campaign()
-    weekly_sequence = select_weekly_sequence(slot, now_utc=datetime.now(timezone.utc))
     stage_meta = funnel_config.get("stages", {}).get(funnel_stage, {}) if isinstance(funnel_config, dict) else {}
 
     hook_window = int(os.environ.get("ANTI_REPEAT_HOOK_WINDOW", "30"))
@@ -6052,6 +6189,7 @@ def generate(
         visual_plan["segment_preset"] = str(segment_constraints.get("segment_key", "")).strip()
     visual_plan = _apply_logical_visual_strategy(visual_plan, logical_strategy, product)
     visual_plan = _apply_strategic_brief_to_visual(visual_plan, run_context, product)
+    visual_plan = _apply_recurring_series_visual_plan(visual_plan, recurring_series)
     human_connection_context = _human_connection_prompt_context(
         run_context.get("human_connection") if isinstance(run_context.get("human_connection"), dict) else {}
     )
@@ -6352,6 +6490,8 @@ Return ONLY valid JSON with these exact keys (no markdown, no code fences):
         content["ig_caption"] = platform_posts["instagram"]["caption"]
         content["li_text"] = platform_posts["linkedin"]["caption"]
         content["selected_cta"] = components["cta"]
+        _apply_recurring_series_package(content, platform_posts, recurring_series)
+        _apply_recurring_series_generation_contract(content, visual_plan, recurring_series, product)
         social_media_assets = _build_social_media_assets(components, platform_posts, visual_plan)
         content["social_media_assets"] = social_media_assets
         platform_posts["instagram"]["carousel_campaign"] = social_media_assets["asset_2_carousel_campaign"]
@@ -6373,6 +6513,9 @@ Return ONLY valid JSON with these exact keys (no markdown, no code fences):
         content["instagram_media_decision"] = instagram_decision
         platform_posts["instagram"]["media_type"] = instagram_decision["selected_format"]
         platform_posts["instagram"]["instagram_media_decision"] = instagram_decision
+        if recurring_series.get("id") == "infenergy_intervention":
+            platform_posts["instagram"]["media_type"] = "CAROUSEL" if recurring_series.get("preferred_format") == "educational_story_carousel" else "STATIC"
+            content["instagram_media_decision"]["selected_format"] = platform_posts["instagram"]["media_type"]
         if instagram_decision["selected_format"] == "REEL":
             reel_plan = reels.build_reel_plan(
                 post_id=post_id,
@@ -6702,6 +6845,8 @@ Return ONLY valid JSON with these exact keys (no markdown, no code fences):
     content["ig_caption"] = platform_posts["instagram"]["caption"]
     content["li_text"] = platform_posts["linkedin"]["caption"]
     content["selected_cta"] = components["cta"]
+    _apply_recurring_series_package(content, platform_posts, recurring_series)
+    _apply_recurring_series_generation_contract(content, visual_plan, recurring_series, product)
     social_media_assets = _build_social_media_assets(components, platform_posts, visual_plan)
     content["social_media_assets"] = social_media_assets
     platform_posts["instagram"]["carousel_campaign"] = social_media_assets["asset_2_carousel_campaign"]

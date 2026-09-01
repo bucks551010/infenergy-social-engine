@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import sys
 import unittest
+from unittest.mock import patch
 
 ROOT = os.path.dirname(os.path.dirname(__file__))
 SCRIPTS = os.path.join(ROOT, "scripts")
@@ -14,6 +15,8 @@ from campaign_runtime import (  # noqa: E402
     build_utm_link,
     eligible_channels_for_slot,
     load_channel_schedule,
+    recurring_series_for_slot,
+    select_weekly_sequence,
     should_channel_run,
     score_generated_content,
     stage_for_slot,
@@ -121,6 +124,19 @@ class CampaignRuntimeTests(unittest.TestCase):
         self.assertEqual(coverage["platforms_with_zero_opportunities"], [])
         for platform in ("facebook", "instagram", "linkedin"):
             self.assertGreaterEqual(coverage["platform_counts"][platform], 3, coverage)
+
+    def test_runtime_overlays_intervention_series_onto_existing_weekly_plan(self) -> None:
+        tuesday = datetime(2026, 9, 1, 12, 0, tzinfo=timezone.utc)
+        old_plan = {"sequence": [{"day": "Tuesday", "slot": "midday", "hook": "Existing weekly hook"}]}
+
+        with patch("campaign_runtime.load_latest_weekly_plan", return_value=old_plan):
+            selected = select_weekly_sequence("midday", now_utc=tuesday)
+
+        self.assertEqual(selected["hook"], "Existing weekly hook")
+        self.assertEqual(selected["series"]["id"], "infenergy_intervention")
+        self.assertEqual(selected["series"]["cadence"], "twice_weekly")
+        self.assertTrue(selected["series"]["product_required"])
+        self.assertEqual(recurring_series_for_slot("Wednesday", "midday", now_utc=tuesday), {})
 
 
 if __name__ == "__main__":

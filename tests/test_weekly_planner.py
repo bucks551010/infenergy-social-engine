@@ -39,6 +39,11 @@ class WeeklyPlannerTests(unittest.TestCase):
             self.assertIn("weekly_plan_json", artifacts)
             self.assertIn("campaign_plan_json", artifacts)
             self.assertTrue(os.path.exists(artifacts["campaign_plan_json"]))
+            installments = [row for row in plan["sequence"] if row.get("series", {}).get("id") == "infenergy_intervention"]
+            self.assertEqual([(row["day"], row["slot"]) for row in installments], [("Tuesday", "midday"), ("Friday", "morning")])
+            self.assertEqual(len({row["series"]["preferred_format"] for row in installments}), 2)
+            self.assertTrue(all(row["series"]["product_required"] for row in installments))
+            self.assertTrue(all(row["series"]["character_canon_required"] for row in installments))
 
 
 if __name__ == "__main__":

@@ -510,6 +510,29 @@ def load_latest_weekly_plan() -> dict[str, Any]:
     return _load_latest_json_by_patterns(["marketing/weekly_plan_*.json"])
 
 
+def recurring_series_for_slot(day: str, slot: str, now_utc: datetime | None = None) -> dict[str, Any]:
+    normalized = (day.strip().lower(), slot.strip().lower())
+    targets = [("tuesday", "midday"), ("friday", "morning")]
+    if normalized not in targets:
+        return {}
+    formats = ["cinematic_brand_poster", "product_micro_mission_comic", "educational_story_carousel"]
+    now = now_utc or datetime.now(timezone.utc)
+    occurrence = targets.index(normalized)
+    return {
+        "id": "infenergy_intervention",
+        "name": "Infenergy Intervention",
+        "archetype": "character_led_edutainment",
+        "cadence": "twice_weekly",
+        "preferred_format": formats[(now.isocalendar().week + occurrence) % len(formats)],
+        "format_rotation": formats,
+        "product_rotation": "least_recently_used_catalog",
+        "product_required": True,
+        "character_canon_required": True,
+        "story_pattern": "avoidable_energy_mistake_to_infenergy_intervention_to_product_enabled_resolution",
+        "originality_dimensions": ["scenario", "persona", "tension", "setting", "hook", "product_role", "resolution"],
+    }
+
+
 def select_weekly_sequence(slot: str, now_utc: datetime | None = None) -> dict[str, Any]:
     plan = load_latest_weekly_plan()
     if not plan:
@@ -525,7 +548,11 @@ def select_weekly_sequence(slot: str, now_utc: datetime | None = None) -> dict[s
         if not isinstance(row, dict):
             continue
         if row.get("day") == day_name and row.get("slot") == slot:
-            return row
+            selected = dict(row)
+            series = recurring_series_for_slot(day_name, slot, now_utc=now)
+            if series:
+                selected["series"] = series
+            return selected
     return {}
 
 

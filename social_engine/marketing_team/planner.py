@@ -6,7 +6,7 @@ import os
 from datetime import datetime, timezone
 from typing import Any
 
-from scripts.campaign_runtime import DEFAULT_CHANNEL_SCHEDULE, DEFAULT_FUNNEL_CONFIG
+from scripts.campaign_runtime import DEFAULT_CHANNEL_SCHEDULE, DEFAULT_FUNNEL_CONFIG, recurring_series_for_slot
 
 
 def _utc_stamp() -> str:
@@ -38,6 +38,14 @@ def _content_goal(slot: str) -> str:
     if slot == "midday":
         return "proof"
     return "conversion"
+
+
+def _apply_recurring_series(sequence: list[dict[str, Any]], now: datetime | None = None) -> None:
+    active_time = now or datetime.now(timezone.utc)
+    for row in sequence:
+        series = recurring_series_for_slot(str(row.get("day") or ""), str(row.get("slot") or ""), now_utc=active_time)
+        if series:
+            row["series"] = series
 
 
 def build_weekly_plan(output_dir: str) -> dict[str, Any]:
@@ -95,6 +103,8 @@ def build_weekly_plan(output_dir: str) -> dict[str, Any]:
                 "kpi_target": "engagement" if slot_info["slot"] != "evening" else "conversion",
             }
         )
+
+    _apply_recurring_series(sequence)
 
     campaign_arcs = [
         {

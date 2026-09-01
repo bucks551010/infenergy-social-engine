@@ -20,6 +20,7 @@ from content_operations import (  # noqa: E402
     platform_transaction,
     reconcile_confirmed_transactions,
     reconcile_ready_inventory,
+    recent_outbox_activity,
 )
 
 
@@ -193,6 +194,27 @@ def test_inventory_reconciliation_accepts_intelligence_os_platform_policy(tmp_pa
     ).fetchone()[0]
     connection.close()
     assert status == "READY"
+
+
+def test_recent_outbox_activity_exposes_persisted_publication_receipts(tmp_path):
+    data_dir = str(tmp_path)
+    outbox_id = _ready_package(data_dir, ["facebook"])
+    with patch.object(dispatch_outbox.publish_facebook, "publish", return_value={"id": "fb-receipt"}):
+        dispatch_outbox.dispatch_due(data_dir=data_dir, now_utc="2026-08-19T13:00:01+00:00")
+
+    activity = recent_outbox_activity(data_dir)
+
+    assert activity[0]["outbox_id"] == outbox_id
+    assert activity[0]["status"] == "PUBLISHED"
+    assert activity[0]["published_at"]
+    assert activity[0]["platforms"] == [{
+        "platform": "facebook",
+        "state": "CONFIRMED_SUCCESS",
+        "external_id": "fb-receipt",
+        "attempt_count": 1,
+        "last_error": None,
+        "updated_at": activity[0]["platforms"][0]["updated_at"],
+    }]
 
 
 def test_partial_retry_never_resends_confirmed_platform(tmp_path):

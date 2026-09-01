@@ -25,7 +25,7 @@ import generate_posts
 import inventory_db
 import intelligence_packages
 from build_monthly_content import build_monthly_calendar, latest_monthly_calendar, prepare_monthly_gemini_prompts
-from content_operations import daily_status, init_content_operations, reconcile_confirmed_transactions, reconcile_ready_inventory, reconcile_stale_claims
+from content_operations import daily_status, init_content_operations, recent_outbox_activity, reconcile_confirmed_transactions, reconcile_ready_inventory, reconcile_stale_claims
 from campaign_runtime import eligible_channels_for_slot, load_channel_schedule, load_funnel_config, stage_for_slot
 from social_visuals import review_rendered_visual
 
@@ -1328,6 +1328,7 @@ class HealthHandler(BaseHTTPRequestHandler):
                 "uptime_seconds": _uptime_seconds(),
                 "last_run": LAST_RUN,
                 "last_dispatch": LAST_DISPATCH,
+                "recent_outbox": recent_outbox_activity(_data_dir()),
                 "candidate_pool_depth": _candidate_pool_depth(),
                 "dry_run": os.environ.get("SOCIAL_DRY_RUN", "true"),
                 "shadow_mode": os.environ.get("SOCIAL_SHADOW_MODE", "false"),
@@ -2583,9 +2584,10 @@ def dispatch_scheduled_slot(slot: str) -> None:
         output = ((completed.stdout or "") + "\n" + (completed.stderr or "")).strip()
         LAST_DISPATCH["exit_code"] = completed.returncode
         print(f"[DISPATCH] {slot}: exit={completed.returncode} {output[-2000:]}")
-        if completed.returncode == 0 and output:
+        stdout_lines = (completed.stdout or "").strip().splitlines()
+        if completed.returncode == 0 and stdout_lines:
             try:
-                result = json.loads(output.splitlines()[-1])
+                result = json.loads(stdout_lines[-1])
                 LAST_DISPATCH["result"] = result
                 LAST_DISPATCH["status"] = "complete"
                 if int(result.get("processed") or 0) > 0 and int(result.get("published") or 0) == 0:

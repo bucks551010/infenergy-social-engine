@@ -147,7 +147,11 @@ def test_dispatch_sweep_records_publication_result(monkeypatch):
     monkeypatch.setattr(
         worker.subprocess,
         "run",
-        lambda *args, **kwargs: SimpleNamespace(returncode=0, stdout=worker.json.dumps(result), stderr=""),
+        lambda *args, **kwargs: SimpleNamespace(
+            returncode=0,
+            stdout=worker.json.dumps(result),
+            stderr="provider deprecation warning",
+        ),
     )
 
     worker.dispatch_scheduled_slot("startup_sweep")

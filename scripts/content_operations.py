@@ -552,6 +552,37 @@ def platform_transaction(data_dir: str, outbox_id: str, platform: str) -> dict[s
         connection.close()
 
 
+def recent_outbox_activity(data_dir: str, limit: int = 10) -> list[dict[str, Any]]:
+    connection = _connect(data_dir)
+    try:
+        rows = connection.execute(
+            """
+            SELECT outbox_id, content_id, content_date, slot, scheduled_at, status,
+                   attempt_count, published_at, last_error
+            FROM content_outbox
+            ORDER BY created_at DESC LIMIT ?
+            """,
+            (max(1, min(50, limit)),),
+        ).fetchall()
+        activity = []
+        for row in rows:
+            item = dict(row)
+            item["platforms"] = [
+                dict(transaction)
+                for transaction in connection.execute(
+                    """
+                    SELECT platform, state, external_id, attempt_count, last_error, updated_at
+                    FROM platform_transactions WHERE outbox_id=? ORDER BY platform
+                    """,
+                    (row["outbox_id"],),
+                ).fetchall()
+            ]
+            activity.append(item)
+        return activity
+    finally:
+        connection.close()
+
+
 def complete_platform_transaction(
     data_dir: str,
     *,

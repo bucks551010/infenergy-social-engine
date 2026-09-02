@@ -69,6 +69,24 @@ def handle(method: str, path: str, body: dict[str, Any] | None, data_dir: str) -
             request_id = request_path.rsplit("/", 1)[-1]
             request = service.update_generation_day(request_id, day_date, payload)
             return _json(200, {"request": request})
+        if method == "POST" and path.startswith("/api/os/generation-requests/") and "/produce/" in path:
+            request_path, post_path = path.rsplit("/produce/", 1)
+            request_id = request_path.rsplit("/", 1)[-1]
+            day_date, post_id = post_path.split("/", 1)
+            return _json(200, service.produce_generation_post(
+                request_id, day_date, post_id,
+                actor=str(payload.get("actor", "owner")),
+                regeneration_scope=str(payload.get("regeneration_scope", "entire post")),
+            ))
+        if method == "POST" and path.startswith("/api/os/generation-requests/") and "/schedule/" in path:
+            request_path, post_path = path.rsplit("/schedule/", 1)
+            request_id = request_path.rsplit("/", 1)[-1]
+            day_date, post_id = post_path.split("/", 1)
+            return _json(200, service.schedule_generation_post(
+                request_id, day_date, post_id,
+                scheduled_at=str(payload["scheduled_at"]),
+                actor=str(payload.get("actor", "owner")),
+            ))
         if method == "POST" and path == "/api/os/conversations":
             conversation = service.create_conversation(
                 owner_id=str(payload.get("owner_id", "owner")),

@@ -207,10 +207,13 @@ class IntelligenceOS:
             chunk_start += timedelta(days=chunk_days)
             remaining -= chunk_days
         day_cards = []
+        window_start = max(first, date.today()) if rolling_production else first
+        window_end = min(last, window_start + timedelta(days=max(1, int(production_window_days)) - 1))
         for offset in range(horizon_days):
             current = first + timedelta(days=offset)
             supplied_day = overrides.get(current.isoformat()) if isinstance(overrides.get(current.isoformat()), dict) else {}
             day_controls = self._generation_controls(supplied_day.get("controls"))
+            effective_controls = self._effective_generation_controls(request_controls, day_controls)
             frequency = supplied_day.get("frequency") if isinstance(supplied_day.get("frequency"), dict) else {"mode": "AUTO", "value": ""}
             frequency_mode = "CUSTOM" if str(frequency.get("mode") or "AUTO").upper() == "CUSTOM" else "AUTO"
             frequency_value = str(frequency.get("value") or "") if frequency_mode == "CUSTOM" else ""
@@ -224,16 +227,18 @@ class IntelligenceOS:
                 posts.append({
                     "id": f"{current.isoformat()}-{post_index + 1}",
                     "concept": title if post_index == 0 else f"Platform follow-up: {title}",
-                    "content_type": day_controls["content_type"]["value"] if day_controls["content_type"]["mode"] == "CUSTOM" else str(entry.get("post_type_label") or "AI selected"),
-                    "format": day_controls["format"]["value"] if day_controls["format"]["mode"] == "CUSTOM" else str(entry.get("format_label") or "AI selected"),
-                    "platforms": day_controls["platform"]["value"] if day_controls["platform"]["mode"] == "CUSTOM" else str(entry.get("primary_platform") or "AI selected per channel"),
-                    "campaign": day_controls["campaign"]["value"] if day_controls["campaign"]["mode"] == "CUSTOM" else str(entry.get("weekly_arc") or "AI selected"),
+                    "content_type": effective_controls["content_type"]["value"] if effective_controls["content_type"]["mode"] == "CUSTOM" else str(entry.get("post_type_label") or "AI selected"),
+                    "format": effective_controls["format"]["value"] if effective_controls["format"]["mode"] == "CUSTOM" else str(entry.get("format_label") or "AI selected"),
+                    "platforms": effective_controls["platform"]["value"] if effective_controls["platform"]["mode"] == "CUSTOM" else str(entry.get("primary_platform") or "AI selected per channel"),
+                    "campaign": effective_controls["campaign"]["value"] if effective_controls["campaign"]["mode"] == "CUSTOM" else str(entry.get("weekly_arc") or "AI selected"),
                     "status": "PLANNED",
+                    "versions": [],
                     "generation_contract": entry,
                 })
             day_cards.append({
                 "date": current.isoformat(),
                 "status": "PLANNED",
+                "production_eligible": window_start <= current <= window_end,
                 "frequency": {
                     "mode": frequency_mode,
                     "value": frequency_value,
@@ -255,6 +260,16 @@ class IntelligenceOS:
             connection.commit()
         return self.get_generation_request(identifier)
 
+    @staticmethod
+    def _effective_generation_controls(
+        request_controls: dict[str, dict[str, str]],
+        day_controls: dict[str, dict[str, str]],
+    ) -> dict[str, dict[str, str]]:
+        return {
+            field: day_controls[field] if day_controls[field]["mode"] == "CUSTOM" else request_controls[field]
+            for field in GENERATION_CONTROL_FIELDS
+        }
+
     def get_generation_request(self, request_id: str) -> dict[str, Any]:
         with connect(self.data_dir) as connection:
             row = connection.execute("SELECT * FROM os_generation_requests WHERE id=?", (request_id,)).fetchone()
@@ -264,6 +279,14 @@ class IntelligenceOS:
         result["controls"] = decode(result.pop("controls_json"), {})
         result["day_cards"] = decode(result.pop("day_cards_json"), [])
         result["rolling_production"] = bool(result["rolling_production"])
+        if result["rolling_production"]:
+            first = date.fromisoformat(result["start_date"])
+            last = date.fromisoformat(result["end_date"])
+            window_start = max(first, date.today())
+            window_end = min(last, window_start + timedelta(days=result["production_window_days"] - 1))
+            for card in result["day_cards"]:
+                card_date = date.fromisoformat(card["date"])
+                card["production_eligible"] = window_start <= card_date <= window_end
         return result
 
     def list_generation_requests(self, *, owner_id: str = "owner", limit: int = 20) -> list[dict[str, Any]]:
@@ -281,6 +304,7 @@ class IntelligenceOS:
         if not matching:
             raise KeyError(f"generation_day_not_found:{day_date}")
         controls = self._generation_controls(updates.get("controls", matching.get("controls")))
+        effective_controls = self._effective_generation_controls(request["controls"], controls)
         supplied_frequency = updates.get("frequency", matching.get("frequency", {}))
         if not isinstance(supplied_frequency, dict):
             supplied_frequency = {}
@@ -304,10 +328,10 @@ class IntelligenceOS:
                 **source,
                 "id": f"{day_date}-{index + 1}",
                 "concept": source.get("concept") if index == 0 else f"Platform follow-up: {base.get('concept')}",
-                "content_type": controls["content_type"]["value"] if controls["content_type"]["mode"] == "CUSTOM" else source.get("content_type", "AI selected"),
-                "format": controls["format"]["value"] if controls["format"]["mode"] == "CUSTOM" else source.get("format", "AI selected"),
-                "platforms": controls["platform"]["value"] if controls["platform"]["mode"] == "CUSTOM" else source.get("platforms", "AI selected per channel"),
-                "campaign": controls["campaign"]["value"] if controls["campaign"]["mode"] == "CUSTOM" else source.get("campaign", "AI selected"),
+                "content_type": effective_controls["content_type"]["value"] if effective_controls["content_type"]["mode"] == "CUSTOM" else source.get("content_type", "AI selected"),
+                "format": effective_controls["format"]["value"] if effective_controls["format"]["mode"] == "CUSTOM" else source.get("format", "AI selected"),
+                "platforms": effective_controls["platform"]["value"] if effective_controls["platform"]["mode"] == "CUSTOM" else source.get("platforms", "AI selected per channel"),
+                "campaign": effective_controls["campaign"]["value"] if effective_controls["campaign"]["mode"] == "CUSTOM" else source.get("campaign", "AI selected"),
             })
         matching.update({"frequency": {"mode": frequency_mode, "value": frequency_value}, "controls": controls, "posts": posts})
         with connect(self.data_dir) as connection:
@@ -317,6 +341,102 @@ class IntelligenceOS:
             )
             connection.commit()
         return self.get_generation_request(request_id)
+
+    def produce_generation_post(
+        self,
+        request_id: str,
+        day_date: str,
+        post_id: str,
+        *,
+        actor: str = "owner",
+        regeneration_scope: str = "entire post",
+    ) -> dict[str, Any]:
+        if regeneration_scope != "entire post":
+            raise ValueError("unsupported_generation_regeneration_scope")
+        request = self.get_generation_request(request_id)
+        day_card = next((card for card in request["day_cards"] if card.get("date") == day_date), None)
+        if not day_card:
+            raise KeyError(f"generation_day_not_found:{day_date}")
+        if not day_card.get("production_eligible"):
+            raise ValueError("generation_day_outside_production_window")
+        post = next((item for item in day_card.get("posts", []) if item.get("id") == post_id), None)
+        if not post:
+            raise KeyError(f"generation_post_not_found:{post_id}")
+        effective = self._effective_generation_controls(request["controls"], day_card["controls"])
+        directives = [
+            f"{field.replace('_', ' ').title()}: {control['value']}"
+            for field, control in effective.items()
+            if control["mode"] == "CUSTOM" and control["value"]
+        ]
+        command = " ".join(filter(None, (
+            f"Create a finished Infenergy social post for {day_date}.",
+            f"Concept: {post['concept']}.",
+            request.get("guidance", ""),
+            *directives,
+        )))
+        execution = self.execute_capability(
+            "creative.command.produce",
+            {"command": command},
+            actor=actor,
+            operation_id=f"generation-post:{request_id}:{post_id}:{uuid.uuid4().hex}",
+        )
+        result = execution.get("result", {})
+        version = {
+            "number": len(post.get("versions", [])) + 1,
+            "scope": regeneration_scope,
+            "status": result.get("production_status") or execution.get("status"),
+            "transaction_id": execution.get("transaction_id"),
+            "creative_id": result.get("creative_id"),
+            "studio_creative_id": result.get("studio_creative_id"),
+            "studio_version_id": result.get("studio_version_id"),
+            "studio_sequence_nodes": result.get("studio_sequence_nodes") or [],
+            "approval_id": execution.get("approval_id"),
+            "created_at": utc_now(),
+        }
+        post.setdefault("versions", []).append(version)
+        post["status"] = version["status"]
+        day_card["status"] = "PRODUCED" if all(item.get("versions") for item in day_card["posts"]) else "PARTIALLY_PRODUCED"
+        request_status = "PRODUCED" if all(not card.get("production_eligible") or all(item.get("versions") for item in card.get("posts", [])) for card in request["day_cards"]) else "IN_PRODUCTION"
+        with connect(self.data_dir) as connection:
+            connection.execute(
+                "UPDATE os_generation_requests SET day_cards_json=?, status=?, updated_at=? WHERE id=?",
+                (encode(request["day_cards"]), request_status, utc_now(), request_id),
+            )
+            connection.commit()
+        return {"request": self.get_generation_request(request_id), "execution": execution, "version": version}
+
+    def schedule_generation_post(
+        self,
+        request_id: str,
+        day_date: str,
+        post_id: str,
+        *,
+        scheduled_at: str,
+        actor: str = "owner",
+    ) -> dict[str, Any]:
+        request = self.get_generation_request(request_id)
+        day_card = next((card for card in request["day_cards"] if card.get("date") == day_date), None)
+        if not day_card:
+            raise KeyError(f"generation_day_not_found:{day_date}")
+        post = next((item for item in day_card.get("posts", []) if item.get("id") == post_id), None)
+        if not post:
+            raise KeyError(f"generation_post_not_found:{post_id}")
+        delivered = next((item for item in reversed(post.get("versions", [])) if item.get("status") == "DELIVERED" and item.get("creative_id")), None)
+        if not delivered:
+            raise ValueError("generation_post_has_no_delivered_version")
+        scheduled = self.prepare_and_schedule_creative(
+            str(delivered["creative_id"]), content_date=day_date, scheduled_at=scheduled_at, actor=actor,
+        )
+        delivered["schedule"] = scheduled["creative"]["schedule"]
+        delivered["status"] = "SCHEDULED"
+        post["status"] = "SCHEDULED"
+        with connect(self.data_dir) as connection:
+            connection.execute(
+                "UPDATE os_generation_requests SET day_cards_json=?, updated_at=? WHERE id=?",
+                (encode(request["day_cards"]), utc_now(), request_id),
+            )
+            connection.commit()
+        return {"request": self.get_generation_request(request_id), "version": delivered, **scheduled}
 
     def update_creative(self, creative_id: str, updates: dict[str, Any]) -> dict[str, Any]:
         current = self.get_creative(creative_id)
@@ -354,33 +474,37 @@ class IntelligenceOS:
         creative = self.get_creative(creative_id)
         if not creative["idea"].strip():
             raise ValueError("creative_idea_required")
-        generated = self.execute_capability(
-            "creative.carousel.generate",
-            {
-                "objective": creative["idea"],
-                "title": creative["title"],
-                "platform": creative["platform"],
-                "platforms": creative["platforms"],
-                "slide_count": creative["slide_count"],
-            },
-            actor=actor,
-            operation_id=f"creative-generate:{creative_id}:{uuid.uuid4().hex}",
-        )
-        package = generated["result"]["package"]
-        assets = package.get("carousel_assets", [])
-        missing_assets = [item for item in assets if not str(item.get("local_path", "")).strip()]
-        captions = [str(package.get(key, "")).strip() for key in ("fb_caption", "ig_caption", "li_text")]
-        from score_content import score_content
-        evaluation = score_content(package, creative["platforms"])
-        preflight = {
-            "passed": len(assets) == creative["slide_count"] and not missing_assets and any(captions),
-            "checks": {
-                "requested_slide_count": len(assets) == creative["slide_count"],
-                "assets_rendered": not missing_assets,
-                "platform_copy_present": any(captions),
-            },
-            "quality": evaluation,
-        }
+        if creative["status"] == "DELIVERED" and creative["package"] and creative["preflight"].get("passed"):
+            package = creative["package"]
+            preflight = creative["preflight"]
+        else:
+            generated = self.execute_capability(
+                "creative.carousel.generate",
+                {
+                    "objective": creative["idea"],
+                    "title": creative["title"],
+                    "platform": creative["platform"],
+                    "platforms": creative["platforms"],
+                    "slide_count": creative["slide_count"],
+                },
+                actor=actor,
+                operation_id=f"creative-generate:{creative_id}:{uuid.uuid4().hex}",
+            )
+            package = generated["result"]["package"]
+            assets = package.get("carousel_assets", [])
+            missing_assets = [item for item in assets if not str(item.get("local_path", "")).strip()]
+            captions = [str(package.get(key, "")).strip() for key in ("fb_caption", "ig_caption", "li_text")]
+            from score_content import score_content
+            evaluation = score_content(package, creative["platforms"])
+            preflight = {
+                "passed": len(assets) == creative["slide_count"] and not missing_assets and any(captions),
+                "checks": {
+                    "requested_slide_count": len(assets) == creative["slide_count"],
+                    "assets_rendered": not missing_assets,
+                    "platform_copy_present": any(captions),
+                },
+                "quality": evaluation,
+            }
         if not preflight["passed"]:
             with connect(self.data_dir) as connection:
                 connection.execute(

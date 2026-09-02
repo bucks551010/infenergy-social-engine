@@ -58,6 +58,9 @@ def test_command_center_produces_six_card_canonical_typography_story(tmp_path, m
                     "creative_result": {
                         "status": "APPROVED",
                         "assets": asset_ids,
+                        "creativeId": "studio-creative-1",
+                        "versionId": "studio-version-1",
+                        "sequenceNodes": [{"id": "studio-node-1", "position": 1, "title": "Hook", "assetId": asset_ids[0]}],
                         "generationMetadata": {
                             "canonReferenceAssetIds": ["canon-face", "canon-suit"],
                             "candidateEvaluations": [
@@ -98,6 +101,9 @@ def test_command_center_produces_six_card_canonical_typography_story(tmp_path, m
     assert request["productionStrategy"]["candidate_count"] == 4
     assert creative["canon_reference_asset_ids"] == ["canon-face", "canon-suit"]
     assert creative["quality_decision"]["decision"] == "AUTO_APPROVE"
+    assert creative["studio_creative_id"] == "studio-creative-1"
+    assert creative["studio_version_id"] == "studio-version-1"
+    assert creative["package"]["studio_ancestry"]["sequence_nodes"][0]["id"] == "studio-node-1"
     persisted = service.get_creative(creative["creative_id"])
     assert persisted["status"] == "DELIVERED"
     assert persisted["package"]["creative_contract"]["request_id"] == contract["request_id"]
@@ -1344,6 +1350,149 @@ def test_generation_request_delegates_unspecified_fields_and_updates_only_one_da
     assert updated["day_cards"][0]["controls"]["format"] == {"mode": "CUSTOM", "value": "Carousel"}
     assert updated["day_cards"][0]["controls"]["tone"] == {"mode": "AUTO", "value": ""}
     assert updated["day_cards"][1] == untouched_before
+
+
+def test_generation_request_hydrates_controls_window_and_persists_execution(tmp_path, monkeypatch):
+    service = bootstrap(str(tmp_path))
+    request = service.create_generation_request(
+        start_date="2026-09-01", days=3, production_window_days=1,
+        controls={"format": {"mode": "CUSTOM", "value": "Carousel"}},
+        day_overrides={
+            "2026-09-01": {"controls": {"platform": {"mode": "CUSTOM", "value": "LinkedIn"}}},
+        },
+    )
+    captured = {}
+
+    def execute(capability, payload, **kwargs):
+        captured.update({"capability": capability, "payload": payload})
+        return {
+            "status": "COMPLETED", "transaction_id": "tx-1",
+            "result": {"production_status": "DELIVERED", "creative_id": "creative-1"},
+        }
+
+    monkeypatch.setattr(service, "execute_capability", execute)
+    produced = service.produce_generation_post(
+        request["id"], "2026-09-01", "2026-09-01-1",
+    )
+
+    assert request["day_cards"][0]["posts"][0]["format"] == "Carousel"
+    assert request["day_cards"][0]["posts"][0]["platforms"] == "LinkedIn"
+    assert request["day_cards"][0]["production_eligible"] is True
+    assert request["day_cards"][1]["production_eligible"] is False
+    assert captured["capability"] == "creative.command.produce"
+    assert "Format: Carousel" in captured["payload"]["command"]
+    assert "Platform: LinkedIn" in captured["payload"]["command"]
+    assert produced["version"]["transaction_id"] == "tx-1"
+    assert produced["request"]["day_cards"][0]["posts"][0]["versions"][0]["creative_id"] == "creative-1"
+    with pytest.raises(ValueError, match="unsupported_generation_regeneration_scope"):
+        service.produce_generation_post(request["id"], "2026-09-01", "2026-09-01-1", regeneration_scope="visual")
+    with pytest.raises(ValueError, match="outside_production_window"):
+        service.produce_generation_post(request["id"], "2026-09-02", "2026-09-02-1")
+
+
+def test_rolling_generation_request_rehydrates_current_production_window(tmp_path, monkeypatch):
+    import social_engine.intelligence_os.service as service_module
+
+    class SeptemberFirst(service_module.date):
+        @classmethod
+        def today(cls):
+            return cls(2026, 9, 1)
+
+    class SeptemberSecond(service_module.date):
+        @classmethod
+        def today(cls):
+            return cls(2026, 9, 2)
+
+    monkeypatch.setattr(service_module, "date", SeptemberFirst)
+    service = bootstrap(str(tmp_path))
+    request = service.create_generation_request(
+        start_date="2026-09-01", days=3, production_window_days=1, rolling_production=True,
+    )
+    assert [card["production_eligible"] for card in request["day_cards"]] == [True, False, False]
+
+    monkeypatch.setattr(service_module, "date", SeptemberSecond)
+    advanced = service.get_generation_request(request["id"])
+    assert [card["production_eligible"] for card in advanced["day_cards"]] == [False, True, False]
+
+
+def test_delivered_creative_schedules_reviewed_package_without_regeneration(tmp_path, monkeypatch):
+    from social_engine.intelligence_os.db import connect, encode
+
+    service = bootstrap(str(tmp_path))
+    creative = service.create_creative(title="Reviewed flagship", idea="Approved story")
+    reviewed_package = {
+        "post_id": "reviewed-1", "platforms": ["facebook", "instagram"],
+        "platform_policy": {"platforms": ["facebook", "instagram"]},
+        "generated_visuals": {"instagram": "https://studio.test/reviewed.png"},
+    }
+    with connect(str(tmp_path)) as connection:
+        connection.execute(
+            "UPDATE os_creatives SET status='DELIVERED', package_json=?, preflight_json=? WHERE id=?",
+            (encode(reviewed_package), encode({"passed": True}), creative["id"]),
+        )
+        connection.commit()
+    calls = []
+
+    def execute(capability, payload, **kwargs):
+        calls.append((capability, payload))
+        assert capability != "creative.carousel.generate"
+        return {"status": "COMPLETED", "result": {"outbox_id": "outbox-1", "decision_id": "decision-1"}}
+
+    monkeypatch.setattr(service, "execute_capability", execute)
+    scheduled = service.prepare_and_schedule_creative(
+        creative["id"], content_date="2026-09-03", scheduled_at="2026-09-03T17:00:00+00:00",
+    )
+
+    assert calls == [("social.schedule", calls[0][1])]
+    assert calls[0][1]["package"] == reviewed_package
+    assert scheduled["creative"]["status"] == "SCHEDULED"
+    assert scheduled["creative"]["schedule"]["outbox_id"] == "outbox-1"
+
+
+def test_generation_post_schedules_latest_delivered_version_directly(tmp_path, monkeypatch):
+    from social_engine.intelligence_os.db import connect, encode
+
+    service = bootstrap(str(tmp_path))
+    request = service.create_generation_request(
+        start_date="2026-09-03", days=1,
+        day_overrides={"2026-09-03": {"frequency": {"mode": "CUSTOM", "value": "1"}}},
+    )
+    post = request["day_cards"][0]["posts"][0]
+    creative = service.create_creative(title="Reviewed day post", idea="Approved day story")
+    reviewed_package = {
+        "post_id": post["id"], "platforms": ["instagram"],
+        "platform_policy": {"platforms": ["instagram"]},
+        "generated_visuals": {"instagram": "https://studio.test/reviewed.png"},
+    }
+    with connect(str(tmp_path)) as connection:
+        connection.execute(
+            "UPDATE os_creatives SET status='DELIVERED', package_json=?, preflight_json=? WHERE id=?",
+            (encode(reviewed_package), encode({"passed": True}), creative["id"]),
+        )
+        post["versions"] = [{
+            "number": 1, "scope": "entire post", "status": "DELIVERED",
+            "creative_id": creative["id"], "created_at": "2026-09-01T12:00:00+00:00",
+        }]
+        connection.execute(
+            "UPDATE os_generation_requests SET day_cards_json=? WHERE id=?",
+            (encode(request["day_cards"]), request["id"]),
+        )
+        connection.commit()
+    calls = []
+
+    def execute(capability, payload, **kwargs):
+        calls.append((capability, payload))
+        return {"status": "COMPLETED", "result": {"outbox_id": "outbox-day", "decision_id": "decision-day"}}
+
+    monkeypatch.setattr(service, "execute_capability", execute)
+    scheduled = service.schedule_generation_post(
+        request["id"], "2026-09-03", post["id"], scheduled_at="2026-09-03T14:00:00+00:00",
+    )
+
+    assert [call[0] for call in calls] == ["social.schedule"]
+    assert calls[0][1]["package"] == reviewed_package
+    assert scheduled["version"]["status"] == "SCHEDULED"
+    assert scheduled["version"]["schedule"]["outbox_id"] == "outbox-day"
 
 
 def test_generation_request_api_supports_365_days_and_zero_or_multiple_posts(tmp_path):

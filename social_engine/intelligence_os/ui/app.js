@@ -239,13 +239,13 @@ function renderGenerationControls() {
 function renderGenerationRequest(request) {
   state.generationRequest = request;
   const customCount = Object.values(request.controls || {}).filter((value) => value.mode === 'CUSTOM').length;
-  $('#generation-result').innerHTML = `<article class="panel generation-plan"><div class="generation-plan-head"><div><p class="kicker">${esc(request.start_date)} — ${esc(request.end_date)}</p><h2>${esc(request.horizon_days)}-day content program</h2><p>${esc(request.guidance || 'Infenergy Intelligence is deciding every unspecified detail.')}</p></div><div>${pill(request.status)}<span>${customCount} custom · ${generationFields.length - customCount} delegated</span></div></div><div class="generation-day-grid">${(request.day_cards || []).map((day) => renderGenerationDay(day)).join('')}</div></article>`;
+  $('#generation-result').innerHTML = `<article class="panel generation-plan"><div class="generation-plan-head"><div><p class="kicker">${esc(request.start_date)} — ${esc(request.end_date)}</p><h2>${esc(request.horizon_days)}-day content program</h2><p>${esc(request.guidance || 'Infenergy Intelligence is deciding every unspecified detail.')}</p></div><div>${pill(request.status)}<span>${customCount} custom · ${generationFields.length - customCount} delegated</span><span>${esc(request.production_window_days)}-day production window${request.rolling_production ? ' · rolling' : ''}</span></div></div><div class="generation-day-grid">${(request.day_cards || []).map((day) => renderGenerationDay(day)).join('')}</div></article>`;
 }
 
 function renderGenerationDay(day) {
   const date = new Date(`${day.date}T12:00:00`);
   const posts = day.posts || [];
-  return `<article class="generation-day" data-day-date="${esc(day.date)}"><header><div><span>${esc(date.toLocaleDateString([], { month: 'short', day: 'numeric' }))}</span><strong>${esc(date.toLocaleDateString([], { weekday: 'long' }))}</strong></div>${pill(day.status)}</header><div class="day-frequency"><label><span>Posts this day</span><select data-day-frequency><option value="AUTO" ${day.frequency?.mode === 'CUSTOM' ? '' : 'selected'}>Auto · AI decides</option><option value="0" ${day.frequency?.value === '0' ? 'selected' : ''}>No post</option><option value="1" ${day.frequency?.value === '1' ? 'selected' : ''}>1 post</option><option value="2" ${day.frequency?.value === '2' ? 'selected' : ''}>2 posts</option><option value="3" ${day.frequency?.value === '3' ? 'selected' : ''}>3 posts</option></select></label></div>${posts.length ? `<div class="day-posts">${posts.map((post) => `<article data-generation-post="${esc(post.id)}"><strong>${esc(post.concept)}</strong><span>${esc(post.content_type)} · ${esc(post.format)}</span><small>${esc(post.platforms)} · ${esc(post.campaign)}</small><div class="day-actions"><button type="button" data-edit-day>Edit controls</button><button type="button" data-regenerate>Regenerate</button></div></article>`).join('')}</div>` : '<p class="day-empty">No post recommended. Add one by changing Posts this day.</p>'}<details data-day-controls><summary>Day controls</summary><div class="day-controls">${generationFields.map(([field, label]) => generationControl(field, label, day.controls?.[field], day.date)).join('')}</div><button type="button" class="creative-button secondary" data-generate-day>Generate This Day</button></details></article>`;
+  return `<article class="generation-day ${day.production_eligible ? '' : 'outside-window'}" data-day-date="${esc(day.date)}"><header><div><span>${esc(date.toLocaleDateString([], { month: 'short', day: 'numeric' }))}</span><strong>${esc(date.toLocaleDateString([], { weekday: 'long' }))}</strong></div>${pill(day.production_eligible ? day.status : 'Strategy only')}</header><div class="day-frequency"><label><span>Posts this day</span><select data-day-frequency><option value="AUTO" ${day.frequency?.mode === 'CUSTOM' ? '' : 'selected'}>Auto · AI decides</option><option value="0" ${day.frequency?.value === '0' ? 'selected' : ''}>No post</option><option value="1" ${day.frequency?.value === '1' ? 'selected' : ''}>1 post</option><option value="2" ${day.frequency?.value === '2' ? 'selected' : ''}>2 posts</option><option value="3" ${day.frequency?.value === '3' ? 'selected' : ''}>3 posts</option></select></label></div>${posts.length ? `<div class="day-posts">${posts.map((post) => `<article data-generation-post="${esc(post.id)}"><strong>${esc(post.concept)}</strong><span>${esc(post.content_type)} · ${esc(post.format)}</span><small>${esc(post.platforms)} · ${esc(post.campaign)}</small>${post.versions?.length ? `<small>${post.versions.length} durable version${post.versions.length === 1 ? '' : 's'} · ${esc(humanize(post.status))}</small>` : ''}<div class="day-actions"><button type="button" data-edit-day>Edit controls</button>${day.production_eligible ? '<button type="button" data-regenerate>Regenerate</button>' : ''}${post.versions?.some((version) => version.status === 'DELIVERED') ? '<button type="button" data-schedule-generation>Schedule</button>' : ''}</div></article>`).join('')}</div>` : '<p class="day-empty">No post recommended. Add one by changing Posts this day.</p>'}<details data-day-controls><summary>Day controls</summary><div class="day-controls">${generationFields.map(([field, label]) => generationControl(field, label, day.controls?.[field], day.date)).join('')}</div>${day.production_eligible ? '<button type="button" class="creative-button secondary" data-generate-day>Generate This Day</button>' : '<p class="day-empty">Strategy is hydrated. Production becomes available when this day enters the rolling window.</p>'}</details></article>`;
 }
 
 function generationRequestData() {
@@ -271,10 +271,10 @@ async function persistGenerationDay(card) {
   return result.request.day_cards.find((day) => day.date === dayDate);
 }
 
-function generationCommand(day, post) {
-  const requestValues = Object.entries(state.generationRequest.controls || {}).filter(([, control]) => control.mode === 'CUSTOM' && control.value).map(([field, control]) => `${humanize(field)}: ${control.value}`);
-  const dayValues = Object.entries(day.controls || {}).filter(([, control]) => control.mode === 'CUSTOM' && control.value).map(([field, control]) => `${humanize(field)}: ${control.value}`);
-  return [`Create a finished Infenergy social post for ${day.date}.`, `Concept: ${post.concept}.`, state.generationRequest.guidance, ...requestValues, ...dayValues].filter(Boolean).join(' ');
+async function produceGenerationPost(day, post, regenerationScope = 'entire post') {
+  return api(`/api/os/generation-requests/${state.generationRequest.id}/produce/${day.date}/${post.id}`, {
+    method: 'POST', body: JSON.stringify({ regeneration_scope: regenerationScope }),
+  });
 }
 
 function capabilityExample(schema) {
@@ -722,6 +722,24 @@ $('#generation-result').addEventListener('click', async (event) => {
     controls.scrollIntoView?.({ behavior: 'smooth', block: 'nearest' });
     return;
   }
+  const schedule = event.target.closest('[data-schedule-generation]');
+  if (schedule) {
+    const card = schedule.closest('.generation-day');
+    const postId = schedule.closest('[data-generation-post]').dataset.generationPost;
+    const localTime = window.prompt('Schedule date and time', `${card.dataset.dayDate}T09:00`);
+    if (!localTime) return;
+    const scheduledAt = new Date(localTime);
+    if (Number.isNaN(scheduledAt.getTime())) { toast('Enter a valid schedule date and time'); return; }
+    try {
+      schedule.disabled = true;
+      await api(`/api/os/generation-requests/${state.generationRequest.id}/schedule/${card.dataset.dayDate}/${postId}`, {
+        method: 'POST', body: JSON.stringify({ scheduled_at: scheduledAt.toISOString() }),
+      });
+      await load();
+      toast('Reviewed version scheduled');
+    } catch (error) { schedule.disabled = false; toast(error.message); }
+    return;
+  }
   const scopedRegeneration = event.target.closest('[data-regenerate-scope]');
   if (scopedRegeneration) {
     const card = scopedRegeneration.closest('.generation-day');
@@ -731,11 +749,10 @@ $('#generation-result').addEventListener('click', async (event) => {
     try {
       scopedRegeneration.disabled = true;
       const scope = scopedRegeneration.dataset.regenerateScope;
-      const command = `${generationCommand(day, post)} Regenerate ${scope} only. Preserve every unaffected component as a new version.`;
-      const result = await api('/api/os/execute', { method: 'POST', body: JSON.stringify({ capability: 'creative.command.produce', arguments: { command } }) });
-      if (operationOutput(result)) { renderDeliverables(result); activateView('command'); }
+      const result = await produceGenerationPost(day, post, scope);
+      if (operationOutput(result.execution)) { renderDeliverables(result.execution); activateView('command'); }
       await load();
-      toast(result.status === 'WAITING_APPROVAL' ? 'Regeneration is waiting for owner approval' : `${scope} regenerated`);
+      toast(result.execution.status === 'WAITING_APPROVAL' ? 'Regeneration is waiting for owner approval' : `${scope} version recorded`);
     } catch (error) { scopedRegeneration.disabled = false; toast(error.message); }
     return;
   }
@@ -748,12 +765,12 @@ $('#generation-result').addEventListener('click', async (event) => {
       const results = [];
       for (const post of day.posts) {
         generate.textContent = `Producing ${results.length + 1} of ${day.posts.length}…`;
-        results.push(await api('/api/os/execute', { method: 'POST', body: JSON.stringify({ capability: 'creative.command.produce', arguments: { command: generationCommand(day, post) } }) }));
+        results.push(await produceGenerationPost(day, post));
       }
-      const delivered = results.find((result) => operationOutput(result));
-      if (delivered) { renderDeliverables(delivered); activateView('command'); }
+      const delivered = results.find((result) => operationOutput(result.execution));
+      if (delivered) { renderDeliverables(delivered.execution); activateView('command'); }
       await load();
-      toast(results.some((result) => result.status === 'WAITING_APPROVAL') ? 'Production is waiting for owner approval' : 'Day production completed');
+      toast(results.some((result) => result.execution.status === 'WAITING_APPROVAL') ? 'Production is waiting for owner approval' : 'Day production completed');
     } catch (error) { generate.disabled = false; generate.textContent = 'Generate This Day'; toast(error.message); }
     return;
   }
@@ -762,7 +779,7 @@ $('#generation-result').addEventListener('click', async (event) => {
   const actions = button.closest('.day-actions');
   const existing = actions.querySelector('.regenerate-menu');
   if (existing) { existing.remove(); return; }
-  actions.insertAdjacentHTML('beforeend', '<div class="regenerate-menu"><button type="button" data-regenerate-scope="entire post">Entire Post</button><button type="button" data-regenerate-scope="concept">Concept Only</button><button type="button" data-regenerate-scope="visual">Visual Only</button><button type="button" data-regenerate-scope="caption">Caption Only</button><button type="button" data-regenerate-scope="copy">Copy Only</button><button type="button" data-regenerate-scope="one carousel card">One Carousel Card</button><button type="button" data-regenerate-scope="style">Style Only</button><button type="button" data-regenerate-scope="platform version">Platform Version Only</button></div>');
+  actions.insertAdjacentHTML('beforeend', '<div class="regenerate-menu"><button type="button" data-regenerate-scope="entire post">Create New Version</button></div>');
 });
 $('#creative-list').addEventListener('click', (event) => { const button = event.target.closest('[data-creative-id]'); if (button) renderCreative(state.creatives.find((item) => item.id === button.dataset.creativeId)); });
 ['creative-title', 'creative-idea', 'creative-slides', 'creative-platform'].forEach((id) => $(`#${id}`).addEventListener('input', queueCreativeSave));

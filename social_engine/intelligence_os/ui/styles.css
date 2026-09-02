@@ -197,6 +197,7 @@ p { line-height: 1.55; }
 .generation-plan-head > div:last-child { display: grid; justify-items: end; gap: 7px; color: var(--muted); font-size: 10px; }
 .generation-day-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(285px, 1fr)); gap: 10px; margin-top: 18px; }
 .generation-day { padding: 13px; border: 1px solid var(--line); border-radius: 8px; background: #091310; }
+.generation-day.outside-window { opacity: .72; border-style: dashed; }
 .generation-day > header { display: flex; justify-content: space-between; align-items: start; }
 .generation-day > header div, .day-posts article { display: grid; gap: 4px; }
 .generation-day > header span, .generation-day small, .day-empty { color: var(--muted); font-size: 10px; }

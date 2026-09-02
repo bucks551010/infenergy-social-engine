@@ -884,6 +884,11 @@ def register_core_capabilities(registry: CapabilityRegistry, policies: PolicyEng
             "generation_metadata": generation_metadata,
             "product_context": product_context,
             "platform_variant_assets": platform_variant_assets,
+            "studio_ancestry": {
+                "creative_id": studio_result.get("creativeId"),
+                "version_id": studio_result.get("versionId"),
+                "sequence_nodes": studio_result.get("sequenceNodes") or [],
+            },
         }
         creative_id = creative_request["contentId"]
         now = utc_now()
@@ -920,6 +925,9 @@ def register_core_capabilities(registry: CapabilityRegistry, policies: PolicyEng
             "asset_count": len(assets),
             "studio_status": studio_status or "APPROVED",
             "creative_id": creative_id,
+            "studio_creative_id": studio_result.get("creativeId"),
+            "studio_version_id": studio_result.get("versionId"),
+            "studio_sequence_nodes": studio_result.get("sequenceNodes") or [],
             "product_context": product_context,
             "canon_reference_asset_ids": canon_reference_ids,
             "candidate_evaluations": candidate_evaluations,

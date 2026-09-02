@@ -142,6 +142,10 @@ class CampaignRuntimeTests(unittest.TestCase):
         next_format = recurring_series_for_slot("Tuesday", "midday", now_utc=next_tuesday)["preferred_format"]
         self.assertNotEqual(friday_format, next_format)
 
+        with patch("campaign_runtime.load_latest_weekly_plan", return_value={}):
+            without_plan = select_weekly_sequence("midday", now_utc=tuesday)
+        self.assertEqual(without_plan["series"]["id"], "infenergy_intervention")
+
 
 if __name__ == "__main__":
     unittest.main()

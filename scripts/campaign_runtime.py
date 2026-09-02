@@ -534,26 +534,26 @@ def recurring_series_for_slot(day: str, slot: str, now_utc: datetime | None = No
 
 
 def select_weekly_sequence(slot: str, now_utc: datetime | None = None) -> dict[str, Any]:
-    plan = load_latest_weekly_plan()
-    if not plan:
-        return {}
-
     now = now_utc or datetime.now(timezone.utc)
     day_name = now.strftime("%A")
+    recurring_series = recurring_series_for_slot(day_name, slot, now_utc=now)
+    plan = load_latest_weekly_plan()
+    if not plan:
+        return {"day": day_name, "slot": slot, "series": recurring_series} if recurring_series else {}
+
     sequence = plan.get("sequence", [])
     if not isinstance(sequence, list):
-        return {}
+        return {"day": day_name, "slot": slot, "series": recurring_series} if recurring_series else {}
 
     for row in sequence:
         if not isinstance(row, dict):
             continue
         if row.get("day") == day_name and row.get("slot") == slot:
             selected = dict(row)
-            series = recurring_series_for_slot(day_name, slot, now_utc=now)
-            if series:
-                selected["series"] = series
+            if recurring_series:
+                selected["series"] = recurring_series
             return selected
-    return {}
+    return {"day": day_name, "slot": slot, "series": recurring_series} if recurring_series else {}
 
 
 def _normalize_stage(value: str) -> str:

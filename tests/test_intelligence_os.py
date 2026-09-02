@@ -163,6 +163,40 @@ def test_command_center_single_image_overrides_negated_carousel_terms():
     assert contract["integrated_typography"] is True
 
 
+def test_command_center_honors_generation_control_directives():
+    from social.command_center import compile_command
+
+    contract = compile_command(
+        "Create a finished Infenergy social post. Concept: Prepared wherever life moves. "
+        "Format: Carousel Topic: Emergency preparedness Platform: LinkedIn"
+    )
+
+    assert contract["deliverable"] == "carousel"
+    assert contract["format"] == "carousel"
+    assert contract["topic"] == "Emergency preparedness"
+    assert contract["platform"] == "linkedin"
+
+
+def test_flagship_transports_generation_topic_to_studio(tmp_path, monkeypatch):
+    service = bootstrap(str(tmp_path))
+    captured = {}
+
+    class StudioProvider:
+        def generate(self, **kwargs):
+            captured.update(kwargs)
+            return VisualResult(provider="template_render", kind="template_recipe")
+
+    monkeypatch.setattr("social.visual_provider.default_provider", lambda: StudioProvider())
+    service.command(
+        "Create a finished Infenergy social post. Concept: Prepared wherever life moves. "
+        "Format: Carousel Topic: Emergency preparedness Platform: LinkedIn"
+    )
+
+    request = captured["art_direction"]["creative_request"]
+    assert request["format"] == "carousel"
+    assert request["dominantIdea"] == "Emergency preparedness"
+
+
 def test_flagship_resolves_and_transports_named_product_evidence(tmp_path, monkeypatch):
     marketing = tmp_path / "marketing"
     marketing.mkdir()

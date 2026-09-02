@@ -9,6 +9,10 @@ from typing import Any
 CREATE_INTENT = re.compile(r"\b(create|make|generate|build|produce|design|render)\b", re.I)
 HERO_ALIASES = re.compile(r"\b(infenergy|the superhero|my superhero|our superhero|the hero|our hero|the character)\b", re.I)
 INTEGRATED_TEXT = re.compile(r"\b(interact(?:ing)? with (?:the )?(?:words|text)|text physical|words physical|typography|message (?:is|as) part of the scene|says?\s+)", re.I)
+DIRECTIVE_LABELS = (
+    "Content Type", "Format", "Style", "Topic", "Platform", "Infenergy Usage", "Product Usage",
+    "Campaign", "Tone", "Objective", "Cta", "Publishing Date", "Publishing Time", "Creative Instructions",
+)
 
 
 def is_flagship_creative_command(message: str) -> bool:
@@ -78,6 +82,16 @@ def _emotion(message: str) -> str:
     return next((value for key, value in aliases.items() if key in lowered), "CINEMATIC")
 
 
+def _directive(message: str, label: str) -> str:
+    next_label = "|".join(re.escape(item) for item in DIRECTIVE_LABELS)
+    match = re.search(
+        rf"(?:^|\s){re.escape(label)}:\s*(.+?)(?=\s+(?:{next_label}):|$)",
+        message,
+        re.I,
+    )
+    return match.group(1).strip().rstrip(".") if match else ""
+
+
 def _story_beats(message: str, count: int, exact_strings: list[str]) -> list[dict[str, Any]]:
     roles = ["HOOK", "DISCOVERY", "COMPLICATION", "THINKING_ADAPTATION", "PAYOFF", "RESOLUTION"]
     if count != 6:
@@ -111,9 +125,11 @@ def compile_command(message: str) -> dict[str, Any]:
     text = str(message or "").strip()
     if not is_flagship_creative_command(text):
         raise ValueError("not_a_flagship_creative_command")
-    single_frame = bool(re.search(r"\b(?:one|single)\s+(?:image|picture|visual|frame)\b", text, re.I))
+    requested_format = _directive(text, "Format")
+    format_text = requested_format or text
+    single_frame = bool(re.search(r"\b(?:one|single)(?:[- ]frame)?\s+(?:image|picture|visual|frame)\b", format_text, re.I))
     micro_mission = not single_frame and bool(re.search(r"\b(micro[ -]?mission|mission|little story|superhero carousel|family reunion)\b", text, re.I))
-    carousel = not single_frame and (micro_mission or bool(re.search(r"\b(carousel|cards?|slides?)\b", text, re.I)))
+    carousel = not single_frame and (micro_mission or bool(re.search(r"\b(carousel|cards?|slides?)\b", format_text, re.I)))
     exact_strings = _exact_text(text)
     quote_development = _develop_quote(text) if re.search(r"\bquote\b", text, re.I) and not exact_strings else {}
     if quote_development:
@@ -141,6 +157,7 @@ def compile_command(message: str) -> dict[str, Any]:
     return {
         "request_id": str(uuid.uuid4()),
         "objective": text,
+        "topic": _directive(text, "Topic"),
         "deliverable": "carousel" if carousel else "social_visual",
         "creative_mode": route,
         "platform": platform,

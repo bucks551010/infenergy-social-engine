@@ -708,7 +708,7 @@ def register_core_capabilities(registry: CapabilityRegistry, policies: PolicyEng
             "requestedRoute": contract["creative_mode"],
             "humanTruth": persona.get("why_it_matters") or profile.get("core_customer_truth") or "Energy matters because it keeps people connected to the life, work, family, and experiences that matter.",
             "humanTension": persona.get("problem") or "A relatable interruption, uncertainty, or misconception needs a meaningful response.",
-            "dominantIdea": exact_strings[0] if exact_strings else persona.get("desired_outcome") or profile.get("primary_promise") or command,
+            "dominantIdea": contract.get("topic") or (exact_strings[0] if exact_strings else persona.get("desired_outcome") or profile.get("primary_promise") or command),
             "audienceReaction": persona.get("emotional_driver") or "I recognize that moment, and I want to see what Infenergy does next.",
             "emotionalMode": contract["emotional_mode"],
             "characters": contract["characters"],

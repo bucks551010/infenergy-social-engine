@@ -1363,7 +1363,10 @@ def _apply_manual_platform_override(
         return
     requested = set(manual_platforms)
     for platform in ("facebook", "instagram", "linkedin"):
-        if platform not in requested:
+        if platform in requested and channel_reasons.get(platform) != "disabled_env":
+            effective_channels[platform] = True
+            channel_reasons[platform] = "manual_platform_override"
+        elif platform not in requested:
             effective_channels[platform] = False
             channel_reasons[platform] = "excluded_by_manual_override"
 

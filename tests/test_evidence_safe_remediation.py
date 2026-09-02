@@ -78,7 +78,17 @@ def test_manual_platform_override_enables_only_requested_platform():
     assert channels == {"wordpress": False, "facebook": False, "instagram": False, "linkedin": True}
     assert reasons["facebook"] == "excluded_by_manual_override"
     assert reasons["instagram"] == "excluded_by_manual_override"
-    assert reasons["linkedin"] == "enabled_for_run"
+    assert reasons["linkedin"] == "manual_platform_override"
+
+
+def test_manual_platform_override_restores_requested_platform_after_schedule_window():
+    channels = {"wordpress": False, "facebook": False, "instagram": False, "linkedin": False}
+    reasons = {platform: "outside_scheduled_window" for platform in channels}
+
+    run_engine._apply_manual_platform_override(channels, reasons, ["facebook", "instagram", "linkedin"])
+
+    assert channels == {"wordpress": False, "facebook": True, "instagram": True, "linkedin": True}
+    assert {reasons[platform] for platform in ("facebook", "instagram", "linkedin")} == {"manual_platform_override"}
 
 
 def test_final_channel_evidence_excludes_out_of_scope_wordpress_copy():

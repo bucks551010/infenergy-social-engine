@@ -18,6 +18,7 @@ BUNDLED_DATA_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..",
 DEFAULT_DATA_DIR = os.environ.get("DATA_DIR", BUNDLED_DATA_DIR)
 MAX_PLAN_DAYS = 120
 PROFILE_PATH = os.path.join("marketing", "product_consumer_profiles.json")
+COMPANY_KNOWLEDGE_PATH = os.path.join("marketing", "infenergy_company_knowledge.json")
 
 HORIZONS = (
     (14, "LOCKED", "Production-ready concepts"),
@@ -362,6 +363,48 @@ def _load_catalog(data_dir: str) -> list[dict[str, Any]]:
     return catalog
 
 
+def _load_company_thoughts(data_dir: str) -> tuple[str, list[dict[str, Any]]]:
+    path = os.path.join(data_dir, COMPANY_KNOWLEDGE_PATH)
+    if not os.path.isfile(path):
+        path = os.path.join(BUNDLED_DATA_DIR, COMPANY_KNOWLEDGE_PATH)
+    with open(path, "r", encoding="utf-8") as handle:
+        payload = json.load(handle)
+    thoughts = [
+        thought for thought in payload.get("thought_library", [])
+        if isinstance(thought, dict) and thought.get("id") and thought.get("statement")
+    ] if isinstance(payload, dict) else []
+    if not thoughts:
+        raise ValueError("verified Infenergy company thoughts are unavailable")
+    return str(payload.get("knowledge_id") or "infenergy-company-truth"), thoughts
+
+
+def _select_company_thought(
+    thoughts: list[dict[str, Any]],
+    arc: dict[str, str],
+    used_thought_ids: set[str],
+) -> dict[str, Any]:
+    audience_map = {
+        "mobile_professional": "mobile_professional",
+        "outdoor_enthusiast": "outdoor",
+        "caregiver": "caregiver",
+        "small_business_operator": "mobile_professional",
+        "preparedness_buyer": "preparedness_builder",
+    }
+    target_audience = audience_map.get(arc["audience_id"], "working_family")
+    available = [thought for thought in thoughts if str(thought["id"]) not in used_thought_ids] or thoughts
+    return max(
+        available,
+        key=lambda thought: (
+            8 if thought.get("audience") == target_audience else 0,
+            5 if thought.get("pillar") == arc.get("pillar") else 0,
+            _text_relevance([
+                thought.get("statement"), thought.get("expansion"), thought.get("useful_detail"),
+            ], arc),
+            -thoughts.index(thought),
+        ),
+    )
+
+
 def _horizon(day_number: int) -> dict[str, str]:
     for maximum, state, label in HORIZONS:
         if day_number <= maximum:
@@ -640,6 +683,8 @@ def _daily_concept(
     arc: dict[str, str],
     product: dict[str, str] | None,
     intervention_number: int,
+    company_knowledge_id: str,
+    company_thought: dict[str, Any] | None,
 ) -> dict[str, Any]:
     weekday = current_date.weekday()
     base: dict[str, Any]
@@ -715,15 +760,48 @@ def _daily_concept(
             "cta": "Save the challenge, run it this weekend, and post the one thing you changed.",
         }
     else:
+        if company_thought is None:
+            raise ValueError("Sunday company quote requires a verified Infenergy thought")
+        statement = str(company_thought["statement"])
         base = {
-            "series": series,
-            "format": "brand_conviction_poster",
-            "format_label": "Identity statement",
-            "title": arc["identity"],
-            "hook": f"From {arc['transformation_from'].replace('_', ' ')} to {arc['transformation_to'].replace('_', ' ')} is not a product story. It is a person gaining options.",
-            "story": f"Create a concise identity statement from {arc['cultural_register']}. The person, not the equipment, owns the frame. Make {arc['identity'].lower()} feel aspirational, current, and attainable.",
-            "takeaway": arc["takeaway"],
-            "cta": "Follow Infenergy for personal energy that fits the life you are actually building.",
+            "series": "Infenergy Company Voice",
+            "format": "infenergy_company_quote_visual",
+            "format_label": "Infenergy quote in the scene",
+            "delivery_label": "Single-frame integrated typography",
+            "title": statement,
+            "hook": statement,
+            "story": f"{company_thought.get('expansion', '')} {company_thought.get('useful_detail', '')}".strip(),
+            "takeaway": statement,
+            "cta": str(company_thought.get("action") or company_thought.get("prompt") or "Choose one useful next step."),
+            "character": "Infenergy",
+            "character_role": "Infenergy physically acts on the sourced company truth; never pose beside a quote card.",
+            "canon_required": True,
+            "platform": "instagram",
+            "aspect_ratio": "4:5",
+            "canvas_px": {"width": 1080, "height": 1350},
+            "canvas_count": 1,
+            "layout": "single_frame_integrated_typography",
+            "integrated_typography": True,
+            "exact_visible_text": [statement],
+            "typography_material": "scene-authentic physical material",
+            "infenergy_action": f"Infenergy physically changes, powers, repairs, carries, enters, or redirects the exact words {statement} as part of the environment.",
+            "verbatim_company_quote": True,
+            "company_source": {
+                "knowledge_id": company_knowledge_id,
+                "thought_id": str(company_thought["id"]),
+                "statement": statement,
+                "audience": str(company_thought.get("audience") or ""),
+                "pillar": str(company_thought.get("pillar") or ""),
+            },
+            "source_expansion": str(company_thought.get("expansion") or ""),
+            "source_useful_detail": str(company_thought.get("useful_detail") or ""),
+            "source_prompt": str(company_thought.get("prompt") or ""),
+            "delivery_constraints": [
+                "one full-bleed 1080 x 1350 image",
+                "the sourced statement appears exactly once with no additional visible copy",
+                "Infenergy physically interacts with the exact words as part of one cohesive scene",
+                "no quote card, static pose, carousel, product claim, or generic superhero redesign",
+            ],
         }
     base = _apply_post_type_treatment(base, post_type, arc, product)
     return {
@@ -779,9 +857,11 @@ def build_120_day_plan(
     start = date.fromisoformat(start_date) if isinstance(start_date, str) else start_date
     start = start or (datetime.now(timezone.utc).date() + timedelta(days=1))
     catalog = _load_catalog(data_dir)
+    company_knowledge_id, company_thoughts = _load_company_thoughts(data_dir)
     product_assignments = _assign_products(catalog, start, days)
     entries: list[dict[str, Any]] = []
     intervention_number = 0
+    used_thought_ids: set[str] = set()
     for offset in range(days):
         current_date = start + timedelta(days=offset)
         arc = WEEKLY_ARCS[(offset // 7) % len(WEEKLY_ARCS)]
@@ -791,12 +871,18 @@ def build_120_day_plan(
             product = _product_context(raw_product, product_placement, arc)
         if current_date.weekday() in {1, 4}:
             intervention_number += 1
+        company_thought = None
+        if current_date.weekday() == 6:
+            company_thought = _select_company_thought(company_thoughts, arc, used_thought_ids)
+            used_thought_ids.add(str(company_thought["id"]))
         entries.append(_daily_concept(
             current_date=current_date,
             day_number=offset + 1,
             arc=arc,
             product=product,
             intervention_number=intervention_number,
+            company_knowledge_id=company_knowledge_id,
+            company_thought=company_thought,
         ))
     used_product_ids = {
         entry["product"]["product_id"]
@@ -836,6 +922,9 @@ def build_120_day_plan(
         },
         "superhero_with_text_count": sum(
             1 for entry in entries if entry["format"] == "product_micro_mission_comic"
+        ),
+        "weekly_company_quote_count": sum(
+            1 for entry in entries if entry["format"] == "infenergy_company_quote_visual"
         ),
         "series_counts": {
             series_name: sum(1 for entry in entries if entry["series"] == series_name)

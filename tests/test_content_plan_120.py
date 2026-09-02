@@ -83,20 +83,20 @@ def test_plan_preserves_intervention_cadence_and_continuous_format_rotation(tmp_
         for entry in interventions
     )
     assert [entry["installment"] for entry in interventions] == list(range(1, 35))
-    assert [entry["format"] for entry in interventions[:6]] == [
-        "product_micro_mission_comic",
-        "educational_story_carousel",
+    friday_interventions = [entry for entry in interventions if entry["weekday"] == "Friday"]
+    tuesday_interventions = [entry for entry in interventions if entry["weekday"] == "Tuesday"]
+    assert all(entry["format"] == "product_micro_mission_comic" for entry in friday_interventions)
+    assert all(entry["format"] != "product_micro_mission_comic" for entry in tuesday_interventions)
+    assert {entry["format"] for entry in tuesday_interventions} == {
         "cinematic_brand_poster",
-        "product_micro_mission_comic",
         "educational_story_carousel",
-        "cinematic_brand_poster",
-    ]
+    }
     assert all(entry["canon_required"] for entry in interventions)
     superhero_posts = [
         entry for entry in interventions
         if entry["format"] == "product_micro_mission_comic"
     ]
-    assert plan["superhero_with_text_count"] == len(superhero_posts) == 12
+    assert plan["superhero_with_text_count"] == len(superhero_posts) == 17
     assert all(entry["format_label"] == "Superhero with text" for entry in superhero_posts)
     assert all(entry["visible_text"]["headline"] for entry in superhero_posts)
     assert all(entry["visible_text"]["infenergy_line"] for entry in superhero_posts)
@@ -118,6 +118,42 @@ def test_plan_preserves_intervention_cadence_and_continuous_format_rotation(tmp_
         for entry in superhero_posts
     )
     assert all(entry["image_status"] == "NOT_GENERATED" for entry in superhero_posts)
+
+
+def test_weekly_company_quotes_are_verbatim_sourced_and_audience_matched(tmp_path):
+    _write_profiles(tmp_path)
+    plan = build_120_day_plan(
+        data_dir=str(tmp_path),
+        start_date="2026-09-02",
+    )
+    with open("data/marketing/infenergy_company_knowledge.json", "r", encoding="utf-8") as handle:
+        knowledge = json.load(handle)
+    statements = {
+        thought["id"]: thought["statement"]
+        for thought in knowledge["thought_library"]
+    }
+    quotes = [
+        entry for entry in plan["entries"]
+        if entry["format"] == "infenergy_company_quote_visual"
+    ]
+
+    assert plan["weekly_company_quote_count"] == len(quotes) == 17
+    assert all(entry["weekday"] == "Sunday" for entry in quotes)
+    assert len({entry["company_source"]["thought_id"] for entry in quotes}) == len(quotes)
+    assert all(entry["verbatim_company_quote"] is True for entry in quotes)
+    assert all(entry["company_source"]["knowledge_id"] == knowledge["knowledge_id"] for entry in quotes)
+    assert all(
+        entry["exact_visible_text"] == [statements[entry["company_source"]["thought_id"]]]
+        for entry in quotes
+    )
+    assert all(entry["aspect_ratio"] == "4:5" for entry in quotes)
+    assert all(entry["canvas_px"] == {"width": 1080, "height": 1350} for entry in quotes)
+    assert all(entry["canvas_count"] == 1 for entry in quotes)
+    assert all(entry["layout"] == "single_frame_integrated_typography" for entry in quotes)
+    assert all(entry["integrated_typography"] is True for entry in quotes)
+    assert all(entry["canon_required"] is True for entry in quotes)
+    assert all(entry["character"] == "Infenergy" for entry in quotes)
+    assert all(entry["image_status"] == "NOT_GENERATED" for entry in quotes)
 
 
 def test_plan_uses_bundled_verified_catalog_when_runtime_volume_is_empty(tmp_path):

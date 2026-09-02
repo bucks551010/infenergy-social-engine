@@ -517,13 +517,17 @@ def recurring_series_for_slot(day: str, slot: str, now_utc: datetime | None = No
         return {}
     formats = ["cinematic_brand_poster", "product_micro_mission_comic", "educational_story_carousel"]
     now = now_utc or datetime.now(timezone.utc)
-    occurrence = targets.index(normalized)
+    preferred_format = (
+        "product_micro_mission_comic"
+        if normalized == ("friday", "morning")
+        else ("cinematic_brand_poster" if now.isocalendar().week % 2 else "educational_story_carousel")
+    )
     return {
         "id": "infenergy_intervention",
         "name": "Infenergy Intervention",
         "archetype": "character_led_edutainment",
         "cadence": "twice_weekly",
-        "preferred_format": formats[((now.isocalendar().week * len(targets)) + occurrence) % len(formats)],
+        "preferred_format": preferred_format,
         "format_rotation": formats,
         "product_rotation": "least_recently_used_catalog",
         "product_required": True,

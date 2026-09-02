@@ -51,6 +51,11 @@ def test_plan_covers_catalog_and_never_creates_generation_artifacts(tmp_path):
     assert not (tmp_path / "public_media").exists()
     assert not (tmp_path / "inventory.db").exists()
     assert len({entry["date"] for entry in plan["entries"]}) == 120
+    assert plan["date_coverage"] == {
+        "expected_days": 120,
+        "planned_days": 120,
+        "continuous": True,
+    }
     assert all(entry["production_status"] == "CONCEPT_ONLY" for entry in plan["entries"])
     assert all(entry["image_status"] == "NOT_GENERATED" for entry in plan["entries"])
     assert all(entry["generation_prompts"] == [] for entry in plan["entries"])
@@ -149,6 +154,32 @@ def test_plan_is_driven_by_consumer_psychographics_and_funnel_strategy(tmp_path)
     assert not {"Readiness Myth Lab", "One Honest Job", "Saturday Field Test"} & {
         entry["series"] for entry in entries
     }
+
+
+def test_plan_includes_the_complete_editorial_post_type_taxonomy(tmp_path):
+    _write_profiles(tmp_path)
+
+    plan = build_120_day_plan(
+        data_dir=str(tmp_path),
+        start_date="2026-09-02",
+    )
+
+    expected_types = {
+        "current_event",
+        "product_education",
+        "statement",
+        "humor",
+        "framework",
+        "micro_story",
+        "explainer",
+        "drill",
+        "myth",
+    }
+    assert set(plan["post_type_taxonomy"]) == expected_types
+    assert set(plan["post_type_counts"]) == expected_types
+    assert all(count > 0 for count in plan["post_type_counts"].values())
+    assert {entry["post_type"] for entry in plan["entries"]} == expected_types
+    assert all(entry["post_type_label"] for entry in plan["entries"])
 
 
 def test_plan_matches_specialized_products_to_relevant_arcs(tmp_path):

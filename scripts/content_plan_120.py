@@ -533,6 +533,34 @@ DAY_STRATEGY = {
     6: ("Energy Is an Identity", "brand_world_statement", "RECONSIDER", "FREEDOM", "FOLLOW"),
 }
 
+POST_TYPE_LABELS = {
+    "current_event": "Current event / timely response",
+    "product_education": "Product education",
+    "statement": "Brand statement",
+    "humor": "Culture-led humor",
+    "framework": "Planning framework",
+    "micro_story": "Human micro-story",
+    "explainer": "Practical explainer",
+    "drill": "IRL drill",
+    "myth": "Myth-busting",
+}
+
+POST_TYPES_BY_WEEKDAY = {
+    0: ("current_event", "humor", "myth"),
+    1: ("micro_story", "product_education", "explainer"),
+    2: ("product_education", "explainer", "framework"),
+    3: ("micro_story", "humor", "current_event"),
+    4: ("explainer", "product_education", "micro_story"),
+    5: ("drill", "framework", "drill"),
+    6: ("statement", "myth", "statement"),
+}
+
+
+def _post_type(day_number: int, weekday: int) -> str:
+    week_index = (day_number - 1) // 7
+    choices = POST_TYPES_BY_WEEKDAY[weekday]
+    return choices[week_index % len(choices)]
+
 
 def _daily_concept(
     *,
@@ -546,6 +574,7 @@ def _daily_concept(
     base: dict[str, Any]
     slot = "midday"
     series, creative_mode, brain_movement, heart_after, natural_response = DAY_STRATEGY[weekday]
+    post_type = _post_type(day_number, weekday)
     funnel_stage = FUNNEL_CYCLE[(day_number - 1) % len(FUNNEL_CYCLE)]
     if weekday == 0:
         base = {
@@ -650,6 +679,8 @@ def _daily_concept(
         "heart_after": heart_after,
         "human_value": arc["desire"],
         "content_job": creative_mode,
+        "post_type": post_type,
+        "post_type_label": POST_TYPE_LABELS[post_type],
         "funnel_stage": funnel_stage,
         "primary_platform": arc["primary_platform"],
         "platform_treatment": f"Lead on {arc['primary_platform']} in a {arc['language_style'].lower()} voice; preserve the lived moment before adapting length.",
@@ -714,6 +745,19 @@ def build_120_day_plan(
         "catalog_size": len(catalog),
         "catalog_products_used": len(used_product_ids),
         "catalog_coverage_complete": catalog_ids.issubset(used_product_ids),
+        "date_coverage": {
+            "expected_days": days,
+            "planned_days": len({entry["date"] for entry in entries}),
+            "continuous": all(
+                entry["date"] == (start + timedelta(days=index)).isoformat()
+                for index, entry in enumerate(entries)
+            ),
+        },
+        "post_type_taxonomy": POST_TYPE_LABELS,
+        "post_type_counts": {
+            post_type: sum(1 for entry in entries if entry["post_type"] == post_type)
+            for post_type in POST_TYPE_LABELS
+        },
         "format_counts": {
             format_name: sum(1 for entry in entries if entry["format"] == format_name)
             for format_name in sorted({entry["format"] for entry in entries})

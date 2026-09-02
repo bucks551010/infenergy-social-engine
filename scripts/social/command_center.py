@@ -106,7 +106,7 @@ def _story_beats(message: str, count: int, exact_strings: list[str], *, micro_mi
         "HOOK": f"Open mid-problem around {subject}; the conflict is immediately legible and demands the next card.",
         "COVER": f"Create a premium story-specific Infenergy comic cover around {subject}; lock a unique mission title, tease the tension, and make an unfamiliar viewer want to swipe.",
         "SETUP": "Establish the concrete human activity, visible problem, stakes, setting, and time pressure in one decisive still.",
-        "DISCOVERY": "Infenergy enters in motion, investigates the energy problem, and communicates with LUX only if diagnostics improve the scene.",
+        "DISCOVERY": "Infenergy enters in motion, investigates the energy problem, and reads a concrete physical or environmental clue that changes his understanding.",
         "COMPLICATION": "The obvious solution fails or reveals a deeper energy-flow problem; preserve all established props, damage, scale, and lighting.",
         "THINKING_ADAPTATION": "Infenergy studies where the energy is going and adapts with engineering reasoning, relevant cape behavior, equipment, or purposeful scale change.",
         "PAYOFF": "Deliver the strongest cinematic action as Infenergy executes the earned solution and the environment visibly reacts.",

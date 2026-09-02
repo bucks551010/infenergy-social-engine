@@ -14,10 +14,8 @@ from typing import Any
 from campaign_runtime import recurring_series_for_slot
 
 
-DEFAULT_DATA_DIR = os.environ.get(
-    "DATA_DIR",
-    os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "data")),
-)
+BUNDLED_DATA_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "data"))
+DEFAULT_DATA_DIR = os.environ.get("DATA_DIR", BUNDLED_DATA_DIR)
 MAX_PLAN_DAYS = 120
 PROFILE_PATH = os.path.join("marketing", "product_consumer_profiles.json")
 
@@ -334,6 +332,8 @@ AUDIENCE_PRODUCT_WEIGHTS = {
 
 def _load_catalog(data_dir: str) -> list[dict[str, Any]]:
     path = os.path.join(data_dir, PROFILE_PATH)
+    if not os.path.isfile(path):
+        path = os.path.join(BUNDLED_DATA_DIR, PROFILE_PATH)
     with open(path, "r", encoding="utf-8") as handle:
         payload = json.load(handle)
     profiles = payload.get("profiles") if isinstance(payload, dict) else None

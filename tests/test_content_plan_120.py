@@ -120,6 +120,20 @@ def test_plan_preserves_intervention_cadence_and_continuous_format_rotation(tmp_
     assert all(entry["image_status"] == "NOT_GENERATED" for entry in superhero_posts)
 
 
+def test_plan_uses_bundled_verified_catalog_when_runtime_volume_is_empty(tmp_path):
+    plan = build_120_day_plan(
+        data_dir=str(tmp_path),
+        start_date="2026-09-02",
+    )
+
+    assert plan["catalog_size"] > 0
+    assert all(
+        entry["product_id"] and entry["product_name"]
+        for entry in plan["entries"]
+        if entry["format"] == "product_micro_mission_comic"
+    )
+
+
 def test_plan_exposes_progressively_adaptive_horizons(tmp_path):
     _write_profiles(tmp_path)
 

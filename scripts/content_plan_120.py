@@ -29,7 +29,7 @@ HORIZONS = (
     (120, "OPPORTUNITY", "Strategic direction and response reserve"),
 )
 
-WEEKLY_ARCS = (
+LEGACY_WEEKLY_ARCS = (
     {
         "name": "The Communication Layer",
         "pillar": "everyday_power",
@@ -194,7 +194,7 @@ WEEKLY_ARCS = (
     },
 )
 
-ARC_PRODUCT_WEIGHTS = {
+LEGACY_ARC_PRODUCT_WEIGHTS = {
     "The Communication Layer": {"power_bank": 10, "preparedness_product": 7, "solar_light": 4},
     "The First Ten Minutes": {"preparedness_product": 10, "solar_light": 8, "power_bank": 6, "portable_fan": 5},
     "The Kitchen Clock": {"power_station": 10, "power_system_bundle": 9, "expansion_battery": 7},
@@ -213,6 +213,122 @@ ARC_PRODUCT_WEIGHTS = {
     "Read Past the Biggest Number": {"power_system_component": 10, "expansion_battery": 10, "power_station": 8, "power_system_bundle": 8},
     "The Household Handoff": {"preparedness_product": 10, "power_system_component": 8, "power_system_bundle": 8, "power_station": 7},
     "Whole-Home, One Priority at a Time": {"power_system_bundle": 12, "expansion_battery": 10, "power_station": 9},
+}
+
+AUDIENCES = {
+    "mobile_professional": {
+        "name": "Mobile Professional / Digital Nomad",
+        "demographic_lens": "Early- and mid-career remote or hybrid workers moving between home, cafes, cars, airports, client sites, and shared workspaces.",
+        "psychographic": "Values autonomy, clean systems, momentum, and looking composed; resents wasted time, cable clutter, and planning life around outlets.",
+        "desire": "Stay productive and creatively in motion without carrying a repair shop in a backpack.",
+        "identity": "The person whose setup is as mobile and intentional as their ambition.",
+        "language_style": "Sharp, design-aware, outcome-first, lightly witty",
+        "primary_platform": "LinkedIn + Instagram",
+    },
+    "outdoor_enthusiast": {
+        "name": "Outdoor / Adventure Enthusiast",
+        "demographic_lens": "Weekend campers, road-trippers, RV and van-life travelers, photographers, festival crews, and outdoor households.",
+        "psychographic": "Buys freedom, range, and memorable experiences rather than emergency gear; respects equipment that earns its space and dislikes fragile complexity.",
+        "desire": "Stay out longer, pack smarter, and keep the experience feeling effortless.",
+        "identity": "The friend who brings capability without turning the trip into a gear lecture.",
+        "language_style": "Specific, visual, gear-aware, adventurous",
+        "primary_platform": "Instagram + Facebook",
+    },
+    "caregiver": {
+        "name": "Caregiver / Family Continuity Lead",
+        "demographic_lens": "Parents, multigenerational households, adult children supporting elders, and the person who quietly carries the family logistics.",
+        "psychographic": "Protective and practical; wants relief through clarity, not anxiety, and notices whether a plan can be handed to someone else.",
+        "desire": "Keep care, comfort, communication, and household confidence intact when routines get disrupted.",
+        "identity": "The calm center of the household, supported by a plan that does not live only in their head.",
+        "language_style": "Warm, protective, precise, never sentimentalized",
+        "primary_platform": "Facebook + Instagram",
+    },
+    "small_business_operator": {
+        "name": "Small Business Operator",
+        "demographic_lens": "Owner-operators, independent professionals, neighborhood retail and service businesses, creators, and lean teams.",
+        "psychographic": "Protects momentum, reputation, revenue, and customer trust; thinks in workflows and hates preventable downtime disguised as bad luck.",
+        "desire": "Keep the part of the business customers actually experience moving.",
+        "identity": "The operator who sees the dependency before it becomes an excuse.",
+        "language_style": "Decisive, commercially aware, concrete",
+        "primary_platform": "LinkedIn + Facebook",
+    },
+    "preparedness_buyer": {
+        "name": "Modern Preparedness Buyer",
+        "demographic_lens": "Renters and homeowners, first-time preparedness shoppers, growing households, and practical buyers comparing compact through whole-home options.",
+        "psychographic": "Wants control without fear culture, capability without visual clutter, and proof that a purchase fits real life rather than prepper theater.",
+        "desire": "Build a right-sized system that feels considered, livable, and ready enough.",
+        "identity": "Prepared, informed, and still living a normal modern life.",
+        "language_style": "Confident, culturally current, plainspoken",
+        "primary_platform": "Facebook + Instagram",
+    },
+}
+
+
+def _episode(
+    name: str,
+    audience_id: str,
+    *,
+    territory: str,
+    tension: str,
+    setting: str,
+    cultural_register: str,
+    transformation: tuple[str, str],
+    takeaway: str,
+    cold_open: str,
+    product_weights: dict[str, int],
+) -> dict[str, Any]:
+    return {
+        **AUDIENCES[audience_id],
+        "name": name,
+        "territory": territory,
+        "pillar": "modern_personal_energy",
+        "audience_id": audience_id,
+        "tension": tension,
+        "setting": setting,
+        "cultural_register": cultural_register,
+        "transformation_from": transformation[0],
+        "transformation_to": transformation[1],
+        "takeaway": takeaway,
+        "lesson": takeaway,
+        "myth": f"More equipment automatically creates the identity and freedom promised by {name.lower()}.",
+        "drill": f"Recreate the lived moment behind {name.lower()} and remove the first point of friction.",
+        "cold_open": cold_open,
+        "product_weights": product_weights,
+    }
+
+
+WEEKLY_ARCS = (
+    _episode("The 3% Society", "mobile_professional", territory="Freedom, Designed", tension="battery percentage has started making decisions the person should be making", setting="an airport gate, rideshare, or client lobby where polished plans suddenly orbit one available outlet", cultural_register="premium travel comedy with quiet main-character confidence", transformation=("outlet_dependent", "portable"), takeaway="A clean mobile-power ritual protects momentum better than last-minute outlet hunting.", cold_open="At 84%, you have plans. At 3%, every outlet has excellent real estate.", product_weights={"power_bank": 12, "power_station": 5}),
+    _episode("The Cable Drawer Cinematic Universe", "preparedness_buyer", territory="Prepared, Not Precious", tension="a supposedly complete setup is being held hostage by one mystery connector", setting="a beautiful modern home interrupted by the most chaotic cable drawer in North America", cultural_register="domestic observational comedy shot like a prestige mystery", transformation=("disorganized", "organized"), takeaway="The coolest setup is the one another person can understand in ten seconds.", cold_open="Every home has a cable drawer. Few have protected witness identities this thoroughly.", product_weights={"power_bank": 10, "preparedness_product": 8, "power_system_component": 7}),
+    _episode("Soft Life, Hard Backup", "caregiver", territory="Care Without Chaos", tension="the person creating comfort is also carrying every invisible decision", setting="a calm, design-conscious family room prepared around one person, one need, and one honest comfort layer", cultural_register="warm lifestyle editorial with earned softness, not beige perfection", transformation=("overwhelmed", "simplified"), takeaway="Real comfort begins when responsibility is shared and every tool has an honest boundary.", cold_open="Soft life is not pretending nothing will happen. It is refusing to let one person carry the whole plan.", product_weights={"portable_fan": 12, "solar_light": 10, "power_bank": 7, "power_station": 6}),
+    _episode("Your Office Has No Address", "mobile_professional", territory="Freedom, Designed", tension="the laptop is ready but the smaller device controlling the workflow is not", setting="a creator moving from cafe to parked car to client site with one deadline and no fixed desk", cultural_register="fast, polished workday documentary with creator-economy fluency", transformation=("frustrated", "confident"), takeaway="Power the workflow in sequence, not the device with the biggest screen.", cold_open="The laptop had 62%. The hotspot had 4%. Guess which one fired the boss.", product_weights={"power_bank": 12, "power_station": 9, "power_system_bundle": 5}),
+    _episode("Main Character Range", "outdoor_enthusiast", territory="Range Is a Feeling", tension="freedom ends exactly where an untested assumption begins", setting="a road trip leaving the city with cameras, bikes, maps, and a destination beyond dependable outlets", cultural_register="kinetic road-film energy with gear used as part of the life, not displayed as inventory", transformation=("limited", "flexible"), takeaway="Range comes from matching equipment to the actual route, conditions, and return plan.", cold_open="Main-character energy is knowing where the day can go without asking an outlet for permission.", product_weights={"electric_bike": 12, "power_bank": 9, "solar_panel": 8, "portable_water_filter": 6}),
+    _episode("The Family Group Chat Has Infrastructure", "caregiver", territory="Care Without Chaos", tension="everyone is connected until the one person with the plan becomes unreachable", setting="a multigenerational family coordinating school, work, elders, and weather through one very active group chat", cultural_register="recognizable family ensemble comedy with a calm emotional landing", transformation=("uncertain", "in_control"), takeaway="Communication continuity is people, roles, contacts, power, and a backup channel.", cold_open="The family group chat has 47 messages, three thumbs-up reactions, and no agreed first move.", product_weights={"power_bank": 11, "preparedness_product": 9, "power_station": 6}),
+    _episode("Weekend Mode: Unplugged, Not Unprepared", "outdoor_enthusiast", territory="Range Is a Feeling", tension="the escape starts feeling like logistics because every device has a different plan", setting="a campsite at golden hour where music, light, airflow, cameras, and phones share one energy budget", cultural_register="aspirational outdoor lifestyle with knowing humor and zero survival cosplay", transformation=("disorganized", "organized"), takeaway="The best off-grid kit disappears into the experience because every item earns its space.", cold_open="You came to disconnect. Your devices arrived with separate demands.", product_weights={"solar_panel": 12, "solar_light": 11, "portable_fan": 10, "portable_water_filter": 8, "power_station": 7}),
+    _episode("Roadside Plot Twist", "outdoor_enthusiast", territory="Range Is a Feeling", tension="a minor vehicle issue becomes four problems because safety, air, light, and communication were never designed together", setting="a safe roadside pull-off where one prepared driver moves through a clean sequence without performing heroics", cultural_register="tight thriller grammar resolved with competence instead of spectacle", transformation=("reactive", "prepared"), takeaway="Roadside confidence is a maintained sequence, not a gadget in the trunk.", cold_open="The tire was the plot twist. The dead jump starter was the unnecessary sequel.", product_weights={"vehicle_jump_starter": 14, "electric_bike": 9, "power_bank": 6, "power_system_component": 5}),
+    _episode("Camp MVP Energy", "outdoor_enthusiast", territory="Range Is a Feeling", tension="one person brought plenty of gear but nobody assigned light, power, or recharge to the moments that matter", setting="friends transitioning from lake-day chaos to a sharp, relaxed campsite after dark", cultural_register="ensemble adventure comedy with one quietly capable MVP", transformation=("guessing", "informed"), takeaway="Capability looks effortless when the energy budget was decided before sunset.", cold_open="The camp MVP is not the person with the most gear. It is the person whose gear has jobs.", product_weights={"solar_panel": 12, "solar_light": 12, "portable_fan": 10, "portable_water_filter": 9, "power_station": 8}),
+    _episode("Sun Chaser Math", "outdoor_enthusiast", territory="Range Is a Feeling", tension="the aesthetic says endless solar while clouds, shade, angle, and active loads keep editing the result", setting="one photogenic solar setup followed from perfect morning light into a very ordinary cloudy afternoon", cultural_register="beautiful expectation-versus-reality storytelling with technical credibility", transformation=("guessing", "informed"), takeaway="Solar freedom gets more believable when weather is included in the math.", cold_open="The sun is free. Your energy budget still needs a manager.", product_weights={"solar_panel": 14, "solar_light": 10, "power_system_bundle": 8, "power_station": 7}),
+    _episode("The Business Behind the Business", "small_business_operator", territory="Never Miss the Moment", tension="the visible equipment has power while the tiny dependency customers actually touch goes down", setting="a neighborhood studio, shop, food business, or mobile service protecting one customer-critical transaction", cultural_register="founder-mode case study with editorial restraint and real operational stakes", transformation=("slow", "efficient"), takeaway="Continuity belongs to the customer journey and its weakest required step.", cold_open="The lights were on. The payment screen was not. Customers only noticed one of those facts.", product_weights={"power_station": 12, "power_system_bundle": 11, "power_bank": 7}),
+    _episode("Small Space, Serious Energy", "preparedness_buyer", territory="Prepared, Not Precious", tension="traditional preparedness advice assumes a garage, unlimited storage, and permission the customer does not have", setting="a renter-friendly apartment with a shelf-sized system and no tactical-catalog aesthetic", cultural_register="urban design editorial: compact, intentional, visibly livable", transformation=("overwhelmed", "simplified"), takeaway="A serious plan can be compact when it is built around priorities, building rules, and an exit decision.", cold_open="Preparedness does not require a bunker. Sometimes it requires one shelf that makes sense.", product_weights={"power_bank": 11, "power_station": 9, "portable_fan": 8, "solar_light": 7}),
+    _episode("Forecast Mode", "preparedness_buyer", territory="Prepared, Not Precious", tension="the forecast is getting louder while the household still has not decided what would change its behavior", setting="a Gulf Coast household checking weather, calendars, charging, food, and family logistics before urgency arrives", cultural_register="weather-app realism with calm, fashion-forward household competence", transformation=("reactive", "prepared"), takeaway="A forecast becomes useful when it triggers a specific, proportionate action.", cold_open="Weather alerts are not a personality test. Decide what each one actually changes.", product_weights={"preparedness_product": 12, "power_station": 10, "power_system_bundle": 9, "solar_panel": 5}),
+    _episode("The Block Has a Backup Plan", "caregiver", territory="Care Without Chaos", tension="everyone says call if you need anything but nobody has defined what anything means", setting="neighbors turning a porch hang into a four-line agreement about contacts, check-ins, capabilities, and boundaries", cultural_register="community ensemble warmth with block-party confidence, never staged charity", transformation=("dependent", "prepared"), takeaway="Mutual aid becomes real when help is specific enough to keep.", cold_open="Good neighbors bring more than vibes. They bring a contact, a time, a capability, and a boundary.", product_weights={"power_station": 10, "power_system_bundle": 9, "preparedness_product": 9}),
+    _episode("Water Has Main-Character Stakes", "caregiver", territory="Care Without Chaos", tension="the household owns a treatment product but has not connected source, storage, access, maintenance, and power", setting="a multigenerational kitchen mapping one ordinary day of water from source to safe use", cultural_register="clean investigative editorial centered on dignity and care", transformation=("uncertain", "in_control"), takeaway="Water readiness is a system, and the product is only one scene in it.", cold_open="The filter is not the water plan. It is one cast member with a very specific role.", product_weights={"portable_water_filter": 14, "power_station": 7, "power_system_bundle": 7}),
+    _episode("Specs With Red Flags", "preparedness_buyer", territory="Prepared, Not Precious", tension="the biggest number is getting all the attention while compatibility and practical constraints decide the relationship", setting="a buyer swiping through product pages like dating profiles, rejecting impressive but mismatched options", cultural_register="smart consumer comedy with premium comparison-show pacing", transformation=("guessing", "informed"), takeaway="Fit lives in the supporting specifications, not the loudest number.", cold_open="A huge watt-hour number is attractive. Ask what it is like in a relationship.", product_weights={"power_system_component": 12, "expansion_battery": 12, "power_station": 10, "power_system_bundle": 10}),
+    _episode("Pass the Power", "caregiver", territory="Care Without Chaos", tension="the household system becomes private expertise the second its author leaves the room", setting="another family member taking over the first five minutes while the usual planner stays silent", cultural_register="warm competence challenge with playful family dynamics", transformation=("dependent", "prepared"), takeaway="A household plan becomes real when capability survives the handoff.", cold_open="If the plan begins with 'just ask me,' it is not a plan yet.", product_weights={"preparedness_product": 11, "power_system_component": 10, "power_system_bundle": 9, "power_station": 8}),
+    _episode("Big Energy, Better Taste", "preparedness_buyer", territory="Prepared, Not Precious", tension="more capacity is being treated as permission to stop prioritizing", setting="a modern home integrating larger stored energy without turning every outlet into a demand", cultural_register="architectural product editorial with disciplined luxury and no macho excess", transformation=("uncertain", "in_control"), takeaway="The larger the system, the more intentional the priorities, ownership, and recovery plan must become.", cold_open="Big energy is not powering everything. It is knowing exactly what deserves power next.", product_weights={"power_system_bundle": 14, "expansion_battery": 11, "power_station": 10}),
+)
+
+ARC_PRODUCT_WEIGHTS = {
+    arc["name"]: arc["product_weights"]
+    for arc in WEEKLY_ARCS
+}
+
+AUDIENCE_PRODUCT_WEIGHTS = {
+    "mobile_professional": {"power_bank": 8, "power_station": 5, "preparedness_product": 4},
+    "outdoor_enthusiast": {"power_bank": 5, "power_station": 6, "solar_panel": 7, "solar_light": 7, "portable_fan": 7, "portable_water_filter": 6, "vehicle_jump_starter": 6, "electric_bike": 6},
+    "caregiver": {"power_bank": 5, "power_station": 7, "power_system_bundle": 7, "preparedness_product": 7, "portable_fan": 6, "portable_water_filter": 6},
+    "small_business_operator": {"power_bank": 5, "power_station": 8, "power_system_bundle": 8, "expansion_battery": 6, "power_system_component": 6},
+    "preparedness_buyer": {"power_bank": 5, "power_station": 8, "power_system_bundle": 8, "expansion_battery": 7, "power_system_component": 7, "solar_panel": 5, "preparedness_product": 7},
 }
 
 
@@ -268,7 +384,9 @@ def _text_relevance(values: list[Any], arc: dict[str, str]) -> int:
 
 
 def _product_relevance(product: dict[str, Any], arc: dict[str, str]) -> int:
-    type_score = ARC_PRODUCT_WEIGHTS.get(arc["name"], {}).get(product["product_type"], 0)
+    episode_score = ARC_PRODUCT_WEIGHTS.get(arc["name"], {}).get(product["product_type"], 0)
+    audience_score = AUDIENCE_PRODUCT_WEIGHTS.get(arc["audience_id"], {}).get(product["product_type"], 0)
+    type_score = episode_score + audience_score
     text_score = _text_relevance([
         product["product_name"],
         product["market_role"],
@@ -374,13 +492,13 @@ def _intervention_concept(
         "educational_story_carousel": "Educational story carousel",
     }
     resolutions = (
-        "Infenergy stops the scramble, names the actual dependency, and turns the product into one honest part of the plan.",
-        "Infenergy arrives after the first avoidable mistake, resets the priorities, and gives the household a move they can repeat.",
-        "Infenergy reveals that the smallest overlooked link was controlling the outcome, then rebuilds the chain around a tested fit.",
-        "Infenergy refuses the oversized promise, assigns the product one credible job, and leaves the audience with a practical win.",
+        "Freeze the scene at the bad assumption. Infenergy enters like the smartest friend in the group chat, names the hidden dependency, and gives the product one honest mission.",
+        "Start with a stylish plan going sideways. Infenergy strips away the clutter, keeps what serves the life, and hands control back to the person.",
+        "Treat the overlooked dependency like the reveal in a heist film. Infenergy identifies it, matches capability to the moment, and lets competence deliver the payoff.",
+        "Open on the oversized flex. Infenergy rejects more-for-more's-sake, chooses the right-sized move, and makes restraint look more powerful than excess.",
     )
-    title = f"Infenergy Intervention: {arc['name']}"
-    hook = f"They thought the problem was no power. The real problem was {arc['tension']}."
+    title = f"Infenergy Intervention #{installment}: {arc['name']}"
+    hook = arc["cold_open"]
     return {
         "series": series["name"],
         "series_id": series["id"],
@@ -389,12 +507,31 @@ def _intervention_concept(
         "format_label": format_labels[preferred_format],
         "title": title,
         "hook": hook,
-        "story": f"Open in {arc['setting']}. Let one believable mistake create tension. {resolutions[(installment - 1) % len(resolutions)]}",
-        "takeaway": arc["lesson"].capitalize() + ".",
+        "story": f"Cold-open in {arc['setting']}. The consumer wants {arc['desire'].lower()}, but {arc['tension']}. {resolutions[(installment - 1) % len(resolutions)]}",
+        "takeaway": arc["takeaway"],
         "cta": product["cta"],
         "character": "Infenergy",
+        "character_role": "Culturally fluent capability guide, never a product mascot",
         "canon_required": True,
     }
+
+
+FUNNEL_CYCLE = (
+    "ATTENTION", "EDUCATION", "DESIRE", "TRUST", "EDUCATION",
+    "DESIRE", "ATTENTION", "EDUCATION", "DESIRE", "CONVERSION",
+    "TRUST", "EDUCATION", "DESIRE", "ATTENTION", "TRUST",
+    "EDUCATION", "DESIRE", "ATTENTION", "EDUCATION", "CONVERSION",
+)
+
+DAY_STRATEGY = {
+    0: ("Culture Current", "cultural_observation", "NOTICE", "RECOGNITION", "SHARE"),
+    1: ("Infenergy Intervention", "entertainment_franchise", "REFRAME", "CAPABILITY", "EXPLORE"),
+    2: ("The Fit Check", "product_lifestyle_proof", "DISTINGUISH", "CONFIDENCE", "COMPARE"),
+    3: ("POV: Power Moves", "character_micro_story", "DISCOVER", "CURIOSITY", "RESPOND"),
+    4: ("Infenergy Intervention", "entertainment_franchise", "PRIORITIZE", "CONTROL", "EXPLORE"),
+    5: ("Try This IRL", "social_challenge", "PLAN", "READINESS", "SAVE"),
+    6: ("Energy Is an Identity", "brand_world_statement", "RECONSIDER", "FREEDOM", "FOLLOW"),
+}
 
 
 def _daily_concept(
@@ -408,16 +545,18 @@ def _daily_concept(
     weekday = current_date.weekday()
     base: dict[str, Any]
     slot = "midday"
+    series, creative_mode, brain_movement, heart_after, natural_response = DAY_STRATEGY[weekday]
+    funnel_stage = FUNNEL_CYCLE[(day_number - 1) % len(FUNNEL_CYCLE)]
     if weekday == 0:
         base = {
-            "series": "Readiness Myth Lab",
-            "format": "educational_carousel",
-            "format_label": "Educational carousel",
-            "title": f"Myth: {arc['myth']}",
-            "hook": f"The expensive mistake in {arc['name'].lower()} is solving the headline instead of the system.",
-            "story": f"Challenge the myth with a real scene in {arc['setting']}, then reveal the dependency chain it hides.",
-            "takeaway": arc["lesson"].capitalize() + ".",
-            "cta": "Save the framework and test it against one real routine.",
+            "series": series,
+            "format": "culture_carousel",
+            "format_label": "Culture-led carousel",
+            "title": f"Culture Current: {arc['name']}",
+            "hook": arc["cold_open"],
+            "story": f"Use {arc['cultural_register']} to decode a behavior this audience instantly recognizes. Begin in {arc['setting']}; move from the joke or observation into the real desire: {arc['desire']}",
+            "takeaway": arc["takeaway"],
+            "cta": "Send this to the person whose setup has this exact personality.",
         }
     elif weekday == 1:
         if product is None:
@@ -433,25 +572,25 @@ def _daily_concept(
         if product is None:
             raise ValueError("Wednesday proof story requires a product")
         base = {
-            "series": "One Honest Job",
+            "series": series,
             "format": "product_proof_story",
-            "format_label": "Product proof story",
-            "title": f"{product['product_name']}: one honest job in {arc['name'].lower()}",
-            "hook": product["customer_truth"] or f"A product earns its place only when it fits a named job in {arc['name'].lower()}.",
-            "story": f"Start with {product['persona']} handling {product['use_case']}. Show where {product['product_name']} fits, what it does not replace, and which verified detail must carry the proof.",
-            "takeaway": product["proof_direction"] or arc["lesson"].capitalize() + ".",
+            "format_label": "Lifestyle fit check",
+            "title": f"The Fit Check: {product['product_name']} x {arc['name']}",
+            "hook": f"The flex is not owning more power. It is carrying exactly what this life asks for.",
+            "story": f"Follow {product['persona']} through {product['use_case']} inside {arc['setting']}. Judge {product['product_name']} on three modern-consumer questions: does it fit the routine, earn its space, and support the identity without pretending to replace the whole plan? Use only verified proof: {product['proof_direction']}",
+            "takeaway": product["customer_truth"] or arc["takeaway"],
             "cta": product["cta"],
         }
     elif weekday == 3:
         base = {
-            "series": "When the Grid Leaves the Room",
+            "series": series,
             "format": "documentary_micro_story",
-            "format_label": "Documentary micro-story",
-            "title": f"The moment {arc['name'].lower()} becomes personal",
-            "hook": f"The outage did not create the weak point. It removed the convenience that was hiding it: {arc['tension']}.",
-            "story": f"Follow one person through {arc['setting']}. Keep the stakes human and specific, then widen from the immediate inconvenience to the system lesson.",
-            "takeaway": arc["lesson"].capitalize() + ".",
-            "cta": "Name the weak point this story would reveal in your own routine.",
+            "format_label": "POV micro-story",
+            "title": f"POV: The Moment You Felt {arc['transformation_to'].replace('_', ' ').title()}",
+            "hook": f"The before: {arc['transformation_from'].replace('_', ' ')}. The after: {arc['transformation_to'].replace('_', ' ')}. The difference was one clear decision.",
+            "story": f"Tell a first-person, scene-first story in {arc['setting']}. Show the exact instant the character notices that {arc['tension']}, makes one intelligent move, and starts becoming {arc['identity'].lower()}",
+            "takeaway": arc["takeaway"],
+            "cta": "What is the one decision that would change this scene for you?",
         }
     elif weekday == 4:
         if product is None:
@@ -466,25 +605,25 @@ def _daily_concept(
         )
     elif weekday == 5:
         base = {
-            "series": "Saturday Field Test",
+            "series": series,
             "format": "challenge_carousel",
-            "format_label": "Challenge carousel",
-            "title": f"This weekend's field test: {arc['name']}",
-            "hook": arc["drill"],
-            "story": "Turn the drill into four beats: set the condition, let another person attempt it, record the first friction point, and make one repair.",
-            "takeaway": "A calm rehearsal produces better evidence than confidence alone.",
-            "cta": "Run the test, keep one finding, and schedule the repair.",
+            "format_label": "IRL challenge carousel",
+            "title": f"Try This IRL: {arc['name']}",
+            "hook": f"Can your setup deliver the feeling it advertises? Ten minutes. No shopping. No pretending.",
+            "story": f"Build a social challenge around {arc['setting']}. Ask the audience to recreate the moment, name what they assumed, remove the first friction point, and share the one change that made the setup feel more {arc['transformation_to'].replace('_', ' ')}.",
+            "takeaway": "Modern preparedness is tested capability, not an equipment aesthetic.",
+            "cta": "Save the challenge, run it this weekend, and post the one thing you changed.",
         }
     else:
         base = {
-            "series": "Power Is Protection",
+            "series": series,
             "format": "brand_conviction_poster",
-            "format_label": "Brand conviction poster",
-            "title": f"What {arc['name'].lower()} is really protecting",
-            "hook": f"Power is not the outcome. The outcome is staying useful to the people and routines that count on you.",
-            "story": f"Close the weekly arc with one quiet human promise inside {arc['setting']}. Make the protected relationship larger than the equipment.",
-            "takeaway": arc["lesson"].capitalize() + ".",
-            "cta": "Choose the promise first. Build the power plan backward from it.",
+            "format_label": "Identity statement",
+            "title": arc["identity"],
+            "hook": f"From {arc['transformation_from'].replace('_', ' ')} to {arc['transformation_to'].replace('_', ' ')} is not a product story. It is a person gaining options.",
+            "story": f"Create a concise identity statement from {arc['cultural_register']}. The person, not the equipment, owns the frame. Make {arc['identity'].lower()} feel aspirational, current, and attainable.",
+            "takeaway": arc["takeaway"],
+            "cta": "Follow Infenergy for personal energy that fits the life you are actually building.",
         }
     return {
         "date": current_date.isoformat(),
@@ -493,7 +632,28 @@ def _daily_concept(
         "slot": slot,
         "week": ((day_number - 1) // 7) + 1,
         "weekly_arc": arc["name"],
+        "creative_territory": arc["territory"],
         "pillar": arc["pillar"],
+        "audience_id": arc["audience_id"],
+        "audience_name": AUDIENCES[arc["audience_id"]]["name"],
+        "demographic_lens": arc["demographic_lens"],
+        "psychographic": arc["psychographic"],
+        "consumer_desire": arc["desire"],
+        "identity_signal": arc["identity"],
+        "transformation": {
+            "from": arc["transformation_from"],
+            "to": arc["transformation_to"],
+        },
+        "cultural_register": arc["cultural_register"],
+        "human_reality": arc["tension"],
+        "brain_movement": brain_movement,
+        "heart_after": heart_after,
+        "human_value": arc["desire"],
+        "content_job": creative_mode,
+        "funnel_stage": funnel_stage,
+        "primary_platform": arc["primary_platform"],
+        "platform_treatment": f"Lead on {arc['primary_platform']} in a {arc['language_style'].lower()} voice; preserve the lived moment before adapting length.",
+        "natural_response": natural_response,
         "production_status": "CONCEPT_ONLY",
         "image_status": "NOT_GENERATED",
         "generation_prompts": [],

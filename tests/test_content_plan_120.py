@@ -107,6 +107,50 @@ def test_plan_exposes_progressively_adaptive_horizons(tmp_path):
     assert entries[90]["state"] == "OPPORTUNITY"
 
 
+def test_plan_is_driven_by_consumer_psychographics_and_funnel_strategy(tmp_path):
+    _write_profiles(tmp_path)
+
+    plan = build_120_day_plan(
+        data_dir=str(tmp_path),
+        start_date="2026-09-02",
+    )
+    entries = plan["entries"]
+
+    assert {entry["audience_id"] for entry in entries} == {
+        "caregiver",
+        "mobile_professional",
+        "outdoor_enthusiast",
+        "preparedness_buyer",
+        "small_business_operator",
+    }
+    assert {entry["creative_territory"] for entry in entries} == {
+        "Care Without Chaos",
+        "Freedom, Designed",
+        "Never Miss the Moment",
+        "Prepared, Not Precious",
+        "Range Is a Feeling",
+    }
+    assert {stage: sum(entry["funnel_stage"] == stage for entry in entries) for stage in {
+        "ATTENTION", "EDUCATION", "DESIRE", "TRUST", "CONVERSION",
+    }} == {
+        "ATTENTION": 24,
+        "EDUCATION": 36,
+        "DESIRE": 30,
+        "TRUST": 18,
+        "CONVERSION": 12,
+    }
+    assert all(entry["demographic_lens"] for entry in entries)
+    assert all(entry["psychographic"] for entry in entries)
+    assert all(entry["consumer_desire"] for entry in entries)
+    assert all(entry["identity_signal"] for entry in entries)
+    assert all(entry["transformation"]["from"] != entry["transformation"]["to"] for entry in entries)
+    assert all(entry["brain_movement"] and entry["heart_after"] for entry in entries)
+    assert all(entry["primary_platform"] and entry["platform_treatment"] for entry in entries)
+    assert not {"Readiness Myth Lab", "One Honest Job", "Saturday Field Test"} & {
+        entry["series"] for entry in entries
+    }
+
+
 def test_plan_matches_specialized_products_to_relevant_arcs(tmp_path):
     marketing = tmp_path / "marketing"
     marketing.mkdir(parents=True)
@@ -142,11 +186,11 @@ def test_plan_matches_specialized_products_to_relevant_arcs(tmp_path):
             arcs_by_product[product["product_id"]].add(entry["weekly_arc"])
 
     expected_arcs = {
-        "bike": "Roadside Readiness",
-        "fan": "Comfort Without Overpromising",
-        "solar": "Solar Is a Verb",
-        "system": "Whole-Home, One Priority at a Time",
-        "water": "Power and Water Meet",
+        "bike": "Roadside Plot Twist",
+        "fan": "Soft Life, Hard Backup",
+        "solar": "Sun Chaser Math",
+        "system": "Big Energy, Better Taste",
+        "water": "Water Has Main-Character Stakes",
     }
     assert all(arc in arcs_by_product[product_id] for product_id, arc in expected_arcs.items())
 

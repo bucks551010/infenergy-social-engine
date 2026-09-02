@@ -359,19 +359,21 @@ function planEntry(entry) {
   const dateValue = new Date(`${entry.date}T12:00:00`);
   const productLine = product.product_name ? `<span class="plan-product">${esc(product.product_name)} · ${esc(product.persona)}</span>` : '';
   const intervention = entry.series === 'Infenergy Intervention';
-  return `<article class="plan-entry ${intervention ? 'intervention' : ''}"><div class="plan-date"><b>${esc(dateValue.toLocaleDateString([], { month: 'short', day: 'numeric' }))}</b><span>${esc(entry.weekday)} · ${esc(humanize(entry.slot))}</span></div><div class="plan-entry-main"><div class="plan-entry-meta"><span>${esc(entry.series)}</span><span>${esc(entry.format_label)}</span>${pill(entry.state)}</div><h3>${esc(entry.title)}</h3><p>${esc(entry.hook)}</p>${productLine}<details><summary>Full concept brief</summary><dl><dt>Story</dt><dd>${esc(entry.story)}</dd><dt>Takeaway</dt><dd>${esc(entry.takeaway)}</dd><dt>Call to action</dt><dd>${esc(entry.cta)}</dd>${product.product_role ? `<dt>Product role</dt><dd>${esc(product.product_role)}</dd>` : ''}${product.proof_direction ? `<dt>Proof direction</dt><dd>${esc(product.proof_direction)}</dd>` : ''}</dl></details></div><div class="plan-production"><b>${intervention ? `#${entry.installment}` : `D${entry.day_number}`}</b><span>${esc(entry.image_status === 'NOT_GENERATED' ? 'No image' : entry.image_status)}</span></div></article>`;
+  const transformation = entry.transformation || {};
+  return `<article class="plan-entry ${intervention ? 'intervention' : ''}"><div class="plan-date"><b>${esc(dateValue.toLocaleDateString([], { month: 'short', day: 'numeric' }))}</b><span>${esc(entry.weekday)} · ${esc(humanize(entry.slot))}</span></div><div class="plan-entry-main"><div class="plan-entry-meta"><span>${esc(entry.series)}</span><span>${esc(entry.format_label)}</span>${pill(entry.state)}</div><div class="consumer-line"><b>${esc(entry.audience_name)}</b><span>${esc(entry.creative_territory)}</span><span>${esc(entry.funnel_stage)}</span></div><h3>${esc(entry.title)}</h3><p>${esc(entry.hook)}</p>${productLine}<details><summary>Consumer + creative brief</summary><dl><dt>Demographic lens</dt><dd>${esc(entry.demographic_lens)}</dd><dt>Psychographic</dt><dd>${esc(entry.psychographic)}</dd><dt>Consumer desire</dt><dd>${esc(entry.consumer_desire)}</dd><dt>Identity signal</dt><dd>${esc(entry.identity_signal)}</dd><dt>Transformation</dt><dd>${esc(humanize(transformation.from))} → ${esc(humanize(transformation.to))}</dd><dt>Culture</dt><dd>${esc(entry.cultural_register)}</dd><dt>Human reality</dt><dd>${esc(entry.human_reality)}</dd><dt>Thought shift</dt><dd>${esc(entry.brain_movement)} → ${esc(entry.heart_after)}</dd><dt>Platform</dt><dd>${esc(entry.platform_treatment)}</dd><dt>Story</dt><dd>${esc(entry.story)}</dd><dt>Takeaway</dt><dd>${esc(entry.takeaway)}</dd><dt>Natural response</dt><dd>${esc(entry.natural_response)}</dd><dt>Call to action</dt><dd>${esc(entry.cta)}</dd>${product.product_role ? `<dt>Product role</dt><dd>${esc(product.product_role)}</dd>` : ''}${product.proof_direction ? `<dt>Proof direction</dt><dd>${esc(product.proof_direction)}</dd>` : ''}</dl></details></div><div class="plan-production"><b>${intervention ? `#${entry.installment}` : `D${entry.day_number}`}</b><span>${esc(entry.image_status === 'NOT_GENERATED' ? 'No image' : entry.image_status)}</span></div></article>`;
 }
 
 function renderContentPlan() {
   const plan = state.contentPlan;
   if (!plan) { $('#plan-weeks').innerHTML = empty('Loading 120-day plan'); return; }
   const horizon = $('#plan-horizon').value;
+  const audience = $('#plan-audience').value;
   const series = $('#plan-series').value;
   const query = $('#plan-search').value.trim().toLowerCase();
   const entries = (plan.entries || []).filter((entry) => {
     const product = entry.product || {};
-    const searchable = [entry.title, entry.hook, entry.story, entry.weekly_arc, entry.series, product.product_name, product.persona].join(' ').toLowerCase();
-    return (!horizon || entry.state === horizon) && (!series || entry.series === series) && (!query || searchable.includes(query));
+    const searchable = [entry.title, entry.hook, entry.story, entry.weekly_arc, entry.series, entry.audience_name, entry.demographic_lens, entry.psychographic, entry.consumer_desire, entry.creative_territory, product.product_name, product.persona].join(' ').toLowerCase();
+    return (!horizon || entry.state === horizon) && (!audience || entry.audience_id === audience) && (!series || entry.series === series) && (!query || searchable.includes(query));
   });
   const weeks = new Map();
   entries.forEach((entry) => { if (!weeks.has(entry.week)) weeks.set(entry.week, []); weeks.get(entry.week).push(entry); });
@@ -380,10 +382,11 @@ function renderContentPlan() {
     ['Concepts', plan.concept_count],
     ['Catalog coverage', `${plan.catalog_products_used}/${plan.catalog_size}`],
     ['Interventions', plan.series_counts?.['Infenergy Intervention'] || 0],
-    ['Weekly arcs', new Set((plan.entries || []).map((entry) => entry.weekly_arc)).size],
+    ['Audience worlds', new Set((plan.entries || []).map((entry) => entry.audience_id)).size],
+    ['Creative territories', new Set((plan.entries || []).map((entry) => entry.creative_territory)).size],
     ['Visible', entries.length],
   ].map(([label, value]) => `<div class="metric panel"><b>${esc(value)}</b><span>${esc(label)}</span></div>`).join('');
-  $('#plan-weeks').innerHTML = weeks.size ? [...weeks.entries()].map(([week, weekEntries]) => `<section class="plan-week"><header><div><span>Week ${week}</span><h2>${esc(weekEntries[0].weekly_arc)}</h2></div><b>${weekEntries.length} concepts</b></header><div>${weekEntries.map(planEntry).join('')}</div></section>`).join('') : empty('No concepts match these filters');
+  $('#plan-weeks').innerHTML = weeks.size ? [...weeks.entries()].map(([week, weekEntries]) => { const lead = weekEntries[0]; return `<section class="plan-week"><header><div><span>Week ${week} · ${esc(lead.creative_territory)}</span><h2>${esc(lead.weekly_arc)}</h2><p>${esc(lead.audience_name)} · ${esc(lead.consumer_desire)}</p></div><b>${weekEntries.length} concepts</b></header><div>${weekEntries.map(planEntry).join('')}</div></section>`; }).join('') : empty('No concepts match these filters');
 }
 
 async function loadContentPlan() {
@@ -395,13 +398,18 @@ async function loadContentPlan() {
   const endLabel = new Date(`${result.end_date}T12:00:00`).toLocaleDateString([], { month: 'long', day: 'numeric', year: 'numeric' });
   $('#plan-date-range').textContent = `${startLabel} — ${endLabel}`;
   const horizonSelect = $('#plan-horizon');
+  const audienceSelect = $('#plan-audience');
   const seriesSelect = $('#plan-series');
   const selectedHorizon = horizonSelect.value;
+  const selectedAudience = audienceSelect.value;
   const selectedSeries = seriesSelect.value;
   horizonSelect.innerHTML = `<option value="">All horizons</option>${(result.horizons || []).map((item) => `<option value="${esc(item.state)}">${esc(humanize(item.state))} · through day ${item.through_day}</option>`).join('')}`;
+  const audiences = [...new Map((result.entries || []).map((entry) => [entry.audience_id, entry.audience_name])).entries()].sort((left, right) => left[1].localeCompare(right[1]));
+  audienceSelect.innerHTML = `<option value="">All audiences</option>${audiences.map(([id, name]) => `<option value="${esc(id)}">${esc(name)}</option>`).join('')}`;
   const series = [...new Set((result.entries || []).map((entry) => entry.series))].sort();
   seriesSelect.innerHTML = `<option value="">All series</option>${series.map((item) => `<option value="${esc(item)}">${esc(item)}</option>`).join('')}`;
   horizonSelect.value = selectedHorizon;
+  audienceSelect.value = selectedAudience;
   seriesSelect.value = selectedSeries;
   renderContentPlan();
 }
@@ -461,8 +469,8 @@ function activateView(view) {
 $('#nav').addEventListener('click', (event) => { const button = event.target.closest('button[data-view]'); if (button) activateView(button.dataset.view); });
 $('#mobile-nav').addEventListener('change', (event) => activateView(event.target.value));
 $('#job-search').addEventListener('input', (event) => { state.jobQuery = event.target.value.trim(); renderJobs(state.data?.jobs || []); });
-['plan-horizon', 'plan-series', 'plan-search'].forEach((id) => $(`#${id}`).addEventListener(id === 'plan-search' ? 'input' : 'change', renderContentPlan));
-$('#plan-reset').addEventListener('click', () => { $('#plan-horizon').value = ''; $('#plan-series').value = ''; $('#plan-search').value = ''; renderContentPlan(); });
+['plan-horizon', 'plan-audience', 'plan-series', 'plan-search'].forEach((id) => $(`#${id}`).addEventListener(id === 'plan-search' ? 'input' : 'change', renderContentPlan));
+$('#plan-reset').addEventListener('click', () => { $('#plan-horizon').value = ''; $('#plan-audience').value = ''; $('#plan-series').value = ''; $('#plan-search').value = ''; renderContentPlan(); });
 document.addEventListener('click', (event) => { const link = event.target.closest('[data-job-id]'); if (!link) return; state.jobQuery = link.dataset.jobId; $('#job-search').value = state.jobQuery; renderJobs(state.data?.jobs || []); activateView('jobs'); });
 $('#command-form').addEventListener('submit', async (event) => { event.preventDefault(); const input = $('#command-input'), text = input.value.trim(); if (!text) return; message('user', text); input.value = ''; message('assistant', 'Working… Complex operations can take several minutes while tools finish and results are verified.'); const pending = $('#messages .message:last-child'); try { const result = await api('/api/os/command', { method: 'POST', body: JSON.stringify({ message: text, conversation_id: state.conversationId }) }); pending.remove(); message('assistant', result.message, ['BLOCKED', 'TIMED_OUT', 'GENERATION_FAILED', 'VALIDATION_FAILED', 'ASSEMBLY_FAILED'].includes(result.status) ? 'blocked' : ''); if (result.status === 'DELIVERED') renderDeliverables(result); state.conversationId = result.conversation_id; await load(); } catch (error) { pending.remove(); message('assistant', 'The command could not finish: ' + error.message, 'blocked'); } });
 $('#command-input').addEventListener('keydown', (event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); $('#command-form').requestSubmit(); } });

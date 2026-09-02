@@ -190,7 +190,7 @@ def test_gemini_http_options_bound_timeout_and_attempts(monkeypatch):
     assert options.retry_options.attempts == 1
 
 
-def test_truth_overlay_uses_compact_partial_width_panel():
+def test_truth_overlay_uses_text_first_scene_preserving_editorial_treatment():
     image = Image.new("RGB", (1200, 1200), "#d8e0e4")
     rendered, error = social_visuals._apply_v5_text_overlay(
         image,
@@ -206,8 +206,15 @@ def test_truth_overlay_uses_compact_partial_width_panel():
 
     assert error == ""
     assert rendered.getpixel((70, 70)) != (216, 224, 228)
-    assert rendered.getpixel((1100, 100)) == (216, 224, 228)
+    assert rendered.getpixel((1100, 100)) != (216, 224, 228)
     assert rendered.getpixel((600, 500)) == (216, 224, 228)
+
+
+def test_truth_overlay_decor_tracks_the_message_theme():
+    assert social_visuals._truth_overlay_motif("Protect the communication layer.") == "connection"
+    assert social_visuals._truth_overlay_motif("Leave ready. Travel connected.") == "connection"
+    assert social_visuals._truth_overlay_motif("Build the backup plan.") == "shield"
+    assert social_visuals._truth_overlay_motif("Power the day.") == "power"
 
 
 def test_truth_overlay_fails_closed_without_scalable_font(monkeypatch):

@@ -393,6 +393,8 @@ def _gemini_generation_plan(thought: dict[str, Any], product: dict[str, Any] | N
     contract = thought.get("generation_contract") if isinstance(thought.get("generation_contract"), dict) else {}
     is_product_comic = contract.get("format") == "product_micro_mission_comic"
     is_company_message = contract.get("format") == "infenergy_company_quote_visual"
+    output_ratio = "9:16" if is_product_comic else "4:5" if is_company_message else "1:1"
+    output_shape = "vertical 9:16" if is_product_comic else "portrait 4:5" if is_company_message else "square 1:1"
     slides = _carousel_slides(thought) if thought.get("format") == "carousel" else [
         {"role": "thought", "headline": thought["statement"], "supporting": thought["expansion"]}
     ]
@@ -445,7 +447,7 @@ def _gemini_generation_plan(thought: dict[str, Any], product: dict[str, Any] | N
                 "Do not use a floating quote card or a generic character pose. "
             )
         scene_prompt = (
-            "Create one premium, photorealistic square editorial image for Infenergy Power about practical energy readiness. "
+            f"Create one premium, photorealistic {output_shape} editorial image for Infenergy Power about practical energy readiness. "
             f"The image must express this exact post and no generic substitute: {thought['statement']} "
             f"Authored scene: {image_scene} Scene meaning: {slide.get('headline', '')}. "
             f"Visual execution: {visual_execution}. {contract_instruction}{product_instruction}{character_instruction}{framing_instruction}"
@@ -455,8 +457,9 @@ def _gemini_generation_plan(thought: dict[str, Any], product: dict[str, Any] | N
             "Use a restrained palette of charcoal, deep navy, warm amber, clean white, and natural environmental colors. "
             "Do not render words, letters, logos, numbers, labels, watermarks, UI, badges, product claims, or fake specifications. "
             "Avoid generic stock-photo smiles, disaster sensationalism, dominant purple, floating devices, visual clutter, and synthetic poster styling. "
-            "Output one finished 1:1 image only."
+            f"Output one finished {output_ratio} image only."
         )
+        visible_text = contract.get("visible_text") if isinstance(contract.get("visible_text"), dict) else {}
         prompts.append({
             "slide_index": slide_index,
             "slide_count": len(slides),
@@ -470,6 +473,11 @@ def _gemini_generation_plan(thought: dict[str, Any], product: dict[str, Any] | N
                 "text_overlay": {
                     "enabled": True,
                     "text": f"Infenergy | {overlay_copy}",
+                    "comic_panel_text": [
+                        str(visible_text.get("headline") or ""),
+                        str(visible_text.get("infenergy_line") or ""),
+                        str(visible_text.get("resolution_line") or ""),
+                    ] if is_product_comic else [],
                     "placement": "upper third",
                     "safe_margin_ratio": 0.055,
                     "style": "editorial_truth_panel",
@@ -484,7 +492,7 @@ def _gemini_generation_plan(thought: dict[str, Any], product: dict[str, Any] | N
         "fallback_allowed": False,
         "reuse_across_platforms": True,
         "required_image_count": len(prompts),
-        "aspect_ratio": "9:16" if is_product_comic else "4:5" if is_company_message else "1:1",
+        "aspect_ratio": output_ratio,
         "generation_contract": contract,
         "reference_image_urls": list(dict.fromkeys([
             *[str(url) for url in thought.get("reference_image_urls", []) if str(url).startswith("http")],

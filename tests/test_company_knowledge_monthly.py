@@ -222,6 +222,9 @@ def test_120_day_entries_translate_to_runtime_generation_contracts():
     assert comic_generation["aspect_ratio"] == "9:16"
     assert "exactly THREE" in comic_generation["prompts"][0]["gemini_image_prompt"]
     assert friday["entertainment_mode"] in comic_generation["prompts"][0]["gemini_image_prompt"]
+    assert "square editorial" not in comic_generation["prompts"][0]["gemini_image_prompt"]
+    assert "finished 1:1" not in comic_generation["prompts"][0]["gemini_image_prompt"]
+    assert comic_generation["prompts"][0]["v5_direction"]["text_overlay"]["comic_panel_text"] == list(friday["visible_text"].values())
     assert message_generation["aspect_ratio"] == "4:5"
     assert sunday["exact_visible_text"][0] in message_generation["prompts"][0]["v5_direction"]["text_overlay"]["text"]
 

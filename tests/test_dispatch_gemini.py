@@ -240,6 +240,24 @@ def test_truth_overlay_decor_tracks_the_message_theme():
     assert social_visuals._truth_overlay_motif("Power the day.") == "power"
 
 
+def test_comic_overlay_renders_each_exact_line_in_its_panel():
+    image = Image.new("RGB", (1080, 1920), "white")
+    texts = [
+        "THE LAPTOP HAD 62%. THE HOTSPOT HAD 4%.",
+        "POWER THE WORKFLOW, NOT JUST THE BIGGEST SCREEN.",
+        "PROTECT THE SMALLEST DEPENDENCY.",
+    ]
+
+    rendered, error = social_visuals._apply_v5_text_overlay(image, {
+        "text_overlay": {"enabled": True, "text": "Infenergy | Comic", "comic_panel_text": texts},
+    })
+
+    assert error == ""
+    assert rendered.getpixel((40, 40)) != (255, 255, 255)
+    assert rendered.getpixel((40, 680)) != (255, 255, 255)
+    assert rendered.getpixel((40, 1320)) != (255, 255, 255)
+
+
 def test_truth_overlay_fails_closed_without_scalable_font(monkeypatch):
     image = Image.new("RGB", (1200, 1200), "white")
     monkeypatch.setattr(social_visuals, "_overlay_font", lambda *args, **kwargs: None)

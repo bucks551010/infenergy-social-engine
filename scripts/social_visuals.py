@@ -778,6 +778,9 @@ def _apply_v5_text_overlay(image: Any, direction: dict[str, Any]) -> tuple[Any, 
     text = normalize_brand_text(str(overlay.get("text") or "")).strip()
     if not overlay.get("enabled") or not text:
         return image, ""
+    comic_panel_text = overlay.get("comic_panel_text") if isinstance(overlay.get("comic_panel_text"), list) else []
+    if len(comic_panel_text) == 3 and all(str(item).strip() for item in comic_panel_text):
+        return _apply_v5_comic_text_overlay(image, [normalize_brand_text(str(item)).strip() for item in comic_panel_text])
     image_module, draw_module, font_module = _load_pillow()
     if image_module is None or draw_module is None or font_module is None:
         return image, "pillow_unavailable_for_overlay"
@@ -855,6 +858,64 @@ def _apply_v5_text_overlay(image: Any, direction: dict[str, Any]) -> tuple[Any, 
     bracket_width = max(3, int(scale * 0.004))
     draw.line((margin, y_start - int(scale * 0.016), margin + bracket, y_start - int(scale * 0.016)), fill=accent, width=bracket_width)
     draw.line((margin, y_start - int(scale * 0.016), margin, y_start + bracket), fill=accent, width=bracket_width)
+    return image, ""
+
+
+def _apply_v5_comic_text_overlay(image: Any, panel_text: list[str]) -> tuple[Any, str]:
+    image_module, draw_module, font_module = _load_pillow()
+    if image_module is None or draw_module is None or font_module is None:
+        return image, "pillow_unavailable_for_overlay"
+    width, height = image.size
+    scale = min(width, height)
+    margin = max(28, int(scale * 0.045))
+    panel_height = height / 3
+    draw = draw_module.Draw(image, "RGBA")
+    accent = (247, 163, 15, 255)
+    for panel_index, text in enumerate(panel_text):
+        max_width = width - margin * 2
+        font_size = max(30, int(scale * 0.052))
+        minimum_size = max(24, int(scale * 0.032))
+        lines: list[str] = []
+        font = None
+        while font_size >= minimum_size:
+            font = _overlay_font(font_module, font_size, bold=True)
+            if font is None:
+                return image, "scalable_font_unavailable_for_overlay"
+            lines = []
+            current = ""
+            for word in text.split():
+                candidate = f"{current} {word}".strip()
+                if draw.textbbox((0, 0), candidate, font=font)[2] <= max_width or not current:
+                    current = candidate
+                else:
+                    lines.append(current)
+                    current = word
+            if current:
+                lines.append(current)
+            if len(lines) <= 3:
+                break
+            font_size -= 4
+        if not font or len(lines) > 3:
+            return image, "overlay_text_exceeds_line_budget"
+        line_height = int(font_size * 1.1)
+        block_height = len(lines) * line_height + int(scale * 0.035)
+        panel_top = int(panel_index * panel_height)
+        text_y = panel_top + margin
+        draw.rounded_rectangle(
+            (margin // 2, text_y - margin // 3, width - margin // 2, text_y + block_height),
+            radius=max(8, int(scale * 0.012)),
+            fill=(5, 12, 18, 205),
+        )
+        draw.line((margin, text_y - int(scale * 0.012), margin + int(scale * 0.16), text_y - int(scale * 0.012)), fill=accent, width=max(4, int(scale * 0.006)))
+        for line_index, line in enumerate(lines):
+            draw.text(
+                (margin, text_y + line_index * line_height),
+                line,
+                font=font,
+                fill=(255, 212, 105, 255) if panel_index == 1 else (255, 255, 255, 255),
+                stroke_width=max(2, int(scale * 0.003)),
+                stroke_fill=(5, 10, 14, 240),
+            )
     return image, ""
 
 

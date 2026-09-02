@@ -558,6 +558,40 @@ def _intervention_concept(
         "Treat the overlooked dependency like the reveal in a heist film. Infenergy identifies it, matches capability to the moment, and lets competence deliver the payoff.",
         "Open on the oversized flex. Infenergy rejects more-for-more's-sake, chooses the right-sized move, and makes restraint look more powerful than excess.",
     )
+    entertainment_modes = (
+        {
+            "mode": "relatable_comedy",
+            "hook": "Make the customer problem funny because it is painfully familiar, never because the customer is foolish.",
+            "reveal": "The impressive device is charged; the tiny dependency controlling the whole day is nearly dead.",
+        },
+        {
+            "mode": "cinematic_countdown",
+            "hook": "Use a visible deadline, falling battery level, or approaching departure to create immediate but proportionate tension.",
+            "reveal": "Infenergy spots the one powered dependency the customer has not included in the countdown.",
+        },
+        {
+            "mode": "visual_irony",
+            "hook": "Contrast a polished lifestyle setup with one small, believable power failure that disrupts it.",
+            "reveal": "The product earns attention by resolving the least glamorous but most consequential part of the scene.",
+        },
+        {
+            "mode": "mystery_reveal",
+            "hook": "Frame the failed routine like a compact mystery and let the audience notice clues before the answer appears.",
+            "reveal": "Infenergy traces the failure to the overlooked cable, connector, charge state, or device.",
+        },
+        {
+            "mode": "character_comedy",
+            "hook": "Give Infenergy one dry, memorable observation while the customer remains capable and recognizable.",
+            "reveal": "The product is introduced as the practical answer the customer can use, not a magical rescue.",
+        },
+        {
+            "mode": "competence_payoff",
+            "hook": "Open with plans going sideways, then make the customer's informed recovery feel satisfying and aspirational.",
+            "reveal": "Infenergy demonstrates the fit; the customer uses the product to complete the mission.",
+        },
+    )
+    comic_episode = ((installment - 1) // 2) + 1
+    entertainment = entertainment_modes[(comic_episode - 1) % len(entertainment_modes)]
     title = f"Infenergy Intervention #{installment}: {arc['name']}"
     hook = arc["cold_open"]
     visible_text = None
@@ -582,15 +616,29 @@ def _intervention_concept(
             "product_role": product["product_role"],
             "product_proof_direction": product["proof_direction"],
             "product_reference_required": True,
+            "product_integration": {
+                "required": True,
+                "role": "The verified product must be physically used to resolve the specific power problem inside the story.",
+                "plot_test": "Removing the product must break the episode's cause-and-effect resolution.",
+                "boundary": "Show only the verified job and proof direction; never invent features, runtime, or guaranteed outcomes.",
+            },
+            "entertainment_mode": entertainment["mode"],
+            "entertainment_hook": entertainment["hook"],
+            "visual_reveal": entertainment["reveal"],
+            "humor_enabled": entertainment["mode"] in {"relatable_comedy", "character_comedy"},
+            "humor_guardrail": "Humor targets the familiar situation or assumption, never the customer's intelligence, fear, or hardship.",
             "story_sequence": [
-                "Panel 1: the human problem and bad assumption interrupt the routine.",
-                "Panel 2: Infenergy identifies the hidden energy job and physically uses the verified product for that job.",
-                "Panel 3: show the human consequence and honest product boundary; the person owns the resolution.",
+                f"Panel 1: create an immediate {entertainment['mode'].replace('_', ' ')} hook as the human problem interrupts a recognizable routine.",
+                f"Panel 2: deliver the visual reveal: {entertainment['reveal']} Infenergy identifies the hidden energy job.",
+                f"Panel 3: the customer physically uses {product['product_name']} for its verified role, completes the moment, and owns the resolution.",
             ],
             "delivery_constraints": [
                 "one full-bleed 1080 x 1920 image containing three readable comic panels",
                 "not a carousel and not three separate images",
                 "use the verified product reference without redesigning or inventing features",
+                "the product must affect the plot rather than appear as a packshot or decorative prop",
+                "create curiosity, tension, surprise, recognition, or humor before revealing the solution",
+                "keep Infenergy confident and entertaining without humiliating or frightening the customer",
                 "keep all exact dialogue inside Instagram Story safe areas",
             ],
         }

@@ -112,9 +112,20 @@ def test_plan_preserves_intervention_cadence_and_continuous_format_rotation(tmp_
     assert all(entry["product_id"] == entry["product"]["product_id"] for entry in superhero_posts)
     assert all(entry["product_name"] == entry["product"]["product_name"] for entry in superhero_posts)
     assert all(entry["product_reference_required"] is True for entry in superhero_posts)
+    assert all(entry["product_integration"]["required"] is True for entry in superhero_posts)
+    assert all("Removing the product" in entry["product_integration"]["plot_test"] for entry in superhero_posts)
+    assert all(entry["product_name"] in entry["story_sequence"][2] for entry in superhero_posts)
+    assert len({entry["entertainment_mode"] for entry in superhero_posts}) == 6
+    assert all(entry["entertainment_hook"] and entry["visual_reveal"] for entry in superhero_posts)
+    assert 0 < sum(entry["humor_enabled"] for entry in superhero_posts) < len(superhero_posts)
+    assert all("never the customer" in entry["humor_guardrail"] for entry in superhero_posts)
     assert all(len(entry["story_sequence"]) == 3 for entry in superhero_posts)
     assert all(
         any("not a carousel" in constraint for constraint in entry["delivery_constraints"])
+        for entry in superhero_posts
+    )
+    assert all(
+        any("affect the plot" in constraint for constraint in entry["delivery_constraints"])
         for entry in superhero_posts
     )
     assert all(entry["image_status"] == "NOT_GENERATED" for entry in superhero_posts)

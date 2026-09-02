@@ -488,7 +488,7 @@ def _intervention_concept(
     preferred_format = str(series["preferred_format"])
     format_labels = {
         "cinematic_brand_poster": "Cinematic poster",
-        "product_micro_mission_comic": "Product micro-mission comic",
+        "product_micro_mission_comic": "Superhero with text",
         "educational_story_carousel": "Educational story carousel",
     }
     resolutions = (
@@ -499,12 +499,20 @@ def _intervention_concept(
     )
     title = f"Infenergy Intervention #{installment}: {arc['name']}"
     hook = arc["cold_open"]
+    visible_text = None
+    if preferred_format == "product_micro_mission_comic":
+        visible_text = {
+            "headline": hook,
+            "infenergy_line": "Pause. What job does the power actually need to do?",
+            "resolution_line": arc["takeaway"],
+        }
     return {
         "series": series["name"],
         "series_id": series["id"],
         "installment": installment,
         "format": preferred_format,
         "format_label": format_labels[preferred_format],
+        "visible_text": visible_text,
         "title": title,
         "hook": hook,
         "story": f"Cold-open in {arc['setting']}. The consumer wants {arc['desire'].lower()}, but {arc['tension']}. {resolutions[(installment - 1) % len(resolutions)]}",
@@ -798,6 +806,9 @@ def build_120_day_plan(
             format_name: sum(1 for entry in entries if entry["format"] == format_name)
             for format_name in sorted({entry["format"] for entry in entries})
         },
+        "superhero_with_text_count": sum(
+            1 for entry in entries if entry["format"] == "product_micro_mission_comic"
+        ),
         "series_counts": {
             series_name: sum(1 for entry in entries if entry["series"] == series_name)
             for series_name in sorted({entry["series"] for entry in entries})

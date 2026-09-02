@@ -92,6 +92,16 @@ def test_plan_preserves_intervention_cadence_and_continuous_format_rotation(tmp_
         "cinematic_brand_poster",
     ]
     assert all(entry["canon_required"] for entry in interventions)
+    superhero_posts = [
+        entry for entry in interventions
+        if entry["format"] == "product_micro_mission_comic"
+    ]
+    assert plan["superhero_with_text_count"] == len(superhero_posts) == 12
+    assert all(entry["format_label"] == "Superhero with text" for entry in superhero_posts)
+    assert all(entry["visible_text"]["headline"] for entry in superhero_posts)
+    assert all(entry["visible_text"]["infenergy_line"] for entry in superhero_posts)
+    assert all(entry["visible_text"]["resolution_line"] for entry in superhero_posts)
+    assert all(entry["image_status"] == "NOT_GENERATED" for entry in superhero_posts)
 
 
 def test_plan_exposes_progressively_adaptive_horizons(tmp_path):

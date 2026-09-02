@@ -2699,9 +2699,9 @@ def register_scheduled_jobs() -> None:
         schedule.every().day.at(evening_utc).do(_start_dispatch_thread, "evening")
         schedule.every(5).minutes.do(_start_dispatch_thread, "due_sweep")
         schedule.every(10).minutes.do(_start_pregeneration_thread)
+        schedule.every(10).minutes.do(run_delivery_watchdog)
     if os.environ.get("CONTENT_FACTORY_ENABLED", "true").lower() in {"1", "true", "yes", "on"}:
         schedule.every(30).minutes.do(_start_factory_thread)
-        schedule.every(10).minutes.do(run_delivery_watchdog)
     schedule.every(6).hours.do(run_intelligence_enrichment)
     schedule.every().day.at(intelligence_light_utc).do(run_intelligence_heartbeat, "LIGHT_HEARTBEAT")
     schedule.every().day.at("10:00").do(run_candidate_batch)
@@ -2745,9 +2745,9 @@ def main() -> None:
     print("Waiting for next scheduled run...\n")
 
     if os.environ.get("CONTENT_DISPATCH_ENABLED", "true").lower() in {"1", "true", "yes", "on"}:
+        run_delivery_watchdog()
         _start_dispatch_thread("startup_sweep")
         _start_pregeneration_thread()
-        run_delivery_watchdog()
 
     if os.environ.get("RUN_FACTORY_ON_STARTUP", "false").lower() in {"1", "true", "yes", "on"}:
         _start_factory_thread()

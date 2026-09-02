@@ -104,7 +104,9 @@ def test_factory_schedule_can_be_disabled_when_month_is_prebuilt(monkeypatch):
     worker.register_scheduled_jobs()
 
     factory_jobs = [job for job in worker.schedule.jobs if job.job_func.func is worker._start_factory_thread]
+    watchdog_jobs = [job for job in worker.schedule.jobs if job.job_func.func is worker.run_delivery_watchdog]
     assert factory_jobs == []
+    assert len(watchdog_jobs) == 1
 
 
 def test_delivery_watchdog_requests_factory_when_today_has_no_publishable_inventory(monkeypatch):
@@ -142,6 +144,7 @@ def test_delivery_watchdog_does_not_replace_covered_inventory(monkeypatch):
 
 
 def test_main_runs_due_sweep_immediately_on_startup(monkeypatch):
+    startup_order = []
     dispatches = []
     pregenerations = []
     monkeypatch.setenv("CONTENT_DISPATCH_ENABLED", "true")
@@ -149,8 +152,9 @@ def test_main_runs_due_sweep_immediately_on_startup(monkeypatch):
     monkeypatch.setattr(worker, "_load_meta_runtime_from_state", lambda: (False, "not_configured"))
     monkeypatch.setattr(worker, "_auto_bootstrap_visual_repo", lambda: {"status": "ok", "summary": {}})
     monkeypatch.setattr(worker, "run_intelligence_enrichment", lambda: None)
-    monkeypatch.setattr(worker, "_start_dispatch_thread", dispatches.append)
-    monkeypatch.setattr(worker, "_start_pregeneration_thread", lambda: pregenerations.append("started"))
+    monkeypatch.setattr(worker, "run_delivery_watchdog", lambda: startup_order.append("watchdog"))
+    monkeypatch.setattr(worker, "_start_dispatch_thread", lambda slot: (startup_order.append("dispatch"), dispatches.append(slot)))
+    monkeypatch.setattr(worker, "_start_pregeneration_thread", lambda: (startup_order.append("pregeneration"), pregenerations.append("started")))
     monkeypatch.setattr(worker.schedule, "run_pending", lambda: (_ for _ in ()).throw(KeyboardInterrupt))
 
     try:
@@ -160,6 +164,7 @@ def test_main_runs_due_sweep_immediately_on_startup(monkeypatch):
 
     assert dispatches == ["startup_sweep"]
     assert pregenerations == ["started"]
+    assert startup_order == ["watchdog", "dispatch", "pregeneration"]
 
 
 def test_dispatch_sweep_records_publication_result(monkeypatch):

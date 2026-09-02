@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Infenergy Intelligence OS</title>
-  <link rel="stylesheet" href="/os/assets/styles.css?v=17">
+  <link rel="stylesheet" href="/os/assets/styles.css?v=18">
 </head>
 <body>
   <section id="login-screen" class="login-screen">
@@ -125,6 +125,23 @@
       </section>
 
       <section id="creative" class="view">
+        <article class="panel generation-workspace">
+          <div class="generation-hero">
+            <div><p class="kicker">Autonomy by default. Control on demand.</p><h2>Generate Content</h2><p>Set only what matters to you. Every unspecified decision is delegated to Infenergy Intelligence.</p></div>
+            <button id="generation-toggle" class="creative-button" type="button">Generate Content</button>
+          </div>
+          <form id="generation-form" hidden>
+            <div class="generation-section">
+              <div><span class="section-label">How much content?</span><div id="generation-horizons" class="generation-segments"><button type="button" data-days="1">1 Day</button><button type="button" data-days="3">3 Days</button><button type="button" data-days="7">7 Days</button><button type="button" data-days="14">14 Days</button><button type="button" data-days="30" class="active">30 Days</button><button type="button" data-days="60">60 Days</button><button type="button" data-days="90">90 Days</button><button type="button" data-days="120">120 Days</button><button type="button" data-days="365">365 Days</button><button type="button" data-days="custom">Custom</button></div></div>
+              <div class="generation-dates"><label><span>Start</span><input id="generation-start" type="date"></label><label id="generation-custom-days" hidden><span>Days</span><input id="generation-days" type="number" min="1" max="365" value="30"></label></div>
+            </div>
+            <div class="generation-section"><span class="section-label">How much control do you want?</span><div id="generation-modes" class="generation-modes"><button type="button" data-mode="AI_DECIDE" class="active"><strong>Let AI Decide</strong><small>Infenergy Intelligence builds the strategy.</small></button><button type="button" data-mode="GUIDE_AI"><strong>Guide the AI</strong><small>Set a few preferences. Delegate the rest.</small></button><button type="button" data-mode="CUSTOMIZE"><strong>Customize Everything</strong><small>Open every control. Auto still remains available.</small></button></div></div>
+            <label class="generation-guidance"><span>Direction for the AI</span><textarea id="generation-guidance" rows="3" placeholder="More Infenergy. Two Micro Missions per week. Less product content. Make Instagram fun and keep LinkedIn professional."></textarea></label>
+            <details id="generation-controls-panel" class="generation-controls-panel"><summary>Optional controls <span>Every field defaults to Auto</span></summary><div id="generation-controls" class="generation-controls"></div></details>
+            <div class="generation-production"><label><span>Production window</span><select id="generation-production-window"><option value="7">Plan horizon, produce next 7 days</option><option value="30" selected>Plan horizon, produce next 30 days</option><option value="60">Plan horizon, produce next 60 days</option><option value="365">Fully produce requested horizon</option></select></label><label class="toggle-label"><input id="generation-rolling" type="checkbox"> Rolling production</label><button id="generation-submit" class="creative-button" type="submit">Build Content Program</button></div>
+          </form>
+        </article>
+        <section id="generation-result" class="generation-result"></section>
         <div class="creative-grid">
           <aside class="panel creative-library">
             <div class="panel-title"><div><p class="kicker">Saved work</p><h2>Creative ideas</h2></div><button id="new-creative" class="creative-button secondary">+ New idea</button></div>
@@ -189,6 +206,6 @@
     </main>
   </div>
   <div id="toast" class="toast"></div>
-  <script src="/os/assets/app.js?v=24"></script>
+  <script src="/os/assets/app.js?v=25"></script>
 </body>
 </html>

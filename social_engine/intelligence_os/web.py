@@ -49,6 +49,26 @@ def handle(method: str, path: str, body: dict[str, Any] | None, data_dir: str) -
             return _json(200, {"conversations": service.list_conversations()})
         if method == "GET" and path == "/api/os/creatives":
             return _json(200, {"creatives": service.list_creatives(owner_id=str(payload.get("owner_id", "owner")))})
+        if method == "GET" and path == "/api/os/generation-requests":
+            return _json(200, {"requests": service.list_generation_requests(owner_id=str(payload.get("owner_id", "owner")))})
+        if method == "POST" and path == "/api/os/generation-requests":
+            request = service.create_generation_request(
+                owner_id=str(payload.get("owner_id", "owner")),
+                start_date=payload.get("start_date"),
+                days=int(payload.get("days", 30)),
+                control_mode=str(payload.get("control_mode", "AI_DECIDE")),
+                guidance=str(payload.get("guidance", "")),
+                controls=payload.get("controls"),
+                day_overrides=payload.get("day_overrides"),
+                production_window_days=int(payload.get("production_window_days", 30)),
+                rolling_production=bool(payload.get("rolling_production", False)),
+            )
+            return _json(201, {"request": request})
+        if method == "PATCH" and path.startswith("/api/os/generation-requests/") and "/days/" in path:
+            request_path, day_date = path.rsplit("/days/", 1)
+            request_id = request_path.rsplit("/", 1)[-1]
+            request = service.update_generation_day(request_id, day_date, payload)
+            return _json(200, {"request": request})
         if method == "POST" and path == "/api/os/conversations":
             conversation = service.create_conversation(
                 owner_id=str(payload.get("owner_id", "owner")),

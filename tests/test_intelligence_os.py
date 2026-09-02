@@ -1215,11 +1215,12 @@ def test_command_center_and_api_are_served(tmp_path):
     assert content_type.startswith("text/html")
     assert b"Infenergy Intelligence OS" in page
     assert b'id="mobile-nav"' in page
-    assert b'app.js?v=24' in page
+    assert b'app.js?v=25' in page
+    assert b'id="generation-form"' in page
     assert b'data-view="content-plan"' in page
     assert b'id="plan-audience"' in page
     assert b'id="plan-image-count">0 images' in page
-    assert b'styles.css?v=17' in page
+    assert b'styles.css?v=18' in page
     assert b'data-view="master"' in page
     assert b'id="master-capabilities"' in page
     assert b'id="master-form"' in page
@@ -1285,6 +1286,7 @@ def test_command_center_and_api_are_served(tmp_path):
     assert b"Approve & run" in javascript
     assert b"Run checks, approve & schedule" in javascript
     assert b"/api/os/creatives" in javascript
+    assert b"/api/os/generation-requests" in javascript
     assert b"/api/os/capabilities" in javascript
     assert b"/api/os/transactions" in javascript
     assert b"/api/os/execute" in javascript
@@ -1305,12 +1307,67 @@ def test_command_center_and_api_are_served(tmp_path):
     assert b".slot-grid" in stylesheet
     assert b".mobile-view-picker" in stylesheet
     assert b".creative-grid" in stylesheet
+    assert b".generation-day-grid" in stylesheet
     assert b".master-grid" in stylesheet
     assert b".master-capability" in stylesheet
     assert b".master-transaction-list" in stylesheet
     assert b"overflow-x: hidden" in stylesheet
     assert b".login-screen" in stylesheet
     assert b"grid-template-columns: minmax(0, 1fr)" in stylesheet
+
+
+def test_generation_request_delegates_unspecified_fields_and_updates_only_one_day(tmp_path):
+    service = bootstrap(str(tmp_path))
+    request = service.create_generation_request(
+        start_date="2026-09-01",
+        days=3,
+        controls={"topic": {"mode": "CUSTOM", "value": "Preparedness"}},
+    )
+    untouched_before = request["day_cards"][1]
+
+    status, _, response = handle(
+        "PATCH",
+        f"/api/os/generation-requests/{request['id']}/days/2026-09-01",
+        {
+            "frequency": {"mode": "CUSTOM", "value": "2"},
+            "controls": {"format": {"mode": "CUSTOM", "value": "Carousel"}},
+        },
+        str(tmp_path),
+    )
+    updated = json.loads(response)["request"]
+
+    assert status == 200
+    assert request["controls"]["topic"] == {"mode": "CUSTOM", "value": "Preparedness"}
+    assert request["controls"]["style"] == {"mode": "AUTO", "value": ""}
+    assert updated["day_cards"][0]["frequency"] == {"mode": "CUSTOM", "value": "2"}
+    assert len(updated["day_cards"][0]["posts"]) == 2
+    assert updated["day_cards"][0]["controls"]["format"] == {"mode": "CUSTOM", "value": "Carousel"}
+    assert updated["day_cards"][0]["controls"]["tone"] == {"mode": "AUTO", "value": ""}
+    assert updated["day_cards"][1] == untouched_before
+
+
+def test_generation_request_api_supports_365_days_and_zero_or_multiple_posts(tmp_path):
+    status, _, response = handle(
+        "POST",
+        "/api/os/generation-requests",
+        {
+            "start_date": "2026-09-01",
+            "days": 365,
+            "day_overrides": {
+                "2026-09-01": {"frequency": {"mode": "CUSTOM", "value": "0"}},
+                "2026-09-02": {"frequency": {"mode": "CUSTOM", "value": "3"}},
+            },
+        },
+        str(tmp_path),
+    )
+    request = json.loads(response)["request"]
+
+    assert status == 201
+    assert request["horizon_days"] == 365
+    assert request["end_date"] == "2027-08-31"
+    assert len(request["day_cards"]) == 365
+    assert request["day_cards"][0]["posts"] == []
+    assert len(request["day_cards"][1]["posts"]) == 3
 
 
 def test_content_plan_activation_queues_120_day_runtime_contract(monkeypatch, tmp_path):

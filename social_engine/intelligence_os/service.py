@@ -5,6 +5,7 @@ import json
 import re
 import threading
 import uuid
+from datetime import date, timedelta
 from typing import Any
 
 from .db import connect, decode, encode, initialize, utc_now
@@ -25,6 +26,12 @@ For natural-language creative requests, use creative.command.produce so characte
 
 Infer reasonable operational details from Infenergy's goals, catalog, strategy, and conversation. Ask a clarifying question only when a missing fact would create material risk or make execution impossible; otherwise state the assumption and proceed. Be concise in chat while doing the detailed work through tools. Use authoritative internal data when available and current external research when needed. For substantial work, establish a durable job or checkpoint before a long tool chain so progress can be resumed safely. Distinguish facts, metrics, inference, forecast, hypothesis, recommendation, and owner decision. Have a point of view. Do not make the owner operate low-level tools. Do not bluff. Respect permissions, approvals, budgets, and policies. Preserve provenance and explain material actions. Never expand your own permissions. The owner is the final authority. Use only registered Infenergy semantic tools; do not use ambient shell, filesystem, credential, or deployment tools.
 """
+
+GENERATION_CONTROL_FIELDS = (
+    "content_type", "format", "style", "topic", "platform", "infenergy_usage",
+    "product_usage", "campaign", "tone", "objective", "cta", "publishing_date",
+    "publishing_time", "creative_instructions",
+)
 
 
 class IntelligenceOS:
@@ -149,6 +156,167 @@ class IntelligenceOS:
                 (owner_id, max(1, min(int(limit), 200))),
             ).fetchall()
         return [self.get_creative(str(row["id"])) for row in rows]
+
+    @staticmethod
+    def _generation_controls(values: dict[str, Any] | None = None) -> dict[str, dict[str, str]]:
+        supplied = values if isinstance(values, dict) else {}
+        controls: dict[str, dict[str, str]] = {}
+        for field in GENERATION_CONTROL_FIELDS:
+            candidate = supplied.get(field)
+            if isinstance(candidate, dict):
+                mode = str(candidate.get("mode") or "AUTO").upper()
+                value = str(candidate.get("value") or "").strip()
+            else:
+                value = str(candidate or "").strip()
+                mode = "CUSTOM" if value else "AUTO"
+            controls[field] = {"mode": "CUSTOM" if mode == "CUSTOM" else "AUTO", "value": value if mode == "CUSTOM" else ""}
+        return controls
+
+    def create_generation_request(
+        self,
+        *,
+        owner_id: str = "owner",
+        start_date: str | None = None,
+        days: int = 30,
+        control_mode: str = "AI_DECIDE",
+        guidance: str = "",
+        controls: dict[str, Any] | None = None,
+        day_overrides: dict[str, Any] | None = None,
+        production_window_days: int = 30,
+        rolling_production: bool = False,
+    ) -> dict[str, Any]:
+        horizon_days = int(days)
+        if horizon_days < 1 or horizon_days > 365:
+            raise ValueError("generation_horizon_must_be_between_1_and_365_days")
+        mode = str(control_mode or "AI_DECIDE").upper()
+        if mode not in {"AI_DECIDE", "GUIDE_AI", "CUSTOMIZE"}:
+            raise ValueError("unsupported_generation_control_mode")
+        first = date.fromisoformat(start_date) if start_date else date.today()
+        last = first + timedelta(days=horizon_days - 1)
+        request_controls = self._generation_controls(controls)
+        overrides = day_overrides if isinstance(day_overrides, dict) else {}
+        from content_plan_120 import build_120_day_plan
+
+        planned_entries: dict[str, dict[str, Any]] = {}
+        chunk_start = first
+        remaining = horizon_days
+        while remaining:
+            chunk_days = min(120, remaining)
+            chunk = build_120_day_plan(data_dir=self.data_dir, start_date=chunk_start.isoformat(), days=chunk_days)
+            planned_entries.update({str(entry["date"]): entry for entry in chunk.get("entries", []) if isinstance(entry, dict)})
+            chunk_start += timedelta(days=chunk_days)
+            remaining -= chunk_days
+        day_cards = []
+        for offset in range(horizon_days):
+            current = first + timedelta(days=offset)
+            supplied_day = overrides.get(current.isoformat()) if isinstance(overrides.get(current.isoformat()), dict) else {}
+            day_controls = self._generation_controls(supplied_day.get("controls"))
+            frequency = supplied_day.get("frequency") if isinstance(supplied_day.get("frequency"), dict) else {"mode": "AUTO", "value": ""}
+            frequency_mode = "CUSTOM" if str(frequency.get("mode") or "AUTO").upper() == "CUSTOM" else "AUTO"
+            frequency_value = str(frequency.get("value") or "") if frequency_mode == "CUSTOM" else ""
+            entry = planned_entries.get(current.isoformat(), {})
+            requested_count = int(frequency_value) if frequency_value.isdigit() else None
+            auto_count = 0 if current.weekday() in {0, 3} else 2 if current.day == 1 else 1
+            post_count = max(0, min(requested_count if requested_count is not None else auto_count, 3))
+            posts = []
+            for post_index in range(post_count):
+                title = str(entry.get("title") or entry.get("hook") or f"Infenergy opportunity for {current.strftime('%A')}")
+                posts.append({
+                    "id": f"{current.isoformat()}-{post_index + 1}",
+                    "concept": title if post_index == 0 else f"Platform follow-up: {title}",
+                    "content_type": day_controls["content_type"]["value"] if day_controls["content_type"]["mode"] == "CUSTOM" else str(entry.get("post_type_label") or "AI selected"),
+                    "format": day_controls["format"]["value"] if day_controls["format"]["mode"] == "CUSTOM" else str(entry.get("format_label") or "AI selected"),
+                    "platforms": day_controls["platform"]["value"] if day_controls["platform"]["mode"] == "CUSTOM" else str(entry.get("primary_platform") or "AI selected per channel"),
+                    "campaign": day_controls["campaign"]["value"] if day_controls["campaign"]["mode"] == "CUSTOM" else str(entry.get("weekly_arc") or "AI selected"),
+                    "status": "PLANNED",
+                    "generation_contract": entry,
+                })
+            day_cards.append({
+                "date": current.isoformat(),
+                "status": "PLANNED",
+                "frequency": {
+                    "mode": frequency_mode,
+                    "value": frequency_value,
+                },
+                "controls": day_controls,
+                "posts": posts,
+            })
+        identifier = uuid.uuid4().hex
+        now = utc_now()
+        with connect(self.data_dir) as connection:
+            connection.execute(
+                "INSERT INTO os_generation_requests VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'PLANNED', ?, ?)",
+                (
+                    identifier, owner_id, first.isoformat(), last.isoformat(), horizon_days, mode,
+                    guidance.strip(), encode(request_controls), encode(day_cards),
+                    max(1, min(int(production_window_days), horizon_days)), int(bool(rolling_production)), now, now,
+                ),
+            )
+            connection.commit()
+        return self.get_generation_request(identifier)
+
+    def get_generation_request(self, request_id: str) -> dict[str, Any]:
+        with connect(self.data_dir) as connection:
+            row = connection.execute("SELECT * FROM os_generation_requests WHERE id=?", (request_id,)).fetchone()
+        if not row:
+            raise KeyError(f"generation_request_not_found:{request_id}")
+        result = dict(row)
+        result["controls"] = decode(result.pop("controls_json"), {})
+        result["day_cards"] = decode(result.pop("day_cards_json"), [])
+        result["rolling_production"] = bool(result["rolling_production"])
+        return result
+
+    def list_generation_requests(self, *, owner_id: str = "owner", limit: int = 20) -> list[dict[str, Any]]:
+        with connect(self.data_dir) as connection:
+            rows = connection.execute(
+                "SELECT id FROM os_generation_requests WHERE owner_id=? ORDER BY updated_at DESC LIMIT ?",
+                (owner_id, max(1, min(int(limit), 100))),
+            ).fetchall()
+        return [self.get_generation_request(str(row["id"])) for row in rows]
+
+    def update_generation_day(self, request_id: str, day_date: str, updates: dict[str, Any]) -> dict[str, Any]:
+        request = self.get_generation_request(request_id)
+        cards = request["day_cards"]
+        matching = next((card for card in cards if card.get("date") == day_date), None)
+        if not matching:
+            raise KeyError(f"generation_day_not_found:{day_date}")
+        controls = self._generation_controls(updates.get("controls", matching.get("controls")))
+        supplied_frequency = updates.get("frequency", matching.get("frequency", {}))
+        if not isinstance(supplied_frequency, dict):
+            supplied_frequency = {}
+        frequency_mode = "CUSTOM" if str(supplied_frequency.get("mode") or "AUTO").upper() == "CUSTOM" else "AUTO"
+        frequency_value = str(supplied_frequency.get("value") or "") if frequency_mode == "CUSTOM" else ""
+        if frequency_value and (not frequency_value.isdigit() or int(frequency_value) > 3):
+            raise ValueError("generation_day_frequency_must_be_between_0_and_3")
+        requested_count = int(frequency_value) if frequency_value else None
+        auto_count = len(matching.get("posts", []))
+        post_count = requested_count if requested_count is not None else auto_count
+        existing_posts = matching.get("posts", [])
+        base = existing_posts[0] if existing_posts else {
+            "concept": f"Infenergy opportunity for {date.fromisoformat(day_date).strftime('%A')}",
+            "content_type": "AI selected", "format": "AI selected", "platforms": "AI selected per channel",
+            "campaign": "AI selected", "status": "PLANNED", "generation_contract": {},
+        }
+        posts = []
+        for index in range(post_count):
+            source = existing_posts[index] if index < len(existing_posts) else base
+            posts.append({
+                **source,
+                "id": f"{day_date}-{index + 1}",
+                "concept": source.get("concept") if index == 0 else f"Platform follow-up: {base.get('concept')}",
+                "content_type": controls["content_type"]["value"] if controls["content_type"]["mode"] == "CUSTOM" else source.get("content_type", "AI selected"),
+                "format": controls["format"]["value"] if controls["format"]["mode"] == "CUSTOM" else source.get("format", "AI selected"),
+                "platforms": controls["platform"]["value"] if controls["platform"]["mode"] == "CUSTOM" else source.get("platforms", "AI selected per channel"),
+                "campaign": controls["campaign"]["value"] if controls["campaign"]["mode"] == "CUSTOM" else source.get("campaign", "AI selected"),
+            })
+        matching.update({"frequency": {"mode": frequency_mode, "value": frequency_value}, "controls": controls, "posts": posts})
+        with connect(self.data_dir) as connection:
+            connection.execute(
+                "UPDATE os_generation_requests SET day_cards_json=?, updated_at=? WHERE id=?",
+                (encode(cards), utc_now(), request_id),
+            )
+            connection.commit()
+        return self.get_generation_request(request_id)
 
     def update_creative(self, creative_id: str, updates: dict[str, Any]) -> dict[str, Any]:
         current = self.get_creative(creative_id)

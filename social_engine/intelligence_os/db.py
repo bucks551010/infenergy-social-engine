@@ -319,6 +319,25 @@ def initialize(data_dir: str) -> str:
             CREATE INDEX IF NOT EXISTS idx_os_creatives_updated
                 ON os_creatives(owner_id, updated_at DESC);
 
+            CREATE TABLE IF NOT EXISTS os_generation_requests (
+                id TEXT PRIMARY KEY,
+                owner_id TEXT NOT NULL,
+                start_date TEXT NOT NULL,
+                end_date TEXT NOT NULL,
+                horizon_days INTEGER NOT NULL,
+                control_mode TEXT NOT NULL,
+                guidance TEXT NOT NULL,
+                controls_json TEXT NOT NULL,
+                day_cards_json TEXT NOT NULL,
+                production_window_days INTEGER NOT NULL,
+                rolling_production INTEGER NOT NULL,
+                status TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_os_generation_requests_updated
+                ON os_generation_requests(owner_id, updated_at DESC);
+
             CREATE TABLE IF NOT EXISTS os_sources (
                 id TEXT PRIMARY KEY,
                 type TEXT NOT NULL,

@@ -1,4 +1,4 @@
-const state = { data: null, conversationId: null, renderedConversationId: null, jobQuery: '', creatives: [], creativeId: null, creativeSaveTimer: null, capabilities: [], transactions: [], masterCapabilityId: null, tiktokAccount: null, contentPlan: null, calendarDate: new Date(new Date().getFullYear(), new Date().getMonth(), 1), token: sessionStorage.getItem('infenergyToken') || '' };
+const state = { data: null, conversationId: null, renderedConversationId: null, jobQuery: '', creatives: [], creativeId: null, creativeSaveTimer: null, generationDays: 30, generationMode: 'AI_DECIDE', generationRequest: null, capabilities: [], transactions: [], masterCapabilityId: null, tiktokAccount: null, contentPlan: null, calendarDate: new Date(new Date().getFullYear(), new Date().getMonth(), 1), token: sessionStorage.getItem('infenergyToken') || '' };
 const $ = (selector) => document.querySelector(selector);
 const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[char]));
 
@@ -187,6 +187,12 @@ async function loadCreatives(preferredId = state.creativeId) {
   renderCreative(selected);
 }
 
+async function loadGenerationRequests() {
+  const result = await api('/api/os/generation-requests');
+  const request = (result.requests || [])[0];
+  if (request) renderGenerationRequest(request);
+}
+
 async function saveCreative({ quiet = false } = {}) {
   if (!state.creativeId) return null;
   $('#creative-save-state').textContent = 'Saving…';
@@ -205,6 +211,70 @@ function queueCreativeSave() {
   $('#creative-save-state').textContent = 'Unsaved changes…';
   clearTimeout(state.creativeSaveTimer);
   state.creativeSaveTimer = setTimeout(() => saveCreative({ quiet: true }).catch((error) => { $('#creative-save-state').textContent = 'Save failed'; toast(error.message); }), 500);
+}
+
+const generationFields = [
+  ['content_type', 'Content type'], ['format', 'Format'], ['style', 'Style'], ['topic', 'Topic'], ['platform', 'Platform'],
+  ['infenergy_usage', 'Infenergy usage'], ['product_usage', 'Product usage'], ['campaign', 'Campaign'], ['tone', 'Tone'],
+  ['objective', 'Objective'], ['cta', 'CTA'], ['publishing_date', 'Publishing date'], ['publishing_time', 'Publishing time'],
+  ['creative_instructions', 'Creative instructions'],
+];
+
+function generationControl(field, label, value = { mode: 'AUTO', value: '' }, scope = 'request') {
+  const custom = value?.mode === 'CUSTOM';
+  return `<label class="delegated-control" data-control-field="${esc(field)}" data-control-scope="${esc(scope)}"><span>${esc(label)}</span><div><select aria-label="${esc(label)} control"><option value="AUTO" ${custom ? '' : 'selected'}>Auto · System decides</option><option value="CUSTOM" ${custom ? 'selected' : ''}>Custom · You decide</option></select><input value="${esc(value?.value || '')}" placeholder="Tell the AI what you want" ${custom ? '' : 'disabled'}></div></label>`;
+}
+
+function readGenerationControls(container) {
+  return Object.fromEntries([...container.querySelectorAll('.delegated-control')].map((control) => {
+    const mode = control.querySelector('select').value;
+    return [control.dataset.controlField, { mode, value: mode === 'CUSTOM' ? control.querySelector('input').value.trim() : '' }];
+  }));
+}
+
+function renderGenerationControls() {
+  $('#generation-controls').innerHTML = generationFields.map(([field, label]) => generationControl(field, label)).join('');
+}
+
+function renderGenerationRequest(request) {
+  state.generationRequest = request;
+  const customCount = Object.values(request.controls || {}).filter((value) => value.mode === 'CUSTOM').length;
+  $('#generation-result').innerHTML = `<article class="panel generation-plan"><div class="generation-plan-head"><div><p class="kicker">${esc(request.start_date)} — ${esc(request.end_date)}</p><h2>${esc(request.horizon_days)}-day content program</h2><p>${esc(request.guidance || 'Infenergy Intelligence is deciding every unspecified detail.')}</p></div><div>${pill(request.status)}<span>${customCount} custom · ${generationFields.length - customCount} delegated</span></div></div><div class="generation-day-grid">${(request.day_cards || []).map((day) => renderGenerationDay(day)).join('')}</div></article>`;
+}
+
+function renderGenerationDay(day) {
+  const date = new Date(`${day.date}T12:00:00`);
+  const posts = day.posts || [];
+  return `<article class="generation-day" data-day-date="${esc(day.date)}"><header><div><span>${esc(date.toLocaleDateString([], { month: 'short', day: 'numeric' }))}</span><strong>${esc(date.toLocaleDateString([], { weekday: 'long' }))}</strong></div>${pill(day.status)}</header><div class="day-frequency"><label><span>Posts this day</span><select data-day-frequency><option value="AUTO" ${day.frequency?.mode === 'CUSTOM' ? '' : 'selected'}>Auto · AI decides</option><option value="0" ${day.frequency?.value === '0' ? 'selected' : ''}>No post</option><option value="1" ${day.frequency?.value === '1' ? 'selected' : ''}>1 post</option><option value="2" ${day.frequency?.value === '2' ? 'selected' : ''}>2 posts</option><option value="3" ${day.frequency?.value === '3' ? 'selected' : ''}>3 posts</option></select></label></div>${posts.length ? `<div class="day-posts">${posts.map((post) => `<article data-generation-post="${esc(post.id)}"><strong>${esc(post.concept)}</strong><span>${esc(post.content_type)} · ${esc(post.format)}</span><small>${esc(post.platforms)} · ${esc(post.campaign)}</small><div class="day-actions"><button type="button" data-edit-day>Edit controls</button><button type="button" data-regenerate>Regenerate</button></div></article>`).join('')}</div>` : '<p class="day-empty">No post recommended. Add one by changing Posts this day.</p>'}<details data-day-controls><summary>Day controls</summary><div class="day-controls">${generationFields.map(([field, label]) => generationControl(field, label, day.controls?.[field], day.date)).join('')}</div><button type="button" class="creative-button secondary" data-generate-day>Generate This Day</button></details></article>`;
+}
+
+function generationRequestData() {
+  const start = $('#generation-start').value || new Date().toISOString().slice(0, 10);
+  const productionWindow = Math.min(Number($('#generation-production-window').value || 30), state.generationDays);
+  return { start_date: start, days: state.generationDays, control_mode: state.generationMode, guidance: $('#generation-guidance').value.trim(), controls: readGenerationControls($('#generation-controls')), production_window_days: productionWindow, rolling_production: $('#generation-rolling').checked };
+}
+
+function generationDayData(card) {
+  const frequency = card.querySelector('[data-day-frequency]').value;
+  return {
+    frequency: { mode: frequency === 'AUTO' ? 'AUTO' : 'CUSTOM', value: frequency === 'AUTO' ? '' : frequency },
+    controls: readGenerationControls(card),
+  };
+}
+
+async function persistGenerationDay(card) {
+  const dayDate = card.dataset.dayDate;
+  const result = await api(`/api/os/generation-requests/${state.generationRequest.id}/days/${dayDate}`, {
+    method: 'PATCH', body: JSON.stringify(generationDayData(card)),
+  });
+  renderGenerationRequest(result.request);
+  return result.request.day_cards.find((day) => day.date === dayDate);
+}
+
+function generationCommand(day, post) {
+  const requestValues = Object.entries(state.generationRequest.controls || {}).filter(([, control]) => control.mode === 'CUSTOM' && control.value).map(([field, control]) => `${humanize(field)}: ${control.value}`);
+  const dayValues = Object.entries(day.controls || {}).filter(([, control]) => control.mode === 'CUSTOM' && control.value).map(([field, control]) => `${humanize(field)}: ${control.value}`);
+  return [`Create a finished Infenergy social post for ${day.date}.`, `Concept: ${post.concept}.`, state.generationRequest.guidance, ...requestValues, ...dayValues].filter(Boolean).join(' ');
 }
 
 function capabilityExample(schema) {
@@ -463,7 +533,7 @@ function render(data) {
 }
 
 async function loadTikTokStatus() { try { state.tiktokAccount = await api('/api/auth/tiktok/status'); } catch { state.tiktokAccount = { status: 'ERROR', connected: false }; } }
-async function load() { try { const [data] = await Promise.all([api('/api/os/state'), loadCreatives(), loadMaster(), loadTikTokStatus(), loadSocialCalendar(), loadContentPlan()]); state.data = data; state.conversationId = data.conversation?.id; syncConversation(data.conversation); render(data); $('#system-dot').className = 'dot ok'; $('#system-label').textContent = 'Master OS connected'; } catch (error) { $('#system-dot').className = 'dot bad'; $('#system-label').textContent = 'Connection blocked'; toast(error.message); } }
+async function load() { try { const [data] = await Promise.all([api('/api/os/state'), loadCreatives(), loadGenerationRequests(), loadMaster(), loadTikTokStatus(), loadSocialCalendar(), loadContentPlan()]); state.data = data; state.conversationId = data.conversation?.id; syncConversation(data.conversation); render(data); $('#system-dot').className = 'dot ok'; $('#system-label').textContent = 'Master OS connected'; } catch (error) { $('#system-dot').className = 'dot bad'; $('#system-label').textContent = 'Connection blocked'; toast(error.message); } }
 function activateView(view) {
   const button = document.querySelector(`#nav button[data-view="${view}"]`);
   const target = $(`#${view}`);
@@ -600,6 +670,99 @@ $('#new-creative').addEventListener('click', async () => {
     $('#creative-title').select();
     toast('New idea saved');
   } catch (error) { toast(error.message); }
+});
+renderGenerationControls();
+$('#generation-start').value = new Date().toISOString().slice(0, 10);
+$('#generation-toggle').addEventListener('click', () => { $('#generation-form').hidden = !$('#generation-form').hidden; });
+$('#generation-horizons').addEventListener('click', (event) => {
+  const button = event.target.closest('[data-days]');
+  if (!button) return;
+  document.querySelectorAll('#generation-horizons [data-days]').forEach((item) => item.classList.toggle('active', item === button));
+  const custom = button.dataset.days === 'custom';
+  $('#generation-custom-days').hidden = !custom;
+  state.generationDays = custom ? Number($('#generation-days').value || 30) : Number(button.dataset.days);
+});
+$('#generation-days').addEventListener('input', () => { state.generationDays = Math.max(1, Math.min(365, Number($('#generation-days').value || 1))); });
+$('#generation-modes').addEventListener('click', (event) => {
+  const button = event.target.closest('[data-mode]');
+  if (!button) return;
+  state.generationMode = button.dataset.mode;
+  document.querySelectorAll('#generation-modes [data-mode]').forEach((item) => item.classList.toggle('active', item === button));
+  if (state.generationMode === 'CUSTOMIZE') $('#generation-controls-panel').open = true;
+});
+document.addEventListener('change', (event) => {
+  const select = event.target.closest('.delegated-control select');
+  if (!select) return;
+  const input = select.closest('.delegated-control').querySelector('input');
+  input.disabled = select.value !== 'CUSTOM';
+  if (!input.disabled) input.focus();
+});
+$('#generation-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const button = $('#generation-submit');
+  try {
+    button.disabled = true; button.textContent = 'Building strategy…';
+    const result = await api('/api/os/generation-requests', { method: 'POST', body: JSON.stringify(generationRequestData()) });
+    renderGenerationRequest(result.request);
+    toast('Content program created');
+  } catch (error) { toast(error.message); }
+  finally { button.disabled = false; button.textContent = 'Build Content Program'; }
+});
+$('#generation-result').addEventListener('change', async (event) => {
+  const frequency = event.target.closest('[data-day-frequency]');
+  if (!frequency) return;
+  try { frequency.disabled = true; await persistGenerationDay(frequency.closest('.generation-day')); toast('Day frequency saved'); }
+  catch (error) { frequency.disabled = false; toast(error.message); }
+});
+$('#generation-result').addEventListener('click', async (event) => {
+  const edit = event.target.closest('[data-edit-day]');
+  if (edit) {
+    const controls = edit.closest('.generation-day').querySelector('[data-day-controls]');
+    controls.open = true;
+    controls.scrollIntoView?.({ behavior: 'smooth', block: 'nearest' });
+    return;
+  }
+  const scopedRegeneration = event.target.closest('[data-regenerate-scope]');
+  if (scopedRegeneration) {
+    const card = scopedRegeneration.closest('.generation-day');
+    const day = state.generationRequest.day_cards.find((item) => item.date === card.dataset.dayDate);
+    const postId = scopedRegeneration.closest('[data-generation-post]').dataset.generationPost;
+    const post = day.posts.find((item) => item.id === postId);
+    try {
+      scopedRegeneration.disabled = true;
+      const scope = scopedRegeneration.dataset.regenerateScope;
+      const command = `${generationCommand(day, post)} Regenerate ${scope} only. Preserve every unaffected component as a new version.`;
+      const result = await api('/api/os/execute', { method: 'POST', body: JSON.stringify({ capability: 'creative.command.produce', arguments: { command } }) });
+      if (operationOutput(result)) { renderDeliverables(result); activateView('command'); }
+      await load();
+      toast(result.status === 'WAITING_APPROVAL' ? 'Regeneration is waiting for owner approval' : `${scope} regenerated`);
+    } catch (error) { scopedRegeneration.disabled = false; toast(error.message); }
+    return;
+  }
+  const generate = event.target.closest('[data-generate-day]');
+  if (generate) {
+    try {
+      generate.disabled = true; generate.textContent = 'Saving day controls…';
+      const day = await persistGenerationDay(generate.closest('.generation-day'));
+      if (!(day.posts || []).length) throw new Error('This day has no planned posts. Increase Posts this day first.');
+      const results = [];
+      for (const post of day.posts) {
+        generate.textContent = `Producing ${results.length + 1} of ${day.posts.length}…`;
+        results.push(await api('/api/os/execute', { method: 'POST', body: JSON.stringify({ capability: 'creative.command.produce', arguments: { command: generationCommand(day, post) } }) }));
+      }
+      const delivered = results.find((result) => operationOutput(result));
+      if (delivered) { renderDeliverables(delivered); activateView('command'); }
+      await load();
+      toast(results.some((result) => result.status === 'WAITING_APPROVAL') ? 'Production is waiting for owner approval' : 'Day production completed');
+    } catch (error) { generate.disabled = false; generate.textContent = 'Generate This Day'; toast(error.message); }
+    return;
+  }
+  const button = event.target.closest('[data-regenerate]');
+  if (!button) return;
+  const actions = button.closest('.day-actions');
+  const existing = actions.querySelector('.regenerate-menu');
+  if (existing) { existing.remove(); return; }
+  actions.insertAdjacentHTML('beforeend', '<div class="regenerate-menu"><button type="button" data-regenerate-scope="entire post">Entire Post</button><button type="button" data-regenerate-scope="concept">Concept Only</button><button type="button" data-regenerate-scope="visual">Visual Only</button><button type="button" data-regenerate-scope="caption">Caption Only</button><button type="button" data-regenerate-scope="copy">Copy Only</button><button type="button" data-regenerate-scope="one carousel card">One Carousel Card</button><button type="button" data-regenerate-scope="style">Style Only</button><button type="button" data-regenerate-scope="platform version">Platform Version Only</button></div>');
 });
 $('#creative-list').addEventListener('click', (event) => { const button = event.target.closest('[data-creative-id]'); if (button) renderCreative(state.creatives.find((item) => item.id === button.dataset.creativeId)); });
 ['creative-title', 'creative-idea', 'creative-slides', 'creative-platform'].forEach((id) => $(`#${id}`).addEventListener('input', queueCreativeSave));

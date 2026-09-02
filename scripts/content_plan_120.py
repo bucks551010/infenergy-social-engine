@@ -373,9 +373,17 @@ def _load_company_thoughts(data_dir: str) -> tuple[str, list[dict[str, Any]]]:
         thought for thought in payload.get("thought_library", [])
         if isinstance(thought, dict) and thought.get("id") and thought.get("statement")
     ] if isinstance(payload, dict) else []
-    if not thoughts:
-        raise ValueError("verified Infenergy company thoughts are unavailable")
-    return str(payload.get("knowledge_id") or "infenergy-company-truth"), thoughts
+    thought_by_id = {str(thought["id"]): thought for thought in thoughts}
+    messages = []
+    for message in payload.get("super_message_library", []) if isinstance(payload, dict) else []:
+        if not isinstance(message, dict) or not message.get("id") or not message.get("statement"):
+            continue
+        support = thought_by_id.get(str(message.get("support_thought_id") or ""))
+        if support:
+            messages.append({**support, **message, "support_statement": support["statement"]})
+    if not messages:
+        raise ValueError("verified Infenergy super messages are unavailable")
+    return str(payload.get("knowledge_id") or "infenergy-company-truth"), messages
 
 
 def _select_company_thought(
@@ -788,11 +796,13 @@ def _daily_concept(
             "verbatim_company_quote": True,
             "company_source": {
                 "knowledge_id": company_knowledge_id,
-                "thought_id": str(company_thought["id"]),
+                "message_id": str(company_thought["id"]),
+                "support_thought_id": str(company_thought["support_thought_id"]),
                 "statement": statement,
                 "audience": str(company_thought.get("audience") or ""),
                 "pillar": str(company_thought.get("pillar") or ""),
             },
+            "support_statement": str(company_thought.get("support_statement") or ""),
             "source_expansion": str(company_thought.get("expansion") or ""),
             "source_useful_detail": str(company_thought.get("useful_detail") or ""),
             "source_prompt": str(company_thought.get("prompt") or ""),

@@ -129,8 +129,8 @@ def test_weekly_company_quotes_are_verbatim_sourced_and_audience_matched(tmp_pat
     with open("data/marketing/infenergy_company_knowledge.json", "r", encoding="utf-8") as handle:
         knowledge = json.load(handle)
     statements = {
-        thought["id"]: thought["statement"]
-        for thought in knowledge["thought_library"]
+        message["id"]: message["statement"]
+        for message in knowledge["super_message_library"]
     }
     quotes = [
         entry for entry in plan["entries"]
@@ -139,11 +139,25 @@ def test_weekly_company_quotes_are_verbatim_sourced_and_audience_matched(tmp_pat
 
     assert plan["weekly_company_quote_count"] == len(quotes) == 17
     assert all(entry["weekday"] == "Sunday" for entry in quotes)
-    assert len({entry["company_source"]["thought_id"] for entry in quotes}) == len(quotes)
+    assert len({entry["company_source"]["message_id"] for entry in quotes}) == len(quotes)
     assert all(entry["verbatim_company_quote"] is True for entry in quotes)
     assert all(entry["company_source"]["knowledge_id"] == knowledge["knowledge_id"] for entry in quotes)
     assert all(
-        entry["exact_visible_text"] == [statements[entry["company_source"]["thought_id"]]]
+        entry["exact_visible_text"] == [statements[entry["company_source"]["message_id"]]]
+        for entry in quotes
+    )
+    assert all(entry["company_source"]["support_thought_id"].startswith("T") for entry in quotes)
+    assert all(len(entry["exact_visible_text"][0].split()) <= 12 for entry in quotes)
+    assert all(entry["support_statement"] != entry["exact_visible_text"][0] for entry in quotes)
+    expected_audiences = {
+        "mobile_professional": "mobile_professional",
+        "outdoor_enthusiast": "outdoor",
+        "caregiver": "caregiver",
+        "small_business_operator": "mobile_professional",
+        "preparedness_buyer": "preparedness_builder",
+    }
+    assert all(
+        entry["company_source"]["audience"] == expected_audiences[entry["audience_id"]]
         for entry in quotes
     )
     assert all(entry["aspect_ratio"] == "4:5" for entry in quotes)

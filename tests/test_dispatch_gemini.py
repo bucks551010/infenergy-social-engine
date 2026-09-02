@@ -64,6 +64,29 @@ def test_prepare_gemini_assets_generates_every_carousel_slide_once(tmp_path, mon
     assert all(platform == "gemini" for platform in prepared["generated_visuals"]["render_engines"].values())
 
 
+def test_prepare_gemini_assets_preserves_portrait_generation_contract(tmp_path, monkeypatch):
+    platforms = []
+    package = _package(carousel=False)
+    package["gemini_generation"]["aspect_ratio"] = "9:16"
+
+    def generate(content, *, prompt_plan, output_path, platform):
+        Path(output_path).write_bytes(b"png")
+        platforms.append(platform)
+        return {
+            "render_engine": "gemini",
+            "prompt_sha256": prompt_plan["prompt_sha256"],
+            "local_path": output_path,
+            "review": {"verdict": "PASS", "issues": []},
+            "generation": {"generation_status": "success", "visual_provider": "gemini"},
+        }
+
+    monkeypatch.setenv("PUBLIC_BASE_URL", "https://example.test")
+    monkeypatch.setattr(dispatch_outbox, "generate_strict_gemini_image", generate)
+    dispatch_outbox._prepare_gemini_assets(package, str(tmp_path))
+
+    assert platforms == ["iis_reel_cover"]
+
+
 def test_dispatch_blocks_every_platform_when_gemini_generation_fails(monkeypatch):
     recovered = []
     published = []

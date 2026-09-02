@@ -29,6 +29,7 @@ ELITE_SLATE_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "..",
 PLATFORMS = ("facebook", "instagram", "linkedin")
 MAX_CALENDAR_DAYS = 120
 WEEKLY_BRAND_MIX = "weekly_brand_mix"
+CONTENT_PLAN_120 = "content_plan_120"
 BACKGROUND_ROTATION = ("#10212B", "#F7F4EC", "#DCEEF2", "#4F7658", "#E45B3A")
 INK_BY_BACKGROUND = {
     "#10212B": "#F7F4EC",
@@ -155,6 +156,57 @@ def _synthetic_thought(*, identifier: str, kind: str, content_type: str, stateme
         "audience": "households, caregivers, small businesses, travelers, and community-minded consumers",
         "editorial_mode": kind,
     }
+
+
+def _plan_entry_thought(entry: dict[str, Any]) -> dict[str, Any]:
+    exact_text = entry.get("exact_visible_text") if isinstance(entry.get("exact_visible_text"), list) else []
+    statement = str((exact_text or [entry.get("title") or entry.get("hook") or "Power the next move."])[0]).strip()
+    support = str(entry.get("support_statement") or entry.get("takeaway") or entry.get("story") or "").strip()
+    product = entry.get("product") if isinstance(entry.get("product"), dict) else {}
+    is_comic = entry.get("format") == "product_micro_mission_comic"
+    is_company_message = entry.get("format") == "infenergy_company_quote_visual"
+    story_sequence = [str(item) for item in entry.get("story_sequence", []) if str(item).strip()]
+    return {
+        "id": f"PLAN120-D{int(entry.get('day_number') or 0):03d}",
+        "pillar": str(entry.get("creative_territory") or (entry.get("company_source") or {}).get("pillar") or "everyday_power"),
+        "kind": "product_micro_mission" if is_comic else "company_super_message" if is_company_message else "planned_editorial",
+        "content_type": "product" if product else "editorial",
+        "product_id": str(entry.get("product_id") or product.get("product_id") or ""),
+        "format": "single",
+        "statement": statement,
+        "overlay_text": statement,
+        "expansion": support or str(entry.get("hook") or statement),
+        "useful_detail": str(entry.get("product_proof_direction") or entry.get("human_reality") or ""),
+        "action": str(entry.get("cta") or "Stay prepared. Stay connected."),
+        "prompt": str(entry.get("natural_response") or entry.get("cta") or "What will you keep ready?"),
+        "linkedin_lens": str(entry.get("brain_movement") or support),
+        "instagram_hook": statement,
+        "hashtags": ["Infenergy", "PowerReadiness", "PracticalPower"],
+        "visual_motif": str(entry.get("visual_reveal") or entry.get("story") or statement),
+        "image_scene": " ".join(story_sequence) if story_sequence else str(entry.get("story") or entry.get("infenergy_action") or statement),
+        "visual_execution": "single vertical three-panel product comic" if is_comic else "single-frame integrated typography" if is_company_message else str(entry.get("format_label") or "editorial_scene"),
+        "characters": ["Infenergy"] if entry.get("canon_required") or is_comic or is_company_message else [],
+        "canon_required": bool(entry.get("canon_required") or is_comic or is_company_message),
+        "weekly_role": "micro_mission" if is_comic else "superhero_quote" if is_company_message else "planned_editorial",
+        "slides": [
+            {"role": f"panel_{index}", "headline": item, "supporting": ""}
+            for index, item in enumerate(story_sequence, start=1)
+        ],
+        "generation_contract": deepcopy(entry),
+        "audience": str(entry.get("audience_name") or entry.get("audience_id") or ""),
+        "editorial_mode": str(entry.get("entertainment_mode") or entry.get("format") or "planned_editorial"),
+        "source_note": str((entry.get("company_source") or {}).get("knowledge_id") or "120-day Infenergy content plan"),
+    }
+
+
+def _content_plan_120_thoughts(*, data_dir: str, start: date, days: int) -> list[dict[str, Any]]:
+    from content_plan_120 import build_120_day_plan
+
+    plan = build_120_day_plan(data_dir=data_dir, start_date=start.isoformat(), days=days)
+    entries = plan.get("entries") if isinstance(plan.get("entries"), list) else []
+    if len(entries) != days:
+        raise RuntimeError(f"content_plan_120_coverage_incomplete:{len(entries)}/{days}")
+    return [_plan_entry_thought(entry) for entry in entries if isinstance(entry, dict)]
 
 
 def _weekly_brand_mix_thoughts(slate: dict[str, Any], *, start: date, days: int) -> list[dict[str, Any]]:
@@ -338,6 +390,9 @@ def _load_product_brief(data_dir: str, product_id: str) -> dict[str, Any]:
 
 
 def _gemini_generation_plan(thought: dict[str, Any], product: dict[str, Any] | None = None) -> dict[str, Any]:
+    contract = thought.get("generation_contract") if isinstance(thought.get("generation_contract"), dict) else {}
+    is_product_comic = contract.get("format") == "product_micro_mission_comic"
+    is_company_message = contract.get("format") == "infenergy_company_quote_visual"
     slides = _carousel_slides(thought) if thought.get("format") == "carousel" else [
         {"role": "thought", "headline": thought["statement"], "supporting": thought["expansion"]}
     ]
@@ -372,11 +427,28 @@ def _gemini_generation_plan(thought: dict[str, Any], product: dict[str, Any] | N
             if role == "FINALE"
             else ""
         )
+        contract_instruction = ""
+        if is_product_comic:
+            sequence = " ".join(str(item) for item in contract.get("story_sequence", []) if str(item).strip())
+            integration = contract.get("product_integration") if isinstance(contract.get("product_integration"), dict) else {}
+            contract_instruction = (
+                "Deliver ONE 1080x1920 vertical 9:16 image containing exactly THREE clearly separated, sequential comic panels; never return separate images or a carousel. "
+                f"Entertainment mode: {contract.get('entertainment_mode')}. Entertainment direction: {contract.get('entertainment_hook')} "
+                f"Required sequence: {sequence} Product plot rule: {integration.get('role')} {integration.get('plot_test')} "
+                f"Claim boundary: {integration.get('boundary')} Humor enabled: {bool(contract.get('humor_enabled'))}. {contract.get('humor_guardrail')} "
+                "Keep every exact dialogue line readable inside Instagram Story safe areas. "
+            )
+        elif is_company_message:
+            contract_instruction = (
+                "Deliver ONE 1080x1350 portrait 4:5 image. The approved message must appear exactly once, verbatim, with no paraphrase or extra headline. "
+                f"Integrate the typography into the scene using {contract.get('typography_material')}; Infenergy action: {contract.get('infenergy_action')} "
+                "Do not use a floating quote card or a generic character pose. "
+            )
         scene_prompt = (
             "Create one premium, photorealistic square editorial image for Infenergy Power about practical energy readiness. "
             f"The image must express this exact post and no generic substitute: {thought['statement']} "
             f"Authored scene: {image_scene} Scene meaning: {slide.get('headline', '')}. "
-            f"Visual execution: {visual_execution}. {product_instruction}{character_instruction}{framing_instruction}"
+            f"Visual execution: {visual_execution}. {contract_instruction}{product_instruction}{character_instruction}{framing_instruction}"
             f"This is slide {slide_index} of {len(slides)} with the role {slide['role']}. "
             "Show a believable real-life environment, natural human stakes, physically credible portable-energy context, "
             "cinematic directional light, rich material detail, and generous protected negative space in the upper third for an editorial overlay. "
@@ -412,6 +484,8 @@ def _gemini_generation_plan(thought: dict[str, Any], product: dict[str, Any] | N
         "fallback_allowed": False,
         "reuse_across_platforms": True,
         "required_image_count": len(prompts),
+        "aspect_ratio": "9:16" if is_product_comic else "4:5" if is_company_message else "1:1",
+        "generation_contract": contract,
         "reference_image_urls": list(dict.fromkeys([
             *[str(url) for url in thought.get("reference_image_urls", []) if str(url).startswith("http")],
             *([OFFICIAL_LOGO_URL] if len(slides) > 1 else []),
@@ -492,8 +566,8 @@ def _render_assets(data_dir: str, thought: dict[str, Any], index: int) -> dict[s
     return {"primary": assets[0], "slides": assets}
 
 
-def _package(knowledge: dict[str, Any], thought: dict[str, Any], content_date: str, index: int, data_dir: str) -> dict[str, Any]:
-    assets = _render_assets(data_dir, thought, index)
+def _package(knowledge: dict[str, Any], thought: dict[str, Any], content_date: str, index: int, data_dir: str, *, defer_images: bool = False) -> dict[str, Any]:
+    assets = {"primary": {"local_path": "", "public_url": ""}, "slides": []} if defer_images else _render_assets(data_dir, thought, index)
     captions = _captions(thought)
     digest = knowledge_digest(knowledge)
     thought_digest = hashlib.sha256(json.dumps(thought, sort_keys=True, ensure_ascii=True).encode("utf-8")).hexdigest()
@@ -541,6 +615,7 @@ def _package(knowledge: dict[str, Any], thought: dict[str, Any], content_date: s
         "product_proof_rule": str(product.get("proof_rule") or "") if product else "",
         "copy_generation_source": "canonical_company_knowledge",
         "generation_thought": thought,
+        "generation_contract": deepcopy(thought.get("generation_contract") or {}),
         "company_knowledge": {
             "knowledge_id": knowledge.get("knowledge_id"),
             "schema_version": knowledge.get("schema_version"),
@@ -573,7 +648,7 @@ def _package(knowledge: dict[str, Any], thought: dict[str, Any], content_date: s
         },
         "gemini_generation": _gemini_generation_plan(thought, product),
         "carousel_assets": assets["slides"] if thought.get("format") == "carousel" else [],
-        "generated_visuals": {
+        "generated_visuals": {} if defer_images else {
             "facebook": primary_path,
             "instagram": primary_path,
             "linkedin": primary_path,
@@ -719,7 +794,7 @@ def build_monthly_calendar(
 ) -> dict[str, Any]:
     if days < 1 or days > MAX_CALENDAR_DAYS:
         raise ValueError(f"days must be between 1 and {MAX_CALENDAR_DAYS}")
-    if content_plan not in (None, "", WEEKLY_BRAND_MIX):
+    if content_plan not in (None, "", WEEKLY_BRAND_MIX, CONTENT_PLAN_120):
         raise ValueError(f"unsupported content plan: {content_plan}")
     knowledge_refresh = (
         refresh_persistent_company_knowledge(data_dir)
@@ -730,13 +805,21 @@ def build_monthly_calendar(
     slate = _load_editorial_slate()
     start = date.fromisoformat(start_date) if isinstance(start_date, str) else start_date
     start = start or (datetime.now(timezone.utc).date() + timedelta(days=1))
-    thoughts = (
-        _weekly_brand_mix_thoughts(slate, start=start, days=days)
-        if content_plan == WEEKLY_BRAND_MIX
-        else [deepcopy(slate["posts"][index % len(slate["posts"])]) for index in range(days)]
-    )
+    if content_plan == CONTENT_PLAN_120:
+        thoughts = _content_plan_120_thoughts(data_dir=data_dir, start=start, days=days)
+    elif content_plan == WEEKLY_BRAND_MIX:
+        thoughts = _weekly_brand_mix_thoughts(slate, start=start, days=days)
+    else:
+        thoughts = [deepcopy(slate["posts"][index % len(slate["posts"])]) for index in range(days)]
     packages = [
-        _package(knowledge, thought, (start + timedelta(days=index)).isoformat(), index, data_dir)
+        _package(
+            knowledge,
+            thought,
+            (start + timedelta(days=index)).isoformat(),
+            index,
+            data_dir,
+            defer_images=content_plan == CONTENT_PLAN_120,
+        )
         for index, thought in enumerate(thoughts)
     ]
     existing_ids = _existing_content_ids(data_dir)

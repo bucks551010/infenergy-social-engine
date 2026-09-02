@@ -22,6 +22,17 @@ def handle(method: str, path: str, body: dict[str, Any] | None, data_dir: str) -
                 start_date=payload.get("start_date"),
                 days=int(payload.get("days", 120)),
             ))
+        if method == "POST" and path == "/api/os/content-plan/activate":
+            from build_monthly_content import CONTENT_PLAN_120, build_monthly_calendar
+
+            return _json(200, build_monthly_calendar(
+                data_dir=data_dir,
+                start_date=payload.get("start_date"),
+                days=int(payload.get("days", 120)),
+                enqueue=True,
+                replace_unpublished=True,
+                content_plan=CONTENT_PLAN_120,
+            ))
         service = bootstrap(data_dir)
         if method == "GET" and path in {"/os", "/os/"}:
             return _file("index.html")

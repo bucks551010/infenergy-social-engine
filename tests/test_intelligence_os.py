@@ -1238,6 +1238,8 @@ def test_command_center_and_api_are_served(tmp_path):
     assert b"source?.creative" in javascript
     assert b"/^https?:\\/\\//i.test" in javascript
     assert b"result.status === 'DELIVERED'" in javascript
+
+
     assert b"renderDeliverables(result)" in javascript
     assert b"data-view-deliverables" in javascript
     assert b"Not scheduled \xc2\xb7 Not published" in javascript
@@ -1309,6 +1311,34 @@ def test_command_center_and_api_are_served(tmp_path):
     assert b"overflow-x: hidden" in stylesheet
     assert b".login-screen" in stylesheet
     assert b"grid-template-columns: minmax(0, 1fr)" in stylesheet
+
+
+def test_content_plan_activation_queues_120_day_runtime_contract(monkeypatch, tmp_path):
+    calls = []
+
+    def build_monthly_calendar(**kwargs):
+        calls.append(kwargs)
+        return {"status": "READY", "queued": 120, "coverage_days": 120}
+
+    monkeypatch.setattr("build_monthly_content.build_monthly_calendar", build_monthly_calendar)
+    status, content_type, payload = handle(
+        "POST",
+        "/api/os/content-plan/activate",
+        {"start_date": "2026-09-02", "days": 120},
+        str(tmp_path),
+    )
+
+    assert status == 200
+    assert content_type.startswith("application/json")
+    assert json.loads(payload)["coverage_days"] == 120
+    assert calls == [{
+        "data_dir": str(tmp_path),
+        "start_date": "2026-09-02",
+        "days": 120,
+        "enqueue": True,
+        "replace_unpublished": True,
+        "content_plan": "content_plan_120",
+    }]
 
 
 def test_120_day_plan_is_a_durable_approval_gated_job(tmp_path):

@@ -11,7 +11,8 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
 from agents import carousel_slide_writer  # noqa: E402
-from build_monthly_content import _captions, _gemini_generation_plan, _load_editorial_slate, _load_product_brief, _weekly_brand_mix_thoughts, build_monthly_calendar, latest_monthly_calendar, prepare_monthly_gemini_prompts  # noqa: E402
+from build_monthly_content import CONTENT_PLAN_120, _captions, _gemini_generation_plan, _load_editorial_slate, _load_product_brief, _plan_entry_thought, _weekly_brand_mix_thoughts, build_monthly_calendar, latest_monthly_calendar, prepare_monthly_gemini_prompts  # noqa: E402
+from content_plan_120 import build_120_day_plan  # noqa: E402
 from company_knowledge import agent_specialization, compact_generation_context, load_company_knowledge  # noqa: E402
 from content_operations import daily_status  # noqa: E402
 from dispatch_outbox import _refresh_current_news_package, pregenerate_upcoming  # noqa: E402
@@ -195,6 +196,57 @@ def test_weekly_brand_mix_compiles_120_days_with_exact_weekly_roles(monkeypatch)
     assert mission["reference_image_urls"] == ["https://studio.example/api/assets/canon"]
     assert thoughts[4]["canon_required"] is True
     assert thoughts[6]["source_note"].startswith("https://")
+
+
+def test_120_day_entries_translate_to_runtime_generation_contracts():
+    plan = build_120_day_plan(data_dir=str(ROOT / "data"), start_date="2026-09-02")
+    friday = next(entry for entry in plan["entries"] if entry["format"] == "product_micro_mission_comic")
+    sunday = next(entry for entry in plan["entries"] if entry["format"] == "infenergy_company_quote_visual")
+
+    comic = _plan_entry_thought(friday)
+    message = _plan_entry_thought(sunday)
+
+    assert comic["format"] == "single"
+    assert comic["product_id"] == friday["product_id"]
+    assert comic["editorial_mode"] == friday["entertainment_mode"]
+    assert comic["generation_contract"]["product_integration"]["required"] is True
+    assert [slide["headline"] for slide in comic["slides"]] == friday["story_sequence"]
+    assert message["format"] == "single"
+    assert message["statement"] == sunday["exact_visible_text"][0]
+    assert message["expansion"] == sunday["support_statement"]
+    assert message["generation_contract"]["verbatim_company_quote"] is True
+
+    comic_generation = _gemini_generation_plan(comic, _load_product_brief(str(ROOT / "data"), comic["product_id"]))
+    message_generation = _gemini_generation_plan(message)
+    assert comic_generation["required_image_count"] == 1
+    assert comic_generation["aspect_ratio"] == "9:16"
+    assert "exactly THREE" in comic_generation["prompts"][0]["gemini_image_prompt"]
+    assert friday["entertainment_mode"] in comic_generation["prompts"][0]["gemini_image_prompt"]
+    assert message_generation["aspect_ratio"] == "4:5"
+    assert sunday["exact_visible_text"][0] in message_generation["prompts"][0]["v5_direction"]["text_overlay"]["text"]
+
+
+def test_120_day_plan_queues_existing_runtime_packages(tmp_path, monkeypatch):
+    _seed_knowledge(tmp_path)
+    monkeypatch.setenv("PUBLIC_BASE_URL", "https://example.test")
+
+    calendar = build_monthly_calendar(
+        data_dir=str(tmp_path),
+        start_date="2026-09-02",
+        days=7,
+        enqueue=True,
+        content_plan=CONTENT_PLAN_120,
+    )
+
+    assert calendar["queued"] == 7
+    assert calendar["coverage_days"] == 7
+    friday = next(entry for entry in calendar["entries"] if entry["package"]["generation_contract"].get("format") == "product_micro_mission_comic")
+    sunday = next(entry for entry in calendar["entries"] if entry["package"]["generation_contract"].get("format") == "infenergy_company_quote_visual")
+    assert friday["package"]["gemini_generation"]["aspect_ratio"] == "9:16"
+    assert friday["package"]["generation_contract"]["product_integration"]["required"] is True
+    assert sunday["package"]["thought_statement"] == sunday["package"]["generation_contract"]["exact_visible_text"][0]
+    assert all(not entry["package"]["generated_visuals"] for entry in calendar["entries"])
+    assert not (tmp_path / "public_media").exists()
 
 
 def test_weekly_brand_mix_fails_closed_without_live_news_or_locked_canon(monkeypatch):

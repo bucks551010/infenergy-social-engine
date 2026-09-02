@@ -180,6 +180,10 @@ def _prepare_gemini_assets(package: dict[str, Any], data_dir: str) -> dict[str, 
     public_dir = os.path.join(data_dir, "public_media")
     os.makedirs(public_dir, exist_ok=True)
     post_id = str(package.get("post_id") or package.get("content_id") or "monthly")
+    generation_platform = {
+        "9:16": "iis_reel_cover",
+        "4:5": "iis_carousel",
+    }.get(str(generation.get("aspect_ratio") or ""), "instagram")
     assets: list[dict[str, Any]] = []
     for prompt_plan in prompts:
         if not isinstance(prompt_plan, dict):
@@ -191,7 +195,7 @@ def _prepare_gemini_assets(package: dict[str, Any], data_dir: str) -> dict[str, 
             package,
             prompt_plan=prompt_plan,
             output_path=output_path,
-            platform="instagram",
+            platform=generation_platform,
         )
         result.update({
             "slide_index": slide_index,

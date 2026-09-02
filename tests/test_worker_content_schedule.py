@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import sys
+from io import BytesIO
 from types import SimpleNamespace
 import subprocess
 
@@ -26,6 +27,37 @@ def test_post_requests_reach_the_existing_endpoint_handler():
     handler.do_POST()
 
     assert calls == ["handled"]
+
+
+def test_patch_requests_reach_the_intelligence_os_handler(monkeypatch, tmp_path):
+    captured = {}
+
+    def handle(method, path, payload, data_dir):
+        captured.update(method=method, path=path, payload=payload, data_dir=data_dir)
+        return 200, "application/json", b'{"ok": true}'
+
+    monkeypatch.setattr(worker, "_os_authorized", lambda *_: (True, 200, {}))
+    monkeypatch.setattr(worker, "_data_dir", lambda: str(tmp_path))
+    monkeypatch.setattr("social_engine.intelligence_os.web.handle", handle)
+    handler = object.__new__(worker.HealthHandler)
+    handler.path = "/api/os/generation-requests/request-1/days/2026-09-02"
+    handler.headers = {"Content-Length": "17"}
+    handler.rfile = BytesIO(b'{"frequency":{}}')
+    handler.wfile = BytesIO()
+    statuses = []
+    handler.send_response = statuses.append
+    handler.send_header = lambda *_: None
+    handler.end_headers = lambda: None
+
+    handler.do_PATCH()
+
+    assert statuses == [200]
+    assert captured == {
+        "method": "PATCH",
+        "path": "/api/os/generation-requests/request-1/days/2026-09-02",
+        "payload": {"frequency": {}},
+        "data_dir": str(tmp_path),
+    }
 
 
 def test_publication_clocks_dispatch_and_never_generate():

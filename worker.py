@@ -2250,6 +2250,42 @@ class HealthHandler(BaseHTTPRequestHandler):
         self.send_response(404)
         self.end_headers()
 
+    def _handle_intelligence_os_request(self, method: str) -> bool:
+        parsed = urlparse(self.path)
+        if not parsed.path.startswith("/api/os/"):
+            return False
+        params = parse_qs(parsed.query)
+        authorized, status_code, error_payload = _os_authorized(self, params)
+        if not authorized:
+            body = json.dumps(error_payload).encode("utf-8")
+            self.send_response(status_code)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return True
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+            if length < 0 or length > 1_000_000:
+                raise ValueError("request body must be at most 1 MB")
+            payload = json.loads(self.rfile.read(length).decode("utf-8")) if length else {}
+            if not isinstance(payload, dict):
+                raise ValueError("request body must be a JSON object")
+            from social_engine.intelligence_os.web import handle
+            status_code, content_type, body = handle(method, parsed.path, payload, _data_dir())
+        except (ValueError, json.JSONDecodeError) as exc:
+            status_code, content_type, body = 400, "application/json", json.dumps({"error": str(exc)}).encode("utf-8")
+        self.send_response(status_code)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+        return True
+
+    def do_PATCH(self):
+        if not self._handle_intelligence_os_request("PATCH"):
+            self.send_error(404)
+
     def do_POST(self):
         if not hasattr(self, "path"):
             self.do_GET()
@@ -2267,33 +2303,7 @@ class HealthHandler(BaseHTTPRequestHandler):
             except Exception:
                 self._send_json(502, {"error": "TikTok disconnect could not be completed"})
             return
-        if parsed.path.startswith("/api/os/"):
-            params = parse_qs(parsed.query)
-            authorized, status_code, error_payload = _os_authorized(self, params)
-            if not authorized:
-                body = json.dumps(error_payload).encode("utf-8")
-                self.send_response(status_code)
-                self.send_header("Content-Type", "application/json")
-                self.send_header("Content-Length", str(len(body)))
-                self.end_headers()
-                self.wfile.write(body)
-                return
-            try:
-                length = int(self.headers.get("Content-Length", "0"))
-                if length < 0 or length > 1_000_000:
-                    raise ValueError("request body must be at most 1 MB")
-                payload = json.loads(self.rfile.read(length).decode("utf-8")) if length else {}
-                if not isinstance(payload, dict):
-                    raise ValueError("request body must be a JSON object")
-                from social_engine.intelligence_os.web import handle
-                status_code, content_type, body = handle("POST", parsed.path, payload, _data_dir())
-            except (ValueError, json.JSONDecodeError) as exc:
-                status_code, content_type, body = 400, "application/json", json.dumps({"error": str(exc)}).encode("utf-8")
-            self.send_response(status_code)
-            self.send_header("Content-Type", content_type)
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
+        if self._handle_intelligence_os_request("POST"):
             return
         if parsed.path not in {"/custom-post", "/scored-story-reel"}:
             self.do_GET()

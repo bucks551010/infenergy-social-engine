@@ -69,7 +69,7 @@ def test_command_center_produces_six_card_canonical_typography_story(tmp_path, m
                             ],
                             "creativeQA": {
                                 "status": "PASS",
-                                "testsPerformed": ["CANON_QA", "TEXT_QA", "STORY_QA", "VISUAL_QA", "CONTINUITY_QA", "ORIGINALITY_QA", "EMOTIONAL_QA"],
+                                "testsPerformed": ["CANON_QA", "DIALOGUE_QA", "TEXT_QA", "STORY_QA", "READING_ORDER_QA", "BRAND_QA", "VISUAL_QA", "CONTINUITY_QA", "ORIGINALITY_QA", "EMOTIONAL_QA"],
                                 "scores": {"overall": 1.0}, "failures": [], "repairPlan": [], "attempts": 1,
                             },
                             "platformVariants": [{"platform": "instagram", "qa": {"status": "PASS"}}],
@@ -93,7 +93,7 @@ def test_command_center_produces_six_card_canonical_typography_story(tmp_path, m
     assert contract["characters"] == ["Infenergy"]
     assert contract["exact_visible_text"] == ["DEAD BATTERIES"]
     assert [item["role"] for item in sequence] == [
-        "HOOK", "DISCOVERY", "COMPLICATION", "THINKING_ADAPTATION", "PAYOFF", "RESOLUTION",
+        "COVER", "STORY", "STORY", "STORY", "STORY", "FINALE",
     ]
     assert request["canonRequired"] is True
     assert request["textMode"] == "HEADLINE"
@@ -175,6 +175,67 @@ def test_command_center_honors_generation_control_directives():
     assert contract["format"] == "carousel"
     assert contract["topic"] == "Emergency preparedness"
     assert contract["platform"] == "linkedin"
+
+
+def test_command_center_resolves_callable_story_format_canons():
+    from social.command_center import compile_command
+
+    mission = compile_command("Create an Infenergy Micro Mission.")
+    storypage = compile_command("Surprise me with a StoryPage.")
+    typography = compile_command("Create the superhero with the text integration.")
+
+    assert mission["content_format_identifier"] == "infenergy_micro_mission"
+    assert mission["creative_mode"] == "MICRO_MISSION"
+    assert mission["card_count"] == 8
+    assert [mission["story_beats"][0]["role"], mission["story_beats"][-1]["role"]] == ["COVER", "FINALE"]
+    assert "DIALOGUE_QA" in mission["quality_gates"]
+    assert storypage["content_format_identifier"] == "infenergy_storypage"
+    assert storypage["deliverable"] == "storypage"
+    assert storypage["format"] == "storypage"
+    assert storypage["aspect_ratio"] == "9:16"
+    assert storypage["panel_count"] == 4
+    assert storypage["content_format_contract"]["canon"]["one_image_only"] is True
+    assert typography["content_format_identifier"] == "superhero_text_integration"
+    assert typography["format"] == "typography"
+
+
+def test_entertainment_studio_provider_transports_storypage_contract(monkeypatch):
+    from social.command_center import compile_command
+    from social.visual_provider import EntertainmentStudioVisualProvider, TemplateRenderProvider
+
+    contract = compile_command("Create an Infenergy StoryPage about a station outage.")
+    captured = {}
+
+    class Response:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {"result": {"status": "APPROVED", "assets": ["page-asset"]}}
+
+    def fake_post(url, **kwargs):
+        captured.update({"url": url, **kwargs})
+        return Response()
+
+    monkeypatch.setattr("social.visual_provider.requests.post", fake_post)
+    provider = EntertainmentStudioVisualProvider("https://studio.test", "token", fallback=TemplateRenderProvider())
+    creative_request = {
+        "requestedRoute": contract["creative_mode"],
+        "contentFormatIdentifier": contract["content_format_identifier"],
+        "composition": {"aspectRatio": contract["aspect_ratio"]},
+    }
+    result = provider.generate(
+        art_direction={"creative_request": creative_request, "visual_message": "The Last Platform", "visual_format": contract["format"], "sequence_briefs": contract["story_beats"]},
+        positive_prompt="story", negative_prompt="drift", platform="instagram",
+    )
+
+    production = captured["json"]["production"]
+    assert result.kind == "generated_image"
+    assert production["kind"] == "storypage"
+    assert production["aspectRatio"] == "9:16"
+    assert len(production["sequenceBriefs"]) == 4
+    assert production["sequenceBriefs"][2]["dialogue"] == "Wrong path. Right rhythm."
+    assert production["sequenceBriefs"][2]["heroPanel"] is True
 
 
 def test_flagship_transports_generation_topic_to_studio(tmp_path, monkeypatch):

@@ -28,6 +28,21 @@ BUNDLED_DATA_DIR = next(
 DEFAULT_DATA_DIR = os.environ.get("DATA_DIR", BUNDLED_DATA_DIR)
 MAX_PLAN_DAYS = 120
 
+CONTENT_FORMAT_IDENTIFIERS = {
+    "cinematic_brand_poster": "cinematic_brand_poster",
+    "product_micro_mission_comic": "superhero_text_integration",
+    "educational_story_carousel": "educational_story_carousel",
+    "infenergy_company_quote_visual": "superhero_text_integration",
+    "challenge_carousel": "try_this_irl",
+    "current_event": "today_news",
+    "product_education": "product_proof_story",
+}
+
+
+def _content_format_identifier(base: dict[str, Any], post_type: str) -> str:
+    stored_format = str(base.get("format") or "")
+    return CONTENT_FORMAT_IDENTIFIERS.get(stored_format) or CONTENT_FORMAT_IDENTIFIERS.get(post_type) or "cinematic_brand_poster"
+
 HORIZONS = (
     (14, "LOCKED", "Production-ready concepts"),
     (30, "SHAPED", "Approved concepts with adaptable execution"),
@@ -872,6 +887,7 @@ def _daily_concept(
             ],
         }
     base = _apply_post_type_treatment(base, post_type, arc, product)
+    content_format_identifier = _content_format_identifier(base, post_type)
     return {
         "date": current_date.isoformat(),
         "day_number": day_number,
@@ -899,6 +915,7 @@ def _daily_concept(
         "content_job": creative_mode,
         "post_type": post_type,
         "post_type_label": POST_TYPE_LABELS[post_type],
+        "content_format_identifier": content_format_identifier,
         "funnel_stage": funnel_stage,
         "primary_platform": arc["primary_platform"],
         "platform_treatment": f"Lead on {arc['primary_platform']} in a {arc['language_style'].lower()} voice; preserve the lived moment before adapting length.",

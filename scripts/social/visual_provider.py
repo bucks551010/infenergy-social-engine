@@ -228,8 +228,8 @@ class EntertainmentStudioVisualProvider:
             return self.fallback.generate(art_direction=art_direction, positive_prompt=positive_prompt, negative_prompt=negative_prompt, platform=platform)
         production = {
             "headline": str(art_direction.get("visual_message") or "Infenergy").strip()[:300],
-            "kind": "carousel" if "carousel" in str(art_direction.get("visual_format", "")).lower() else "cinematic",
-            "aspectRatio": "1:1" if platform.split("_", 1)[0] in {"facebook", "linkedin"} else "4:5",
+            "kind": str(art_direction.get("visual_format") or "cinematic").lower() if str(art_direction.get("visual_format") or "").lower() in {"cinematic", "product", "typography", "comic", "carousel", "storypage"} else "cinematic",
+            "aspectRatio": str(((creative_request.get("composition") or {}).get("aspectRatio") or "4:5")) if str(((creative_request.get("composition") or {}).get("aspectRatio") or "4:5")) in {"1:1", "4:5", "9:16", "16:9"} else "4:5",
             "provider": os.environ.get("ENTERTAINMENT_STUDIO_IMAGE_PROVIDER", "openai").strip().lower() or "openai",
             "promptPrefix": positive_prompt[:2000],
         }
@@ -240,6 +240,11 @@ class EntertainmentStudioVisualProvider:
                     "title": str(item.get("title") or f"Frame {index + 1}")[:180],
                     "prompt": str(item.get("prompt") or "Continue the same cinematic story.")[:3000],
                     "useCanon": bool(item.get("useCanon", True)),
+                    **({"role": str(item["role"])} if item.get("role") in {"COVER", "STORY", "FINALE", "PANEL"} else {}),
+                    **({"speaker": str(item["speaker"])[:100]} if item.get("speaker") else {}),
+                    **({"dialogue": str(item["dialogue"])[:500]} if item.get("dialogue") else {}),
+                    **({"caption": str(item["caption"])[:500]} if item.get("caption") else {}),
+                    **({"heroPanel": bool(item["heroPanel"])} if "heroPanel" in item else {}),
                 }
                 for index, item in enumerate(sequence_briefs[:10])
                 if isinstance(item, dict)

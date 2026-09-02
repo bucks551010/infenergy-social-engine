@@ -701,6 +701,8 @@ def register_core_capabilities(registry: CapabilityRegistry, policies: PolicyEng
         creative_request = {
             "requestId": contract["request_id"],
             "contentId": f"command-center-{uuid.uuid4().hex[:12]}",
+            "contentFormatIdentifier": contract.get("content_format_identifier") or None,
+            "contentFormatContract": contract.get("content_format_contract") or {},
             "objective": command,
             "contentWorlds": ["ENTERTAINMENT"] if contract["characters"] else ["HUMAN_LIFE"],
             "platform": contract["platform"],
@@ -752,7 +754,7 @@ def register_core_capabilities(registry: CapabilityRegistry, policies: PolicyEng
             "humanBehavior": "The human consequence is visible through behavior, not exposition.",
             "beforeFrame": "The problem exists and has a recognizable consequence.",
             "afterFrame": "Infenergy's earned action changes the situation.",
-            "composition": {"aspectRatio": contract["aspect_ratio"], "cardCount": contract["card_count"], "exactStrings": exact_strings, "negative_space": "platform-safe headline region integrated with the focal action"},
+            "composition": {"aspectRatio": contract["aspect_ratio"], "cardCount": contract["card_count"], "panelCount": contract.get("panel_count", 0), "exactStrings": exact_strings, "negative_space": "platform-safe headline region integrated with the focal action"},
             "camera": {"language": "cinematic shot variety serving sequential story continuity"},
             "lighting": "Physically believable cinematic light with motivated green energy spill and controlled violet only at high output.",
             "colorCharacter": "realistic environmental color; controlled Infenergy green energy; no indiscriminate neon coating",
@@ -781,6 +783,7 @@ def register_core_capabilities(registry: CapabilityRegistry, policies: PolicyEng
                 "decision": "DO_NOT_DELIVER_UNLESS_CANON_TEXT_STORY_VISUAL_AND_CONTINUITY_GATES_PASS",
                 "requiredGates": contract["quality_gates"],
                 "exactStrings": exact_strings,
+                "dialogueContract": contract.get("dialogue_quality_contract") or {},
             },
         }
         art_direction = {

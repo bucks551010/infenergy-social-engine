@@ -522,13 +522,20 @@ def recurring_series_for_slot(day: str, slot: str, now_utc: datetime | None = No
         if normalized == ("friday", "morning")
         else ("cinematic_brand_poster" if now.isocalendar().week % 2 else "educational_story_carousel")
     )
+    format_identifiers = {
+        "cinematic_brand_poster": "cinematic_brand_poster",
+        "product_micro_mission_comic": "superhero_text_integration",
+        "educational_story_carousel": "educational_story_carousel",
+    }
     return {
         "id": "infenergy_intervention",
         "name": "Infenergy Intervention",
         "archetype": "character_led_edutainment",
         "cadence": "twice_weekly",
         "preferred_format": preferred_format,
+        "content_format_identifier": format_identifiers[preferred_format],
         "format_rotation": formats,
+        "content_format_identifier_rotation": [format_identifiers[item] for item in formats],
         "product_rotation": "least_recently_used_catalog",
         "product_required": True,
         "character_canon_required": True,

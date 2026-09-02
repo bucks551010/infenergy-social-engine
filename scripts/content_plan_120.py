@@ -372,10 +372,8 @@ def _load_catalog(data_dir: str) -> list[dict[str, Any]]:
 
 
 def _load_company_thoughts(data_dir: str) -> tuple[str, list[dict[str, Any]]]:
-    paths = (
-        os.path.join(data_dir, COMPANY_KNOWLEDGE_PATH),
-        os.path.join(BUNDLED_DATA_DIR, COMPANY_KNOWLEDGE_PATH),
-    )
+    paths = [os.path.join(data_dir, COMPANY_KNOWLEDGE_PATH)]
+    paths.extend(os.path.join(candidate, COMPANY_KNOWLEDGE_PATH) for candidate in BUNDLED_DATA_CANDIDATES)
     for path in dict.fromkeys(paths):
         if not os.path.isfile(path):
             continue

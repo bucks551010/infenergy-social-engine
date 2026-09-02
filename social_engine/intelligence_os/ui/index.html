@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Infenergy Intelligence OS</title>
-  <link rel="stylesheet" href="/os/assets/styles.css?v=15">
+  <link rel="stylesheet" href="/os/assets/styles.css?v=16">
 </head>
 <body>
   <section id="login-screen" class="login-screen">
@@ -30,6 +30,7 @@
         <button data-view="jobs">Jobs</button>
         <button data-view="research">Research</button>
         <button data-view="automations">Automations</button>
+        <button data-view="content-plan">120-Day Plan</button>
         <button data-view="social">Social</button>
         <button data-view="strategy">Strategy</button>
         <button data-view="activity">Activity</button>
@@ -46,6 +47,7 @@
           <option value="jobs">Jobs</option>
           <option value="research">Research</option>
           <option value="automations">Automations</option>
+          <option value="content-plan">120-Day Plan</option>
           <option value="social">Social</option>
           <option value="strategy">Strategy</option>
           <option value="activity">Activity</option>
@@ -74,7 +76,7 @@
             <button data-master-preset="creative"><strong>Creative → schedule</strong><span>Create, check, approve, and schedule in one flow.</span></button>
             <button data-master-preset="health"><strong>Full health sweep</strong><span>Inspect providers, storage, channels, and safety mode.</span></button>
             <button data-master-preset="readiness"><strong>Publication readiness</strong><span>Inspect calendar, outbox, failures, and due operations.</span></button>
-            <button data-master-preset="plan"><strong>120-day plan preview</strong><span>Preview the complete adaptive content operation.</span></button>
+            <button data-master-preset="plan"><strong>120-day plan preview</strong><span>Review every text concept and catalog assignment.</span></button>
             <button data-master-preset="dispatch"><strong>Dispatch preview</strong><span>Safely inspect what would publish before approval.</span></button>
             <button data-master-preset="undo" class="danger"><strong>Undo last operation</strong><span>Rollback the newest reversible owner transaction.</span></button>
           </div>
@@ -155,9 +157,23 @@
       </section>
 
       <section id="today" class="view"><div class="metric-grid" id="today-metrics"></div><article class="panel"><div class="panel-title"><h2>What matters today</h2></div><div id="today-content" class="cards"></div></article></section>
-      <section id="jobs" class="view"><article class="panel"><div class="panel-title job-toolbar"><div><h2>Execution fabric</h2><p class="muted">Search completed and active jobs, then open persisted deliverables.</p></div><div class="job-actions"><input id="job-search" type="search" placeholder="Search job ID, objective, or status" aria-label="Search jobs"><button class="ghost" data-action="plan120">Dry-run 120-day plan</button></div></div><div id="jobs-table" class="table"></div></article></section>
+      <section id="jobs" class="view"><article class="panel"><div class="panel-title job-toolbar"><div><h2>Execution fabric</h2><p class="muted">Search completed and active jobs, then open persisted deliverables.</p></div><div class="job-actions"><input id="job-search" type="search" placeholder="Search job ID, objective, or status" aria-label="Search jobs"><button class="ghost" data-action="plan120">Open 120-day plan</button></div></div><div id="jobs-table" class="table"></div></article></section>
       <section id="research" class="view"><article class="panel"><div class="panel-title"><h2>Intelligence Library</h2></div><p class="muted">Current findings retain source identity, credibility, freshness, expiration, and limitations.</p><div id="research-content" class="cards"></div></article></section>
       <section id="automations" class="view"><article class="panel"><div class="panel-title"><h2>Automations and watches</h2></div><div id="automations-content" class="cards"></div></article><article class="panel"><div class="panel-title"><h2>Recent automation runs</h2></div><div id="automation-runs" class="table"></div></article></section>
+      <section id="content-plan" class="view">
+        <article class="plan-hero panel">
+          <div><p id="plan-date-range" class="eyebrow">120-DAY ROLLING HORIZON</p><h2>120 days of useful stories, honest product roles, and recurring Infenergy interventions.</h2></div>
+          <div class="plan-safety"><b id="plan-image-count">0 images</b><span>Text concepts only</span></div>
+        </article>
+        <div id="plan-metrics" class="metric-grid plan-metrics"></div>
+        <article class="panel plan-controls">
+          <label><span>Horizon</span><select id="plan-horizon"><option value="">All horizons</option></select></label>
+          <label><span>Series</span><select id="plan-series"><option value="">All series</option></select></label>
+          <label class="plan-search"><span>Find an idea or product</span><input id="plan-search" type="search" placeholder="Communication, solar, PowerCharge…"></label>
+          <button id="plan-reset" class="ghost" type="button">Reset</button>
+        </article>
+        <div id="plan-weeks" class="plan-weeks"></div>
+      </section>
       <section id="social" class="view">
         <article class="panel"><div class="panel-title"><h2>Social operations</h2></div><div id="tiktok-connection"></div><div id="social-content" class="cards"></div></article>
         <article class="panel social-calendar-panel">
@@ -172,6 +188,6 @@
     </main>
   </div>
   <div id="toast" class="toast"></div>
-  <script src="/os/assets/app.js?v=16"></script>
+  <script src="/os/assets/app.js?v=17"></script>
 </body>
 </html>

@@ -1,4 +1,4 @@
-const state = { data: null, conversationId: null, renderedConversationId: null, jobQuery: '', creatives: [], creativeId: null, creativeSaveTimer: null, capabilities: [], transactions: [], masterCapabilityId: null, tiktokAccount: null, calendarDate: new Date(new Date().getFullYear(), new Date().getMonth(), 1), token: sessionStorage.getItem('infenergyToken') || '' };
+const state = { data: null, conversationId: null, renderedConversationId: null, jobQuery: '', creatives: [], creativeId: null, creativeSaveTimer: null, capabilities: [], transactions: [], masterCapabilityId: null, tiktokAccount: null, contentPlan: null, calendarDate: new Date(new Date().getFullYear(), new Date().getMonth(), 1), token: sessionStorage.getItem('infenergyToken') || '' };
 const $ = (selector) => document.querySelector(selector);
 const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[char]));
 
@@ -354,6 +354,58 @@ function renderSocialCalendar(calendar) {
   $('#social-calendar').innerHTML = `<div class="calendar-weekdays">${['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => `<span>${day}</span>`).join('')}</div><div class="calendar-days">${(calendar.days || []).map((day) => { const dateValue = new Date(`${day.date}T12:00:00`); const outsideMonth = dateValue.getMonth() !== state.calendarDate.getMonth(); return `<section class="calendar-day ${outsideMonth ? 'outside' : ''} ${day.date === today ? 'today' : ''}"><header><b>${dateValue.getDate()}</b><span>${dateValue.toLocaleDateString([], { weekday: 'short' })}</span></header>${day.posts.length ? day.posts.map(calendarPost).join('') : '<p class="calendar-empty">No post scheduled</p>'}</section>`; }).join('')}</div>`;
 }
 
+function planEntry(entry) {
+  const product = entry.product || {};
+  const dateValue = new Date(`${entry.date}T12:00:00`);
+  const productLine = product.product_name ? `<span class="plan-product">${esc(product.product_name)} · ${esc(product.persona)}</span>` : '';
+  const intervention = entry.series === 'Infenergy Intervention';
+  return `<article class="plan-entry ${intervention ? 'intervention' : ''}"><div class="plan-date"><b>${esc(dateValue.toLocaleDateString([], { month: 'short', day: 'numeric' }))}</b><span>${esc(entry.weekday)} · ${esc(humanize(entry.slot))}</span></div><div class="plan-entry-main"><div class="plan-entry-meta"><span>${esc(entry.series)}</span><span>${esc(entry.format_label)}</span>${pill(entry.state)}</div><h3>${esc(entry.title)}</h3><p>${esc(entry.hook)}</p>${productLine}<details><summary>Full concept brief</summary><dl><dt>Story</dt><dd>${esc(entry.story)}</dd><dt>Takeaway</dt><dd>${esc(entry.takeaway)}</dd><dt>Call to action</dt><dd>${esc(entry.cta)}</dd>${product.product_role ? `<dt>Product role</dt><dd>${esc(product.product_role)}</dd>` : ''}${product.proof_direction ? `<dt>Proof direction</dt><dd>${esc(product.proof_direction)}</dd>` : ''}</dl></details></div><div class="plan-production"><b>${intervention ? `#${entry.installment}` : `D${entry.day_number}`}</b><span>${esc(entry.image_status === 'NOT_GENERATED' ? 'No image' : entry.image_status)}</span></div></article>`;
+}
+
+function renderContentPlan() {
+  const plan = state.contentPlan;
+  if (!plan) { $('#plan-weeks').innerHTML = empty('Loading 120-day plan'); return; }
+  const horizon = $('#plan-horizon').value;
+  const series = $('#plan-series').value;
+  const query = $('#plan-search').value.trim().toLowerCase();
+  const entries = (plan.entries || []).filter((entry) => {
+    const product = entry.product || {};
+    const searchable = [entry.title, entry.hook, entry.story, entry.weekly_arc, entry.series, product.product_name, product.persona].join(' ').toLowerCase();
+    return (!horizon || entry.state === horizon) && (!series || entry.series === series) && (!query || searchable.includes(query));
+  });
+  const weeks = new Map();
+  entries.forEach((entry) => { if (!weeks.has(entry.week)) weeks.set(entry.week, []); weeks.get(entry.week).push(entry); });
+  $('#plan-image-count').textContent = `${plan.image_count || 0} images`;
+  $('#plan-metrics').innerHTML = [
+    ['Concepts', plan.concept_count],
+    ['Catalog coverage', `${plan.catalog_products_used}/${plan.catalog_size}`],
+    ['Interventions', plan.series_counts?.['Infenergy Intervention'] || 0],
+    ['Weekly arcs', new Set((plan.entries || []).map((entry) => entry.weekly_arc)).size],
+    ['Visible', entries.length],
+  ].map(([label, value]) => `<div class="metric panel"><b>${esc(value)}</b><span>${esc(label)}</span></div>`).join('');
+  $('#plan-weeks').innerHTML = weeks.size ? [...weeks.entries()].map(([week, weekEntries]) => `<section class="plan-week"><header><div><span>Week ${week}</span><h2>${esc(weekEntries[0].weekly_arc)}</h2></div><b>${weekEntries.length} concepts</b></header><div>${weekEntries.map(planEntry).join('')}</div></section>`).join('') : empty('No concepts match these filters');
+}
+
+async function loadContentPlan() {
+  const start = new Date();
+  start.setDate(start.getDate() + 1);
+  const result = await api('/api/os/content-plan', { method: 'POST', body: JSON.stringify({ start_date: calendarIso(start), days: 120 }) });
+  state.contentPlan = result;
+  const startLabel = new Date(`${result.start_date}T12:00:00`).toLocaleDateString([], { month: 'long', day: 'numeric' });
+  const endLabel = new Date(`${result.end_date}T12:00:00`).toLocaleDateString([], { month: 'long', day: 'numeric', year: 'numeric' });
+  $('#plan-date-range').textContent = `${startLabel} — ${endLabel}`;
+  const horizonSelect = $('#plan-horizon');
+  const seriesSelect = $('#plan-series');
+  const selectedHorizon = horizonSelect.value;
+  const selectedSeries = seriesSelect.value;
+  horizonSelect.innerHTML = `<option value="">All horizons</option>${(result.horizons || []).map((item) => `<option value="${esc(item.state)}">${esc(humanize(item.state))} · through day ${item.through_day}</option>`).join('')}`;
+  const series = [...new Set((result.entries || []).map((entry) => entry.series))].sort();
+  seriesSelect.innerHTML = `<option value="">All series</option>${series.map((item) => `<option value="${esc(item)}">${esc(item)}</option>`).join('')}`;
+  horizonSelect.value = selectedHorizon;
+  seriesSelect.value = selectedSeries;
+  renderContentPlan();
+}
+
 async function loadSocialCalendar() {
   const monthStart = new Date(state.calendarDate.getFullYear(), state.calendarDate.getMonth(), 1);
   const start = new Date(monthStart);
@@ -395,7 +447,7 @@ function render(data) {
 }
 
 async function loadTikTokStatus() { try { state.tiktokAccount = await api('/api/auth/tiktok/status'); } catch { state.tiktokAccount = { status: 'ERROR', connected: false }; } }
-async function load() { try { const [data] = await Promise.all([api('/api/os/state'), loadCreatives(), loadMaster(), loadTikTokStatus(), loadSocialCalendar()]); state.data = data; state.conversationId = data.conversation?.id; syncConversation(data.conversation); render(data); $('#system-dot').className = 'dot ok'; $('#system-label').textContent = 'Master OS connected'; } catch (error) { $('#system-dot').className = 'dot bad'; $('#system-label').textContent = 'Connection blocked'; toast(error.message); } }
+async function load() { try { const [data] = await Promise.all([api('/api/os/state'), loadCreatives(), loadMaster(), loadTikTokStatus(), loadSocialCalendar(), loadContentPlan()]); state.data = data; state.conversationId = data.conversation?.id; syncConversation(data.conversation); render(data); $('#system-dot').className = 'dot ok'; $('#system-label').textContent = 'Master OS connected'; } catch (error) { $('#system-dot').className = 'dot bad'; $('#system-label').textContent = 'Connection blocked'; toast(error.message); } }
 function activateView(view) {
   const button = document.querySelector(`#nav button[data-view="${view}"]`);
   const target = $(`#${view}`);
@@ -409,6 +461,8 @@ function activateView(view) {
 $('#nav').addEventListener('click', (event) => { const button = event.target.closest('button[data-view]'); if (button) activateView(button.dataset.view); });
 $('#mobile-nav').addEventListener('change', (event) => activateView(event.target.value));
 $('#job-search').addEventListener('input', (event) => { state.jobQuery = event.target.value.trim(); renderJobs(state.data?.jobs || []); });
+['plan-horizon', 'plan-series', 'plan-search'].forEach((id) => $(`#${id}`).addEventListener(id === 'plan-search' ? 'input' : 'change', renderContentPlan));
+$('#plan-reset').addEventListener('click', () => { $('#plan-horizon').value = ''; $('#plan-series').value = ''; $('#plan-search').value = ''; renderContentPlan(); });
 document.addEventListener('click', (event) => { const link = event.target.closest('[data-job-id]'); if (!link) return; state.jobQuery = link.dataset.jobId; $('#job-search').value = state.jobQuery; renderJobs(state.data?.jobs || []); activateView('jobs'); });
 $('#command-form').addEventListener('submit', async (event) => { event.preventDefault(); const input = $('#command-input'), text = input.value.trim(); if (!text) return; message('user', text); input.value = ''; message('assistant', 'Working… Complex operations can take several minutes while tools finish and results are verified.'); const pending = $('#messages .message:last-child'); try { const result = await api('/api/os/command', { method: 'POST', body: JSON.stringify({ message: text, conversation_id: state.conversationId }) }); pending.remove(); message('assistant', result.message, ['BLOCKED', 'TIMED_OUT', 'GENERATION_FAILED', 'VALIDATION_FAILED', 'ASSEMBLY_FAILED'].includes(result.status) ? 'blocked' : ''); if (result.status === 'DELIVERED') renderDeliverables(result); state.conversationId = result.conversation_id; await load(); } catch (error) { pending.remove(); message('assistant', 'The command could not finish: ' + error.message, 'blocked'); } });
 $('#command-input').addEventListener('keydown', (event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); $('#command-form').requestSubmit(); } });
@@ -505,10 +559,10 @@ document.addEventListener('click', async (event) => {
   if (!button) return;
   const preset = button.dataset.masterPreset;
   if (preset === 'command' || preset === 'creative') { activateView(preset); return; }
+  if (preset === 'plan') { activateView('content-plan'); return; }
   const presets = {
     health: ['system.health', {}, false],
     readiness: ['publication.operations.get', {}, false],
-    plan: ['content.plan_120_days', { objective: 'Build the complete adaptive, entertainment-first 120-day content operation.' }, true],
     dispatch: ['publication.dispatch', {}, true],
   };
   if (preset === 'undo') {
@@ -562,7 +616,7 @@ $('#new-chat').addEventListener('click', async () => {
     toast('New session ready');
   } catch (error) { toast(error.message); }
 });
-document.addEventListener('click', async (event) => { if (event.target.dataset.action !== 'plan120') return; try { const result = await api('/api/os/execute', { method: 'POST', body: JSON.stringify({ capability: 'content.plan_120_days', arguments: { objective: 'Build the next 120 days. Entertainment first. Keep the future adaptive.' }, dry_run: true }) }); toast(result.status); await load(); } catch (error) { toast(error.message); } });
+document.addEventListener('click', (event) => { if (event.target.dataset.action === 'plan120') activateView('content-plan'); });
 document.addEventListener('click', async (event) => {
   const button = event.target.closest('button[data-approval]');
   if (!button) return;

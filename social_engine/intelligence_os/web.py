@@ -12,9 +12,17 @@ UI_DIR = Path(__file__).resolve().parent / "ui"
 
 
 def handle(method: str, path: str, body: dict[str, Any] | None, data_dir: str) -> tuple[int, str, bytes]:
-    service = bootstrap(data_dir)
     payload = body or {}
     try:
+        if method == "POST" and path == "/api/os/content-plan":
+            from content_plan_120 import build_120_day_plan
+
+            return _json(200, build_120_day_plan(
+                data_dir=data_dir,
+                start_date=payload.get("start_date"),
+                days=int(payload.get("days", 120)),
+            ))
+        service = bootstrap(data_dir)
         if method == "GET" and path in {"/os", "/os/"}:
             return _file("index.html")
         if method == "GET" and path.startswith("/os/assets/"):

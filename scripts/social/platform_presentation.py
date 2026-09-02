@@ -1009,7 +1009,7 @@ def final_caption_qa(
     numeric_proof_available = any(_numeric_proof_tokens(str(item)) for item in components.get("feature_bullets") or [])
     product_led = bool(str(components.get("product_id") or "").strip())
     plan_promised = bool(re.search(
-        r"\b(?:\d+[- ]step|action plan|practical plan|checklist|priority list|these steps|steps:)\b",
+        r"\b(?:\d+[- ]step|action plan|(?<!no )(?<!not )practical plan|checklist|priority list|these steps|steps:)\b",
         caption,
         flags=re.IGNORECASE,
     ))

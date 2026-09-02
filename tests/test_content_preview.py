@@ -87,6 +87,18 @@ def test_plan_caption_requires_actionable_steps() -> None:
     assert "promised_plan_missing_actionable_steps" not in complete_plan["reasons"]
 
 
+def test_negated_practical_plan_statement_does_not_promise_actionable_steps() -> None:
+    qa = final_caption_qa(
+        "If staying powered matters, waiting until power is gone is not a plan.\n\n"
+        "No practical plan for keeping essential devices powered during an outage.\n\n"
+        "Choose the devices that matter most.\n\nShare your first priority.",
+        platform="instagram",
+        components={"product_id": "", "product_name": "", "feature_bullets": []},
+    )
+
+    assert "promised_plan_missing_actionable_steps" not in qa["reasons"]
+
+
 def test_caption_refinement_preserves_numbered_action_plan() -> None:
     refined, _ = refine_caption(
         "24-hour outage plan:\n1. List must-run needs.\n2. Stage supplies.\n3. Test the plan.",

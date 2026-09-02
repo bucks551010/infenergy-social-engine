@@ -562,6 +562,41 @@ def _post_type(day_number: int, weekday: int) -> str:
     return choices[week_index % len(choices)]
 
 
+def _apply_post_type_treatment(
+    base: dict[str, Any],
+    post_type: str,
+    arc: dict[str, str],
+    product: dict[str, str] | None,
+) -> dict[str, Any]:
+    treated = dict(base)
+    product_name = product["product_name"] if product else "the relevant capability"
+    if post_type == "current_event":
+        treated["title"] = f"Timely Response: {arc['name']}"
+        treated["hook"] = "What changed this week, and what does it actually change for this audience?"
+        treated["story"] = f"At production time, attach one verified, current source to {arc['tension']}. Separate what happened, what remains unknown, and the one proportionate action that matters to {arc['audience_id'].replace('_', ' ')}. Never invent or pre-write a future event."
+    elif post_type == "product_education":
+        treated["story"] = f"Teach one verified job for {product_name} inside {arc['setting']}. Show the fit, the operating boundary, and the comparison question a buyer should ask; do not turn the product into the hero or imply it replaces the wider plan."
+    elif post_type == "humor":
+        treated["title"] = f"The Very Modern Problem: {arc['name']}"
+        treated["story"] = f"Write a sharply observed comedy scene in {arc['setting']} where {arc['tension']}. Let recognition earn the laugh, then land on the useful truth: {arc['takeaway']}"
+    elif post_type == "framework":
+        treated["title"] = f"The 3-Part Framework: {arc['name']}"
+        treated["hook"] = "Three decisions. One setup another person can actually use."
+        treated["story"] = f"Turn {arc['drill']} into a three-step tool: name the lived priority, identify the first dependency, and choose the smallest capability that closes it. Apply the framework to {product_name} when a product is present."
+    elif post_type == "explainer":
+        treated["title"] = f"Explain It Like It Matters: {arc['name']}"
+        treated["story"] = f"Explain the mechanism behind {arc['tension']} in plain language. Use {product_name} only as a verified example, distinguish capacity from outcome, and end with the decision the audience can now make more confidently."
+    elif post_type == "drill":
+        treated["title"] = f"60-Second Drill: {arc['name']}"
+        treated["hook"] = "Run the handoff before the real moment asks for it."
+        treated["story"] = f"Run this rehearsal: {arc['drill']} Give a second person sixty seconds to find the tool, explain its job and limit, and make the first move without coaching. Record the friction, not a performance."
+    elif post_type == "myth":
+        treated["title"] = f"Myth Check: {arc['name']}"
+        treated["hook"] = f"Myth: {arc['myth']}"
+        treated["story"] = f"Name why the myth feels attractive, show where it fails inside {arc['setting']}, and replace it with a more useful belief: {arc['takeaway']}"
+    return treated
+
+
 def _daily_concept(
     *,
     current_date: date,
@@ -654,6 +689,7 @@ def _daily_concept(
             "takeaway": arc["takeaway"],
             "cta": "Follow Infenergy for personal energy that fits the life you are actually building.",
         }
+    base = _apply_post_type_treatment(base, post_type, arc, product)
     return {
         "date": current_date.isoformat(),
         "day_number": day_number,

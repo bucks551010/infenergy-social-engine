@@ -180,6 +180,26 @@ def test_plan_includes_the_complete_editorial_post_type_taxonomy(tmp_path):
     assert all(count > 0 for count in plan["post_type_counts"].values())
     assert {entry["post_type"] for entry in plan["entries"]} == expected_types
     assert all(entry["post_type_label"] for entry in plan["entries"])
+    assert all(
+        entry["title"].startswith("Myth Check:") and entry["hook"].startswith("Myth:")
+        for entry in plan["entries"]
+        if entry["post_type"] == "myth"
+    )
+    assert all(
+        "verified, current source" in entry["story"]
+        for entry in plan["entries"]
+        if entry["post_type"] == "current_event"
+    )
+    assert all(
+        entry["title"].startswith("The 3-Part Framework:")
+        for entry in plan["entries"]
+        if entry["post_type"] == "framework"
+    )
+    assert all(
+        entry["title"].startswith("60-Second Drill:")
+        for entry in plan["entries"]
+        if entry["post_type"] == "drill"
+    )
 
 
 def test_plan_matches_specialized_products_to_relevant_arcs(tmp_path):

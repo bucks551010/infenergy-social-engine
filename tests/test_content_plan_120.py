@@ -184,6 +184,27 @@ def test_plan_uses_bundled_verified_catalog_when_runtime_volume_is_empty(tmp_pat
     )
 
 
+def test_plan_uses_bundled_company_messages_when_runtime_copy_is_stale(tmp_path):
+    marketing_dir = tmp_path / "marketing"
+    marketing_dir.mkdir()
+    (marketing_dir / "infenergy_company_knowledge.json").write_text(
+        json.dumps({"knowledge_id": "stale-volume-copy", "thought_library": []}),
+        encoding="utf-8",
+    )
+
+    plan = build_120_day_plan(
+        data_dir=str(tmp_path),
+        start_date="2026-09-02",
+    )
+
+    quotes = [
+        entry for entry in plan["entries"]
+        if entry["format"] == "infenergy_company_quote_visual"
+    ]
+    assert len(quotes) == 17
+    assert all(entry["company_source"]["knowledge_id"] == "infenergy-company-truth" for entry in quotes)
+
+
 def test_plan_exposes_progressively_adaptive_horizons(tmp_path):
     _write_profiles(tmp_path)
 

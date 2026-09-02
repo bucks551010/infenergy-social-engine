@@ -372,26 +372,30 @@ def _load_catalog(data_dir: str) -> list[dict[str, Any]]:
 
 
 def _load_company_thoughts(data_dir: str) -> tuple[str, list[dict[str, Any]]]:
-    path = os.path.join(data_dir, COMPANY_KNOWLEDGE_PATH)
-    if not os.path.isfile(path):
-        path = os.path.join(BUNDLED_DATA_DIR, COMPANY_KNOWLEDGE_PATH)
-    with open(path, "r", encoding="utf-8") as handle:
-        payload = json.load(handle)
-    thoughts = [
-        thought for thought in payload.get("thought_library", [])
-        if isinstance(thought, dict) and thought.get("id") and thought.get("statement")
-    ] if isinstance(payload, dict) else []
-    thought_by_id = {str(thought["id"]): thought for thought in thoughts}
-    messages = []
-    for message in payload.get("super_message_library", []) if isinstance(payload, dict) else []:
-        if not isinstance(message, dict) or not message.get("id") or not message.get("statement"):
+    paths = (
+        os.path.join(data_dir, COMPANY_KNOWLEDGE_PATH),
+        os.path.join(BUNDLED_DATA_DIR, COMPANY_KNOWLEDGE_PATH),
+    )
+    for path in dict.fromkeys(paths):
+        if not os.path.isfile(path):
             continue
-        support = thought_by_id.get(str(message.get("support_thought_id") or ""))
-        if support:
-            messages.append({**support, **message, "support_statement": support["statement"]})
-    if not messages:
-        raise ValueError("verified Infenergy super messages are unavailable")
-    return str(payload.get("knowledge_id") or "infenergy-company-truth"), messages
+        with open(path, "r", encoding="utf-8") as handle:
+            payload = json.load(handle)
+        thoughts = [
+            thought for thought in payload.get("thought_library", [])
+            if isinstance(thought, dict) and thought.get("id") and thought.get("statement")
+        ] if isinstance(payload, dict) else []
+        thought_by_id = {str(thought["id"]): thought for thought in thoughts}
+        messages = []
+        for message in payload.get("super_message_library", []) if isinstance(payload, dict) else []:
+            if not isinstance(message, dict) or not message.get("id") or not message.get("statement"):
+                continue
+            support = thought_by_id.get(str(message.get("support_thought_id") or ""))
+            if support:
+                messages.append({**support, **message, "support_statement": support["statement"]})
+        if messages:
+            return str(payload.get("knowledge_id") or "infenergy-company-truth"), messages
+    raise ValueError("verified Infenergy super messages are unavailable")
 
 
 def _select_company_thought(

@@ -338,6 +338,23 @@ def test_custom_post_stops_before_publish_when_iis_provenance_is_not_current():
     facebook.assert_not_called()
 
 
+def test_iis_single_image_export_is_an_approved_publish_asset():
+    studio_url = "https://studio.example"
+    package = {
+        "image": {"id": "approved-image"},
+        "delivery": {"carousel": []},
+    }
+
+    approved = worker._approved_iis_image_identities(package, studio_url)
+
+    assert worker._asset_url_identity(
+        "https://studio.example/api/assets/approved-image?version=2"
+    ) in approved
+    assert worker._asset_url_identity(
+        "https://studio.example/api/assets/different-image"
+    ) not in approved
+
+
 def test_custom_post_retries_legacy_published_skipped_checkpoint():
     payload = _payload()
     payload["platforms"] = ["instagram"]

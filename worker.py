@@ -433,6 +433,23 @@ def _asset_url_identity(url: str) -> str:
     return f"{parsed.netloc.lower()}{parsed.path}"
 
 
+def _approved_iis_image_identities(package: dict, studio_url: str) -> set[str]:
+    delivery = package.get("delivery") if isinstance(package.get("delivery"), dict) else {}
+    approved_images = {
+        _asset_url_identity(item.get("url"))
+        for item in delivery.get("carousel", []) or []
+        if isinstance(item, dict)
+    }
+    image = package.get("image") if isinstance(package.get("image"), dict) else {}
+    image_url = str(image.get("url") or "").strip()
+    image_id = str(image.get("id") or "").strip()
+    if image_url:
+        approved_images.add(_asset_url_identity(image_url))
+    if image_id:
+        approved_images.add(_asset_url_identity(f"{studio_url}/api/assets/{image_id}"))
+    return approved_images
+
+
 def _verify_iis_publish_package(source_system: str, creative_id: str, image_url: str, image_urls: list[str], reel_video_url: str, reel_cover_url: str) -> list[str]:
     if source_system != "iis":
         return []
@@ -446,11 +463,7 @@ def _verify_iis_publish_package(source_system: str, creative_id: str, image_url:
     if str((package.get("creative") or {}).get("id") or "") != creative_id or str((package.get("qa") or {}).get("status") or "").upper() != "PASS":
         return ["iis_package_not_current_and_approved"]
     delivery = package.get("delivery") if isinstance(package.get("delivery"), dict) else {}
-    approved_images = {
-        _asset_url_identity(item.get("url"))
-        for item in delivery.get("carousel", []) or []
-        if isinstance(item, dict)
-    }
+    approved_images = _approved_iis_image_identities(package, studio_url)
     submitted_images = {_asset_url_identity(url) for url in [image_url, *image_urls] if url}
     issues = []
     if not submitted_images or not submitted_images.issubset(approved_images):

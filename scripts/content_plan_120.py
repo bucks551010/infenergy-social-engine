@@ -14,11 +14,19 @@ from typing import Any
 from campaign_runtime import recurring_series_for_slot
 
 
-BUNDLED_DATA_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "data"))
-DEFAULT_DATA_DIR = os.environ.get("DATA_DIR", BUNDLED_DATA_DIR)
-MAX_PLAN_DAYS = 120
 PROFILE_PATH = os.path.join("marketing", "product_consumer_profiles.json")
 COMPANY_KNOWLEDGE_PATH = os.path.join("marketing", "infenergy_company_knowledge.json")
+BUNDLED_DATA_CANDIDATES = (
+    os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "data")),
+    os.path.abspath(os.path.join(os.getcwd(), "data")),
+    os.path.abspath(os.path.join(os.path.dirname(__file__), "data")),
+)
+BUNDLED_DATA_DIR = next(
+    (candidate for candidate in BUNDLED_DATA_CANDIDATES if os.path.isfile(os.path.join(candidate, PROFILE_PATH))),
+    BUNDLED_DATA_CANDIDATES[0],
+)
+DEFAULT_DATA_DIR = os.environ.get("DATA_DIR", BUNDLED_DATA_DIR)
+MAX_PLAN_DAYS = 120
 
 HORIZONS = (
     (14, "LOCKED", "Production-ready concepts"),

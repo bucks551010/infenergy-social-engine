@@ -2579,6 +2579,8 @@ def run_content_factory() -> None:
                 )
                 output = ((completed.stdout or "") + "\n" + (completed.stderr or "")).strip()
                 print(f"[FACTORY] {content_date} {slot}: exit={completed.returncode} {output[-1000:]}")
+            if content_date == today and int(daily_status(data_dir, today).get("missing") or 0) > 0:
+                return
     except Exception as exc:
         print(f"[FACTORY] error: {type(exc).__name__}: {exc}")
         traceback.print_exc()

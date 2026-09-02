@@ -143,6 +143,27 @@ def test_delivery_watchdog_does_not_replace_covered_inventory(monkeypatch):
     assert recoveries == []
 
 
+def test_factory_prioritizes_today_before_prefilling_tomorrow(monkeypatch, tmp_path):
+    today = worker.datetime.now(worker.timezone.utc).date().isoformat()
+    generated_dates = []
+    monkeypatch.setattr(worker, "_data_dir", lambda: str(tmp_path))
+    monkeypatch.setattr(worker, "init_content_operations", lambda *_: None)
+    monkeypatch.setattr(worker, "reconcile_ready_inventory", lambda *_: [])
+    monkeypatch.setattr(worker, "reconcile_stale_claims", lambda *_: [])
+    monkeypatch.setattr(worker, "reconcile_confirmed_transactions", lambda *_: [])
+    monkeypatch.setattr(worker, "daily_status", lambda *_: {"slots": [], "missing": 3})
+    monkeypatch.setattr(
+        worker.subprocess,
+        "run",
+        lambda *args, **kwargs: generated_dates.append(kwargs["env"]["POST_CONTENT_DATE"])
+        or SimpleNamespace(returncode=0, stdout="", stderr=""),
+    )
+
+    worker.run_content_factory()
+
+    assert generated_dates == [today, today, today]
+
+
 def test_main_runs_due_sweep_immediately_on_startup(monkeypatch):
     startup_order = []
     dispatches = []

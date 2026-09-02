@@ -1215,7 +1215,7 @@ def test_command_center_and_api_are_served(tmp_path):
     assert content_type.startswith("text/html")
     assert b"Infenergy Intelligence OS" in page
     assert b'id="mobile-nav"' in page
-    assert b'app.js?v=23' in page
+    assert b'app.js?v=24' in page
     assert b'data-view="content-plan"' in page
     assert b'id="plan-audience"' in page
     assert b'id="plan-image-count">0 images' in page

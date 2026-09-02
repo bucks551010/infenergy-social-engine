@@ -138,6 +138,9 @@ def test_weekly_company_quotes_are_verbatim_sourced_and_audience_matched(tmp_pat
     ]
 
     assert plan["weekly_company_quote_count"] == len(quotes) == 17
+    assert plan["company_super_message_bank_count"] == len(statements) == 52
+    assert len(statements.values()) == len(set(statements.values()))
+    assert all(len(statement.split()) <= 12 for statement in statements.values())
     assert all(entry["weekday"] == "Sunday" for entry in quotes)
     assert len({entry["company_source"]["message_id"] for entry in quotes}) == len(quotes)
     assert all(entry["verbatim_company_quote"] is True for entry in quotes)

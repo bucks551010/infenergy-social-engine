@@ -387,6 +387,7 @@ function renderContentPlan() {
     ['Post types', `${Object.keys(plan.post_type_counts || {}).length}/${Object.keys(plan.post_type_taxonomy || {}).length}`],
     ['Product Story comics', plan.superhero_with_text_count || 0],
     ['Company quote visuals', plan.weekly_company_quote_count || 0],
+    ['Super message bank', plan.company_super_message_bank_count || 0],
     ['Catalog coverage', `${plan.catalog_products_used}/${plan.catalog_size}`],
     ['Interventions', plan.series_counts?.['Infenergy Intervention'] || 0],
     ['Audience worlds', new Set((plan.entries || []).map((entry) => entry.audience_id)).size],

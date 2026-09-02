@@ -946,6 +946,7 @@ def build_120_day_plan(
         "weekly_company_quote_count": sum(
             1 for entry in entries if entry["format"] == "infenergy_company_quote_visual"
         ),
+        "company_super_message_bank_count": len(company_thoughts),
         "series_counts": {
             series_name: sum(1 for entry in entries if entry["series"] == series_name)
             for series_name in sorted({entry["series"] for entry in entries})

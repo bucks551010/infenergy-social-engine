@@ -500,11 +500,38 @@ def _intervention_concept(
     title = f"Infenergy Intervention #{installment}: {arc['name']}"
     hook = arc["cold_open"]
     visible_text = None
+    story_comic_contract = {}
     if preferred_format == "product_micro_mission_comic":
         visible_text = {
             "headline": hook,
             "infenergy_line": "Pause. What job does the power actually need to do?",
             "resolution_line": arc["takeaway"],
+        }
+        story_comic_contract = {
+            "delivery_label": "Product Story comic strip",
+            "platform": "instagram_story",
+            "aspect_ratio": "9:16",
+            "canvas_px": {"width": 1080, "height": 1920},
+            "canvas_count": 1,
+            "panel_count": 3,
+            "layout": "single_vertical_comic_strip",
+            "product_required": True,
+            "product_id": product["product_id"],
+            "product_name": product["product_name"],
+            "product_role": product["product_role"],
+            "product_proof_direction": product["proof_direction"],
+            "product_reference_required": True,
+            "story_sequence": [
+                "Panel 1: the human problem and bad assumption interrupt the routine.",
+                "Panel 2: Infenergy identifies the hidden energy job and physically uses the verified product for that job.",
+                "Panel 3: show the human consequence and honest product boundary; the person owns the resolution.",
+            ],
+            "delivery_constraints": [
+                "one full-bleed 1080 x 1920 image containing three readable comic panels",
+                "not a carousel and not three separate images",
+                "use the verified product reference without redesigning or inventing features",
+                "keep all exact dialogue inside Instagram Story safe areas",
+            ],
         }
     return {
         "series": series["name"],
@@ -521,6 +548,7 @@ def _intervention_concept(
         "character": "Infenergy",
         "character_role": "Culturally fluent capability guide, never a product mascot",
         "canon_required": True,
+        **story_comic_contract,
     }
 
 

@@ -101,6 +101,22 @@ def test_plan_preserves_intervention_cadence_and_continuous_format_rotation(tmp_
     assert all(entry["visible_text"]["headline"] for entry in superhero_posts)
     assert all(entry["visible_text"]["infenergy_line"] for entry in superhero_posts)
     assert all(entry["visible_text"]["resolution_line"] for entry in superhero_posts)
+    assert all(entry["delivery_label"] == "Product Story comic strip" for entry in superhero_posts)
+    assert all(entry["platform"] == "instagram_story" for entry in superhero_posts)
+    assert all(entry["aspect_ratio"] == "9:16" for entry in superhero_posts)
+    assert all(entry["canvas_px"] == {"width": 1080, "height": 1920} for entry in superhero_posts)
+    assert all(entry["canvas_count"] == 1 for entry in superhero_posts)
+    assert all(entry["panel_count"] == 3 for entry in superhero_posts)
+    assert all(entry["layout"] == "single_vertical_comic_strip" for entry in superhero_posts)
+    assert all(entry["product_required"] is True for entry in superhero_posts)
+    assert all(entry["product_id"] == entry["product"]["product_id"] for entry in superhero_posts)
+    assert all(entry["product_name"] == entry["product"]["product_name"] for entry in superhero_posts)
+    assert all(entry["product_reference_required"] is True for entry in superhero_posts)
+    assert all(len(entry["story_sequence"]) == 3 for entry in superhero_posts)
+    assert all(
+        any("not a carousel" in constraint for constraint in entry["delivery_constraints"])
+        for entry in superhero_posts
+    )
     assert all(entry["image_status"] == "NOT_GENERATED" for entry in superhero_posts)
 
 

@@ -140,6 +140,23 @@ def test_command_center_develops_quotes_but_preserves_owner_text():
     assert supplied["quote_development"] == {}
 
 
+def test_command_center_single_image_overrides_negated_carousel_terms():
+    from social.command_center import compile_command
+
+    contract = compile_command(
+        'Create one single Instagram image of Infenergy interacting with the exact words '
+        '"THE SUN IS FREE. YOUR ENERGY BUDGET STILL NEEDS A MANAGER." '
+        "One picture only, not a carousel, not multiple cards, and not a Micro Mission."
+    )
+
+    assert contract["deliverable"] == "social_visual"
+    assert contract["format"] == "typography"
+    assert contract["card_count"] == 1
+    assert contract["creative_mode"] == "CINEMATIC_STORY"
+    assert contract["exact_visible_text"] == ["THE SUN IS FREE. YOUR ENERGY BUDGET STILL NEEDS A MANAGER."]
+    assert contract["integrated_typography"] is True
+
+
 def test_flagship_resolves_and_transports_named_product_evidence(tmp_path, monkeypatch):
     marketing = tmp_path / "marketing"
     marketing.mkdir()

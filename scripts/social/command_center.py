@@ -111,8 +111,9 @@ def compile_command(message: str) -> dict[str, Any]:
     text = str(message or "").strip()
     if not is_flagship_creative_command(text):
         raise ValueError("not_a_flagship_creative_command")
-    micro_mission = bool(re.search(r"\b(micro[ -]?mission|mission|little story|superhero carousel|family reunion)\b", text, re.I))
-    carousel = micro_mission or bool(re.search(r"\b(carousel|cards?|slides?)\b", text, re.I))
+    single_frame = bool(re.search(r"\b(?:one|single)\s+(?:image|picture|visual|frame)\b", text, re.I))
+    micro_mission = not single_frame and bool(re.search(r"\b(micro[ -]?mission|mission|little story|superhero carousel|family reunion)\b", text, re.I))
+    carousel = not single_frame and (micro_mission or bool(re.search(r"\b(carousel|cards?|slides?)\b", text, re.I)))
     exact_strings = _exact_text(text)
     quote_development = _develop_quote(text) if re.search(r"\bquote\b", text, re.I) and not exact_strings else {}
     if quote_development:

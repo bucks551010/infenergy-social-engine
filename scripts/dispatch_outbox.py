@@ -68,6 +68,9 @@ def _payload(package: dict[str, Any], platform: str) -> dict[str, Any]:
 def _publish(package: dict[str, Any], platform: str) -> dict[str, Any]:
     post = ((package.get("platform_posts") or {}).get(platform) or {})
     delivery_package = dict(package)
+    image_url = str(post.get("image_url") or package.get("image_url") or "").strip()
+    if image_url.startswith("http") and not str(delivery_package.get("primary_publish_image_url") or "").strip():
+        delivery_package["primary_publish_image_url"] = image_url
     final_caption = str(post.get("final_caption") or post.get("caption") or "")
     caption_keys = {"facebook": "fb_caption", "instagram": "ig_caption", "linkedin": "li_text"}
     delivery_package[caption_keys[platform]] = final_caption

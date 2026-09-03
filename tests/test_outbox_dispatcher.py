@@ -115,6 +115,19 @@ def test_dispatcher_routes_intelligence_os_package_without_legacy_routing(tmp_pa
     assert instagram.call_count == 1
 
 
+def test_dispatcher_maps_approved_remote_image_for_facebook():
+    package = {
+        "image_url": "https://example.com/approved.png",
+        "platform_posts": {"facebook": {"final_caption": "Approved post"}},
+    }
+
+    with patch.object(dispatch_outbox.publish_facebook, "publish", return_value={"id": "fb-approved"}) as facebook:
+        result = dispatch_outbox._publish(package, "facebook")
+
+    assert result == {"id": "fb-approved"}
+    assert facebook.call_args.args[0]["primary_publish_image_url"] == package["image_url"]
+
+
 def test_dispatcher_recovers_existing_no_routed_platforms_failure(tmp_path):
     data_dir = str(tmp_path)
     outbox_id = _ready_package(data_dir, ["facebook"])

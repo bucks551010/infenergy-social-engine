@@ -102,10 +102,10 @@ def build_why() -> BusinessWhy:
         purpose=origin.get("why_it_matters", ""),
         beliefs=list(man.get("core_values", [])),
         principles=list(man.get("core_values", [])),
-        worldview="Preparedness is safety, connection, and control — not fear.",
+        worldview="Prepared households list essential devices, required watts, available plugs, and needed runtime before an outage.",
         desired_customer_impact="Households and mobile users stay powered, safe, and connected when normal systems fail.",
-        future_state_we_want_to_help_create="Everyday preparedness that reduces panic and protects routines during power disruption.",
-        why_customers_should_matter_to_us="Because power failure creates real safety and continuity risk for real families.",
+        future_state_we_want_to_help_create="Households keep phones, medical devices, lights, and other listed essentials running during power disruption.",
+        why_customers_should_matter_to_us="Because power failure can stop communication, lighting, refrigeration, medical devices, and paid work.",
         why_we_want_people_to_purchase="So they own capable, matched-to-need power before they need it — not during a crisis.",
         why_the_business_deserves_to_exist="Existing power-product sellers commoditize devices; families need product-fit guidance for real scenarios.",
     )

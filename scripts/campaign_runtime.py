@@ -196,12 +196,12 @@ DEFAULT_CTA_LIBRARY: dict[str, list[str]] = {
         "Read the full comparison.",
     ],
     "DESIRE": [
-        "See what this product is designed to support.",
+        "Compare the published specifications with the devices you need to run.",
         "Compare available portable-power options.",
     ],
     "TRUST": [
-        "Review the verified product details.",
-        "See how this solution fits different use cases.",
+        "Check the published watts, ports, capacity, and charging limits.",
+        "List your devices, their plugs, and the hours each one must run.",
     ],
     "CONVERSION": [
         "Shop available products.",

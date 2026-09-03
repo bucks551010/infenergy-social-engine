@@ -1410,8 +1410,15 @@ def _build_phase7_conference_packets(
 
 def _conversion_caption_gate(platform_posts: dict, talking_point: dict, want_product: bool = True) -> tuple[bool, list[str]]:
     reasons: list[str] = []
-    pain = str((talking_point or {}).get("pain_point", "")).strip().lower()
-    first_step = str((talking_point or {}).get("first_step", "")).strip().lower()
+    concrete_noun_pattern = re.compile(
+        r"\b(?:battery|capacity|charger|device|filter|fan|light|phone|laptop|"
+        r"outage|panel|plug|port|power|runtime|station|vehicle|water|watt|wh|voltage)\b",
+        flags=re.IGNORECASE,
+    )
+    action_pattern = re.compile(
+        r"\b(?:build|check|compare|get|list|match|name|open|order|read|review|save|shop|tap|visit)\b",
+        flags=re.IGNORECASE,
+    )
     for platform_name in ("facebook", "instagram", "linkedin"):
         row = platform_posts.get(platform_name, {}) if isinstance(platform_posts, dict) else {}
         caption = str(row.get("caption", "") if isinstance(row, dict) else "")
@@ -1419,9 +1426,9 @@ def _conversion_caption_gate(platform_posts: dict, talking_point: dict, want_pro
             reasons.append(f"{platform_name}:missing_caption")
             continue
         low = caption.lower()
-        if pain and pain not in low:
-            reasons.append(f"{platform_name}:missing_pain_point")
-        if want_product and first_step and first_step not in low:
+        if not concrete_noun_pattern.search(caption):
+            reasons.append(f"{platform_name}:missing_concrete_subject")
+        if want_product and not action_pattern.search(caption):
             reasons.append(f"{platform_name}:missing_next_step")
         # Numeric specs evidence only applies to product-led posts — business-first, no-product
         # posts have nothing to cite a spec/number for and shouldn't be penalized for that.
@@ -3095,10 +3102,10 @@ def _product_copy_profile(product: dict | None) -> dict[str, str]:
     elif power_station_evidence or "battery" in name_low or any(token in categories for token in ("battery", "emergency power", "portable power")):
         profile.update({
             "role": "backup power station",
-            "benefit": "supports must-run devices during outages and off-grid use",
+            "benefit": "powers compatible must-run devices during outages and off-grid use",
             "after_state": "You can keep compatible priority devices available away from wall power instead of organizing the day around the next outlet.",
-            "transformation": "Travel, remote work, and outage planning become more controlled when stored power, output, and the devices you carry are matched before you need them.",
-            "why_it_matters": "The value is not owning more capacity; it is knowing the backup can support the compatible equipment you decided must stay available.",
+            "transformation": "Match each device's watts and required runtime to the station's published output and capacity before travel or an outage.",
+            "why_it_matters": "List the devices that must run, record their watts, and compare the total with the station's published output and capacity.",
             "fit_line": f"helps buyers match loads and runtime needs using specs like {primary_metric}",
             "proof_intro": "Checked against the published output, battery, runtime, and charging specs",
             "offer_line": f"The {name or 'product'} is for buyers who want real backup power capacity matched to real outage needs.",
@@ -3707,12 +3714,12 @@ def _select_logical_emotional_strategy(product: dict | None, audience_segment: s
             f"Once guesswork is ruled out, {product_name} can be judged by what matters{anchor_clause}and the job you need it to do.",
         ),
         "double_implication": (
-            "Preparedness is a standard, not a shopping mood.",
-            f"Real readiness connects {product_name} {proof_clause}to a defined use case instead of an unsupported promise.",
+            "List the devices that must run before choosing a battery.",
+            f"Compare {product_name} {proof_clause}with each device's watts, plug, and required runtime.",
         ),
         "symmetrical_equivalence": (
-            "The setting changes. The need for control does not.",
-            f"At home, in transit, or off-grid, evaluate {product_name} through the same anchor{anchor_clause}matched to the real task.",
+            "Use the same device list at home, in transit, and off-grid.",
+            f"Compare {product_name}{anchor_clause}with the watts, plug, and runtime required for that list.",
         ),
         "implication_of_result": (
             "The save-the-day moment starts before the crisis.",
@@ -3916,14 +3923,14 @@ def _build_logical_carousel_campaign(components: dict) -> dict:
             {
                 "slide": 4,
                 "purpose": "emotional_result",
-                "headline": "WHAT CONTROL FEELS LIKE",
-                "body": str(components.get("emotional_outcome") or "Confidence through better preparation."),
+                "headline": "CHECK THE DEVICE LIST",
+                "body": str(components.get("use_case_line") or "Name each device, its watts, its plug, and the hours it must run."),
             },
             {
                 "slide": 5,
                 "purpose": "single_next_step",
                 "headline": "MAKE THE NEXT MOVE",
-                "body": str(components.get("cta") or "Review the verified product details."),
+                "body": str(components.get("cta") or "Compare the published specifications with your device list."),
             },
         ]
     return {
@@ -4009,14 +4016,10 @@ def _build_post_components(
         audience_line = str(audiences[0]).strip() if isinstance(audiences, list) and audiences else "buyers preparing for outages"
         proof_line = str(proofs[0]).strip() if isinstance(proofs, list) and proofs else f"{m1} and {m2}"
         brief_pain = str(product_brief.get("primary_pain_point", "")).strip() if isinstance(product_brief, dict) else ""
-        situation = brief_pain or f"{audience_line} often hit the same issue: the product gets picked before the actual job, compatibility, or limits are mapped."
-        info = f"{proof_line} is a practical anchor for comparing real fit before purchase."
+        situation = brief_pain or f"{audience_line} often choose a product before listing the devices, plugs, watts, and required runtime."
+        info = f"Compare {proof_line} with the watts, plug, and runtime for each device on the list."
         why = str(profile.get("benefit", "match real usage to the right product specs"))
-        product_connection = (
-            f"{product_name} is most effective when used through this lens: {sales_angle}."
-            if sales_angle
-            else f"{product_name} is most effective when matched to verified daily-load needs."
-        )
+        product_connection = f"Compare {product_name} with the listed devices and the published {proof_line}."
         proof = f"The specs that matter here: {proof_line}."
 
     if str(resolved_pain_point).strip():
@@ -4029,7 +4032,7 @@ def _build_post_components(
     if stage == "EDUCATION":
         cta = "Save this checklist and compare your current setup."
     elif stage == "DESIRE":
-        cta = "See what this product is designed to support."
+        cta = f"Compare {product_name} specifications with your device list."
     elif stage == "CONVERSION":
         cta = "Build your backup-power setup."
 
@@ -6321,14 +6324,14 @@ COPY ACCURACY RULES:
 - Never use generic benefit phrases like "turn confusion into a clear product-fit decision" or "using real usage data" as the main product description unless they are immediately tied to concrete specs and the real product category.
 
 QUALITY RULES — every piece must follow all of these:
-1. Open with a hook that creates immediate curiosity or challenges a common assumption.
+1. Open with a named device, task, failure, use case, or verified measurement. Do not open with a belief, mood, rhetorical abstraction, or generic question.
 2. Name one concrete customer pain point in the first two lines.
 3. Add one proof anchor when a verified fact or measurable detail is relevant.
 4. Use a specific number, stat, or real-world comparison only when it is explicitly verified and relevant; otherwise provide concrete decision-support specificity without inventing a claim.
-5. Deliver a genuine insight the reader cannot easily Google — a specific angle they haven't considered.
+5. Give one usable instruction tied to a named device, specification, plug, location, duration, or task.
 6. Write like a human expert, not a marketing team. Never use words like "revolutionize", "game-changer", or "unlock your potential."
 7. Never make unverifiable guarantees. Use language like "many homeowners", "up to", "in most cases" where appropriate.
-8. Every post must have a clear emotional payoff: relief, confidence, curiosity satisfied, or urgency to act.
+8. Every post must end in an observable outcome or action: a device stays running, a specification is checked, a list is made, or a compatible product page is opened.
 9. If product context is available, use concrete product facts only when verified and relevant to the reader's decision. Do not force a product-first narrative or a fixed fact count.
 10. Do not invent model names, specs, prices, or warranties not present in the provided product context.
 11. End with one frictionless next action that can be done today.

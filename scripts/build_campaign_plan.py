@@ -109,11 +109,11 @@ def build_campaign_plan(output_dir: str) -> dict[str, Any]:
             customer_problem = str(pains[0]).strip() or customer_problem
 
     educational_message = "Teach buyers how to match real device needs to verified power specs before purchasing."
-    core_message = "Verified product details, practical use-case guidance, and one clear next step."
+    core_message = "Name the device, show the published specification, and tell the reader what to compare next."
 
     ctas = copy.get("cta_bank", []) if isinstance(copy, dict) else []
     primary_cta = str(ctas[0]).strip() if ctas else "Build your backup-power setup."
-    secondary_cta = str(ctas[1]).strip() if len(ctas) > 1 else "Review the verified product details."
+    secondary_cta = str(ctas[1]).strip() if len(ctas) > 1 else "Compare the published specifications with your device list."
 
     products = _load_published_products(max_items=10)
     featured = [p.get("id", "") for p in products[:3] if p.get("id")]

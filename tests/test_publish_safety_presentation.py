@@ -116,7 +116,7 @@ def test_platform_expressions_are_native_and_reject_generic_engagement_bait():
     assert bait["generic_engagement_bait"]
 
 
-def test_commercial_caption_starts_with_human_moment_before_product_and_varies_by_platform():
+def test_commercial_caption_starts_with_concrete_product_job_on_every_platform():
     components = {
         "product_id": "PPP-200", "product_name": "PowerPulse Pro 200",
         "hook": "A long travel day changes what staying charged really means.",
@@ -140,11 +140,14 @@ def test_commercial_caption_starts_with_human_moment_before_product_and_varies_b
     instagram, _ = platform_presentation.format_caption(components, platform="instagram")
     linkedin, _ = platform_presentation.format_caption(components, platform="linkedin")
 
-    assert facebook.index("long travel day") < facebook.index("PowerPulse Pro 200")
-    assert "The common assumption:" in facebook
-    assert "The better question:" in facebook
+    expected_opening = "PowerPulse Pro 200 supports compatible daily devices away from an outlet."
+    assert facebook.startswith(expected_opening)
+    assert instagram.startswith(expected_opening)
+    assert linkedin.startswith(expected_opening)
+    assert "The common assumption:" not in facebook
+    assert "The better question:" not in facebook
     assert "154Wh" in facebook
-    assert len({facebook, instagram, linkedin}) == 3
+    assert "one battery is much like another" not in facebook
 
 
 def test_organic_caption_uses_human_reality_without_product_language():

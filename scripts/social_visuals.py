@@ -1078,6 +1078,10 @@ def _generate_gemini_full_creative(content: dict[str, Any], platform: str, visua
         product_source = _resolve_product_source(content, repo_context=repo_context)
         metadata["source_product_asset"] = product_source
         if product_source:
+            identity_review = _product_image_identity_review(content, product_source, "")
+            metadata["product_reference_identity_review"] = identity_review
+            if str(content.get("product_id") or "").strip() and identity_review["verdict"] != "PASS":
+                return completed(False, "product_reference_identity_not_approved")
             product_bytes, product_mime = _read_image_bytes_any(product_source)
             product_bytes, product_mime = _normalize_reference_image(product_bytes)
             if product_bytes:
@@ -1321,6 +1325,33 @@ def _save_product_photo_fallback(source: str, output_path: str, platform: str) -
         return False
 
 
+def _product_image_identity_review(content: dict[str, Any], source: str, artifact_path: str) -> dict[str, Any]:
+    """Require explicit, immutable proof that a fallback image depicts this product."""
+    approval = content.get("product_image_approval") if isinstance(content.get("product_image_approval"), dict) else {}
+    expected_product = str(content.get("product_id") or "").strip()
+    approved_product = str(approval.get("product_id") or "").strip()
+    approved_source = str(approval.get("source_url") or "").strip()
+    expected_sha256 = str(approval.get("sha256") or "").strip().lower()
+    issues: list[str] = []
+    if not expected_product or approved_product != expected_product:
+        issues.append("product_image_identity_not_approved")
+    if not approved_source or approved_source != str(source or "").strip():
+        issues.append("product_image_source_not_approved")
+    source_bytes, _ = _read_image_bytes_any(source)
+    source_sha256 = hashlib.sha256(source_bytes).hexdigest() if source_bytes else ""
+    if not expected_sha256 or source_sha256 != expected_sha256:
+        issues.append("product_image_sha256_not_approved")
+    return {
+        "verdict": "PASS" if not issues else "REGENERATE_VISUAL",
+        "issues": issues,
+        "product_id": expected_product,
+        "source_url": str(source or "").strip(),
+        "source_sha256": source_sha256,
+        "artifact_path": artifact_path,
+        "identity_approved": not issues,
+    }
+
+
 def _fallback_creative_review(content: dict[str, Any], plan: dict[str, Any], artifact_path: str, platform: str) -> dict[str, Any]:
     """Classify source assets for review without making them publishable fallbacks."""
     product_led = bool(str(content.get("product_id") or "").strip())
@@ -1392,15 +1423,28 @@ def generate_visuals(content: dict[str, Any], visual_plan: dict[str, Any] | None
             fallback_engine = "approved_product_photo" if product_specific_source_present else "approved_reference_image"
             render_engines[platform] = fallback_engine
             product_overlay_applied[platform] = product_specific_source_present
-            visuals[platform] = file_path
             fallback_reasons[platform] = reason
-            artifact_reviews[platform] = review_rendered_visual(file_path, platform)
+            artifact_review = _fallback_creative_review(content, plan, file_path, platform)
+            if product_specific_source_present:
+                identity_review = _product_image_identity_review(content, resolved_override, file_path)
+                artifact_review["identity_review"] = identity_review
+                if identity_review["verdict"] != "PASS":
+                    artifact_review["verdict"] = "REGENERATE_VISUAL"
+                    artifact_review["issues"] = list(dict.fromkeys(
+                        list(artifact_review.get("issues") or []) + list(identity_review["issues"])
+                    ))
+            artifact_reviews[platform] = artifact_review
+            if artifact_review.get("verdict") == "PASS":
+                visuals[platform] = file_path
+            else:
+                render_engines[platform] = "failed"
+                product_overlay_applied[platform] = False
             metadata.update({
                 "fallback_used": True,
                 "fallback_source": fallback_engine,
                 "artifact_path": file_path,
                 "artifact_exists": True,
-                "generation_status": "fallback_success",
+                "generation_status": "fallback_success" if artifact_review.get("verdict") == "PASS" else "fallback_rejected",
             })
         else:
             render_engines[platform] = "failed"

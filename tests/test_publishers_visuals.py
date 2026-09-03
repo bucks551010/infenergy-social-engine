@@ -581,17 +581,27 @@ class PublisherVisualTests(unittest.TestCase):
         self.assertFalse(render["artifact_exists"])
 
     def test_generate_visuals_uses_approved_product_photo_when_gemini_fails(self) -> None:
+        import hashlib
         from PIL import Image
 
         with tempfile.TemporaryDirectory() as temp_dir:
             source_path = os.path.join(temp_dir, "product.png")
             Image.new("RGB", (800, 600), "#223344").save(source_path, format="PNG")
+            with open(source_path, "rb") as source_file:
+                source_sha256 = hashlib.sha256(source_file.read()).hexdigest()
             with patch.dict(os.environ, {"GEMINI_API_KEY": ""}, clear=False), patch("social_visuals.VISUAL_DIR", temp_dir):
                 visuals = generate_visuals(
                     {
                         "post_id": "unit_test_product_photo_fallback",
+                        "product_id": "TEST-POWER",
                         "product_image_url": source_path,
-                    }
+                        "product_image_approval": {
+                            "product_id": "TEST-POWER",
+                            "source_url": source_path,
+                            "sha256": source_sha256,
+                        },
+                    },
+                    {"creative_route": "PREMIUM_PRODUCT_HERO"},
                 )
 
             self.assertEqual(visuals["render_engines"]["instagram"], "approved_product_photo")

@@ -243,7 +243,7 @@ def build_team_handoff(
         "ATTENTION": "Lead with the product-specific problem and make the cost of a poor fit concrete.",
         "EDUCATION": "Teach buyers which verified details determine fit for this product type.",
         "DESIRE": "Connect the documented use case to a practical, believable outcome.",
-        "TRUST": "Reduce purchase risk with transparent facts, limits, and compatibility guidance.",
+        "TRUST": "Show the published specifications, limits, compatible devices, and required plugs.",
         "CONVERSION": "Make the next product-specific buying step simple and concrete.",
     }.get(stage, "Translate verified product facts into a practical next step.")
     cta = str(selected_cta or "").strip() or str(brief.get("recommended_cta", ""))

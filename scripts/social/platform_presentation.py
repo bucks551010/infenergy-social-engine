@@ -428,8 +428,6 @@ def _product_sales_pyramid(
     why_it_matters = _repair_unsupported_broad_claims(str(components.get("why_it_matters") or "").strip().rstrip("."))
     use_case = _repair_unsupported_broad_claims(str(components.get("use_case_line") or "").strip().rstrip("."))
     info = _repair_unsupported_broad_claims(str(components.get("info") or components.get("logic_bridge") or "").strip().rstrip("."))
-    product_connection = _repair_unsupported_broad_claims(str(components.get("product_connection") or "").strip().rstrip("."))
-    transformation = _repair_unsupported_broad_claims(str(components.get("transformation") or "").strip().rstrip("."))
     specs = [
         str(spec).strip() for spec in (components.get("feature_bullets") or [])
         if _numeric_proof_tokens(str(spec))
@@ -440,88 +438,60 @@ def _product_sales_pyramid(
     )
     non_numeric_info = _concise_public_detail(non_numeric_info)
 
-    human_moment = _clean_public_fragment(str(framework.get("human_moment") or situation), max_words=30)
-    if len(human_moment.split()) < 5:
-        human_moment = ""
-    current_belief = _clean_public_fragment(str(framework.get("current_belief") or situation), max_words=24)
-    desired_belief = _clean_public_fragment(str(framework.get("desired_belief") or non_numeric_info), max_words=28)
     proposition = _clean_public_fragment(str(framework.get("dominant_proposition") or benefit), max_words=24)
     mechanism = _clean_public_fragment(str(framework.get("mechanism") or non_numeric_info), max_words=24)
     if specs and _numeric_proof_tokens(mechanism):
         mechanism = ""
-    functional_change = _usable_public_fragment(str(framework.get("functional_transformation") or transformation), max_words=24)
-    emotional_change = _usable_public_fragment(str(framework.get("emotional_transformation") or after_state), max_words=20)
-    future_state = _usable_public_fragment(str(framework.get("ownership_future_pacing") or why_it_matters), max_words=20)
-    hook = _clean_public_fragment(str(components.get("logic_hook") or components.get("hook") or human_moment), max_words=26)
-    if desired_belief:
-        desired_belief = desired_belief[0].upper() + desired_belief[1:]
-        if desired_belief.lower().startswith(("how ", "what ", "why ", "when ", "where ", "which ", "who ")):
-            desired_belief = desired_belief.rstrip(".?!") + "?"
-    belief_shift = " ".join(filter(None, [
-        _sentence(f"The common assumption: {current_belief}") if current_belief else "",
-        _sentence(f"The better question: {desired_belief}") if desired_belief else "",
-    ]))
-    product_reveal = _sentence(f"That is where {product} fits: {proposition or benefit}")
-    mechanism_line = _sentence(f"How it supports that shift: {mechanism}") if mechanism else ""
+    product_reveal = _sentence(f"{product} {proposition or benefit}")
+    mechanism_line = _sentence(mechanism) if mechanism else ""
     spec_block = "⚡ Key specs\n" + "\n".join(f"• {spec}" for spec in specs) if specs else ""
     if specs and not non_numeric_info:
         non_numeric_info = "Compare the published capacity and output with the actual devices and job before choosing."
-    education_parts = list(filter(None, [
-        _sentence(f"How to read those specs: {non_numeric_info}") if non_numeric_info else "",
-        _sentence(product_connection) if product_connection else "",
-    ]))
+    education_parts = [_sentence(non_numeric_info)] if non_numeric_info else []
     education = " ".join(education_parts)
     if len(re.findall(r"\b[\w'-]+\b", education)) > 70:
         education = education_parts[0] if education_parts else ""
-    human_value = _sentence(transformation) if transformation else ""
     portfolio_tags, categories = _portfolio(components, platform, source_caption)
     source_tags = re.findall(r"#[A-Za-z0-9_]+", source_caption)
     selected_tags = list(dict.fromkeys(source_tags + [f"#{tag}" for tag in portfolio_tags]))[:_HASHTAG_LIMITS.get(platform, 5)]
     hashtag_line = " ".join(selected_tags)
-    transformation_line = _sentence(_clean_public_fragment(
-        " ".join(filter(None, [functional_change, emotional_change, future_state])),
-        max_words=100,
-    ))
-    if _semantic_fragment(transformation_line) in {
-        _semantic_fragment(proposition),
-        _semantic_fragment(benefit),
-    }:
-        transformation_line = ""
-    linkedin_belief = _sentence(f"Decision lens: {desired_belief}") if desired_belief else belief_shift
+    use_case_detail = _sentence(use_case or situation)
+    concrete_cta = cta
+    if not concrete_cta or re.search(r"\b(?:learn more|verified product details|see what this product|designed to support)\b", concrete_cta, flags=re.IGNORECASE):
+        concrete_cta = f"See {product} specifications and compatible uses."
     platform_depth = {
-        "facebook": [hook, human_moment, belief_shift, product_reveal, mechanism_line, spec_block, education, transformation_line],
-        "instagram": [hook, belief_shift, product_reveal, spec_block, transformation_line],
-        "linkedin": [hook, linkedin_belief, product_reveal, mechanism_line, education, spec_block, transformation_line],
+        "facebook": [product_reveal, spec_block, use_case_detail, education],
+        "instagram": [product_reveal, spec_block, use_case_detail, education],
+        "linkedin": [product_reveal, spec_block, use_case_detail, education],
     }
     paragraphs = platform_depth.get(platform, platform_depth["facebook"]) + [
-        f"👉 {cta}" if cta else "",
+        f"👉 {concrete_cta}",
         hashtag_line,
     ]
     refined = "\n\n".join(paragraph for paragraph in paragraphs if paragraph.strip())
     presentation = _above_fold(refined, components, platform)
     presentation.update({
         "sales_structure": [
-            "human_moment", "current_belief", "desired_belief", "dominant_proposition",
-            "product_fit", "mechanism", "verified_proof", "functional_transformation",
-            "emotional_transformation", "ownership_future_pacing", "natural_response",
+            "product", "specific_job", "verified_proof", "compatible_use",
+            "comparison_guidance", "specific_action",
         ],
         "selected_hashtags": selected_tags,
         "hashtag_categories": categories,
         "hashtag_target_density": f"{_HASHTAG_LIMITS.get(platform, 5)} focused tags maximum",
         "spec_sales_intelligence": "PASS" if spec_block else "NOT_APPLICABLE",
-        "optional_depth_present": bool(education or human_value),
-        "optional_depth_start_word": len(re.findall(r"\b[\w'-]+\b", "\n\n".join(paragraphs[:5]))) + 1 if education or human_value else None,
+        "optional_depth_present": bool(education),
+        "optional_depth_start_word": len(re.findall(r"\b[\w'-]+\b", "\n\n".join(paragraphs[:3]))) + 1 if education else None,
         "semantic_layer_evidence": {
-            "hook": hook,
-            "human_moment": human_moment,
-            "belief_shift": belief_shift,
+            "hook": product_reveal,
+            "human_moment": use_case_detail,
+            "belief_shift": "",
             "product": product,
             "primary_benefit": proposition or str(components.get("benefit_fragment") or ""),
             "mechanism": mechanism,
-            "human_outcome": transformation_line,
+            "human_outcome": use_case_detail,
             "selected_proof": [spec_block] if spec_block else [],
             "education": education,
-            "cta": cta,
+            "cta": concrete_cta,
         },
         "platform_expression": f"{platform}_benefit_led_product_sales_editorial",
         "reordered_for_priority": True,
@@ -1015,12 +985,30 @@ def final_caption_qa(
     ))
     actionable_steps = len(re.findall(r"(?m)^\s*\d+\.\s+\S+", caption)) >= 3
     reasons: list[str] = []
+    public_prose = "\n".join(
+        line for line in caption.splitlines()
+        if not line.strip().startswith(("#", "http", "•", "⚡"))
+    )
+    abstract_matches = re.findall(
+        r"\b(?:the common assumption|the better question|that is where .{1,80} fits|"
+        r"how to read those specs|how it supports that shift|decision lens|"
+        r"the setting changes|the need for control|verified product details|"
+        r"designed to support|used through this lens|reduce purchase risk|"
+        r"confidence through|peace of mind|more controlled|the value is knowing|"
+        r"operational continuity|resilience solution)\b",
+        public_prose,
+        flags=re.IGNORECASE,
+    )
     if metrics["internal_instruction_leak"]:
         reasons.append("internal_instruction_leak")
+    if abstract_matches:
+        reasons.append("abstract_public_copy")
     if product_led and not metrics["product_intro_position"]:
         reasons.append("product_not_visible")
     if product_led and not metrics["primary_benefit_position"]:
         reasons.append("primary_value_not_visible")
+    if product_led and metrics["product_intro_position"] != 1:
+        reasons.append("product_not_first")
     if plan_promised and not actionable_steps:
         reasons.append("promised_plan_missing_actionable_steps")
     if platform == "facebook" and numeric_proof_available and not metrics["specs_present"]:
@@ -1044,7 +1032,7 @@ def final_caption_qa(
     return {
         "status": "PRESENTATION_READY" if not reasons else "REVISE_PRESENTATION",
         "reasons": reasons,
-        "metrics": metrics,
+        "metrics": {**metrics, "abstract_public_copy_matches": abstract_matches},
     }
 
 

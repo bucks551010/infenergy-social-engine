@@ -119,6 +119,78 @@ def test_packshot_can_only_pass_when_creative_director_explicitly_selects_it(tmp
     assert review["verdict"] == "PASS"
 
 
+def test_product_photo_fallback_requires_identity_approval_and_hash(tmp_path, monkeypatch):
+    monkeypatch.setattr(social_visuals, "VISUAL_DIR", str(tmp_path))
+    monkeypatch.setattr(
+        social_visuals,
+        "_generate_gemini_full_creative",
+        lambda *_args, **_kwargs: (False, "provider_unavailable", {"generation_status": "failed"}),
+    )
+    monkeypatch.setattr(social_visuals, "_load_visual_repo_context", lambda: {"references": [], "settings": {}})
+    monkeypatch.setattr(social_visuals, "_resolve_product_source", lambda *args, **kwargs: "https://example.com/wrong-brand.jpg")
+    monkeypatch.setattr(
+        social_visuals,
+        "_save_product_photo_fallback",
+        lambda _source, path, platform: (_image(path, social_visuals._platform_visual_spec(platform)["target"]) is None),
+    )
+
+    visuals = social_visuals.generate_visuals(
+        {
+            "post_id": "wrong-brand",
+            "product_id": "PPP-200",
+            "product_image_url": "https://example.com/wrong-brand.jpg",
+        },
+        {"creative_route": "PREMIUM_PRODUCT_HERO"},
+    )
+
+    assert all(visuals["render_engines"][platform] == "failed" for platform in ("facebook", "instagram", "linkedin"))
+    assert all(platform not in visuals for platform in ("facebook", "instagram", "linkedin"))
+    assert all(
+        "product_image_identity_not_approved" in visuals["artifact_reviews"][platform]["issues"]
+        for platform in ("facebook", "instagram", "linkedin")
+    )
+
+
+def test_unapproved_product_reference_never_reaches_gemini(tmp_path, monkeypatch):
+    calls = {"count": 0}
+
+    class Models:
+        def generate_content(self, **_kwargs):
+            calls["count"] += 1
+            raise AssertionError("unapproved product reference reached Gemini")
+
+    fake_genai = types.ModuleType("google.genai")
+    fake_genai.Client = lambda **_kwargs: types.SimpleNamespace(models=Models())
+    fake_types = types.ModuleType("google.genai.types")
+    fake_types.HttpOptions = lambda **kwargs: kwargs
+    fake_types.HttpRetryOptions = lambda **kwargs: kwargs
+    fake_types.Part = types.SimpleNamespace(from_bytes=lambda **kwargs: kwargs)
+    fake_genai.types = fake_types
+    monkeypatch.setattr(google, "genai", fake_genai)
+    monkeypatch.setitem(sys.modules, "google.genai", fake_genai)
+    monkeypatch.setitem(sys.modules, "google.genai.types", fake_types)
+    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
+    monkeypatch.setattr(social_visuals, "_GEMINI_IMAGE_UNAVAILABLE_REASON", "")
+    monkeypatch.setattr(social_visuals, "_load_visual_repo_context", lambda: {"references": [], "settings": {}})
+    monkeypatch.setattr(social_visuals, "_read_image_bytes_any", lambda _source: (b"wrong-brand", "image/png"))
+
+    rendered, reason, metadata = social_visuals._generate_gemini_full_creative(
+        {
+            "post_id": "wrong-reference",
+            "product_id": "PPP-200",
+            "product_image_url": "https://example.com/wrong-brand.png",
+        },
+        "facebook",
+        {},
+        str(tmp_path / "wrong-reference.png"),
+    )
+
+    assert rendered is False
+    assert reason == "product_reference_identity_not_approved"
+    assert calls["count"] == 0
+    assert metadata["product_reference_identity_review"]["identity_approved"] is False
+
+
 def test_product_free_editorial_source_is_not_misclassified_as_packshot(tmp_path):
     artifact = tmp_path / "editorial.png"
     _image(artifact, social_visuals._platform_visual_spec("linkedin")["target"])

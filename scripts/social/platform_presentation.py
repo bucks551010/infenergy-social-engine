@@ -595,7 +595,7 @@ def _engagement_editorial(
     perspective = _engagement_safe_text(str(framework.get("infenergy_perspective") or why))
     story = _engagement_safe_text(str(framework.get("story") or ""))
     memory = _engagement_safe_text(str(framework.get("memory") or transformation)) or "Keep the finished list beside the battery so anyone in the household can follow it."
-    why = tension or perspective or "Write down the first device or task that cannot stop, then rank the rest behind it."
+    why = tension or perspective or "A phone keeps communication open, a light makes the room usable, and some medical devices cannot wait."
     transformation = memory
     opening = _engagement_hook(hook, curiosity, situation, insight, source_caption)
 
@@ -686,7 +686,7 @@ def _engagement_editorial(
             opening,
             _sentence(situation),
             _sentence(why),
-            "Before comparing equipment, record the watts and runtime required by each device that must stay available.",
+            "The device with the highest wattage is not always the first priority; medical access and communication may come first.",
             _sentence(insight),
             _sentence(transformation),
             f"👉 {final_cta}",

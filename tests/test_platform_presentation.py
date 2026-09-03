@@ -746,6 +746,7 @@ def test_product_free_copy_rewrites_abstract_labels_and_requires_ten_tags():
         )
         assert not any(fragment in caption.lower() for fragment in forbidden)
         assert len(re.findall(r"(?<!\w)#[A-Za-z0-9_]+", caption)) == 10
+        assert caption.lower().count("rank") == 1
         assert platform_presentation.final_caption_qa(
             caption,
             platform=platform,

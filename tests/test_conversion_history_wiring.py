@@ -24,6 +24,10 @@ def test_conversion_learning_fields_extracts_nested_brief():
         "conversion_quality_score": {"total": 88.0, "band": "strong"},
         "conversion_brief_adherence": {"adherence_pct": 71.4},
         "conversion_variant_id": "abc123",
+        "consumer_root_id": "work_trade:last_signature_jobsite",
+        "consumer_world_id": "work_trade",
+        "consumer_moment_id": "last_signature_jobsite",
+        "consumer_receipt": {"useful_discovery": "Protect the closing task first."},
     }
     fields = run_engine._conversion_learning_fields(content)
     assert fields["strategic_brief"] == content["strategic_brief"]
@@ -32,6 +36,10 @@ def test_conversion_learning_fields_extracts_nested_brief():
     assert fields["conversion_quality_score"] == content["conversion_quality_score"]
     assert fields["conversion_brief_adherence"] == content["conversion_brief_adherence"]
     assert fields["conversion_variant_id"] == "abc123"
+    assert fields["consumer_root_id"] == content["consumer_root_id"]
+    assert fields["consumer_world_id"] == "work_trade"
+    assert fields["consumer_moment_id"] == "last_signature_jobsite"
+    assert fields["consumer_receipt"] == content["consumer_receipt"]
 
 
 def test_conversion_learning_fields_safe_when_brief_missing():

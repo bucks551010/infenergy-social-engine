@@ -60,6 +60,10 @@ def test_plan_covers_catalog_and_never_creates_generation_artifacts(tmp_path):
     assert all(entry["image_status"] == "NOT_GENERATED" for entry in plan["entries"])
     assert all(entry["generation_prompts"] == [] for entry in plan["entries"])
     assert all(entry["media_assets"] == [] for entry in plan["entries"])
+    assert all(entry["consumer_root_id"] for entry in plan["entries"])
+    assert all(entry["consumer_receipt"]["useful_discovery"] for entry in plan["entries"])
+    assert all(entry["consumer_story_contract"]["visual_evidence"] for entry in plan["entries"])
+    assert len({entry["consumer_world_id"] for entry in plan["entries"]}) >= 12
 
 
 def test_plan_preserves_intervention_cadence_and_continuous_format_rotation(tmp_path):

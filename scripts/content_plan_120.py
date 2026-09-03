@@ -12,6 +12,7 @@ from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
 from campaign_runtime import recurring_series_for_slot
+from consumer_life import select_consumer_root
 
 
 PROFILE_PATH = os.path.join("marketing", "product_consumer_profiles.json")
@@ -795,6 +796,12 @@ def _daily_concept(
     weekday = current_date.weekday()
     base: dict[str, Any]
     slot = "midday"
+    consumer_root = select_consumer_root(
+        current_date=current_date,
+        slot="morning" if weekday == 4 else slot,
+        sequence=day_number,
+    )
+    consumer_moment = consumer_root["moment"]
     series, creative_mode, brain_movement, heart_after, natural_response = DAY_STRATEGY[weekday]
     post_type = _post_type(day_number, weekday)
     editorial_pillar, copy_form = EDITORIAL_COPY_ROTATION[(day_number - 1) % len(EDITORIAL_COPY_ROTATION)]
@@ -916,6 +923,28 @@ def _daily_concept(
             ],
         }
     base = _apply_post_type_treatment(base, post_type, arc, product)
+    base["consumer_story_contract"] = {
+        "opening_scene": f"{consumer_moment['person']} in {consumer_moment['setting']}",
+        "activity": consumer_moment["activity"],
+        "disruption": consumer_moment["disruption"],
+        "failure": consumer_moment["failure"],
+        "consequence": consumer_moment["consequence"],
+        "question_to_resolve": consumer_moment["question"],
+        "false_assumption_to_replace": consumer_moment["false_assumption"],
+        "curiosity_payoff": consumer_moment["curiosity_payoff"],
+        "useful_discovery": consumer_moment["useful_discovery"],
+        "immediate_action": consumer_moment["immediate_action"],
+        "backup_plan": consumer_moment["backup_plan"],
+        "visual_evidence": consumer_moment["visual_evidence"],
+    }
+    base["story"] = (
+        f"Open inside this exact moment: {consumer_moment['person']} in {consumer_moment['setting']}, "
+        f"{consumer_moment['activity'].lower()}. Show the disruption: {consumer_moment['disruption']} "
+        f"Resolve the mistaken assumption that {consumer_moment['false_assumption'].lower()}. "
+        f"Deliver this useful discovery: {consumer_moment['useful_discovery']} "
+        f"Then apply the selected {base['format_label'].lower()} treatment: {base['story']}"
+    )
+    base["takeaway"] = consumer_moment["useful_discovery"]
     content_format_identifier = _content_format_identifier(base, post_type)
     return {
         "date": current_date.isoformat(),
@@ -924,6 +953,11 @@ def _daily_concept(
         "slot": slot,
         "week": ((day_number - 1) // 7) + 1,
         "weekly_arc": arc["name"],
+        "consumer_root": consumer_root,
+        "consumer_root_id": consumer_root["root_id"],
+        "consumer_world_id": consumer_root["world_id"],
+        "consumer_moment_id": consumer_root["moment_id"],
+        "consumer_receipt": consumer_root["consumer_receipt"],
         "creative_territory": arc["territory"],
         "pillar": arc["pillar"],
         "audience_id": arc["audience_id"],
@@ -937,7 +971,7 @@ def _daily_concept(
             "to": arc["transformation_to"],
         },
         "cultural_register": arc["cultural_register"],
-        "human_reality": arc["tension"],
+        "human_reality": consumer_moment["friction"],
         "brain_movement": brain_movement,
         "heart_after": heart_after,
         "human_value": arc["desire"],

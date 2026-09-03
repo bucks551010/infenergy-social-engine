@@ -142,6 +142,19 @@ def check_duplicates(content: dict[str, Any], history: dict[str, Any], windows: 
 
     current_time = now_utc or datetime.now(timezone.utc)
     previous_day_posts = _previous_calendar_day_posts(posts, current_time)
+    consumer_moment_id = str(content.get("consumer_moment_id") or "").strip()
+    consumer_world_id = str(content.get("consumer_world_id") or "").strip()
+    if consumer_moment_id:
+        if any(str(post.get("consumer_moment_id") or "") == consumer_moment_id for post in previous_day_posts):
+            reasons.append("duplicate_consumer_moment_on_consecutive_day")
+        recent_moments = _recent_posts(posts, cfg["topic_days"], current_time)
+        if any(str(post.get("consumer_moment_id") or "") == consumer_moment_id for post in recent_moments):
+            reasons.append("consumer_moment_saturated_within_window")
+    if consumer_world_id:
+        recent_worlds = _recent_posts(posts, 7, current_time)
+        world_uses = sum(str(post.get("consumer_world_id") or "") == consumer_world_id for post in recent_worlds)
+        if world_uses >= 2:
+            reasons.append("consumer_world_saturated_within_week")
     premise_signatures = {
         value for value in (
             str(content.get("topic_hash", "")),
@@ -268,7 +281,7 @@ def check_duplicates(content: dict[str, Any], history: dict[str, Any], windows: 
     strict_reasons = [
         reason
         for reason in reasons
-        if reason == "duplicate_premise_on_consecutive_day"
+        if reason in {"duplicate_premise_on_consecutive_day", "duplicate_consumer_moment_on_consecutive_day"}
         or (reason == "duplicate_exact_caption_within_window" and "exact_caption" in blocking_signatures)
     ]
     configured_reasons = [
@@ -292,6 +305,8 @@ def check_duplicates(content: dict[str, Any], history: dict[str, Any], windows: 
             "lesson_signature": lesson_signature,
             "format_signature": format_signature,
             "structure_signature": structure_signature,
+            "consumer_world_id": consumer_world_id,
+            "consumer_moment_id": consumer_moment_id,
         },
         "windows": cfg,
     }

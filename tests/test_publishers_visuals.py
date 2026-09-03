@@ -78,6 +78,25 @@ class PublisherVisualTests(unittest.TestCase):
         self.assertNotIn("ABSOLUTE EXCLUSIONS", prompt)
         self.assertIn("subordinate to every rule", prompt)
 
+    def test_gemini_prompt_requires_consumer_scene_and_visual_evidence(self) -> None:
+        prompt = _build_gemini_image_prompt(
+            {
+                "consumer_root": {
+                    "moment": {
+                        "person": "A market vendor serving a closing-time line",
+                        "setting": "an outdoor market stall",
+                        "activity": "Completing the final sales",
+                        "visual_evidence": ["customer ready to tap", "phone hotspot at low battery"],
+                    }
+                }
+            },
+            "instagram",
+            {"gemini_image_prompt": "A premium product scene."},
+        )
+        self.assertIn("MANDATORY LIVED SCENE", prompt)
+        self.assertIn("market vendor", prompt)
+        self.assertIn("phone hotspot at low battery", prompt)
+
     def test_gemini_plate_quality_rejects_wrong_aspect_ratio(self) -> None:
         from PIL import Image
 

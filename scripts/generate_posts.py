@@ -12,6 +12,7 @@ from typing import Any
 from google import genai
 from google.genai import types
 from social import carousel_director
+from consumer_life import select_consumer_root
 
 
 # ---------------------------------------------------------------------------
@@ -245,6 +246,7 @@ def _route_generate_orchestrator(
 ) -> dict[str, Any]:
     """Return the first orchestrated post package in the legacy payload shape used by the runtime."""
     social_platform = _social_platform_key(platform)
+    consumer_root = kw.pop("consumer_root", {}) if isinstance(kw.get("consumer_root"), dict) else {}
     recurring_series = kw.pop("recurring_series", {}) if isinstance(kw.get("recurring_series"), dict) else {}
     no_product = bool(kw.get("no_product")) or os.environ.get("CONTENT_BUCKET_OVERRIDE", "").strip().lower() == "no_product"
     kw["no_product"] = no_product
@@ -258,6 +260,19 @@ def _route_generate_orchestrator(
             kw["approved_strategy"] = approved_strategy
     else:
         council_decision = {"decision": "strategy_selected", "source": "caller_override"}
+    if consumer_root:
+        approved_strategy = kw.get("approved_strategy") if isinstance(kw.get("approved_strategy"), dict) else {}
+        moment = consumer_root["moment"]
+        kw["approved_strategy"] = {
+            **approved_strategy,
+            "consumer_root_id": consumer_root["root_id"],
+            "audience": moment["person"],
+            "topic": moment["activity"],
+            "angle": moment["useful_discovery"],
+            "reader_job": moment["immediate_action"],
+            "lived_moment": moment,
+            "consumer_receipt": consumer_root["consumer_receipt"],
+        }
     if recurring_series.get("id") == "infenergy_intervention":
         approved_strategy = kw.get("approved_strategy") if isinstance(kw.get("approved_strategy"), dict) else {}
         kw["approved_strategy"] = {
@@ -360,6 +375,11 @@ def _route_generate_orchestrator(
     legacy = {
         "post_id": first.get("post_id"),
         "copy_generation_source": "social_intelligence_orchestrator",
+        "consumer_root": consumer_root,
+        "consumer_root_id": consumer_root.get("root_id", ""),
+        "consumer_world_id": consumer_root.get("world_id", ""),
+        "consumer_moment_id": consumer_root.get("moment_id", ""),
+        "consumer_receipt": consumer_root.get("consumer_receipt", {}),
         "business_context": first.get("business_context") or {},
         "anchored_offering": offering,
         "consumer_profile": offering.get("consumer_profile") or {},
@@ -5299,7 +5319,12 @@ def generate(
 ) -> dict:
     mode = _pipeline_mode(pipeline_override)
     platform = os.environ.get("POST_PLATFORMS", "instagram_feed").split(",")[0].strip() or "instagram_feed"
+    generation_date = datetime.now(timezone.utc).date()
+    consumer_root = select_consumer_root(current_date=generation_date, slot=slot)
     no_product = no_product or os.environ.get("CONTENT_BUCKET_OVERRIDE", "").strip().lower() == "no_product"
+    if consumer_root["moment"]["product_fit"]["mode"] == "none":
+        no_product = True
+        product_id_override = ""
     weekly_sequence = select_weekly_sequence(slot, now_utc=datetime.now(timezone.utc))
     recurring_series = weekly_sequence.get("series", {}) if isinstance(weekly_sequence.get("series"), dict) else {}
     if no_product:
@@ -5322,6 +5347,7 @@ def generate(
             no_product=no_product,
             preferred_pillar=pillar_override or None,
             recurring_series=recurring_series,
+            consumer_root=consumer_root,
         )
     if mode != "legacy" and _social_intelligence_enabled():
         return _route_generate_orchestrator(
@@ -5334,6 +5360,7 @@ def generate(
             no_product=no_product,
             preferred_pillar=pillar_override or None,
             recurring_series=recurring_series,
+            consumer_root=consumer_root,
         )
 
     ensure_runtime_data()
@@ -5446,6 +5473,14 @@ def generate(
         if want_product
         else _build_talking_point_no_product(topic=topic, funnel_stage=funnel_stage, pillar=pillar)
     )
+    consumer_moment = consumer_root["moment"]
+    talking_point["pain_point"] = consumer_moment["friction"]
+    talking_point["angle"] = consumer_moment["useful_discovery"]
+    talking_point["first_step"] = consumer_moment["immediate_action"]
+    talking_point["scenario"] = (
+        f"{consumer_moment['person']} in {consumer_moment['setting']} while "
+        f"{consumer_moment['activity'].lower()}"
+    )
 
     marketing_context = ""
     selected_hook = (weekly_sequence.get("hook") or "").strip()
@@ -5454,14 +5489,17 @@ def generate(
     consumer_context = _product_consumer_context(product, audience_segment) if want_product else {}
     selected_consumer_persona = consumer_context.get("persona") if isinstance(consumer_context.get("persona"), dict) else {}
     if selected_consumer_persona:
-        talking_point["pain_point"] = str(selected_consumer_persona.get("problem") or talking_point.get("pain_point") or "")
-        message_angles = selected_consumer_persona.get("message_angles") or []
-        talking_point["angle"] = str((message_angles or [talking_point.get("angle", "")])[0])
-        talking_point["first_step"] = str(selected_consumer_persona.get("call_to_action") or talking_point.get("first_step") or "")
-        selected_cta = talking_point["first_step"] or selected_cta
         product["consumer_profile"] = consumer_context.get("profile", {})
         product["selected_consumer_persona"] = selected_consumer_persona
-    consumer_profile_context = _product_consumer_prompt_context(consumer_context)
+    consumer_profile_context = (
+        "MANDATORY CONSUMER-LIFE ROOT:\n"
+        "- Build the post around this complete moment before product, copy form, or visual treatment.\n"
+        f"- Consumer world: {json.dumps(consumer_root['world'], sort_keys=True)}\n"
+        f"- Reviewed moment: {json.dumps(consumer_moment, sort_keys=True)}\n"
+        f"- Required receipt: {json.dumps(consumer_root['consumer_receipt'], sort_keys=True)}\n"
+        "- Deliver the useful discovery and immediate action; do not turn this into a generic technical lesson.\n"
+        + _product_consumer_prompt_context(consumer_context)
+    )
     campaign_id = str(structured_campaign.get("campaign_id", "")).strip()
     destination_url = str(structured_campaign.get("destination_url", SITE_URL)).strip() or SITE_URL
 
@@ -5616,6 +5654,7 @@ def generate(
         _strategist_output = conversion_strategist.plan(
             funnel_stage=funnel_stage,
             product=_strategist_product,
+            audience_hint=consumer_moment["person"],
             campaign_goal=_campaign_goal,
             platform_priority=["facebook", "instagram", "linkedin"],
             recent={
@@ -5625,7 +5664,11 @@ def generate(
                 "laws": recent_laws,
                 "structures": recent_structures,
             },
-            explicit={"cta": selected_cta} if selected_cta else None,
+            explicit={
+                "problem": consumer_moment["friction"],
+                "desire": consumer_moment["useful_discovery"],
+                "cta": consumer_moment["immediate_action"],
+            },
             data_dir=DATA_DIR,
         )
     except Exception as _strategist_err:  # pragma: no cover - never block generation
@@ -5651,6 +5694,8 @@ def generate(
         recent_topics=recent_topics,
         recent_ctas=recent_ctas,
     )
+    run_context["consumer_root"] = consumer_root
+    run_context["consumer_receipt"] = consumer_root["consumer_receipt"]
     if isinstance(_strategist_output, dict):
         run_context["strategic_brief"] = _strategist_output.get("brief")
         run_context["conversion_strategist"] = {
@@ -6535,13 +6580,18 @@ Return ONLY valid JSON with these exact keys (no markdown, no code fences):
         }
         content = normalize_brand_content(content)
         content["post_id"] = post_id
+        content["consumer_root"] = consumer_root
+        content["consumer_root_id"] = consumer_root["root_id"]
+        content["consumer_world_id"] = consumer_root["world_id"]
+        content["consumer_moment_id"] = consumer_root["moment_id"]
+        content["consumer_receipt"] = consumer_root["consumer_receipt"]
         content["consumer_profile"] = consumer_context.get("profile", {})
         content["selected_consumer_persona"] = selected_consumer_persona
         content["platform_posts"] = platform_posts
         # See note above: category-template "situation" text is near-static per product
         # category and would guarantee false-positive scenario-duplicate blocks.
         content["scenario"] = _build_scenario_fingerprint(talking_point, components)
-        content["educational_lesson"] = components.get("info", "")
+        content["educational_lesson"] = consumer_moment["useful_discovery"]
         content["fb_caption"] = platform_posts["facebook"]["caption"]
         content["ig_caption"] = platform_posts["instagram"]["caption"]
         content["li_text"] = platform_posts["linkedin"]["caption"]

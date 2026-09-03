@@ -3,6 +3,8 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from consumer_life import validate_consumer_receipt
+
 try:
     from campaign_runtime import has_explicit_cta_keyword
 except Exception:  # pragma: no cover
@@ -65,6 +67,8 @@ def _has_specificity_signal(text: str) -> bool:
 
 def score_content(content: dict[str, Any], requested_platforms: list[str] | None = None) -> dict[str, Any]:
     """Score only the requested platforms, with native criteria per social environment."""
+
+    consumer_qa = validate_consumer_receipt(content) if content.get("consumer_root") else {"passed": True, "errors": []}
 
     platform_posts = content.get("platform_posts", {}) if isinstance(content.get("platform_posts"), dict) else {}
     text_by_platform = {
@@ -131,7 +135,9 @@ def score_content(content: dict[str, Any], requested_platforms: list[str] | None
     total = round(sum(result["total"] for result in platform_results.values()) / len(platform_results), 2)
     component_scores = {key: round(sum(result["component_scores"][key] for result in platform_results.values()) / len(platform_results), 2) for key in next(iter(platform_results.values()))["component_scores"]}
 
-    if total >= 82:
+    if not consumer_qa["passed"]:
+        decision = "reject"
+    elif total >= 82:
         decision = "approve"
     elif total >= 75:
         decision = "regenerate_once"
@@ -143,4 +149,5 @@ def score_content(content: dict[str, Any], requested_platforms: list[str] | None
         "decision": decision,
         "component_scores": component_scores,
         "platform_results": platform_results,
+        "consumer_receipt_qa": consumer_qa,
     }

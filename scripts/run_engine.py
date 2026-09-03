@@ -315,6 +315,10 @@ def _conversion_learning_fields(content: dict) -> dict:
         "conversion_quality_score": content.get("conversion_quality_score"),
         "conversion_brief_adherence": content.get("conversion_brief_adherence"),
         "conversion_variant_id": content.get("conversion_variant_id", ""),
+        "consumer_root_id": content.get("consumer_root_id", ""),
+        "consumer_world_id": content.get("consumer_world_id", ""),
+        "consumer_moment_id": content.get("consumer_moment_id", ""),
+        "consumer_receipt": content.get("consumer_receipt", {}),
     }
 
 

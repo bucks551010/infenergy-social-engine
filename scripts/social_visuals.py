@@ -583,10 +583,22 @@ def _build_gemini_image_prompt(content: dict[str, Any], platform: str, visual_pl
         "costume or gadget language, vehicles, lairs, poses, lighting motifs, compositions, or iconography from "
         "another superhero. The chest emblem may appear only as a physically attached, canon-accurate suit detail."
     )
+    consumer_root = _safe_json_dict(content.get("consumer_root"))
+    consumer_moment = _safe_json_dict(consumer_root.get("moment"))
+    consumer_scene = ""
+    if consumer_moment:
+        evidence = ", ".join(str(item) for item in consumer_moment.get("visual_evidence", [])[:3])
+        consumer_scene = (
+            "MANDATORY LIVED SCENE: Show "
+            f"{consumer_moment.get('person')} in {consumer_moment.get('setting')}, "
+            f"{str(consumer_moment.get('activity') or '').lower()}. "
+            f"Visible evidence must include: {evidence}. "
+            "The human action and consequence are the visual subject; any product is supporting proof only. "
+        )
     v5_direction = _safe_json_dict(visual_plan.get("v5_direction"))
     v5_prompt = str(visual_plan.get("gemini_image_prompt") or "").strip()
     if v5_direction and v5_prompt:
-        return f"{v5_prompt[:2200]}\n{character_policy}"[:3200]
+        return f"{consumer_scene}{v5_prompt[:2200]}\n{character_policy}"[:3200]
     spec = _platform_visual_spec(platform)
     platform_key = platform.split("_", 1)[0]
     platform_cfg = _safe_json_dict((visual_plan.get("platform_overrides") or {}).get(platform))
@@ -749,6 +761,7 @@ def _build_gemini_image_prompt(content: dict[str, Any], platform: str, visual_pl
         f"Plan suggestions, subordinate to the exact copy and layout rules below: style '{style_intent}', mood '{mood}', composition '{composition}'. "
         f"{style_ref_line}"
         f"Platform: {platform}. Hook context: {key_hook}. Topic context: {topic}. "
+        f"{consumer_scene}"
         f"Product context: {product_name or 'portable/home power solution'}. Funnel stage: {stage}. "
         f"{exact_copy_block}\n"
         f"Optional approved scene brief, subordinate to every rule here: {plan_prompt or 'none'}. "

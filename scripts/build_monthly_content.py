@@ -196,6 +196,12 @@ def _plan_entry_thought(entry: dict[str, Any]) -> dict[str, Any]:
             for index, item in enumerate(story_sequence, start=1)
         ],
         "generation_contract": generation_contract,
+        "consumer_root": deepcopy(entry.get("consumer_root") or {}),
+        "consumer_root_id": str(entry.get("consumer_root_id") or ""),
+        "consumer_world_id": str(entry.get("consumer_world_id") or ""),
+        "consumer_moment_id": str(entry.get("consumer_moment_id") or ""),
+        "consumer_receipt": deepcopy(entry.get("consumer_receipt") or {}),
+        "consumer_story_contract": deepcopy(entry.get("consumer_story_contract") or {}),
         "audience": str(entry.get("audience_name") or entry.get("audience_id") or ""),
         "editorial_pillar": editorial_pillar,
         "copy_form": copy_form,

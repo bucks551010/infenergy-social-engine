@@ -185,6 +185,46 @@ class EditorialDirectorTests(unittest.TestCase):
         self.assertIn(plan["pillar"], QUEUE["pillars"])
         self.assertTrue(plan["topic"])
 
+    def test_forced_no_product_overrides_history_that_requests_a_product(self) -> None:
+        posts = [
+            _post("", pillar="preparedness_education"),
+            _post("PowerFlex", pillar="readiness_assessment_lead_gen"),
+            _post("", pillar="preparedness_education"),
+            _post("", pillar="preparedness_education"),
+            _post("PowerFlex", pillar="readiness_assessment_lead_gen"),
+            _post("", pillar="preparedness_education"),
+            _post("", pillar="preparedness_education"),
+            _post("PowerFlex", pillar="readiness_assessment_lead_gen"),
+            _post("", pillar="preparedness_education"),
+            _post("", pillar="preparedness_education"),
+        ]
+
+        plan = generate_posts.select_editorial_plan(
+            QUEUE,
+            _history(posts),
+            PRODUCTS,
+            "DESIRE",
+            no_product=True,
+        )
+
+        self.assertEqual(plan["content_bucket"], "no_product")
+        self.assertIsNone(plan["product"])
+        self.assertFalse(plan["want_product"])
+
+    def test_modular_power_system_profile_uses_concrete_outage_job(self) -> None:
+        profile = generate_posts._product_copy_profile({
+            "id": "SOREIN-SYSTEM",
+            "name": "Sorein Modular Power System",
+            "categories": [],
+            "metrics": ["1,800W", "1,000W"],
+        })
+
+        self.assertEqual(
+            profile["benefit"],
+            "powers compatible must-run devices during outages and off-grid use",
+        )
+        self.assertNotIn("supports a more reliable preparedness setup", profile["benefit"])
+
     def test_select_editorial_plan_product_bucket_has_product(self) -> None:
         posts = [
             _post("", pillar="preparedness_education"),

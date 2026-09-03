@@ -2699,6 +2699,8 @@ def select_editorial_plan(
     history: dict,
     products: list[dict],
     funnel_stage: str,
+    *,
+    no_product: bool = False,
 ) -> dict:
     """Business-first editorial decision chain: pillar/topic and product-inclusion decision.
 
@@ -2707,7 +2709,7 @@ def select_editorial_plan(
     principle of every post.
     """
     preferred_pillars = _preferred_pillars_for_stage(funnel_stage)
-    bucket = _decide_content_bucket(history)
+    bucket = "no_product" if no_product else _decide_content_bucket(history)
     bucket_pillars = _pillars_for_bucket(bucket)
     queue_pillars = [str(p).strip() for p in queue.get("pillars", []) if str(p).strip()]
     trimmed_pillars = [p for p in queue_pillars if p in bucket_pillars] or queue_pillars
@@ -3042,7 +3044,7 @@ def _product_copy_profile(product: dict | None) -> dict[str, str]:
     fact_low = _strip_html(str((product or {}).get("fact_snippet", "") or "")).lower()
     metrics = [str(x).strip() for x in ((product or {}).get("metrics", []) or []) if str(x).strip()]
     primary_metric = metrics[0] if metrics else "published product specs"
-    power_station_evidence = any(token in name_low for token in ("power station", "generator", "inverter")) or any(
+    power_station_evidence = any(token in name_low for token in ("power station", "power system", "generator", "inverter")) or any(
         token in categories for token in ("power station", "generator")
     ) or any(token in fact_low for token in ("home backup powerhouse", "solar generator", "pure sine wave inverter"))
     integrated_charger_evidence = any(
@@ -5386,7 +5388,13 @@ def generate(
         content_bucket = "product_education"
         want_product = True
     else:
-        editorial_plan = select_editorial_plan(queue, history, products, preview_stage)
+        editorial_plan = select_editorial_plan(
+            queue,
+            history,
+            products,
+            preview_stage,
+            no_product=no_product,
+        )
         product = editorial_plan["product"]
         pillar = editorial_plan["pillar"]
         topic = editorial_plan["topic"]

@@ -39,14 +39,39 @@ def _portfolio(components: dict[str, Any], platform: str, source: str) -> tuple[
     product = _tag(str(components.get("product_name") or ""))
     if len(product) > 24:
         product = ""
-    text = " ".join((source, str(components.get("use_case_line") or ""))).lower()
+    text = " ".join((
+        source,
+        str(components.get("product_name") or ""),
+        str(components.get("benefit_fragment") or ""),
+        str(components.get("use_case_line") or ""),
+    )).lower()
+    if any(token in text for token in ("water filter", "water purifier", "filtration", "clean-water")):
+        category_tags = ["WaterFiltration", "CleanWater", "PortableWater", "OutdoorSafety", "EmergencyKit"]
+        audience_tags = ["WaterPreparedness", "TravelPreparedness"]
+        discovery_tags = ["FilteredWater", "WaterSafety", "OutdoorGear", "TravelGear"]
+    elif "jump starter" in text:
+        category_tags = ["JumpStarter", "VehicleEmergency", "RoadsideSafety", "CarBattery", "EmergencyKit"]
+        audience_tags = ["DriverPreparedness", "RoadsidePreparedness"]
+        discovery_tags = ["VehicleSafety", "RoadTripGear", "CarCare"]
+    elif any(token in text for token in ("solar panel", "solar charging", "foldable solar")):
+        category_tags = ["PortableSolar", "SolarCharging", "OffGridPower", "SolarPanel", "PortableEnergy"]
+        audience_tags = ["OffGridPreparedness", "TravelPower"]
+        discovery_tags = ["SolarEnergy", "CampingPower", "OutdoorPower"]
+    elif "fan" in text and any(token in text for token in ("airflow", "camping", "runtime")):
+        category_tags = ["PortableFan", "CampingFan", "OutageComfort", "OutdoorGear", "EmergencyKit"]
+        audience_tags = ["CampingGear", "HeatPreparedness"]
+        discovery_tags = ["Airflow", "CampComfort", "SummerPreparedness"]
+    else:
+        category_tags = ["PortablePower", "BackupPower", "MobilePower", "PowerOnTheGo", "PortableEnergy"]
+        audience_tags = ["Preparedness", "PowerPreparedness"]
+        discovery_tags = ["StayPowered", "EnergyIndependence", "PowerSolutions", "EverydayPower", "PowerPlanning", "PowerKnowledge", "EnergyAwareness"]
     categories: dict[str, list[str]] = {
         "brand": ["InfenergyPower"],
         "product": [product] if product else [],
-        "category": ["PortablePower", "BackupPower", "MobilePower", "PowerOnTheGo", "PortableEnergy"],
+        "category": category_tags,
         "use_case": [],
-        "audience_situation": ["Preparedness", "PowerPreparedness"],
-        "discovery": ["StayPowered", "EnergyIndependence", "PowerSolutions", "EverydayPower", "PowerPlanning", "PowerKnowledge", "EnergyAwareness"],
+        "audience_situation": audience_tags,
+        "discovery": discovery_tags,
     }
     keyword_tags = {
         "battery": "BatteryEducation",
@@ -75,7 +100,7 @@ def _portfolio(components: dict[str, Any], platform: str, source: str) -> tuple[
         if keyword in text:
             categories["use_case"].append(tag)
 
-    if platform == "linkedin":
+    if platform == "linkedin" and "water" not in text:
         categories["discovery"].append("Resilience")
 
     tags: list[str] = []
@@ -453,6 +478,9 @@ def _product_sales_pyramid(
         education = education_parts[0] if education_parts else ""
     portfolio_tags, categories = _portfolio(components, platform, source_caption)
     source_tags = re.findall(r"#[A-Za-z0-9_]+", source_caption)
+    if "WaterFiltration" in categories.get("category", []):
+        incompatible = {"portablepower", "backuppower", "mobilepower", "poweronthego", "portableenergy", "powerpreparedness"}
+        source_tags = [tag for tag in source_tags if tag.lstrip("#").lower() not in incompatible]
     selected_tags = list(dict.fromkeys(source_tags + [f"#{tag}" for tag in portfolio_tags]))[:_HASHTAG_LIMITS.get(platform, 5)]
     hashtag_line = " ".join(selected_tags)
     use_case_detail = _sentence(use_case or situation)

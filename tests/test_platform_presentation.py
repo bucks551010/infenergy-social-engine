@@ -902,10 +902,14 @@ def test_water_purifier_copy_never_uses_power_device_language():
     )
 
     for platform in ("facebook", "instagram", "linkedin"):
-        caption, _ = platform_presentation.format_caption(components, platform=platform)
+        caption, presentation = platform_presentation.format_caption(components, platform=platform)
         low = caption.lower()
         assert "backup power" not in low
         assert "device list" not in low
         assert "uncompromising purification" not in low
         assert "filtration stages" in low
         assert "replacement-filter requirements" in low
+        assert "#WaterFiltration" in caption
+        assert not {"#PortablePower", "#BackupPower", "#MobilePower", "#PowerOnTheGo"}.intersection(
+            presentation["selected_hashtags"]
+        )

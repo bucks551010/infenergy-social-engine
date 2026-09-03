@@ -611,6 +611,11 @@ def _intervention_concept(
     hook = arc["cold_open"]
     visible_text = None
     story_comic_contract = {}
+    delivery_type = {
+        "cinematic_brand_poster": "micro_mission_still",
+        "educational_story_carousel": "superhero_carousel",
+        "product_micro_mission_comic": "comic_strip",
+    }[preferred_format]
     if preferred_format == "product_micro_mission_comic":
         visible_text = {
             "headline": hook,
@@ -663,6 +668,13 @@ def _intervention_concept(
         "installment": installment,
         "format": preferred_format,
         "format_label": format_labels[preferred_format],
+        "delivery_type": delivery_type,
+        "hero_text_required": preferred_format in {"cinematic_brand_poster", "educational_story_carousel"},
+        "still_images_only": preferred_format in {"cinematic_brand_poster", "educational_story_carousel"},
+        "product_required": True,
+        "product_id": product["product_id"],
+        "product_name": product["product_name"],
+        "product_reference_required": True,
         "visible_text": visible_text,
         "title": title,
         "hook": hook,
@@ -704,6 +716,19 @@ POST_TYPE_LABELS = {
     "drill": "IRL drill",
     "myth": "Myth-busting",
 }
+
+EDITORIAL_COPY_ROTATION = (
+    ("preparedness_education", "direct_preparedness_advice"),
+    ("energy_literacy", "worked_example"),
+    ("customer_problem_solving", "decision_rule"),
+    ("brand_authority", "evidence_standard"),
+    ("trust_and_company_values", "company_principle"),
+    ("community_engagement", "single_community_prompt"),
+    ("home_resilience", "cost_saving_recommendation"),
+    ("travel_and_outdoor_preparedness", "travel_scenario_advice"),
+    ("caregiver_preparedness", "caregiver_safety_advice"),
+    ("small_business_continuity", "operational_recommendation"),
+)
 
 POST_TYPES_BY_WEEKDAY = {
     0: ("current_event", "humor", "myth"),
@@ -772,6 +797,7 @@ def _daily_concept(
     slot = "midday"
     series, creative_mode, brain_movement, heart_after, natural_response = DAY_STRATEGY[weekday]
     post_type = _post_type(day_number, weekday)
+    editorial_pillar, copy_form = EDITORIAL_COPY_ROTATION[(day_number - 1) % len(EDITORIAL_COPY_ROTATION)]
     funnel_stage = FUNNEL_CYCLE[(day_number - 1) % len(FUNNEL_CYCLE)]
     if weekday == 0:
         base = {
@@ -849,6 +875,9 @@ def _daily_concept(
             "format": "infenergy_company_quote_visual",
             "format_label": "Infenergy quote in the scene",
             "delivery_label": "Single-frame integrated typography",
+            "delivery_type": "hero_text_still",
+            "hero_text_required": True,
+            "still_images_only": True,
             "title": statement,
             "hook": statement,
             "story": f"{company_thought.get('expansion', '')} {company_thought.get('useful_detail', '')}".strip(),
@@ -915,6 +944,8 @@ def _daily_concept(
         "content_job": creative_mode,
         "post_type": post_type,
         "post_type_label": POST_TYPE_LABELS[post_type],
+        "editorial_pillar": editorial_pillar,
+        "copy_form": copy_form,
         "content_format_identifier": content_format_identifier,
         "funnel_stage": funnel_stage,
         "primary_platform": arc["primary_platform"],

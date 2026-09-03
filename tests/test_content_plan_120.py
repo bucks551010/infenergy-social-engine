@@ -131,6 +131,38 @@ def test_plan_preserves_intervention_cadence_and_continuous_format_rotation(tmp_
     assert all(entry["image_status"] == "NOT_GENERATED" for entry in superhero_posts)
 
 
+def test_plan_includes_required_hero_and_mission_formats_with_approved_copy_rotation(tmp_path):
+    _write_profiles(tmp_path)
+
+    entries = build_120_day_plan(
+        data_dir=str(tmp_path),
+        start_date="2026-09-03",
+    )["entries"]
+    delivery_counts = {
+        delivery_type: sum(entry.get("delivery_type") == delivery_type for entry in entries)
+        for delivery_type in {
+            "hero_text_still",
+            "superhero_carousel",
+            "micro_mission_still",
+            "comic_strip",
+        }
+    }
+    copy_form_counts = {
+        entry["copy_form"]: sum(candidate["copy_form"] == entry["copy_form"] for candidate in entries)
+        for entry in entries
+    }
+
+    assert all(count > 0 for count in delivery_counts.values())
+    assert delivery_counts["hero_text_still"] == 17
+    assert delivery_counts["comic_strip"] == 17
+    assert delivery_counts["superhero_carousel"] + delivery_counts["micro_mission_still"] == 17
+    assert len(copy_form_counts) == 10
+    assert set(copy_form_counts.values()) == {12}
+    assert all(entry.get("canon_required") for entry in entries if entry.get("delivery_type"))
+    assert all(entry.get("hero_text_required") for entry in entries if entry.get("delivery_type") in {"hero_text_still", "superhero_carousel"})
+    assert all(entry.get("still_images_only") for entry in entries if entry.get("delivery_type") in {"hero_text_still", "superhero_carousel", "micro_mission_still"})
+
+
 def test_weekly_company_quotes_are_verbatim_sourced_and_audience_matched(tmp_path):
     _write_profiles(tmp_path)
     plan = build_120_day_plan(

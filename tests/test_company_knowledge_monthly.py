@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import sys
 from pathlib import Path
@@ -249,6 +250,17 @@ def test_120_day_plan_queues_existing_runtime_packages(tmp_path, monkeypatch):
     assert friday["package"]["generation_contract"]["product_integration"]["required"] is True
     assert sunday["package"]["thought_statement"] == sunday["package"]["generation_contract"]["exact_visible_text"][0]
     assert all(not entry["package"]["generated_visuals"] for entry in calendar["entries"])
+    assert all(entry["package"]["copy_form"] == entry["package"]["generation_contract"]["copy_form"] for entry in calendar["entries"])
+    assert all(entry["package"]["editorial_pillar"] == entry["package"]["generation_contract"]["editorial_pillar"] for entry in calendar["entries"])
+    assert all(
+        len(re.findall(r"(?<!\w)#[A-Za-z0-9_]+", entry["package"]["fb_caption"].splitlines()[-1])) == 10
+        for entry in calendar["entries"]
+    )
+    assert all(
+        label not in entry["package"]["fb_caption"]
+        for entry in calendar["entries"]
+        for label in ("Try this:", "Save this move:", "Practical next step:")
+    )
     assert not (tmp_path / "public_media").exists()
 
 

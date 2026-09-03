@@ -166,6 +166,9 @@ def _plan_entry_thought(entry: dict[str, Any]) -> dict[str, Any]:
     is_comic = entry.get("format") == "product_micro_mission_comic"
     is_company_message = entry.get("format") == "infenergy_company_quote_visual"
     story_sequence = [str(item) for item in entry.get("story_sequence", []) if str(item).strip()]
+    generation_contract = deepcopy(entry)
+    editorial_pillar = str(entry.get("editorial_pillar") or "preparedness_education")
+    copy_form = str(entry.get("copy_form") or "direct_preparedness_advice")
     return {
         "id": f"PLAN120-D{int(entry.get('day_number') or 0):03d}",
         "pillar": str(entry.get("creative_territory") or (entry.get("company_source") or {}).get("pillar") or "everyday_power"),
@@ -192,8 +195,10 @@ def _plan_entry_thought(entry: dict[str, Any]) -> dict[str, Any]:
             {"role": f"panel_{index}", "headline": item, "supporting": ""}
             for index, item in enumerate(story_sequence, start=1)
         ],
-        "generation_contract": deepcopy(entry),
+        "generation_contract": generation_contract,
         "audience": str(entry.get("audience_name") or entry.get("audience_id") or ""),
+        "editorial_pillar": editorial_pillar,
+        "copy_form": copy_form,
         "editorial_mode": str(entry.get("entertainment_mode") or entry.get("format") or "planned_editorial"),
         "source_note": str((entry.get("company_source") or {}).get("knowledge_id") or "120-day Infenergy content plan"),
     }
@@ -523,12 +528,39 @@ def _captions(thought: dict[str, Any]) -> dict[str, str]:
     linkedin_lens = str(thought.get("linkedin_lens") or "").strip()
     instagram_hook = str(thought.get("instagram_hook") or statement).strip()
     tags = thought.get("hashtags") if isinstance(thought.get("hashtags"), list) else []
-    facebook_tags = " ".join(f"#{tag}" for tag in (tags[:3] or ["Infenergy", "Preparedness", "PracticalPower"]))
-    instagram_tags = " ".join(f"#{tag}" for tag in (tags[:5] or ["Infenergy", "StayReady", "PortablePower"]))
-    linkedin_tags = " ".join(f"#{tag}" for tag in (tags[:3] or ["Infenergy", "EnergyReadiness", "Resilience"]))
-    facebook_blocks = [statement, expansion, useful_detail, humor, f"Try this: {action}" if action else "", prompt, facebook_tags]
-    instagram_blocks = [instagram_hook, expansion, humor, f"Save this move: {action}" if action else "", prompt, instagram_tags]
-    linkedin_blocks = [statement, expansion, useful_detail, linkedin_lens, f"Practical next step: {action}" if action else "", prompt, linkedin_tags]
+    tag_pool = [
+        *tags, "InfenergyPower", "PowerReadiness", "PracticalPower", "BackupPower",
+        "Preparedness", "PowerPlanning", "EnergyLiteracy", "HomeResilience",
+        "BusinessContinuity", "PowerBackupTips",
+    ]
+    normalized_tags = list(dict.fromkeys(str(tag).strip().lstrip("#") for tag in tag_pool if str(tag).strip()))[:10]
+    hashtag_line = " ".join(f"#{tag}" for tag in normalized_tags)
+    copy_form = str(thought.get("copy_form") or "")
+    if not copy_form:
+        facebook_blocks = [statement, expansion, useful_detail, humor, action, prompt, hashtag_line]
+        instagram_blocks = [instagram_hook, expansion, humor, action, prompt, hashtag_line]
+        linkedin_blocks = [statement, expansion, useful_detail, linkedin_lens, action, prompt, hashtag_line]
+        return {
+            "facebook": "\n\n".join(block for block in facebook_blocks if block),
+            "instagram": "\n\n".join(block for block in instagram_blocks if block),
+            "linkedin": "\n\n".join(block for block in linkedin_blocks if block),
+        }
+    forms = {
+        "direct_preparedness_advice": [statement, expansion, useful_detail, action],
+        "worked_example": [statement, useful_detail, expansion, action],
+        "decision_rule": [statement, expansion, action, useful_detail],
+        "evidence_standard": [statement, useful_detail, linkedin_lens, action],
+        "company_principle": [statement, expansion, humor, action],
+        "single_community_prompt": [statement, expansion, useful_detail, prompt],
+        "cost_saving_recommendation": [statement, action, expansion, useful_detail],
+        "travel_scenario_advice": [instagram_hook, expansion, action, useful_detail],
+        "caregiver_safety_advice": [statement, action, useful_detail, expansion],
+        "operational_recommendation": [statement, linkedin_lens, useful_detail, action],
+    }
+    core_blocks = forms.get(copy_form, forms["direct_preparedness_advice"])
+    facebook_blocks = [*core_blocks, hashtag_line]
+    instagram_blocks = [instagram_hook, *core_blocks[1:], hashtag_line]
+    linkedin_blocks = [statement, *core_blocks[1:], linkedin_lens if linkedin_lens not in core_blocks else "", hashtag_line]
     return {
         "facebook": "\n\n".join(block for block in facebook_blocks if block),
         "instagram": "\n\n".join(block for block in instagram_blocks if block),
@@ -612,6 +644,8 @@ def _package(knowledge: dict[str, Any], thought: dict[str, Any], content_date: s
         "canon_required": bool(thought.get("canon_required")),
         "reference_image_urls": [str(url) for url in thought.get("reference_image_urls", []) if str(url).startswith("http")],
         "content_type": str(thought.get("content_type") or "editorial"),
+        "editorial_pillar": str(thought.get("editorial_pillar") or thought.get("pillar") or ""),
+        "copy_form": str(thought.get("copy_form") or thought.get("editorial_mode") or ""),
         "event_series": str(thought.get("event_series") or ""),
         "editorial_sources": [str(thought.get("source_note"))] if thought.get("source_note") else [],
         "topic": thought["pillar"],
@@ -636,7 +670,7 @@ def _package(knowledge: dict[str, Any], thought: dict[str, Any], content_date: s
         "operational_learning": load_operational_learning(data_dir),
         "master_copy": {
             key: thought.get(key)
-            for key in ("statement", "expansion", "useful_detail", "action", "prompt", "humor", "linkedin_lens", "editorial_mode", "audience", "source_note", "overlay_text")
+            for key in ("statement", "expansion", "useful_detail", "action", "prompt", "humor", "linkedin_lens", "editorial_pillar", "copy_form", "editorial_mode", "audience", "source_note", "overlay_text")
             if thought.get(key)
         },
         "fb_caption": captions["facebook"],

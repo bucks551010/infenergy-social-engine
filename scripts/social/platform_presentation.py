@@ -463,7 +463,13 @@ def _engagement_hashtags(stage: str) -> list[str]:
 def _pillar_editorial_profile(pillar: str) -> dict[str, Any]:
     profiles = {
         "preparedness_education": {
-            "hook": "The lights go out tonight. Could everyone in your home follow the same 24-hour plan?",
+            "hook": "Prepare for the first 24 hours of an outage before the forecast turns serious.",
+            "body": [
+                "Start with the needs that cannot wait: medical equipment, safe lighting, communication, refrigeration, and weather protection.",
+                "Estimate the power and runtime for those essentials, then keep the priorities beside your backup equipment where everyone can find them.",
+                "A short written order prevents the first available battery from being drained on a low-priority device.",
+            ],
+            "format": "direct_preparedness_advice",
             "situation": "A useful outage plan names the first lights, phones, medical devices, food-storage equipment, and safety tasks the household must protect.",
             "why": "Without a written order, people drain available batteries on the first device they see.",
             "actions": ["List every task that cannot wait 24 hours", "Record the watts and runtime each task requires", "Place the ranked list beside the backup equipment"],
@@ -473,6 +479,12 @@ def _pillar_editorial_profile(pillar: str) -> dict[str, Any]:
         },
         "energy_literacy": {
             "hook": "A 1,000-watt label does not tell you how long your equipment will run.",
+            "body": [
+                "Watts describe how much power equipment draws at a given moment. Watt-hours describe how much energy a battery stores.",
+                "For example, a 100-watt device used for five hours requires about 500 watt-hours before accounting for conversion losses.",
+                "Use output to check whether equipment can start, then use capacity to estimate whether it can keep running.",
+            ],
+            "format": "worked_example",
             "situation": "Watts measure the power a device draws, while watt-hours measure how much energy a battery stores.",
             "why": "Confusing those numbers can leave a buyer with enough output but too little runtime.",
             "actions": ["Find the watts printed on each device", "Multiply watts by the hours you need it to run", "Compare that total with usable battery capacity"],
@@ -481,7 +493,13 @@ def _pillar_editorial_profile(pillar: str) -> dict[str, Any]:
             "hashtags": ["#EnergyLiteracy", "#Watts", "#WattHours", "#BatteryCapacity", "#Runtime", "#BackupPower", "#PowerEducation", "#PowerPlanning", "#EnergyBasics", "#PowerBackupTips"],
         },
         "customer_problem_solving": {
-            "hook": "The most expensive backup-power mistake starts with one question: 'What is the biggest unit I can afford?'",
+            "hook": "Buying the biggest battery you can afford can still leave you with the wrong backup power.",
+            "body": [
+                "Choose from the job backward. Confirm the device plug, starting watts, running watts, and minimum runtime before comparing equipment.",
+                "This catches common mismatches such as adequate capacity with the wrong outlet, or enough running power without enough starting power.",
+                "The best recommendation is the smallest verified setup that performs the required job with a sensible reserve.",
+            ],
+            "format": "decision_rule",
             "situation": "The better starting point is the exact device, plug, starting watts, running watts, and hours the buyer needs.",
             "why": "A large battery can still be the wrong tool when its outlets or output do not match the job.",
             "actions": ["Name the device that must stay on", "Check its plug and starting wattage", "Set the minimum runtime before comparing equipment"],
@@ -491,6 +509,12 @@ def _pillar_editorial_profile(pillar: str) -> dict[str, Any]:
         },
         "brand_authority": {
             "hook": "A recommendation is worthless if nobody checked what the equipment can actually run.",
+            "body": [
+                "Treat every power claim as something that must be demonstrated with published output, capacity, ports, charging limits, and a named use case.",
+                "A useful recommendation explains both where equipment fits and where it does not. That protects buyers from polished language that hides a technical mismatch.",
+                "Infenergy recommends from verified specifications and real customer jobs, not from the size of a marketing claim.",
+            ],
+            "format": "evidence_standard",
             "situation": "Real evaluation starts with published output, capacity, ports, charging limits, and a specific customer job.",
             "why": "A polished claim cannot power a refrigerator, medical device, laptop, or phone.",
             "actions": ["Verify every published specification", "Match each claim to a real use case", "State the limits as clearly as the benefits"],
@@ -500,6 +524,12 @@ def _pillar_editorial_profile(pillar: str) -> dict[str, Any]:
         },
         "trust_and_company_values": {
             "hook": "Sometimes the most honest recommendation is: do not buy it.",
+            "body": [
+                "When output, capacity, connectors, or runtime do not match the device, completing the sale only transfers the problem to the customer.",
+                "A responsible seller should explain the mismatch, identify the missing requirement, and recommend waiting when no verified option fits.",
+                "Clear limits are part of the service. They matter most when equipment will be used during an outage rather than returned after a casual test.",
+            ],
+            "format": "company_principle",
             "situation": "If the output, capacity, connector, or runtime does not match the customer's device, the sale creates a new problem.",
             "why": "Clear limits protect the buyer from discovering the mismatch during an outage.",
             "actions": ["Ask what must be powered", "Verify the required plug and wattage", "Say no when the published limits do not fit"],
@@ -509,6 +539,12 @@ def _pillar_editorial_profile(pillar: str) -> dict[str, Any]:
         },
         "community_engagement": {
             "hook": "The power just failed and you can protect only one device for the next four hours. What do you choose?",
+            "body": [
+                "For one household, the answer is a medical device. For another, it may be a phone, refrigerator, light, fan, or internet modem.",
+                "There is no universal first choice because health, weather, work, and the people in the home change the stakes.",
+                "Use the answer to identify the need your household should protect before comparing any backup equipment.",
+            ],
+            "format": "single_community_prompt",
             "situation": "One household may choose a medical device, another a phone, refrigerator, light, fan, or internet modem.",
             "why": "The first priority changes with the people, weather, health needs, and work inside the home.",
             "actions": ["Choose one device", "Name who depends on it", "Estimate how many hours it must remain available"],
@@ -518,6 +554,12 @@ def _pillar_editorial_profile(pillar: str) -> dict[str, Any]:
         },
         "home_resilience": {
             "hook": "Trying to power the whole house is how many families overspend before they protect the essentials.",
+            "body": [
+                "Begin with an essential-load plan rather than a whole-house wish list. Refrigeration, communication, medical needs, lighting, and one weather-control need usually deserve attention first.",
+                "Remove equipment that can safely wait, then total the output and runtime required by what remains.",
+                "This smaller target is easier to size, less expensive to support, and more practical to test before an outage.",
+            ],
+            "format": "cost_saving_recommendation",
             "situation": "Most households can begin with a shorter list: refrigeration, communication, medical needs, lighting, and one weather-control priority.",
             "why": "Separating essential loads from convenient loads reduces the output and capacity the first plan must cover.",
             "actions": ["List essential household loads", "Remove devices that can wait", "Total the watts and required hours for what remains"],
@@ -526,7 +568,13 @@ def _pillar_editorial_profile(pillar: str) -> dict[str, Any]:
             "hashtags": ["#HomeResilience", "#EssentialLoads", "#BackupPower", "#HomePreparedness", "#PowerOutage", "#EmergencyPlanning", "#FamilyPreparedness", "#OutagePlan", "#SmartPreparedness", "#PowerBackupTips"],
         },
         "travel_and_outdoor_preparedness": {
-            "hook": "Your campsite has no outlet, sunset is in an hour, and your phone is at 12 percent. What did you forget to calculate?",
+            "hook": "A battery that lasts through the first night can still fail the trip on day two.",
+            "body": [
+                "Estimate daily charging for navigation, communication, lighting, cameras, and safety equipment, then multiply it by the trip length.",
+                "Add reserve for cold weather, poor sunlight, route changes, and an extra night away from an outlet.",
+                "For weekend travel, reliable charging access matters as much as battery capacity because stored energy cannot replenish itself.",
+            ],
+            "format": "travel_scenario_advice",
             "situation": "Off-grid power planning must cover navigation, communication, lighting, cameras, and any safety equipment for the full trip.",
             "why": "A battery that works for one afternoon may fail on day two when charging access, weather, and device use change.",
             "actions": ["Count each device and daily charge", "Multiply the need by the number of days", "Add a charging plan for bad weather or delays"],
@@ -535,7 +583,13 @@ def _pillar_editorial_profile(pillar: str) -> dict[str, Any]:
             "hashtags": ["#OutdoorPreparedness", "#CampingPower", "#OffGridPower", "#TravelPreparedness", "#PortablePower", "#CampingTips", "#AdventureReady", "#EmergencyPlanning", "#PowerOnTheGo", "#PowerBackupTips"],
         },
         "caregiver_preparedness": {
-            "hook": "If a medical device loses power at 2 a.m., who knows its watts, battery time, and backup steps?",
+            "hook": "Medical-device backup instructions should be written before anyone has to use them at 2 a.m.",
+            "body": [
+                "Keep the device model, power requirement, internal battery time, approved backup procedure, clinician instructions, and emergency contacts together.",
+                "Review the charging method with the care team and test only the steps the manufacturer or clinician has approved.",
+                "Store the instructions with the device so another caregiver can act without guessing or wasting limited battery time.",
+            ],
+            "format": "caregiver_safety_advice",
             "situation": "Caregivers need the device label, required runtime, charging method, clinician instructions, and emergency contacts in one place.",
             "why": "Guessing during an outage can waste limited battery time and delay the next safe step.",
             "actions": ["Record the device model and power requirement", "Write the approved backup procedure", "Test the contact and charging plan before an outage"],
@@ -544,7 +598,13 @@ def _pillar_editorial_profile(pillar: str) -> dict[str, Any]:
             "hashtags": ["#CaregiverPreparedness", "#MedicalDevice", "#EmergencyPlanning", "#BackupPower", "#CaregiverSupport", "#PowerOutage", "#HealthPreparedness", "#FamilyPreparedness", "#SafetyPlanning", "#PowerBackupTips"],
         },
         "small_business_continuity": {
-            "hook": "In the first hour without power, can your business still take payment, contact staff, and protect customer data?",
+            "hook": "The first hour of a business outage should already have an owner, an order, and a shutdown plan.",
+            "body": [
+                "Protect the operations that prevent immediate loss: payment access, communications, customer data, refrigeration, security, or other industry-specific equipment.",
+                "Assign one person to each shutdown or backup action and document the watts and runtime required by every critical system.",
+                "Keeping the first essential operations available is more realistic than trying to power the entire business without priorities.",
+            ],
+            "format": "operational_recommendation",
             "situation": "A small business outage can stop payment terminals, internet equipment, phones, computers, refrigeration, and security systems at once.",
             "why": "Every unplanned minute can create missed sales, spoiled inventory, delayed work, or lost customer access.",
             "actions": ["List the systems needed in the first hour", "Record each system's watts and required runtime", "Assign a shutdown or backup step to one person"],
@@ -705,7 +765,13 @@ def _engagement_editorial(
     else:
         opening = _engagement_hook(hook, curiosity, situation, insight, source_caption)
 
-    if stage == "EDUCATION":
+    if pillar_profile:
+        final_cta = str(pillar_profile["cta"])
+        paragraphs = [opening, *list(pillar_profile["body"]), f"👉 {final_cta}"]
+        structure = [str(pillar_profile["format"]), "specific_advice", "practical_suggestion", "focused_discovery"]
+        ideology = "give_direct_useful_advice_in_the_form_that_best_fits_the_subject"
+        base_tags = list(pillar_profile["hashtags"])
+    elif stage == "EDUCATION":
         if source_has_steps:
             source_lines = [line.strip() for line in source_caption.splitlines() if line.strip()]
             source_hook = next((line for line in source_lines if not re.match(r"^\d+\.\s+", line)), hook)

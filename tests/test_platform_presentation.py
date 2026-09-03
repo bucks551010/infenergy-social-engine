@@ -805,6 +805,12 @@ def test_canonical_editorial_pillars_produce_distinct_concrete_posts():
 
     assert len(set(captions)) == len(pillars)
     assert len({caption.split("\n\n")[0] for caption in captions}) == len(pillars)
+    assert sum(caption.split("\n\n")[0].endswith("?") for caption in captions) == 1
+    assert all(not re.search(r"(?m)^\s*\d+\.\s+", caption) for caption in captions)
+    assert len({_["engagement_structure"][0] for pillar in pillars for _, _ in [platform_presentation.format_caption(
+        {"product_id": None, "product_name": "", "funnel_stage": "EDUCATION", "pillar": pillar, "feature_bullets": []},
+        platform="facebook",
+    )]}) == len(pillars)
 
 
 def test_final_platform_formatter_receives_selected_pillar():
@@ -823,7 +829,7 @@ def test_final_platform_formatter_receives_selected_pillar():
     finalized = generate_posts._apply_platform_presentation_priority(posts, components)
 
     assert finalized["facebook"]["caption"].startswith(
-        "In the first hour without power, can your business still take payment"
+        "The first hour of a business outage should already have an owner"
     )
 
 

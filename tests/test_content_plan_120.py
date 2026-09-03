@@ -9,6 +9,7 @@ _REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(_REPO, "scripts"))
 
 from content_plan_120 import build_120_day_plan  # noqa: E402
+from build_monthly_content import _package, _plan_entry_thought  # noqa: E402
 from social_engine.intelligence_os.web import handle  # noqa: E402
 
 
@@ -64,6 +65,33 @@ def test_plan_covers_catalog_and_never_creates_generation_artifacts(tmp_path):
     assert all(entry["consumer_receipt"]["useful_discovery"] for entry in plan["entries"])
     assert all(entry["consumer_story_contract"]["visual_evidence"] for entry in plan["entries"])
     assert len({entry["consumer_world_id"] for entry in plan["entries"]}) >= 12
+
+
+def test_consumer_root_reaches_monthly_outbox_package(tmp_path):
+    _write_profiles(tmp_path)
+    entry = build_120_day_plan(
+        data_dir=str(tmp_path),
+        start_date="2026-09-03",
+        days=1,
+    )["entries"][0]
+    thought = _plan_entry_thought(entry)
+    knowledge = {
+        "knowledge_id": "test-knowledge",
+        "schema_version": "test.v1",
+        "agent_specializations": {},
+    }
+    package = _package(
+        knowledge,
+        thought,
+        entry["date"],
+        0,
+        str(tmp_path),
+        defer_images=True,
+    )
+
+    assert package["consumer_root_id"] == entry["consumer_root_id"]
+    assert package["consumer_receipt"] == entry["consumer_receipt"]
+    assert package["visual_plan"]["consumer_story_contract"] == entry["consumer_story_contract"]
 
 
 def test_plan_preserves_intervention_cadence_and_continuous_format_rotation(tmp_path):

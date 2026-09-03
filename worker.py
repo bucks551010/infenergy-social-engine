@@ -854,6 +854,7 @@ def _parse_preview_params(params: dict) -> dict:
     funnel_stage = str(params.get("funnel_stage", [""])[0]).strip().upper()
     product_id = str(params.get("product_id", [""])[0]).strip()
     pipeline = str(params.get("pipeline", [""])[0]).strip().lower()
+    pillar = str(params.get("pillar", [""])[0]).strip().lower()
     no_product = str(params.get("no_product", ["false"])[0]).strip().lower() in ("1", "true", "yes")
     if slot not in ("morning", "midday", "evening"):
         slot = "morning"
@@ -863,12 +864,15 @@ def _parse_preview_params(params: dict) -> dict:
         funnel_stage = ""
     if pipeline not in ("legacy", "orchestrator", "best_of", "both"):
         pipeline = ""
+    if pillar not in generate_posts.PILLAR_PRODUCT_MODE:
+        pillar = ""
     return {
         "platform": platform,
         "slot": slot,
         "funnel_stage": funnel_stage,
         "product_id": product_id,
         "pipeline": pipeline,
+        "pillar": pillar,
         "no_product": no_product,
     }
 
@@ -884,6 +888,7 @@ def _content_preview(preview_params: dict) -> dict:
             "funnel_stage_override": str(preview_params.get("funnel_stage", "")),
             "product_id_override": str(preview_params.get("product_id", "")),
             "pipeline_override": str(preview_params.get("pipeline", "")),
+            "pillar_override": str(preview_params.get("pillar", "")),
         }
         if preview_params.get("no_product"):
             generation_kwargs["no_product"] = True

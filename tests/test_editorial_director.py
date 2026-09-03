@@ -211,6 +211,19 @@ class EditorialDirectorTests(unittest.TestCase):
         self.assertIsNone(plan["product"])
         self.assertFalse(plan["want_product"])
 
+    def test_forced_no_product_honors_requested_editorial_pillar(self) -> None:
+        plan = generate_posts.select_editorial_plan(
+            QUEUE,
+            _history([]),
+            PRODUCTS,
+            "ATTENTION",
+            no_product=True,
+            pillar_override="community_engagement",
+        )
+
+        self.assertEqual(plan["pillar"], "community_engagement")
+        self.assertIsNone(plan["product"])
+
     def test_modular_power_system_profile_uses_concrete_outage_job(self) -> None:
         profile = generate_posts._product_copy_profile({
             "id": "SOREIN-SYSTEM",

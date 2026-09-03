@@ -58,6 +58,14 @@ def test_preview_params_parse_no_product() -> None:
     assert parsed["slot"] == "evening"
 
 
+def test_preview_params_accept_only_canonical_pillars() -> None:
+    parsed = worker._parse_preview_params({"pillar": ["energy_literacy"]})
+    rejected = worker._parse_preview_params({"pillar": ["made_up_type"]})
+
+    assert parsed["pillar"] == "energy_literacy"
+    assert rejected["pillar"] == ""
+
+
 def test_product_picker_excludes_recent_published_products(monkeypatch, tmp_path) -> None:
     (tmp_path / "post_history.json").write_text(
         '{"posts":[{"product_id":"used","status":"published"}]}', encoding="utf-8"

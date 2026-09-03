@@ -2701,6 +2701,7 @@ def select_editorial_plan(
     funnel_stage: str,
     *,
     no_product: bool = False,
+    pillar_override: str = "",
 ) -> dict:
     """Business-first editorial decision chain: pillar/topic and product-inclusion decision.
 
@@ -2708,7 +2709,10 @@ def select_editorial_plan(
     picking a product, so products are one source of content rather than the organizing
     principle of every post.
     """
+    requested_pillar = str(pillar_override or "").strip().lower()
     preferred_pillars = _preferred_pillars_for_stage(funnel_stage)
+    if requested_pillar in PILLAR_PRODUCT_MODE:
+        preferred_pillars = [requested_pillar] + [pillar for pillar in preferred_pillars if pillar != requested_pillar]
     bucket = "no_product" if no_product else _decide_content_bucket(history)
     bucket_pillars = _pillars_for_bucket(bucket)
     queue_pillars = [str(p).strip() for p in queue.get("pillars", []) if str(p).strip()]
@@ -5287,6 +5291,7 @@ def generate(
     funnel_stage_override: str = "",
     product_id_override: str = "",
     pipeline_override: str = "",
+    pillar_override: str = "",
     approved_strategy: dict[str, Any] | None = None,
     revision_feedback: list[str] | None = None,
     no_product: bool = False,
@@ -5314,6 +5319,7 @@ def generate(
             approved_strategy=approved_strategy,
             revision_feedback=revision_feedback,
             no_product=no_product,
+            preferred_pillar=pillar_override or None,
             recurring_series=recurring_series,
         )
     if mode != "legacy" and _social_intelligence_enabled():
@@ -5325,6 +5331,7 @@ def generate(
             approved_strategy=approved_strategy,
             revision_feedback=revision_feedback,
             no_product=no_product,
+            preferred_pillar=pillar_override or None,
             recurring_series=recurring_series,
         )
 
@@ -5394,6 +5401,7 @@ def generate(
             products,
             preview_stage,
             no_product=no_product,
+            pillar_override=pillar_override,
         )
         product = editorial_plan["product"]
         pillar = editorial_plan["pillar"]

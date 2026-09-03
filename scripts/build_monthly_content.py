@@ -669,6 +669,16 @@ def _package(knowledge: dict[str, Any], thought: dict[str, Any], content_date: s
     content_id = hashlib.sha256(f"{content_date}:{thought['id']}:{digest}:{thought_digest}".encode("utf-8")).hexdigest()[:20]
     product_id = str(thought.get("product_id") or "").strip()
     product = _load_product_brief(data_dir, product_id) if product_id else None
+    generation_plan = _gemini_generation_plan(thought, product)
+    if str(thought.get("source_note") or "") == "120-day Infenergy content plan":
+        generation_plan.update({
+            "provider": "deterministic",
+            "generation_timing": "calendar_build",
+            "strict_provider": False,
+            "fallback_allowed": True,
+            "required_image_count": 0,
+            "prompts": [],
+        })
     platform_posts = {
         platform: {
             "platform": platform,
@@ -752,7 +762,7 @@ def _package(knowledge: dict[str, Any], thought: dict[str, Any], content_date: s
             "copy_visual_alignment": thought["statement"],
             "carousel_slides": _carousel_slides(thought) if thought.get("format") == "carousel" else [],
         },
-        "gemini_generation": _gemini_generation_plan(thought, product),
+        "gemini_generation": generation_plan,
         "carousel_assets": assets["slides"] if thought.get("format") == "carousel" else [],
         "generated_visuals": {} if defer_images else {
             "facebook": primary_path,

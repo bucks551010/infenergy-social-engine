@@ -95,6 +95,10 @@ def test_consumer_root_reaches_monthly_outbox_package(tmp_path):
     assert package["consumer_receipt"] == entry["consumer_receipt"]
     assert package["visual_plan"]["consumer_story_contract"] == entry["consumer_story_contract"]
     assert package["consumer_receipt_qa"]["passed"] is True
+    assert package["gemini_generation"]["provider"] == "deterministic"
+    assert package["gemini_generation"]["strict_provider"] is False
+    assert package["gemini_generation"]["required_image_count"] == 0
+    assert package["gemini_generation"]["prompts"] == []
 
 
 def test_plan_thought_preserves_slot_and_deterministic_canvas_contract(tmp_path):

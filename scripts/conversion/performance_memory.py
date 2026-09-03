@@ -90,7 +90,11 @@ def summarize(entries: list[dict], min_success: float = 65.0) -> dict[str, Any]:
     """Bucket entries by (logic_principle, copy_framework, emotional_driver_primary,
     audience_id, awareness_stage) and return winners / losers per field.
     """
-    fields = ("logic_principle", "copy_framework", "emotional_driver_primary", "audience_id", "awareness_stage")
+    fields = (
+        "logic_principle", "copy_framework", "emotional_driver_primary", "audience_id", "awareness_stage",
+        "consumer_world_id", "consumer_moment_id", "person", "setting", "activity", "friction",
+        "consequence", "useful_discovery", "immediate_action", "product_moment_pair",
+    )
     tallies: dict[str, dict[str, dict[str, Any]]] = {f: {} for f in fields}
     for entry in entries or []:
         score = _entry_score(entry)

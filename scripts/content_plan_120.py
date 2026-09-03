@@ -12,7 +12,8 @@ from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
 from campaign_runtime import recurring_series_for_slot
-from consumer_life import select_consumer_root
+from consumer_life import assess_product_compatibility, select_consumer_root
+from conversion import performance_memory
 
 
 PROFILE_PATH = os.path.join("marketing", "product_consumer_profiles.json")
@@ -549,6 +550,12 @@ def _product_context(
         "customer_truth": str(persona.get("problem") or product["core_customer_truth"]),
         "proof_direction": product["primary_promise"],
         "cta": str(persona.get("call_to_action") or product["cta"]),
+        "categories": list(product.get("categories") or []),
+        "metrics": list(product.get("metrics") or []),
+        "verified_facts": list(product.get("verified_facts") or []),
+        "core_benefits": list(product.get("core_benefits") or []),
+        "best_fit_use_cases": list(product.get("best_fit_use_cases") or []),
+        "proof_rule": str(product.get("proof_rule") or ""),
     }
 
 
@@ -792,6 +799,9 @@ def _daily_concept(
     intervention_number: int,
     company_knowledge_id: str,
     company_thought: dict[str, Any] | None,
+    consumer_history: list[dict[str, Any]],
+    winning_hints: dict[str, list[str]],
+    losing_hints: dict[str, list[str]],
 ) -> dict[str, Any]:
     weekday = current_date.weekday()
     base: dict[str, Any]
@@ -800,9 +810,14 @@ def _daily_concept(
         current_date=current_date,
         slot="morning" if weekday == 4 else slot,
         product_required=product is not None,
+        product=product,
         sequence=day_number,
+        history=consumer_history,
+        winning_hints=winning_hints,
+        losing_hints=losing_hints,
     )
     consumer_moment = consumer_root["moment"]
+    product_compatibility = assess_product_compatibility(consumer_moment, product)
     series, creative_mode, brain_movement, heart_after, natural_response = DAY_STRATEGY[weekday]
     post_type = _post_type(day_number, weekday)
     editorial_pillar, copy_form = EDITORIAL_COPY_ROTATION[(day_number - 1) % len(EDITORIAL_COPY_ROTATION)]
@@ -959,6 +974,8 @@ def _daily_concept(
         "consumer_world_id": consumer_root["world_id"],
         "consumer_moment_id": consumer_root["moment_id"],
         "consumer_receipt": consumer_root["consumer_receipt"],
+        "consumer_selection_receipt": consumer_root["selection_receipt"],
+        "product_compatibility": product_compatibility,
         "creative_territory": arc["territory"],
         "pillar": arc["pillar"],
         "audience_id": arc["audience_id"],
@@ -1010,6 +1027,9 @@ def build_120_day_plan(
     catalog = _load_catalog(data_dir)
     company_knowledge_id, company_thoughts = _load_company_thoughts(data_dir)
     product_assignments = _assign_products(catalog, start, days)
+    consumer_history = [entry for entry in performance_memory.load_history(data_dir) if isinstance(entry, dict)]
+    winning_hints = performance_memory.winning_hints(data_dir=data_dir)
+    losing_hints = performance_memory.losing_hints(data_dir=data_dir)
     entries: list[dict[str, Any]] = []
     intervention_number = 0
     used_thought_ids: set[str] = set()
@@ -1026,7 +1046,7 @@ def build_120_day_plan(
         if current_date.weekday() == 6:
             company_thought = _select_company_thought(company_thoughts, arc, used_thought_ids)
             used_thought_ids.add(str(company_thought["id"]))
-        entries.append(_daily_concept(
+        entry = _daily_concept(
             current_date=current_date,
             day_number=offset + 1,
             arc=arc,
@@ -1034,7 +1054,26 @@ def build_120_day_plan(
             intervention_number=intervention_number,
             company_knowledge_id=company_knowledge_id,
             company_thought=company_thought,
-        ))
+            consumer_history=consumer_history,
+            winning_hints=winning_hints,
+            losing_hints=losing_hints,
+        )
+        entries.append(entry)
+        moment = entry["consumer_root"]["moment"]
+        consumer_history.append({
+            "date": entry["date"],
+            "status": "planned",
+            "consumer_world_id": entry["consumer_world_id"],
+            "consumer_moment_id": entry["consumer_moment_id"],
+            "person": moment["person"],
+            "setting": moment["setting"],
+            "activity": moment["activity"],
+            "friction": moment["friction"],
+            "consequence": moment["consequence"],
+            "useful_discovery": moment["useful_discovery"],
+            "immediate_action": moment["immediate_action"],
+            "quality_score": 50,
+        })
     used_product_ids = {
         entry["product"]["product_id"]
         for entry in entries

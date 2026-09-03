@@ -510,11 +510,13 @@ def _gemini_semantic_plate_quality(
     platform: str,
     expected_headline: str = "",
     expected_cta: str = "",
+    consumer_moment: dict[str, Any] | None = None,
 ) -> tuple[bool, list[str]]:
     enabled = str(os.environ.get("GEMINI_VISUAL_QA_ENABLED", "true")).strip().lower() not in {"0", "false", "no"}
     if not enabled:
         return True, []
-    if expected_headline == "" and expected_cta == "":
+    moment = consumer_moment or {}
+    if expected_headline == "" and expected_cta == "" and not moment:
         return True, []
     spec = _platform_visual_spec(platform)
     review_prompt = (
@@ -524,11 +526,14 @@ def _gemini_semantic_plate_quality(
         f"product staged in the {spec['product_zone']}. Return JSON only with booleans for: "
         "text_missing_or_illegible, headline_mismatch, cta_missing, product_missing, "
         "gibberish_or_garbled_text, looks_like_generic_ai_poster, infenergy_symbol_in_sky_or_atmosphere, "
-        "derivative_existing_superhero_imitation. Treat misspelled, duplicated, or nonsensical letters as "
+        "derivative_existing_superhero_imitation, consumer_person_missing, consumer_setting_mismatch, "
+        "consumer_activity_missing, consumer_visual_evidence_missing. Treat misspelled, duplicated, or nonsensical letters as "
         "gibberish_or_garbled_text=true. Any Infenergy logo, emblem, infinity-bolt symbol, wordmark, or proxy "
         "symbol in the sky, clouds, moon, stars, fog, smoke, searchlight, skyline, or atmospheric background "
         "makes infenergy_symbol_in_sky_or_atmosphere=true. Recognizable imitation of Batman or any existing "
-        "superhero makes derivative_existing_superhero_imitation=true."
+        "superhero makes derivative_existing_superhero_imitation=true. "
+        f"Consumer moment to verify: {json.dumps(moment, sort_keys=True)[:1800]}. Mark the corresponding consumer flag true "
+        "when the person, setting, activity, or at least one required visual-evidence item is not visibly represented."
     )
     model_candidates = [
         str(os.environ.get("GEMINI_VISUAL_QA_MODEL", "")).strip(),
@@ -555,6 +560,10 @@ def _gemini_semantic_plate_quality(
                 "looks_like_generic_ai_poster",
                 "infenergy_symbol_in_sky_or_atmosphere",
                 "derivative_existing_superhero_imitation",
+                "consumer_person_missing",
+                "consumer_setting_mismatch",
+                "consumer_activity_missing",
+                "consumer_visual_evidence_missing",
             )
             reasons = [key for key in failure_keys if review.get(key) is True]
             return not reasons, reasons
@@ -1129,7 +1138,11 @@ def _generate_gemini_full_creative(content: dict[str, Any], platform: str, visua
                 if not accepted:
                     reasons_by_model[model_name] = f"plate_quality_rejected:{','.join(plate_reasons)}"
                 else:
-                    accepted, semantic_reasons = _gemini_semantic_plate_quality(client, types, raw, platform, expected_headline, expected_cta)
+                    root = _safe_json_dict(content.get("consumer_root"))
+                    consumer_moment = _safe_json_dict(root.get("moment"))
+                    accepted, semantic_reasons = _gemini_semantic_plate_quality(
+                        client, types, raw, platform, expected_headline, expected_cta, consumer_moment
+                    )
                     if not accepted:
                         reasons_by_model[model_name] = f"semantic_quality_rejected:{','.join(semantic_reasons)}"
                     else:

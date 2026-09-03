@@ -308,6 +308,10 @@ def _conversion_learning_fields(content: dict) -> dict:
     read back strategic_brief / CQS / brief_adherence for winning/losing hints.
     """
     brief = content.get("strategic_brief") if isinstance(content.get("strategic_brief"), dict) else {}
+    root = content.get("consumer_root") if isinstance(content.get("consumer_root"), dict) else {}
+    moment = root.get("moment") if isinstance(root.get("moment"), dict) else {}
+    product_id = str(content.get("product_id") or "")
+    moment_id = str(content.get("consumer_moment_id") or root.get("moment_id") or "")
     return {
         "strategic_brief": content.get("strategic_brief"),
         "logic_principle": brief.get("logic_principle", ""),
@@ -319,6 +323,16 @@ def _conversion_learning_fields(content: dict) -> dict:
         "consumer_world_id": content.get("consumer_world_id", ""),
         "consumer_moment_id": content.get("consumer_moment_id", ""),
         "consumer_receipt": content.get("consumer_receipt", {}),
+        "person": moment.get("person", ""),
+        "setting": moment.get("setting", ""),
+        "activity": moment.get("activity", ""),
+        "friction": moment.get("friction", ""),
+        "consequence": moment.get("consequence", ""),
+        "useful_discovery": moment.get("useful_discovery", ""),
+        "immediate_action": moment.get("immediate_action", ""),
+        "product_moment_pair": f"{product_id}:{moment_id}" if product_id and moment_id else "",
+        "product_compatibility": content.get("product_compatibility", {}),
+        "consumer_copy_fidelity": content.get("consumer_copy_fidelity", {}),
     }
 
 

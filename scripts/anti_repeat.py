@@ -144,6 +144,8 @@ def check_duplicates(content: dict[str, Any], history: dict[str, Any], windows: 
     previous_day_posts = _previous_calendar_day_posts(posts, current_time)
     consumer_moment_id = str(content.get("consumer_moment_id") or "").strip()
     consumer_world_id = str(content.get("consumer_world_id") or "").strip()
+    consumer_root = content.get("consumer_root") if isinstance(content.get("consumer_root"), dict) else {}
+    consumer_moment = consumer_root.get("moment") if isinstance(consumer_root.get("moment"), dict) else {}
     if consumer_moment_id:
         if any(str(post.get("consumer_moment_id") or "") == consumer_moment_id for post in previous_day_posts):
             reasons.append("duplicate_consumer_moment_on_consecutive_day")
@@ -155,6 +157,33 @@ def check_duplicates(content: dict[str, Any], history: dict[str, Any], windows: 
         world_uses = sum(str(post.get("consumer_world_id") or "") == consumer_world_id for post in recent_worlds)
         if world_uses >= 2:
             reasons.append("consumer_world_saturated_within_week")
+    recent_consumer_posts = _recent_posts(posts, cfg["topic_days"], current_time)
+    consumer_dimensions = {
+        dimension: _normalize_text(str(consumer_moment.get(dimension) or content.get(dimension) or ""))
+        for dimension in ("person", "setting", "activity", "friction", "consequence", "useful_discovery", "immediate_action")
+    }
+    visual_evidence = consumer_moment.get("visual_evidence") if isinstance(consumer_moment.get("visual_evidence"), list) else []
+    consumer_dimensions["visual_evidence"] = _normalize_text("|".join(str(value) for value in visual_evidence))
+    product_moment_pair = _normalize_text(f"{content.get('product_id', '')}:{consumer_moment_id}")
+    if product_moment_pair != ":":
+        consumer_dimensions["product_moment_pair"] = product_moment_pair
+    for dimension, value in consumer_dimensions.items():
+        if not value:
+            continue
+        uses = 0
+        for post in recent_consumer_posts:
+            previous_root = post.get("consumer_root") if isinstance(post.get("consumer_root"), dict) else {}
+            previous_moment = previous_root.get("moment") if isinstance(previous_root.get("moment"), dict) else {}
+            if dimension == "visual_evidence":
+                previous_values = previous_moment.get("visual_evidence") if isinstance(previous_moment.get("visual_evidence"), list) else []
+                previous_value = _normalize_text("|".join(str(item) for item in previous_values))
+            elif dimension == "product_moment_pair":
+                previous_value = _normalize_text(str(post.get("product_moment_pair") or f"{post.get('product_id', '')}:{post.get('consumer_moment_id', '')}"))
+            else:
+                previous_value = _normalize_text(str(post.get(dimension) or previous_moment.get(dimension) or ""))
+            uses += previous_value == value
+        if uses >= (1 if dimension in {"useful_discovery", "immediate_action", "visual_evidence", "product_moment_pair"} else 2):
+            reasons.append(f"consumer_{dimension}_saturated_within_window")
     premise_signatures = {
         value for value in (
             str(content.get("topic_hash", "")),
@@ -307,6 +336,7 @@ def check_duplicates(content: dict[str, Any], history: dict[str, Any], windows: 
             "structure_signature": structure_signature,
             "consumer_world_id": consumer_world_id,
             "consumer_moment_id": consumer_moment_id,
+            **{f"consumer_{key}_signature": stable_text_hash(value) if value else "" for key, value in consumer_dimensions.items()},
         },
         "windows": cfg,
     }

@@ -22,7 +22,7 @@ from agents.learning_context import load_operational_learning
 from inventory_db import get_db_path
 from social.carousel_director import OFFICIAL_LOGO_URL, normalize_slide_dicts
 from posting_schedule import first_scheduled_at, growth_schedule
-from consumer_life import validate_consumer_receipt
+from consumer_life import assess_copy_fidelity, validate_consumer_receipt
 
 
 DATA_DIR = os.environ.get("DATA_DIR", os.path.join(os.path.dirname(__file__), "..", "data"))
@@ -203,6 +203,8 @@ def _plan_entry_thought(entry: dict[str, Any]) -> dict[str, Any]:
         "consumer_moment_id": str(entry.get("consumer_moment_id") or ""),
         "consumer_receipt": deepcopy(entry.get("consumer_receipt") or {}),
         "consumer_story_contract": deepcopy(entry.get("consumer_story_contract") or {}),
+        "consumer_selection_receipt": deepcopy(entry.get("consumer_selection_receipt") or {}),
+        "product_compatibility": deepcopy(entry.get("product_compatibility") or {}),
         "audience": str(entry.get("audience_name") or entry.get("audience_id") or ""),
         "editorial_pillar": editorial_pillar,
         "copy_form": copy_form,
@@ -543,10 +545,19 @@ def _captions(thought: dict[str, Any]) -> dict[str, str]:
     normalized_tags = list(dict.fromkeys(str(tag).strip().lstrip("#") for tag in tag_pool if str(tag).strip()))[:10]
     hashtag_line = " ".join(f"#{tag}" for tag in normalized_tags)
     copy_form = str(thought.get("copy_form") or "")
+    receipt = thought.get("consumer_receipt") if isinstance(thought.get("consumer_receipt"), dict) else {}
+    consumer_blocks = []
+    if receipt:
+        consumer_blocks = [
+            f"Picture {receipt.get('who')} at {receipt.get('where')}, {str(receipt.get('doing') or '').lower()}.",
+            f"The friction: {receipt.get('friction')}",
+            f"What matters next: {receipt.get('useful_discovery')}",
+            f"Try this now: {receipt.get('immediate_action')}",
+        ]
     if not copy_form:
-        facebook_blocks = [statement, expansion, useful_detail, humor, action, prompt, hashtag_line]
-        instagram_blocks = [instagram_hook, expansion, humor, action, prompt, hashtag_line]
-        linkedin_blocks = [statement, expansion, useful_detail, linkedin_lens, action, prompt, hashtag_line]
+        facebook_blocks = [statement, *consumer_blocks, expansion, useful_detail, humor, action, prompt, hashtag_line]
+        instagram_blocks = [instagram_hook, *consumer_blocks, expansion, humor, action, prompt, hashtag_line]
+        linkedin_blocks = [statement, *consumer_blocks, expansion, useful_detail, linkedin_lens, action, prompt, hashtag_line]
         return {
             "facebook": "\n\n".join(block for block in facebook_blocks if block),
             "instagram": "\n\n".join(block for block in instagram_blocks if block),
@@ -565,9 +576,9 @@ def _captions(thought: dict[str, Any]) -> dict[str, str]:
         "operational_recommendation": [statement, linkedin_lens, useful_detail, action],
     }
     core_blocks = forms.get(copy_form, forms["direct_preparedness_advice"])
-    facebook_blocks = [*core_blocks, hashtag_line]
-    instagram_blocks = [instagram_hook, *core_blocks[1:], hashtag_line]
-    linkedin_blocks = [statement, *core_blocks[1:], linkedin_lens if linkedin_lens not in core_blocks else "", hashtag_line]
+    facebook_blocks = [*consumer_blocks, *core_blocks, hashtag_line]
+    instagram_blocks = [instagram_hook, *consumer_blocks, *core_blocks[1:], hashtag_line]
+    linkedin_blocks = [statement, *consumer_blocks, *core_blocks[1:], linkedin_lens if linkedin_lens not in core_blocks else "", hashtag_line]
     return {
         "facebook": "\n\n".join(block for block in facebook_blocks if block),
         "instagram": "\n\n".join(block for block in instagram_blocks if block),
@@ -671,6 +682,8 @@ def _package(knowledge: dict[str, Any], thought: dict[str, Any], content_date: s
         "consumer_moment_id": str(thought.get("consumer_moment_id") or ""),
         "consumer_receipt": deepcopy(thought.get("consumer_receipt") or {}),
         "consumer_story_contract": deepcopy(thought.get("consumer_story_contract") or {}),
+        "consumer_selection_receipt": deepcopy(thought.get("consumer_selection_receipt") or {}),
+        "product_compatibility": deepcopy(thought.get("product_compatibility") or {}),
         "company_knowledge": {
             "knowledge_id": knowledge.get("knowledge_id"),
             "schema_version": knowledge.get("schema_version"),
@@ -719,14 +732,17 @@ def _package(knowledge: dict[str, Any], thought: dict[str, Any], content_date: s
     }
     if package.get("consumer_root"):
         consumer_qa = validate_consumer_receipt(package)
+        copy_fidelity = assess_copy_fidelity(package)
         package["consumer_receipt_qa"] = consumer_qa
-        if not consumer_qa["passed"]:
+        package["consumer_copy_fidelity"] = copy_fidelity
+        if not consumer_qa["passed"] or not copy_fidelity["passed"]:
+            consumer_errors = [*consumer_qa["errors"], *[f"consumer_copy_missing:{field}" for field in copy_fidelity["missing"]]]
             package["validation_status"] = "failed"
-            package["validation_errors"].extend(consumer_qa["errors"])
+            package["validation_errors"].extend(consumer_errors)
             package["publish_decision"] = {
                 "decision": "reject",
                 "publishable": False,
-                "reasons": consumer_qa["errors"],
+                "reasons": consumer_errors,
                 "source": "consumer_receipt_qa",
             }
     return package

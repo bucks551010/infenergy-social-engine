@@ -12,7 +12,7 @@ from typing import Any
 from google import genai
 from google.genai import types
 from social import carousel_director
-from consumer_life import select_consumer_root
+from consumer_life import assess_copy_fidelity, assess_product_compatibility, select_consumer_root
 
 
 # ---------------------------------------------------------------------------
@@ -5320,7 +5320,9 @@ def generate(
     mode = _pipeline_mode(pipeline_override)
     platform = os.environ.get("POST_PLATFORMS", "instagram_feed").split(",")[0].strip() or "instagram_feed"
     generation_date = datetime.now(timezone.utc).date()
-    consumer_root = select_consumer_root(current_date=generation_date, slot=slot)
+    consumer_history_payload = load_history()
+    consumer_history = consumer_history_payload.get("posts", []) if isinstance(consumer_history_payload, dict) else []
+    consumer_root = select_consumer_root(current_date=generation_date, slot=slot, history=consumer_history)
     no_product = no_product or os.environ.get("CONTENT_BUCKET_OVERRIDE", "").strip().lower() == "no_product"
     if consumer_root["moment"]["product_fit"]["mode"] == "none":
         no_product = True
@@ -6478,6 +6480,7 @@ Return ONLY valid JSON with these exact keys (no markdown, no code fences):
         content["product_image_candidates"] = product.get("image_candidates", []) if product else []
         content["category_image_candidates"] = product.get("category_image_candidates", []) if product else []
         content["product_selection_decision"] = product.get("_rotation_decision", {}) if product else {}
+        content["product_compatibility"] = assess_product_compatibility(consumer_moment, product)
         content["marketing_strategy_used"] = bool(marketing_strategy)
         content["marketing_bundle_used"] = bool(marketing_strategy)
         content["business_profile"] = business_profile
@@ -6724,6 +6727,7 @@ Return ONLY valid JSON with these exact keys (no markdown, no code fences):
         content = _run_phase_d_brief_adherence(content, run_context, gate_records)
         content = _run_phase_f_visual_alignment(content, run_context, gate_records)
         content = _apply_control_plane_metadata(content, run_context, gate_records)
+        content["consumer_copy_fidelity"] = assess_copy_fidelity(content)
         content = _sanitize_legacy_cta_in_payload(content)
         content["editorial_decision"] = {
             "content_bucket": content_bucket,
@@ -6752,6 +6756,7 @@ Return ONLY valid JSON with these exact keys (no markdown, no code fences):
     content["product_image_candidates"] = product.get("image_candidates", []) if product else []
     content["category_image_candidates"] = product.get("category_image_candidates", []) if product else []
     content["product_selection_decision"] = product.get("_rotation_decision", {}) if product else {}
+    content["product_compatibility"] = assess_product_compatibility(consumer_moment, product)
     content["marketing_strategy_used"] = bool(marketing_strategy)
     content["marketing_bundle_used"] = bool(marketing_strategy)
     content["business_profile"] = business_profile
@@ -7018,6 +7023,7 @@ Return ONLY valid JSON with these exact keys (no markdown, no code fences):
     content = _run_phase_d_brief_adherence(content, run_context, gate_records)
     content = _run_phase_f_visual_alignment(content, run_context, gate_records)
     content = _apply_control_plane_metadata(content, run_context, gate_records)
+    content["consumer_copy_fidelity"] = assess_copy_fidelity(content)
     content = _sanitize_legacy_cta_in_payload(content)
     content["editorial_decision"] = {
         "content_bucket": content_bucket,

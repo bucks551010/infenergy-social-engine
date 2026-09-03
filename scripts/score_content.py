@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from consumer_life import validate_consumer_receipt
+from consumer_life import assess_copy_fidelity, validate_consumer_receipt
 
 try:
     from campaign_runtime import has_explicit_cta_keyword
@@ -69,6 +69,7 @@ def score_content(content: dict[str, Any], requested_platforms: list[str] | None
     """Score only the requested platforms, with native criteria per social environment."""
 
     consumer_qa = validate_consumer_receipt(content) if content.get("consumer_root") else {"passed": True, "errors": []}
+    copy_fidelity = assess_copy_fidelity(content) if content.get("consumer_root") else {"passed": True, "missing": []}
 
     platform_posts = content.get("platform_posts", {}) if isinstance(content.get("platform_posts"), dict) else {}
     text_by_platform = {
@@ -135,7 +136,7 @@ def score_content(content: dict[str, Any], requested_platforms: list[str] | None
     total = round(sum(result["total"] for result in platform_results.values()) / len(platform_results), 2)
     component_scores = {key: round(sum(result["component_scores"][key] for result in platform_results.values()) / len(platform_results), 2) for key in next(iter(platform_results.values()))["component_scores"]}
 
-    if not consumer_qa["passed"]:
+    if not consumer_qa["passed"] or not copy_fidelity["passed"]:
         decision = "reject"
     elif total >= 82:
         decision = "approve"
@@ -150,4 +151,5 @@ def score_content(content: dict[str, Any], requested_platforms: list[str] | None
         "component_scores": component_scores,
         "platform_results": platform_results,
         "consumer_receipt_qa": consumer_qa,
+        "consumer_copy_fidelity": copy_fidelity,
     }

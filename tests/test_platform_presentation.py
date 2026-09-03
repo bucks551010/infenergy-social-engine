@@ -775,6 +775,38 @@ def test_final_caption_qa_rejects_editorial_labels_and_too_few_hashtags():
     assert "hashtag_count_below_minimum" in verdict["reasons"]
 
 
+def test_canonical_editorial_pillars_produce_distinct_concrete_posts():
+    pillars = (
+        "preparedness_education", "energy_literacy", "customer_problem_solving",
+        "brand_authority", "trust_and_company_values", "community_engagement",
+        "home_resilience", "travel_and_outdoor_preparedness",
+        "caregiver_preparedness", "small_business_continuity",
+    )
+    captions = []
+
+    for pillar in pillars:
+        caption, _ = platform_presentation.format_caption(
+            {
+                "product_id": None,
+                "product_name": "",
+                "funnel_stage": "EDUCATION",
+                "pillar": pillar,
+                "feature_bullets": [],
+            },
+            platform="facebook",
+        )
+        captions.append(caption)
+        assert len(re.findall(r"(?<!\w)#[A-Za-z0-9_]+", caption)) == 10
+        assert platform_presentation.final_caption_qa(
+            caption,
+            platform="facebook",
+            components={"product_id": None, "product_name": "", "feature_bullets": []},
+        )["status"] == "PRESENTATION_READY"
+
+    assert len(set(captions)) == len(pillars)
+    assert len({caption.split("\n\n")[0] for caption in captions}) == len(pillars)
+
+
 def test_final_caption_qa_normalizes_product_prefixed_benefit_metadata():
     components = _components()
     components["benefit_fragment"] = "PowerPulse Pro 200: keeps compatible daily devices charged away from outlets"

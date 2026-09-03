@@ -460,6 +460,102 @@ def _engagement_hashtags(stage: str) -> list[str]:
     ]
 
 
+def _pillar_editorial_profile(pillar: str) -> dict[str, Any]:
+    profiles = {
+        "preparedness_education": {
+            "hook": "The lights go out tonight. Could everyone in your home follow the same 24-hour plan?",
+            "situation": "A useful outage plan names the first lights, phones, medical devices, food-storage equipment, and safety tasks the household must protect.",
+            "why": "Without a written order, people drain available batteries on the first device they see.",
+            "actions": ["List every task that cannot wait 24 hours", "Record the watts and runtime each task requires", "Place the ranked list beside the backup equipment"],
+            "memory": "A one-page plan gives the household an order to follow when the rooms are dark.",
+            "cta": "Write your household's first three outage priorities today.",
+            "hashtags": ["#OutagePlan", "#Preparedness", "#EmergencyPlanning", "#BackupPower", "#HomePreparedness", "#PowerOutage", "#FamilyPreparedness", "#StormReady", "#PowerSafety", "#PowerBackupTips"],
+        },
+        "energy_literacy": {
+            "hook": "A 1,000-watt label does not tell you how long your equipment will run.",
+            "situation": "Watts measure the power a device draws, while watt-hours measure how much energy a battery stores.",
+            "why": "Confusing those numbers can leave a buyer with enough output but too little runtime.",
+            "actions": ["Find the watts printed on each device", "Multiply watts by the hours you need it to run", "Compare that total with usable battery capacity"],
+            "memory": "Output answers what can start; capacity helps estimate how long it can continue.",
+            "cta": "Check one must-run device and calculate its watt-hour need.",
+            "hashtags": ["#EnergyLiteracy", "#Watts", "#WattHours", "#BatteryCapacity", "#Runtime", "#BackupPower", "#PowerEducation", "#PowerPlanning", "#EnergyBasics", "#PowerBackupTips"],
+        },
+        "customer_problem_solving": {
+            "hook": "The most expensive backup-power mistake starts with one question: 'What is the biggest unit I can afford?'",
+            "situation": "The better starting point is the exact device, plug, starting watts, running watts, and hours the buyer needs.",
+            "why": "A large battery can still be the wrong tool when its outlets or output do not match the job.",
+            "actions": ["Name the device that must stay on", "Check its plug and starting wattage", "Set the minimum runtime before comparing equipment"],
+            "memory": "Define the job first, then choose equipment that can prove it fits.",
+            "cta": "Post the device you need to run and the hours you need from it.",
+            "hashtags": ["#CustomerQuestions", "#BackupPower", "#PowerPlanning", "#DeviceCompatibility", "#Runtime", "#PowerOutage", "#Preparedness", "#SmartBuying", "#PowerSolutions", "#PowerBackupTips"],
+        },
+        "brand_authority": {
+            "hook": "A recommendation is worthless if nobody checked what the equipment can actually run.",
+            "situation": "Real evaluation starts with published output, capacity, ports, charging limits, and a specific customer job.",
+            "why": "A polished claim cannot power a refrigerator, medical device, laptop, or phone.",
+            "actions": ["Verify every published specification", "Match each claim to a real use case", "State the limits as clearly as the benefits"],
+            "memory": "Useful guidance shows the evidence and names where the equipment does not fit.",
+            "cta": "Ask for the specification behind the next power claim you see.",
+            "hashtags": ["#PowerExpertise", "#VerifiedSpecs", "#HonestGuidance", "#BackupPower", "#PowerEducation", "#DeviceCompatibility", "#ConsumerEducation", "#PowerPlanning", "#EvidenceMatters", "#InfenergyPower"],
+        },
+        "trust_and_company_values": {
+            "hook": "Sometimes the most honest recommendation is: do not buy it.",
+            "situation": "If the output, capacity, connector, or runtime does not match the customer's device, the sale creates a new problem.",
+            "why": "Clear limits protect the buyer from discovering the mismatch during an outage.",
+            "actions": ["Ask what must be powered", "Verify the required plug and wattage", "Say no when the published limits do not fit"],
+            "memory": "Trust grows when the answer stays honest even when honesty costs a sale.",
+            "cta": "Bring the device details; expect a direct answer about fit.",
+            "hashtags": ["#HonestBusiness", "#CustomerFirst", "#TrustMatters", "#VerifiedSpecs", "#BackupPower", "#PowerPlanning", "#ConsumerTrust", "#ClearAnswers", "#ResponsibleBusiness", "#InfenergyPower"],
+        },
+        "community_engagement": {
+            "hook": "The power just failed and you can protect only one device for the next four hours. What do you choose?",
+            "situation": "One household may choose a medical device, another a phone, refrigerator, light, fan, or internet modem.",
+            "why": "The first priority changes with the people, weather, health needs, and work inside the home.",
+            "actions": ["Choose one device", "Name who depends on it", "Estimate how many hours it must remain available"],
+            "memory": "The answers reveal what real households need before anyone compares equipment.",
+            "cta": "Reply with your one device and why it comes first.",
+            "hashtags": ["#CommunityQuestion", "#PowerOutage", "#Preparedness", "#BackupPower", "#FamilyPreparedness", "#EmergencyPlanning", "#OutageReady", "#HomePreparedness", "#EverydayPower", "#PowerBackupTips"],
+        },
+        "home_resilience": {
+            "hook": "Trying to power the whole house is how many families overspend before they protect the essentials.",
+            "situation": "Most households can begin with a shorter list: refrigeration, communication, medical needs, lighting, and one weather-control priority.",
+            "why": "Separating essential loads from convenient loads reduces the output and capacity the first plan must cover.",
+            "actions": ["List essential household loads", "Remove devices that can wait", "Total the watts and required hours for what remains"],
+            "memory": "A smaller essential-load plan is easier to size, test, and use during a real outage.",
+            "cta": "Build your essential-load list before comparing backup options.",
+            "hashtags": ["#HomeResilience", "#EssentialLoads", "#BackupPower", "#HomePreparedness", "#PowerOutage", "#EmergencyPlanning", "#FamilyPreparedness", "#OutagePlan", "#SmartPreparedness", "#PowerBackupTips"],
+        },
+        "travel_and_outdoor_preparedness": {
+            "hook": "Your campsite has no outlet, sunset is in an hour, and your phone is at 12 percent. What did you forget to calculate?",
+            "situation": "Off-grid power planning must cover navigation, communication, lighting, cameras, and any safety equipment for the full trip.",
+            "why": "A battery that works for one afternoon may fail on day two when charging access, weather, and device use change.",
+            "actions": ["Count each device and daily charge", "Multiply the need by the number of days", "Add a charging plan for bad weather or delays"],
+            "memory": "Trip length and charging access matter as much as the number printed on the battery.",
+            "cta": "Calculate the daily charging need for your next trip.",
+            "hashtags": ["#OutdoorPreparedness", "#CampingPower", "#OffGridPower", "#TravelPreparedness", "#PortablePower", "#CampingTips", "#AdventureReady", "#EmergencyPlanning", "#PowerOnTheGo", "#PowerBackupTips"],
+        },
+        "caregiver_preparedness": {
+            "hook": "If a medical device loses power at 2 a.m., who knows its watts, battery time, and backup steps?",
+            "situation": "Caregivers need the device label, required runtime, charging method, clinician instructions, and emergency contacts in one place.",
+            "why": "Guessing during an outage can waste limited battery time and delay the next safe step.",
+            "actions": ["Record the device model and power requirement", "Write the approved backup procedure", "Test the contact and charging plan before an outage"],
+            "memory": "Keep the written plan with the device so another caregiver can follow it without guessing.",
+            "cta": "Review one medical device's outage instructions with the care team.",
+            "hashtags": ["#CaregiverPreparedness", "#MedicalDevice", "#EmergencyPlanning", "#BackupPower", "#CaregiverSupport", "#PowerOutage", "#HealthPreparedness", "#FamilyPreparedness", "#SafetyPlanning", "#PowerBackupTips"],
+        },
+        "small_business_continuity": {
+            "hook": "In the first hour without power, can your business still take payment, contact staff, and protect customer data?",
+            "situation": "A small business outage can stop payment terminals, internet equipment, phones, computers, refrigeration, and security systems at once.",
+            "why": "Every unplanned minute can create missed sales, spoiled inventory, delayed work, or lost customer access.",
+            "actions": ["List the systems needed in the first hour", "Record each system's watts and required runtime", "Assign a shutdown or backup step to one person"],
+            "memory": "A continuity plan protects the first critical operations instead of trying to power everything.",
+            "cta": "Write the three systems your business must restore first.",
+            "hashtags": ["#BusinessContinuity", "#SmallBusiness", "#PowerOutage", "#BackupPower", "#DisasterPlanning", "#OperationalReadiness", "#BusinessPreparedness", "#RiskManagement", "#EmergencyPlanning", "#PowerBackupTips"],
+        },
+    }
+    return dict(profiles.get(str(pillar or "").strip().lower(), {}))
+
+
 def _benefit_opening(components: dict[str, Any], *, product_led: bool) -> list[str]:
     """Present approved customer benefit and human outcome before supporting detail."""
     if not product_led:
@@ -576,6 +672,7 @@ def _engagement_editorial(
     """Build product-free content around participation or useful teaching, never sales."""
     source_has_steps = bool(re.search(r"(?m)^\s*\d+\.\s+\S+", source_caption))
     framework = components.get("editorial_framework") if isinstance(components.get("editorial_framework"), dict) else {}
+    pillar_profile = _pillar_editorial_profile(str(components.get("pillar") or ""))
     stage = str(components.get("funnel_stage") or ("EDUCATION" if source_has_steps else "ATTENTION")).strip().upper()
     hook = _engagement_safe_text(
         str(components.get("logic_hook") or components.get("hook") or "").strip()
@@ -597,7 +694,16 @@ def _engagement_editorial(
     memory = _engagement_safe_text(str(framework.get("memory") or transformation)) or "Keep the finished list beside the battery so anyone in the household can follow it."
     why = tension or perspective or "A phone keeps communication open, a light makes the room usable, and some medical devices cannot wait."
     transformation = memory
-    opening = _engagement_hook(hook, curiosity, situation, insight, source_caption)
+    if pillar_profile:
+        opening = str(pillar_profile["hook"])
+        situation = str(pillar_profile["situation"])
+        why = str(pillar_profile["why"])
+        insight = str(pillar_profile["actions"][1])
+        perspective = str(pillar_profile["actions"][2])
+        transformation = str(pillar_profile["memory"])
+        cta = str(pillar_profile["cta"])
+    else:
+        opening = _engagement_hook(hook, curiosity, situation, insight, source_caption)
 
     if stage == "EDUCATION":
         if source_has_steps:
@@ -606,7 +712,7 @@ def _engagement_editorial(
             actions = [line for line in source_lines if re.match(r"^\d+\.\s+", line)]
             hook = source_hook
         else:
-            action_source = [value for value in (situation, insight, why) if value]
+            action_source = list(pillar_profile.get("actions") or [value for value in (situation, insight, why) if value])
             actions = [
                 _sentence(f"{index}. {value}")
                 for index, value in enumerate(action_source[:3], start=1)
@@ -657,7 +763,7 @@ def _engagement_editorial(
             "focused_discovery",
         ]
         ideology = "teach_for_capability_without_forcing_a_sale"
-        base_tags = _engagement_hashtags(stage)
+        base_tags = list(pillar_profile.get("hashtags") or _engagement_hashtags(stage))
     else:
         if hook.endswith((".", "!", "?")):
             question = hook
@@ -705,7 +811,7 @@ def _engagement_editorial(
             "focused_discovery",
         ]
         ideology = "earn_participation_through_relevance_not_bait"
-        base_tags = _engagement_hashtags(stage)
+        base_tags = list(pillar_profile.get("hashtags") or _engagement_hashtags(stage))
 
     selected_tags = base_tags[:_HASHTAG_LIMITS.get(platform, _MIN_HASHTAGS)]
     refined = "\n\n".join(part for part in paragraphs if part.strip())

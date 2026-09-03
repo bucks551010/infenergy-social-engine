@@ -1767,6 +1767,28 @@ def test_publication_operations_and_dispatch_preview_are_safe(tmp_path):
     assert preview["result"]["production_mutated"] is False
 
 
+def test_publication_delete_requires_approval_and_previews_exact_id(tmp_path):
+    service = bootstrap(str(tmp_path))
+
+    pending = service.execute_capability(
+        "publication.delete",
+        {"platform": "facebook", "post_id": "page_post_duplicate"},
+    )
+    preview = service.execute_capability(
+        "publication.delete",
+        {"platform": "facebook", "post_id": "page_post_duplicate"},
+        dry_run=True,
+    )
+
+    assert pending["status"] == "WAITING_APPROVAL"
+    assert preview["status"] == "DRY_RUN_COMPLETE"
+    assert preview["result"]["would_delete"] == {
+        "platform": "facebook",
+        "post_id": "page_post_duplicate",
+    }
+    assert preview["result"]["production_mutated"] is False
+
+
 def test_copilot_tool_adapter_uses_sdk_invocation_contract(tmp_path):
     import asyncio
     from copilot.tools import ToolInvocation

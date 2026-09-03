@@ -1042,6 +1042,20 @@ def register_core_capabilities(registry: CapabilityRegistry, policies: PolicyEng
             return {"would_dispatch_due": True, "readiness": operations_readiness(context.data_dir), "production_mutated": False}
         return dispatch_due(data_dir=context.data_dir)
 
+    def publication_delete(payload: dict[str, Any], context: ExecutionContext) -> dict[str, Any]:
+        import importlib
+
+        platform = str(payload["platform"]).strip().lower()
+        post_id = str(payload["post_id"]).strip()
+        if platform not in {"facebook", "instagram", "linkedin"}:
+            raise ValueError("platform_must_be_facebook_instagram_or_linkedin")
+        if not post_id:
+            raise ValueError("post_id_required")
+        if context.dry_run:
+            return {"would_delete": {"platform": platform, "post_id": post_id}, "production_mutated": False}
+        result = importlib.import_module(f"publish_{platform}").delete(post_id)
+        return {"platform": platform, "post_id": post_id, "provider_result": result}
+
     def brand_positioning(_: dict[str, Any], __: ExecutionContext) -> dict[str, Any]:
         from business_intelligence.brand import build_identity, build_positioning, build_voice, build_why, build_worldview
         values = {
@@ -1121,6 +1135,7 @@ def register_core_capabilities(registry: CapabilityRegistry, policies: PolicyEng
         Capability("publication.operations.get", "Get publication operations", "Inspect exact daily slots, candidate decisions, outbox state, platform transactions, failures, and readiness actions.", "SOCIAL", publication_operations, object_schema({"content_date": {"type": "string"}, "lead_hours": {"type": "integer"}})),
         Capability("publication.detail.get", "Get publication decision detail", "Retrieve one content council decision with candidates, rationale, outbox packages, and provider transaction evidence.", "SOCIAL", publication_detail, object_schema({"decision_id": {"type": "string"}}, ["decision_id"])),
         Capability("publication.dispatch", "Dispatch due publications", "Dispatch due approved outbox packages through preserved idempotent platform publishers; preview safely with dry run.", "SOCIAL", publication_dispatch, object_schema({}), risk_level="EXTERNAL_IRREVERSIBLE", cost_class="MEDIUM", permission_requirement="EXECUTE_WITH_APPROVAL", supports_rollback=False),
+        Capability("publication.delete", "Delete exact publication", "Delete one exact platform publication by immutable provider ID after owner approval.", "SOCIAL", publication_delete, object_schema({"platform": {"type": "string"}, "post_id": {"type": "string"}}, ["platform", "post_id"]), risk_level="EXTERNAL_IRREVERSIBLE", permission_requirement="EXECUTE_WITH_APPROVAL", supports_rollback=False),
         Capability("brand.positioning.get", "Get brand positioning", "Return owner-first identity, purpose, worldview, competitive position, and voice constraints with preserved source hierarchy.", "BRAND", brand_positioning),
         Capability("products.match", "Match products to intent", "Rank evidence-eligible catalog products against an audience archetype and topic without changing inventory.", "PRODUCTS", product_match, object_schema({"topic": {"type": "string"}, "archetype": {"type": "string"}, "limit": {"type": "integer"}})),
         Capability("platforms.status", "Get platform connections", "Return machine-readable publishing capabilities, feature flags, and credential health for Facebook, Instagram, LinkedIn, TikTok, and YouTube without exposing secrets.", "SYSTEM_HEALTH", platforms_status),

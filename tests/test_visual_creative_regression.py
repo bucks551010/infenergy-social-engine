@@ -18,6 +18,23 @@ import run_engine  # noqa: E402
 from social.visual_provider import EntertainmentStudioVisualProvider, default_provider  # noqa: E402
 
 
+def test_v5_text_overlay_supports_bounded_headline_scale():
+    image = Image.new("RGB", (1080, 1080), "#111820")
+
+    rendered, error = social_visuals._apply_v5_text_overlay(image, {
+        "text_overlay": {
+            "enabled": True,
+            "text": "THE MOMENT YOU FELT PORTABLE.",
+            "headline_scale": 0.046,
+            "safe_margin_ratio": 0.028,
+        }
+    })
+
+    assert error == ""
+    assert rendered.size == (1080, 1080)
+    assert rendered.getpixel((1079, 0)) == (17, 24, 32)
+
+
 def test_entertainment_studio_provider_accepts_shared_service_token(monkeypatch):
     monkeypatch.setenv("ENTERTAINMENT_STUDIO_URL", "https://studio.example")
     monkeypatch.delenv("ENTERTAINMENT_STUDIO_TOKEN", raising=False)

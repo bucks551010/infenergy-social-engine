@@ -810,11 +810,10 @@ def _apply_v5_text_overlay(image: Any, direction: dict[str, Any]) -> tuple[Any, 
     scale = min(width, height)
     margin = max(30, int(scale * float(overlay.get("safe_margin_ratio") or 0.055)))
     truth = text.split("|", 1)[-1].strip() if "|" in text else text
-    headline_size = max(44, int(scale * 0.067))
-    eyebrow_size = max(15, int(scale * 0.016))
+    headline_scale = min(0.09, max(0.04, float(overlay.get("headline_scale") or 0.067)))
+    headline_size = max(36, int(scale * headline_scale))
     headline_font = _overlay_font(font_module, headline_size, bold=True)
-    eyebrow_font = _overlay_font(font_module, eyebrow_size, bold=True)
-    if headline_font is None or eyebrow_font is None:
+    if headline_font is None:
         return image, "scalable_font_unavailable_for_overlay"
     draw = draw_module.Draw(image, "RGBA")
     max_text_width = width - margin * 2
@@ -833,21 +832,20 @@ def _apply_v5_text_overlay(image: Any, direction: dict[str, Any]) -> tuple[Any, 
     if len(lines) > 3:
         return image, "overlay_text_exceeds_line_budget"
     line_height = int(headline_size * 1.12)
-    eyebrow_height = int(eyebrow_size * 1.3)
-    signature_gap = int(scale * 0.026)
-    block_height = eyebrow_height + signature_gap + len(lines) * line_height
+    block_height = len(lines) * line_height
     if block_height > height * 0.38:
         return image, "overlay_text_exceeds_safe_area"
     placement = str(overlay.get("placement") or "upper third").lower()
     y_start = height - margin - block_height if "bottom" in placement else margin
     wash_height = min(height, y_start + block_height + margin)
-    if "bottom" in placement:
+    contrast_wash = bool(overlay.get("contrast_wash", False))
+    if contrast_wash and "bottom" in placement:
         wash_top = max(0, y_start - margin)
         wash_span = height - wash_top
         for offset in range(wash_span):
             alpha = int(215 * (offset / max(1, wash_span - 1)) ** 1.7)
             draw.line((0, wash_top + offset, width, wash_top + offset), fill=(7, 15, 22, alpha))
-    else:
+    elif contrast_wash:
         for offset in range(wash_height):
             alpha = int(215 * (1 - offset / max(1, wash_height - 1)) ** 1.7)
             draw.line((0, offset, width, offset), fill=(7, 15, 22, alpha))
@@ -856,13 +854,6 @@ def _apply_v5_text_overlay(image: Any, direction: dict[str, Any]) -> tuple[Any, 
     gold = (255, 212, 105, 255)
     text_x = margin
     text_y = y_start
-    rail_y = text_y + eyebrow_height // 2
-    rail_start = text_x + int(scale * 0.29)
-    draw.line((rail_start, rail_y, width - margin, rail_y), fill=(247, 163, 15, 205), width=max(2, int(scale * 0.003)))
-    motif = _truth_overlay_motif(truth)
-    _draw_truth_motif(draw, motif, width - margin - int(scale * 0.035), rail_y, scale, accent)
-    draw.text((text_x, text_y), "INFENERGY POWER  /  FIELD TRUTH", font=eyebrow_font, fill=gold)
-    text_y += eyebrow_height + signature_gap
     for index, line in enumerate(lines):
         line_fill = gold if index == len(lines) - 1 and len(lines) > 1 else (255, 255, 255, 255)
         draw.text(

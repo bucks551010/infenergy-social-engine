@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import sys
 from io import BytesIO
+from pathlib import Path
 from types import SimpleNamespace
 import subprocess
 
@@ -12,6 +13,52 @@ sys.path.insert(0, _REPO)
 import worker  # noqa: E402
 from scripts import run_engine  # noqa: E402
 from social import living_intelligence  # noqa: E402
+
+
+def _asset_handler(path):
+    handler = object.__new__(worker.HealthHandler)
+    handler.path = path
+    handler.wfile = BytesIO()
+    handler.statuses = []
+    handler.headers_sent = {}
+    handler.send_response = handler.statuses.append
+    handler.send_header = handler.headers_sent.__setitem__
+    handler.end_headers = lambda: None
+    handler.send_error = lambda status: handler.statuses.append(status)
+    return handler
+
+
+def test_approved_asset_route_serves_images_for_get_and_head(monkeypatch, tmp_path):
+    monkeypatch.setattr(worker, "__file__", str(tmp_path / "worker.py"))
+    assets = tmp_path / "production_assets"
+    assets.mkdir()
+    payload = b"approved-image"
+    (assets / "creative.png").write_bytes(payload)
+
+    get_handler = _asset_handler("/approved-assets/creative.png")
+    get_handler.do_GET()
+    head_handler = _asset_handler("/approved-assets/creative.png")
+    head_handler.do_HEAD()
+
+    assert get_handler.statuses == [200]
+    assert get_handler.headers_sent["Content-Type"] == "image/png"
+    assert get_handler.wfile.getvalue() == payload
+    assert head_handler.statuses == [200]
+    assert head_handler.headers_sent["Content-Length"] == str(len(payload))
+    assert head_handler.wfile.getvalue() == b""
+
+
+def test_approved_asset_route_rejects_non_images(monkeypatch, tmp_path):
+    monkeypatch.setattr(worker, "__file__", str(tmp_path / "worker.py"))
+    assets = tmp_path / "production_assets"
+    assets.mkdir()
+    (assets / "private.txt").write_text("not public", encoding="utf-8")
+
+    handler = _asset_handler("/approved-assets/private.txt")
+    handler.do_GET()
+
+    assert handler.statuses == [404]
+    assert handler.wfile.getvalue() == b""
 
 
 def test_monthly_api_summary_exposes_knowledge_refresh_audit():

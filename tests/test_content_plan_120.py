@@ -4,12 +4,14 @@ import json
 import os
 import sys
 
+from PIL import Image
+
 
 _REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(_REPO, "scripts"))
 
 from content_plan_120 import build_120_day_plan  # noqa: E402
-from build_monthly_content import _gemini_generation_plan, _package, _plan_entry_thought  # noqa: E402
+from build_monthly_content import _gemini_generation_plan, _package, _plan_entry_thought, _render_assets  # noqa: E402
 from social_engine.intelligence_os.web import handle  # noqa: E402
 
 
@@ -93,6 +95,43 @@ def test_consumer_root_reaches_monthly_outbox_package(tmp_path):
     assert package["consumer_receipt"] == entry["consumer_receipt"]
     assert package["visual_plan"]["consumer_story_contract"] == entry["consumer_story_contract"]
     assert package["consumer_receipt_qa"]["passed"] is True
+
+
+def test_plan_thought_preserves_slot_and_deterministic_canvas_contract(tmp_path):
+    _write_profiles(tmp_path)
+    entries = build_120_day_plan(
+        data_dir=str(tmp_path),
+        start_date="2026-09-01",
+        days=4,
+    )["entries"]
+    entry = next(candidate for candidate in entries if candidate["format"] == "product_comic_strip_carousel")
+    thought = _plan_entry_thought(entry)
+
+    assets = _render_assets(str(tmp_path), thought, 0)
+
+    assert thought["slot"] == entry["slot"] == "midday"
+    assert len(assets["slides"]) == 3
+    for asset in assets["slides"]:
+        with Image.open(asset["local_path"]) as image:
+            assert image.size == (1080, 1350)
+
+
+def test_story_plan_renders_vertical_asset_and_preserves_morning_slot(tmp_path):
+    _write_profiles(tmp_path)
+    entries = build_120_day_plan(
+        data_dir=str(tmp_path),
+        start_date="2026-09-01",
+        days=4,
+    )["entries"]
+    entry = next(candidate for candidate in entries if candidate["format"] == "product_story_page")
+    thought = _plan_entry_thought(entry)
+
+    assets = _render_assets(str(tmp_path), thought, 0)
+
+    assert thought["slot"] == entry["slot"] == "morning"
+    assert len(assets["slides"]) == 1
+    with Image.open(assets["primary"]["local_path"]) as image:
+        assert image.size == (1080, 1920)
 
 
 def test_product_days_never_use_a_no_product_consumer_moment(tmp_path):

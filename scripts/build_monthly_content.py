@@ -174,6 +174,7 @@ def _plan_entry_thought(entry: dict[str, Any]) -> dict[str, Any]:
     copy_form = str(entry.get("copy_form") or "direct_preparedness_advice")
     return {
         "id": f"PLAN120-D{int(entry.get('day_number') or 0):03d}",
+        "slot": str(entry.get("slot") or "midday"),
         "pillar": str(entry.get("creative_territory") or (entry.get("company_source") or {}).get("pillar") or "everyday_power"),
         "kind": "product_micro_mission" if is_comic else "company_super_message" if is_company_message else "planned_editorial",
         "content_type": "product" if product else "editorial",
@@ -326,14 +327,15 @@ def _weekly_brand_mix_thoughts(slate: dict[str, Any], *, start: date, days: int)
     return compiled[:days]
 
 
-def _render_card(path: str, *, headline: str, supporting: str, pillar: str, index: int, slide_label: str = "", role: str = "STORY") -> None:
+def _render_card(path: str, *, headline: str, supporting: str, pillar: str, index: int, slide_label: str = "", role: str = "STORY", canvas: tuple[int, int] = (1080, 1080)) -> None:
     background = BACKGROUND_ROTATION[index % len(BACKGROUND_ROTATION)]
     ink = INK_BY_BACKGROUND[background]
     accent = "#F2C94C" if background != "#F7F4EC" else "#E45B3A"
-    image = Image.new("RGB", (1080, 1080), background)
+    width, height = canvas
+    image = Image.new("RGB", canvas, background)
     draw = ImageDraw.Draw(image)
-    draw.rectangle((72, 70, 92, 1010), fill=accent)
-    draw.rectangle((92, 70, 1008, 78), fill=accent)
+    draw.rectangle((72, 70, 92, height - 70), fill=accent)
+    draw.rectangle((92, 70, width - 72, 78), fill=accent)
     draw.text((132, 116), "INFENERGY", font=_font(34, bold=True), fill=ink)
     draw.text((132, 166), pillar.replace("_", " ").upper(), font=_font(22, bold=True), fill=accent)
     if slide_label:
@@ -341,13 +343,13 @@ def _render_card(path: str, *, headline: str, supporting: str, pillar: str, inde
 
     headline_lines = _wrapped_lines(headline, 25 if len(headline) > 65 else 22)
     headline_size = 68 if len(headline_lines) <= 4 else 56
-    y = 300
+    y = max(300, int(height * 0.25))
     for line in headline_lines[:6]:
         draw.text((132, y), line, font=_font(headline_size, bold=True), fill=ink)
         y += headline_size + 20
 
     if supporting:
-        y = max(y + 34, 730)
+        y = max(y + 34, int(height * 0.68))
         for line in _wrapped_lines(supporting, 48)[:4]:
             draw.text((132, y), line, font=_font(31), fill=ink)
             y += 45
@@ -356,9 +358,9 @@ def _render_card(path: str, *, headline: str, supporting: str, pillar: str, inde
         with Image.open(OFFICIAL_LOGO_PATH) as logo_source:
             logo = logo_source.convert("RGBA")
             logo.thumbnail((210, 130), Image.Resampling.LANCZOS)
-            image.paste(logo, (798, 820), logo)
+        image.paste(logo, (width - 282, height - 260), logo)
 
-    draw.text((132, 984), "PRACTICAL POWER FOR REAL LIFE", font=_font(20, bold=True), fill=ink)
+    draw.text((132, height - 96), "PRACTICAL POWER FOR REAL LIFE", font=_font(20, bold=True), fill=ink)
     os.makedirs(os.path.dirname(path), exist_ok=True)
     image.save(path, format="PNG", optimize=True)
 
@@ -614,12 +616,28 @@ def _public_url(file_name: str) -> str:
 def _render_assets(data_dir: str, thought: dict[str, Any], index: int) -> dict[str, Any]:
     folder = os.path.join(data_dir, "public_media")
     stem = f"monthly_{index + 1:02d}_{thought['id'].lower()}"
-    if thought.get("format") == "carousel":
+    contract = thought.get("generation_contract") if isinstance(thought.get("generation_contract"), dict) else {}
+    if contract.get("format") == "product_comic_strip_carousel":
+        slides = [
+            {
+                "role": str(slide.get("role") or f"panel_{slide_index}"),
+                "headline": str(slide.get("headline") or ""),
+                "supporting": str(slide.get("supporting") or ""),
+            }
+            for slide_index, slide in enumerate(thought.get("slides") or [], start=1)
+            if isinstance(slide, dict)
+        ]
+    elif thought.get("format") == "carousel":
         slides = _carousel_slides(thought)
     elif thought.get("visual_execution") == "statement_graphic":
         slides = [{"role": "statement", "headline": thought["overlay_text"], "supporting": ""}]
     else:
         slides = [{"role": "thought", "headline": thought["statement"], "supporting": thought["expansion"]}]
+    canvas_px = contract.get("canvas_px") if isinstance(contract.get("canvas_px"), dict) else {}
+    canvas = (
+        int(canvas_px.get("width") or 1080),
+        int(canvas_px.get("height") or 1080),
+    )
     assets: list[dict[str, str]] = []
     for slide_index, slide in enumerate(slides, start=1):
         file_name = f"{stem}_{slide_index}.png"
@@ -632,6 +650,7 @@ def _render_assets(data_dir: str, thought: dict[str, Any], index: int) -> dict[s
             index=index + slide_index - 1,
             slide_label=f"{slide_index}/{len(slides)}" if len(slides) > 1 else "",
             role=str(slide.get("role") or "STORY").upper(),
+            canvas=canvas,
         )
         assets.append({
             "role": slide["role"],
@@ -921,7 +940,7 @@ def build_monthly_calendar(
             (start + timedelta(days=index)).isoformat(),
             index,
             data_dir,
-            defer_images=content_plan == CONTENT_PLAN_120,
+            defer_images=False,
         )
         for index, thought in enumerate(thoughts)
     ]
@@ -938,11 +957,14 @@ def build_monthly_calendar(
         thought = thoughts[index]
         package = packages[index]
         scheduled = first_scheduled_at(day)
+        assigned_slot = str(thought.get("slot") or "midday").strip().lower()
+        if assigned_slot not in {"morning", "midday", "evening"}:
+            assigned_slot = "midday"
         package["platform_schedule"] = growth_schedule(day)
         entry = {
             "date": day.isoformat(),
             "scheduled_at": scheduled,
-            "slot": "midday",
+            "slot": assigned_slot,
             "content_id": package["content_id"],
             "thought_id": thought["id"],
             "format": thought["format"],
@@ -959,29 +981,33 @@ def build_monthly_calendar(
                     "midday": scheduled,
                     "evening": datetime.combine(day, time(23, 0), tzinfo=timezone.utc).isoformat(),
                 },
-                platform_policy={"platforms": list(PLATFORMS), "source": "company_truth_month"},
+                platform_policy={
+                    "platforms": list(PLATFORMS),
+                    "source": "company_truth_month",
+                    "required_slots": [assigned_slot],
+                },
             )
-            midday = next(
-                (slot for slot in daily_status(data_dir, day)["slots"] if slot["slot"] == "midday"),
+            assigned = next(
+                (slot for slot in daily_status(data_dir, day)["slots"] if slot["slot"] == assigned_slot),
                 None,
             )
             date_already_covered = bool(
-                midday
-                and midday.get("outbox_id")
-                and midday.get("status") in {"READY", "DUE", "CLAIMED", "PUBLISHING", "PUBLISHED"}
+                assigned
+                and assigned.get("outbox_id")
+                and assigned.get("status") in {"READY", "DUE", "CLAIMED", "PUBLISHING", "PUBLISHED"}
             )
             if package["content_id"] in existing_ids and date_already_covered:
                 skipped_existing += 1
-                entry["queue_status"] = f"PRESERVED_{midday.get('status')}"
+                entry["queue_status"] = f"PRESERVED_{assigned.get('status')}"
             else:
-                if not replace_unpublished_slot(data_dir, day.isoformat(), "midday"):
+                if not replace_unpublished_slot(data_dir, day.isoformat(), assigned_slot):
                     entry["queue_status"] = "ACTIVE_OR_PUBLISHED_SLOT_PRESERVED"
                     entries.append(entry)
                     continue
                 decision_id = create_council_session(
                     data_dir,
                     content_date=day.isoformat(),
-                    slot="midday",
+                    slot=assigned_slot,
                     blackboard={
                         "company_knowledge": package["company_knowledge"],
                         "thought": package["master_copy"],
@@ -1001,7 +1027,7 @@ def build_monthly_calendar(
                 entry["outbox_id"] = mark_ready(
                     data_dir,
                     content_date=day.isoformat(),
-                    slot="midday",
+                    slot=assigned_slot,
                     scheduled_at=scheduled,
                     decision_id=decision_id,
                     package=package,
@@ -1016,12 +1042,15 @@ def build_monthly_calendar(
         publishable_states = {"READY", "DUE", "CLAIMED", "PUBLISHING", "PUBLISHED"}
         for index in range(days):
             requested_date = (start + timedelta(days=index)).isoformat()
-            midday = next(
-                (slot for slot in daily_status(data_dir, requested_date)["slots"] if slot["slot"] == "midday"),
+            requested_slot = str(thoughts[index].get("slot") or "midday").strip().lower()
+            if requested_slot not in {"morning", "midday", "evening"}:
+                requested_slot = "midday"
+            assigned = next(
+                (slot for slot in daily_status(data_dir, requested_date)["slots"] if slot["slot"] == requested_slot),
                 None,
             )
-            if not midday or midday.get("status") not in publishable_states or not midday.get("outbox_id"):
-                raise RuntimeError(f"monthly_schedule_coverage_incomplete:{requested_date}:midday")
+            if not assigned or assigned.get("status") not in publishable_states or not assigned.get("outbox_id"):
+                raise RuntimeError(f"monthly_schedule_coverage_incomplete:{requested_date}:{requested_slot}")
             covered_dates.append(requested_date)
 
     payload = {

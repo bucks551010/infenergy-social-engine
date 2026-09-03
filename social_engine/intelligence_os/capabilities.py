@@ -375,15 +375,20 @@ def register_core_capabilities(registry: CapabilityRegistry, policies: PolicyEng
 
         def build_in_background() -> None:
             try:
+                content_plan = str(payload.get("content_plan") or "weekly_brand_mix")
                 calendar = build_monthly_calendar(
                     data_dir=context.data_dir,
                     start_date=payload.get("start_date"),
                     days=120,
                     enqueue=True,
                     replace_unpublished=bool(payload.get("replace_unpublished", True)),
-                    content_plan=str(payload.get("content_plan") or "weekly_brand_mix"),
+                    content_plan=content_plan,
                 )
-                prepared = prepare_monthly_gemini_prompts(context.data_dir)
+                prepared = (
+                    {"prepared_entries": 0, "prepared_prompts": 0}
+                    if content_plan == "content_plan_120"
+                    else prepare_monthly_gemini_prompts(context.data_dir)
+                )
                 result = {
                     "calendar_path": calendar.get("calendar_path"),
                     "queued": int(calendar.get("queued") or 0),
@@ -397,7 +402,7 @@ def register_core_capabilities(registry: CapabilityRegistry, policies: PolicyEng
                     "historical_mission_posts": int(calendar.get("historical_mission_posts") or 0),
                     "prepared_entries": int(prepared.get("prepared_entries") or 0),
                     "prepared_prompts": int(prepared.get("prepared_prompts") or 0),
-                    "content_plan": str(payload.get("content_plan") or "weekly_brand_mix"),
+                    "content_plan": content_plan,
                     "replace_unpublished": bool(payload.get("replace_unpublished", True)),
                 }
                 for step in jobs.get(job["id"])["steps"]:

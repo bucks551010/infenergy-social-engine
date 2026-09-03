@@ -884,6 +884,37 @@ def test_120_day_capability_runs_real_builder_and_completes_job(tmp_path, monkey
     }
 
 
+def test_120_day_content_plan_uses_deterministic_assets_without_gemini(tmp_path, monkeypatch):
+    service = bootstrap(str(tmp_path))
+    gemini_called = threading.Event()
+
+    monkeypatch.setattr(
+        "build_monthly_content.build_monthly_calendar",
+        lambda **kwargs: {"calendar_path": str(tmp_path / "calendar.json"), "queued": 120},
+    )
+    monkeypatch.setattr(
+        "build_monthly_content.prepare_monthly_gemini_prompts",
+        lambda data_dir: gemini_called.set(),
+    )
+    pending = service.execute_capability(
+        "content.plan_120_days",
+        {"content_plan": "content_plan_120", "replace_unpublished": True},
+    )
+    result = service.approve_and_execute(pending["approval_id"])
+    job_id = result["execution"]["result"]["job"]["id"]
+
+    for _ in range(100):
+        job = service.jobs.get(job_id)
+        if job["status"] == "COMPLETED":
+            break
+        time.sleep(0.01)
+
+    assert job["status"] == "COMPLETED"
+    assert job["result"]["prepared_entries"] == 0
+    assert job["result"]["prepared_prompts"] == 0
+    assert gemini_called.is_set() is False
+
+
 def test_120_day_approval_route_returns_while_builder_runs(tmp_path, monkeypatch):
     service = bootstrap(str(tmp_path))
     conversation = service.create_conversation()

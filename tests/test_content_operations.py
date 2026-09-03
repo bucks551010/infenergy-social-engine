@@ -245,6 +245,46 @@ def test_operations_readiness_detects_missing_package_before_clock(tmp_path):
     assert any(action["action"] == "RECOVER_OR_PULL_READY_RESERVE" for action in readiness["actions"])
 
 
+def test_operations_readiness_honors_explicit_single_required_slot(tmp_path):
+    today = "2026-08-20"
+    tomorrow = "2026-08-21"
+    data_dir = str(tmp_path)
+    for day in (today, tomorrow):
+        ensure_daily_slots(
+            data_dir,
+            day,
+            _schedule(day),
+            {"platforms": ["facebook", "instagram", "linkedin"], "required_slots": ["midday"]},
+        )
+        decision_id = create_council_session(
+            data_dir,
+            content_date=day,
+            slot="midday",
+            blackboard={"content_job": "TEACH"},
+        )
+        mark_ready(
+            data_dir,
+            content_date=day,
+            slot="midday",
+            scheduled_at=_schedule(day)["midday"],
+            decision_id=decision_id,
+            package={"content_id": f"content-{day}", "routing": {"platforms": ["facebook"]}},
+        )
+
+    readiness = operations_readiness(
+        data_dir,
+        now_utc=datetime(2026, 8, 20, 12, 30, tzinfo=timezone.utc),
+        publisher_ready={"facebook": True},
+    )
+
+    assert readiness["today"]["required"] == 1
+    assert readiness["today"]["missing"] == 0
+    assert readiness["tomorrow"]["required"] == 1
+    assert readiness["tomorrow"]["ready"] == 1
+    assert readiness["content_supply_health"] == "READY"
+    assert all(action["action"] != "REPLENISH" for action in readiness["actions"])
+
+
 def test_restart_recovers_stale_claim_without_external_transaction(tmp_path):
     day = "2026-08-20"
     data_dir = str(tmp_path)

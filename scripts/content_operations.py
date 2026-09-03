@@ -909,18 +909,29 @@ def daily_status(data_dir: str, content_date: str | date | None = None) -> dict[
             item = dict(row)
             item["platform_policy"] = _decode(item.pop("platform_policy_json"), {})
             slots.append(item)
-        counts = {status: sum(1 for row in slots if row["status"] == status) for status in {
+        declared_required = next((
+            row["platform_policy"].get("required_slots")
+            for row in slots
+            if isinstance(row.get("platform_policy"), dict)
+            and isinstance(row["platform_policy"].get("required_slots"), list)
+        ), None)
+        required_slots = {
+            str(slot) for slot in (declared_required or SLOTS) if str(slot) in SLOTS
+        } or set(SLOTS)
+        required_rows = [row for row in slots if row["slot"] in required_slots]
+        counts = {status: sum(1 for row in required_rows if row["status"] == status) for status in {
             "UNPLANNED", "COUNCIL_ACTIVE", "READY", "DUE", "CLAIMED", "PUBLISHING", "PUBLISHED", "EXTERNAL_ACTION_REQUIRED"
         }}
         ready = counts.get("READY", 0) + counts.get("DUE", 0)
         published = counts.get("PUBLISHED", 0)
+        required = len(required_slots)
         return {
             "date": day,
-            "required": len(SLOTS),
+            "required": required,
             "published": published,
             "ready": ready,
             "in_production": counts.get("CLAIMED", 0) + counts.get("PUBLISHING", 0),
-            "missing": max(0, len(SLOTS) - published - ready - counts.get("CLAIMED", 0) - counts.get("PUBLISHING", 0)),
+            "missing": max(0, required - published - ready - counts.get("CLAIMED", 0) - counts.get("PUBLISHING", 0)),
             "slots": slots,
         }
     finally:
@@ -1109,7 +1120,7 @@ def operations_readiness(
             next_slot = slot_state
         if late:
             actions.append({"owner": "OPERATIONS_READINESS_SPECIALIST", "slot": row["slot"], "action": "RECOVER_OR_PULL_READY_RESERVE", "reason": row.get("last_error") or "readiness_deadline_missed"})
-    if tomorrow["ready"] < 3:
+    if tomorrow["ready"] < tomorrow["required"]:
         actions.append({"owner": "CONTENT_FACTORY", "slot": "tomorrow", "action": "REPLENISH", "reason": f"tomorrow_ready={tomorrow['ready']}"})
     if not dispatcher_active:
         actions.append({"owner": "OPERATIONS_READINESS_SPECIALIST", "slot": "all", "action": "RESTORE_DISPATCHER", "reason": "dispatcher_inactive"})
@@ -1117,7 +1128,7 @@ def operations_readiness(
         if not ready:
             actions.append({"owner": "OPERATIONS_READINESS_SPECIALIST", "slot": "all", "action": "RESTORE_PUBLISHER", "reason": f"{platform}_not_ready"})
     creative_blocked = any(row["status"] == "EXTERNAL_ACTION_REQUIRED" for row in today["slots"] + tomorrow["slots"])
-    content_supply_ready = today["missing"] == 0 and tomorrow["ready"] == 3
+    content_supply_ready = today["missing"] == 0 and tomorrow["ready"] == tomorrow["required"]
     return {
         "service_health": "HEALTHY",
         "content_supply_health": "READY" if content_supply_ready else "ACTION_REQUIRED",

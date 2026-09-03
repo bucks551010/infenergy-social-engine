@@ -975,12 +975,19 @@ def _authorized(params: dict) -> tuple[bool, int, dict]:
 
 def _os_authorized(handler: BaseHTTPRequestHandler, params: dict) -> tuple[bool, int, dict]:
     """Authorize new OS APIs with a bearer token; query token remains a compatibility fallback."""
-    token = os.environ.get("INTELLIGENCE_OS_TOKEN", "").strip() or os.environ.get("MANUAL_RUN_TOKEN", "").strip()
+    valid_tokens = [
+        token
+        for token in (
+            os.environ.get("INTELLIGENCE_OS_TOKEN", "").strip(),
+            os.environ.get("MANUAL_RUN_TOKEN", "").strip(),
+        )
+        if token
+    ]
     authorization = str(handler.headers.get("Authorization", "") if hasattr(handler, "headers") else "")
     provided = authorization[7:].strip() if authorization.lower().startswith("bearer ") else str(params.get("token", [""])[0])
-    if not token:
+    if not valid_tokens:
         return False, 403, {"error": "INTELLIGENCE_OS_TOKEN or MANUAL_RUN_TOKEN not configured"}
-    if not hmac.compare_digest(provided, token):
+    if not any(hmac.compare_digest(provided, token) for token in valid_tokens):
         return False, 401, {"error": "invalid token"}
     return True, 200, {}
 

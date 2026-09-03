@@ -9,6 +9,30 @@ import requests
 import worker
 
 
+def test_os_authorized_accepts_either_configured_owner_token():
+    with patch.dict(
+        os.environ,
+        {"INTELLIGENCE_OS_TOKEN": "os-token", "MANUAL_RUN_TOKEN": "manual-token"},
+        clear=False,
+    ):
+        os_authorized = worker._os_authorized(
+            type("Handler", (), {"headers": {"Authorization": "Bearer os-token"}})(),
+            {},
+        )
+        manual_authorized = worker._os_authorized(
+            type("Handler", (), {"headers": {"Authorization": "Bearer manual-token"}})(),
+            {},
+        )
+        denied = worker._os_authorized(
+            type("Handler", (), {"headers": {"Authorization": "Bearer invalid-token"}})(),
+            {},
+        )
+
+    assert os_authorized == (True, 200, {})
+    assert manual_authorized == (True, 200, {})
+    assert denied == (False, 401, {"error": "invalid token"})
+
+
 def setup_function():
     worker._custom_post_artifact_preflight = lambda *_args: []
     worker._verify_iis_publish_package = lambda *_args: []

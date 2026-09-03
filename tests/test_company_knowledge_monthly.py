@@ -201,31 +201,39 @@ def test_weekly_brand_mix_compiles_120_days_with_exact_weekly_roles(monkeypatch)
 
 def test_120_day_entries_translate_to_runtime_generation_contracts():
     plan = build_120_day_plan(data_dir=str(ROOT / "data"), start_date="2026-09-02")
-    friday = next(entry for entry in plan["entries"] if entry["format"] == "product_micro_mission_comic")
+    tuesday = next(entry for entry in plan["entries"] if entry["format"] == "product_comic_strip_carousel")
+    friday = next(entry for entry in plan["entries"] if entry["format"] == "product_story_page")
     sunday = next(entry for entry in plan["entries"] if entry["format"] == "infenergy_company_quote_visual")
 
-    comic = _plan_entry_thought(friday)
+    comic = _plan_entry_thought(tuesday)
+    story = _plan_entry_thought(friday)
     message = _plan_entry_thought(sunday)
 
-    assert comic["format"] == "single"
-    assert comic["product_id"] == friday["product_id"]
-    assert comic["editorial_mode"] == friday["entertainment_mode"]
+    assert comic["format"] == "carousel"
+    assert comic["product_id"] == tuesday["product_id"]
+    assert comic["editorial_mode"] == tuesday["entertainment_mode"]
     assert comic["generation_contract"]["product_integration"]["required"] is True
-    assert [slide["headline"] for slide in comic["slides"]] == friday["story_sequence"]
+    assert [slide["headline"] for slide in comic["slides"]] == tuesday["story_sequence"]
+    assert story["format"] == "single"
+    assert story["weekly_role"] == "story_page"
     assert message["format"] == "single"
     assert message["statement"] == sunday["exact_visible_text"][0]
     assert message["expansion"] == sunday["support_statement"]
     assert message["generation_contract"]["verbatim_company_quote"] is True
 
     comic_generation = _gemini_generation_plan(comic, _load_product_brief(str(ROOT / "data"), comic["product_id"]))
+    story_generation = _gemini_generation_plan(story, _load_product_brief(str(ROOT / "data"), story["product_id"]))
     message_generation = _gemini_generation_plan(message)
-    assert comic_generation["required_image_count"] == 1
-    assert comic_generation["aspect_ratio"] == "9:16"
-    assert "exactly THREE" in comic_generation["prompts"][0]["gemini_image_prompt"]
-    assert friday["entertainment_mode"] in comic_generation["prompts"][0]["gemini_image_prompt"]
+    assert comic_generation["required_image_count"] == 3
+    assert comic_generation["aspect_ratio"] == "4:5"
+    assert "sequential swipeable comic strip carousel" in comic_generation["prompts"][0]["gemini_image_prompt"]
+    assert tuesday["entertainment_mode"] in comic_generation["prompts"][0]["gemini_image_prompt"]
     assert "square editorial" not in comic_generation["prompts"][0]["gemini_image_prompt"]
     assert "finished 1:1" not in comic_generation["prompts"][0]["gemini_image_prompt"]
-    assert comic_generation["prompts"][0]["v5_direction"]["text_overlay"]["comic_panel_text"] == list(friday["visible_text"].values())
+    assert comic_generation["prompts"][0]["v5_direction"]["text_overlay"]["comic_panel_text"] == list(tuesday["visible_text"].values())
+    assert story_generation["required_image_count"] == 1
+    assert story_generation["aspect_ratio"] == "9:16"
+    assert "Story page containing exactly THREE" in story_generation["prompts"][0]["gemini_image_prompt"]
     assert message_generation["aspect_ratio"] == "4:5"
     assert sunday["exact_visible_text"][0] in message_generation["prompts"][0]["v5_direction"]["text_overlay"]["text"]
 
@@ -244,8 +252,11 @@ def test_120_day_plan_queues_existing_runtime_packages(tmp_path, monkeypatch):
 
     assert calendar["queued"] == 7
     assert calendar["coverage_days"] == 7
-    friday = next(entry for entry in calendar["entries"] if entry["package"]["generation_contract"].get("format") == "product_micro_mission_comic")
+    tuesday = next(entry for entry in calendar["entries"] if entry["package"]["generation_contract"].get("format") == "product_comic_strip_carousel")
+    friday = next(entry for entry in calendar["entries"] if entry["package"]["generation_contract"].get("format") == "product_story_page")
     sunday = next(entry for entry in calendar["entries"] if entry["package"]["generation_contract"].get("format") == "infenergy_company_quote_visual")
+    assert tuesday["package"]["gemini_generation"]["aspect_ratio"] == "4:5"
+    assert tuesday["package"]["gemini_generation"]["required_image_count"] == 3
     assert friday["package"]["gemini_generation"]["aspect_ratio"] == "9:16"
     assert friday["package"]["generation_contract"]["product_integration"]["required"] is True
     assert sunday["package"]["thought_statement"] == sunday["package"]["generation_contract"]["exact_visible_text"][0]

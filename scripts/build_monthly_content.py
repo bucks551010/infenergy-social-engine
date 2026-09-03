@@ -164,7 +164,9 @@ def _plan_entry_thought(entry: dict[str, Any]) -> dict[str, Any]:
     statement = str((exact_text or [entry.get("title") or entry.get("hook") or "Power the next move."])[0]).strip()
     support = str(entry.get("support_statement") or entry.get("takeaway") or entry.get("story") or "").strip()
     product = entry.get("product") if isinstance(entry.get("product"), dict) else {}
-    is_comic = entry.get("format") == "product_micro_mission_comic"
+    is_comic = entry.get("format") in {"product_micro_mission_comic", "product_comic_strip_carousel", "product_story_page"}
+    is_comic_carousel = entry.get("format") == "product_comic_strip_carousel"
+    is_story_page = entry.get("format") == "product_story_page"
     is_company_message = entry.get("format") == "infenergy_company_quote_visual"
     story_sequence = [str(item) for item in entry.get("story_sequence", []) if str(item).strip()]
     generation_contract = deepcopy(entry)
@@ -176,7 +178,7 @@ def _plan_entry_thought(entry: dict[str, Any]) -> dict[str, Any]:
         "kind": "product_micro_mission" if is_comic else "company_super_message" if is_company_message else "planned_editorial",
         "content_type": "product" if product else "editorial",
         "product_id": str(entry.get("product_id") or product.get("product_id") or ""),
-        "format": "single",
+        "format": "carousel" if is_comic_carousel else "single",
         "statement": statement,
         "overlay_text": statement,
         "expansion": support or str(entry.get("hook") or statement),
@@ -188,10 +190,10 @@ def _plan_entry_thought(entry: dict[str, Any]) -> dict[str, Any]:
         "hashtags": ["Infenergy", "PowerReadiness", "PracticalPower"],
         "visual_motif": str(entry.get("visual_reveal") or entry.get("story") or statement),
         "image_scene": " ".join(story_sequence) if story_sequence else str(entry.get("story") or entry.get("infenergy_action") or statement),
-        "visual_execution": "single vertical three-panel product comic" if is_comic else "single-frame integrated typography" if is_company_message else str(entry.get("format_label") or "editorial_scene"),
+        "visual_execution": "three-frame product comic strip carousel" if is_comic_carousel else "single vertical three-panel Story page" if is_story_page else "single vertical three-panel product comic" if is_comic else "single-frame integrated typography" if is_company_message else str(entry.get("format_label") or "editorial_scene"),
         "characters": ["Infenergy"] if entry.get("canon_required") or is_comic or is_company_message else [],
         "canon_required": bool(entry.get("canon_required") or is_comic or is_company_message),
-        "weekly_role": "micro_mission" if is_comic else "superhero_quote" if is_company_message else "planned_editorial",
+        "weekly_role": "comic_strip_carousel" if is_comic_carousel else "story_page" if is_story_page else "micro_mission" if is_comic else "superhero_quote" if is_company_message else "planned_editorial",
         "slides": [
             {"role": f"panel_{index}", "headline": item, "supporting": ""}
             for index, item in enumerate(story_sequence, start=1)
@@ -405,11 +407,21 @@ def _load_product_brief(data_dir: str, product_id: str) -> dict[str, Any]:
 
 def _gemini_generation_plan(thought: dict[str, Any], product: dict[str, Any] | None = None) -> dict[str, Any]:
     contract = thought.get("generation_contract") if isinstance(thought.get("generation_contract"), dict) else {}
-    is_product_comic = contract.get("format") == "product_micro_mission_comic"
+    is_product_comic = contract.get("format") in {"product_micro_mission_comic", "product_comic_strip_carousel", "product_story_page"}
+    is_comic_carousel = contract.get("format") == "product_comic_strip_carousel"
+    is_story_page = contract.get("format") == "product_story_page"
     is_company_message = contract.get("format") == "infenergy_company_quote_visual"
-    output_ratio = "9:16" if is_product_comic else "4:5" if is_company_message else "1:1"
-    output_shape = "vertical 9:16" if is_product_comic else "portrait 4:5" if is_company_message else "square 1:1"
-    slides = _carousel_slides(thought) if thought.get("format") == "carousel" else [
+    output_ratio = "4:5" if is_comic_carousel or is_company_message else "9:16" if is_product_comic else "1:1"
+    output_shape = "portrait 4:5" if is_comic_carousel or is_company_message else "vertical 9:16" if is_product_comic else "square 1:1"
+    slides = [
+        {
+            "role": str(slide.get("role") or f"panel_{index}"),
+            "headline": str(slide.get("headline") or ""),
+            "supporting": str(slide.get("supporting") or ""),
+        }
+        for index, slide in enumerate(thought.get("slides") or [], start=1)
+        if isinstance(slide, dict)
+    ] if is_comic_carousel else _carousel_slides(thought) if thought.get("format") == "carousel" else [
         {"role": "thought", "headline": thought["statement"], "supporting": thought["expansion"]}
     ]
     visual_execution = str(thought.get("visual_execution") or "editorial_scene")
@@ -447,8 +459,14 @@ def _gemini_generation_plan(thought: dict[str, Any], product: dict[str, Any] | N
         if is_product_comic:
             sequence = " ".join(str(item) for item in contract.get("story_sequence", []) if str(item).strip())
             integration = contract.get("product_integration") if isinstance(contract.get("product_integration"), dict) else {}
+            delivery_instruction = (
+                "Deliver this ONE panel as a separate 1080x1350 portrait 4:5 carousel image; the three generated images form one sequential swipeable comic strip carousel. "
+                if is_comic_carousel else
+                "Deliver ONE 1080x1920 vertical 9:16 Story page containing exactly THREE clearly separated, sequential comic panels; never return separate images or a carousel. "
+            )
             contract_instruction = (
-                "Deliver ONE 1080x1920 vertical 9:16 image containing exactly THREE clearly separated, sequential comic panels; never return separate images or a carousel. "
+                delivery_instruction
+                +
                 f"Entertainment mode: {contract.get('entertainment_mode')}. Entertainment direction: {contract.get('entertainment_hook')} "
                 f"Required sequence: {sequence} Product plot rule: {integration.get('role')} {integration.get('plot_test')} "
                 f"Claim boundary: {integration.get('boundary')} Humor enabled: {bool(contract.get('humor_enabled'))}. {contract.get('humor_guardrail')} "

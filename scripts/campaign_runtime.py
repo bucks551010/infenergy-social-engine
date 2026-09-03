@@ -515,23 +515,22 @@ def recurring_series_for_slot(day: str, slot: str, now_utc: datetime | None = No
     targets = [("tuesday", "midday"), ("friday", "morning")]
     if normalized not in targets:
         return {}
-    formats = ["cinematic_brand_poster", "product_micro_mission_comic", "educational_story_carousel"]
-    now = now_utc or datetime.now(timezone.utc)
+    formats = ["product_comic_strip_carousel", "product_story_page"]
     preferred_format = (
-        "product_micro_mission_comic"
+        "product_story_page"
         if normalized == ("friday", "morning")
-        else ("cinematic_brand_poster" if now.isocalendar().week % 2 else "educational_story_carousel")
+        else "product_comic_strip_carousel"
     )
     format_identifiers = {
-        "cinematic_brand_poster": "cinematic_brand_poster",
-        "product_micro_mission_comic": "superhero_text_integration",
-        "educational_story_carousel": "educational_story_carousel",
+        "product_comic_strip_carousel": "comic_strip_carousel",
+        "product_story_page": "story_page_post",
     }
     return {
         "id": "infenergy_intervention",
         "name": "Infenergy Intervention",
         "archetype": "character_led_edutainment",
         "cadence": "twice_weekly",
+        "format_policy": "distinct_format_per_slot",
         "preferred_format": preferred_format,
         "content_format_identifier": format_identifiers[preferred_format],
         "format_rotation": formats,

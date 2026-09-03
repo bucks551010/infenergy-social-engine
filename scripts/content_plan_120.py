@@ -33,6 +33,8 @@ MAX_PLAN_DAYS = 120
 CONTENT_FORMAT_IDENTIFIERS = {
     "cinematic_brand_poster": "cinematic_brand_poster",
     "product_micro_mission_comic": "superhero_text_integration",
+    "product_comic_strip_carousel": "comic_strip_carousel",
+    "product_story_page": "story_page_post",
     "educational_story_carousel": "educational_story_carousel",
     "infenergy_company_quote_visual": "superhero_text_integration",
     "challenge_carousel": "try_this_irl",
@@ -574,6 +576,8 @@ def _intervention_concept(
         "cinematic_brand_poster": "Cinematic poster",
         "product_micro_mission_comic": "Superhero with text",
         "educational_story_carousel": "Educational story carousel",
+        "product_comic_strip_carousel": "Comic strip carousel",
+        "product_story_page": "Story page post",
     }
     resolutions = (
         "Freeze the scene at the bad assumption. Infenergy enters like the smartest friend in the group chat, names the hidden dependency, and gives the product one honest mission.",
@@ -623,21 +627,24 @@ def _intervention_concept(
         "cinematic_brand_poster": "micro_mission_still",
         "educational_story_carousel": "superhero_carousel",
         "product_micro_mission_comic": "comic_strip",
+        "product_comic_strip_carousel": "comic_strip_carousel",
+        "product_story_page": "story_page_post",
     }[preferred_format]
-    if preferred_format == "product_micro_mission_comic":
+    if preferred_format in {"product_micro_mission_comic", "product_comic_strip_carousel", "product_story_page"}:
         visible_text = {
             "headline": hook,
             "infenergy_line": "Pause. What job does the power actually need to do?",
             "resolution_line": arc["takeaway"],
         }
+        is_carousel = preferred_format == "product_comic_strip_carousel"
         story_comic_contract = {
-            "delivery_label": "Product Story comic strip",
-            "platform": "instagram_story",
-            "aspect_ratio": "9:16",
-            "canvas_px": {"width": 1080, "height": 1920},
-            "canvas_count": 1,
+            "delivery_label": "Product comic strip carousel" if is_carousel else "Product Story page",
+            "platform": "instagram_feed" if is_carousel else "instagram_story",
+            "aspect_ratio": "4:5" if is_carousel else "9:16",
+            "canvas_px": {"width": 1080, "height": 1350} if is_carousel else {"width": 1080, "height": 1920},
+            "canvas_count": 3 if is_carousel else 1,
             "panel_count": 3,
-            "layout": "single_vertical_comic_strip",
+            "layout": "three_frame_comic_carousel" if is_carousel else "single_vertical_story_page",
             "product_required": True,
             "product_id": product["product_id"],
             "product_name": product["product_name"],
@@ -661,8 +668,8 @@ def _intervention_concept(
                 f"Panel 3: the customer physically uses {product['product_name']} for its verified role, completes the moment, and owns the resolution.",
             ],
             "delivery_constraints": [
-                "one full-bleed 1080 x 1920 image containing three readable comic panels",
-                "not a carousel and not three separate images",
+                "three separate sequential 1080 x 1350 carousel images, one comic panel per image" if is_carousel else "one full-bleed 1080 x 1920 Story image containing three readable comic panels",
+                "a true swipeable carousel, never combine the panels into one image" if is_carousel else "one Story page, not a carousel and not three separate images",
                 "use the verified product reference without redesigning or inventing features",
                 "the product must affect the plot rather than appear as a packshot or decorative prop",
                 "create curiosity, tension, surprise, recognition, or humor before revealing the solution",
@@ -677,8 +684,8 @@ def _intervention_concept(
         "format": preferred_format,
         "format_label": format_labels[preferred_format],
         "delivery_type": delivery_type,
-        "hero_text_required": preferred_format in {"cinematic_brand_poster", "educational_story_carousel"},
-        "still_images_only": preferred_format in {"cinematic_brand_poster", "educational_story_carousel"},
+        "hero_text_required": preferred_format in {"cinematic_brand_poster", "educational_story_carousel", "product_comic_strip_carousel", "product_story_page"},
+        "still_images_only": preferred_format in {"cinematic_brand_poster", "educational_story_carousel", "product_comic_strip_carousel", "product_story_page"},
         "product_required": True,
         "product_id": product["product_id"],
         "product_name": product["product_name"],
@@ -1111,7 +1118,13 @@ def build_120_day_plan(
             for format_name in sorted({entry["format"] for entry in entries})
         },
         "superhero_with_text_count": sum(
-            1 for entry in entries if entry["format"] == "product_micro_mission_comic"
+            1 for entry in entries if entry["format"] == "infenergy_company_quote_visual"
+        ),
+        "weekly_comic_strip_carousel_count": sum(
+            1 for entry in entries if entry["format"] == "product_comic_strip_carousel"
+        ),
+        "weekly_story_page_count": sum(
+            1 for entry in entries if entry["format"] == "product_story_page"
         ),
         "weekly_company_quote_count": sum(
             1 for entry in entries if entry["format"] == "infenergy_company_quote_visual"

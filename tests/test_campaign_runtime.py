@@ -135,12 +135,15 @@ class CampaignRuntimeTests(unittest.TestCase):
         self.assertEqual(selected["hook"], "Existing weekly hook")
         self.assertEqual(selected["series"]["id"], "infenergy_intervention")
         self.assertEqual(selected["series"]["cadence"], "twice_weekly")
+        self.assertEqual(selected["series"]["format_policy"], "distinct_format_per_slot")
         self.assertTrue(selected["series"]["product_required"])
         self.assertEqual(recurring_series_for_slot("Wednesday", "midday", now_utc=tuesday), {})
         friday_format = recurring_series_for_slot("Friday", "morning", now_utc=tuesday)["preferred_format"]
         next_tuesday = datetime(2026, 9, 8, 12, 0, tzinfo=timezone.utc)
         next_format = recurring_series_for_slot("Tuesday", "midday", now_utc=next_tuesday)["preferred_format"]
         self.assertNotEqual(friday_format, next_format)
+        self.assertEqual(next_format, "product_comic_strip_carousel")
+        self.assertEqual(friday_format, "product_story_page")
 
         with patch("campaign_runtime.load_latest_weekly_plan", return_value={}):
             without_plan = select_weekly_sequence("midday", now_utc=tuesday)

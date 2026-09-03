@@ -2386,6 +2386,8 @@ def _apply_recurring_series_visual_plan(visual_plan: dict, series: dict) -> dict
         "cinematic_brand_poster": "Create one cinematic character-led brand poster with a single decisive intervention moment and a bold one-second visual hierarchy.",
         "product_micro_mission_comic": "Create one complete multi-panel comic page: avoidable energy mistake, Infenergy confrontation, product reveal, and product-enabled resolution with readable sequential action.",
         "educational_story_carousel": "Create a platform-native educational story carousel with distinct standalone frames for hook, mistake, consequence, intervention, product proof, and resolution.",
+        "product_comic_strip_carousel": "Create a three-frame platform-native comic strip carousel with one sequential comic panel per 4:5 image: problem, intervention, and product-enabled resolution.",
+        "product_story_page": "Create one complete 9:16 Story page with three readable sequential panels: problem, Infenergy intervention, and product-enabled resolution.",
     }
     directive = directives.get(preferred_format, directives["cinematic_brand_poster"])
     current_prompt = str(visual_plan.get("gemini_image_prompt") or "").strip()
@@ -2410,11 +2412,11 @@ def _apply_recurring_series_package(content: dict, platform_posts: dict, series:
             package["content_format"] = preferred_format
     instagram = platform_posts.get("instagram")
     if isinstance(instagram, dict):
-        instagram["media_type"] = "CAROUSEL" if preferred_format == "educational_story_carousel" else "STATIC"
+        instagram["media_type"] = "CAROUSEL" if preferred_format in {"educational_story_carousel", "product_comic_strip_carousel"} else "STORY" if preferred_format == "product_story_page" else "STATIC"
 
 
 def _apply_recurring_series_generation_contract(content: dict, visual_plan: dict, series: dict, product: dict | None) -> None:
-    if series.get("id") != "infenergy_intervention" or series.get("preferred_format") != "educational_story_carousel":
+    if series.get("id") != "infenergy_intervention" or series.get("preferred_format") not in {"educational_story_carousel", "product_comic_strip_carousel"}:
         return
     from build_monthly_content import _gemini_generation_plan
 

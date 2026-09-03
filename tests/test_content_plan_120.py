@@ -9,7 +9,7 @@ _REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(_REPO, "scripts"))
 
 from content_plan_120 import build_120_day_plan  # noqa: E402
-from build_monthly_content import _package, _plan_entry_thought  # noqa: E402
+from build_monthly_content import _gemini_generation_plan, _package, _plan_entry_thought  # noqa: E402
 from social_engine.intelligence_os.web import handle  # noqa: E402
 
 
@@ -132,50 +132,58 @@ def test_plan_preserves_intervention_cadence_and_continuous_format_rotation(tmp_
     assert [entry["installment"] for entry in interventions] == list(range(1, 35))
     friday_interventions = [entry for entry in interventions if entry["weekday"] == "Friday"]
     tuesday_interventions = [entry for entry in interventions if entry["weekday"] == "Tuesday"]
-    assert all(entry["format"] == "product_micro_mission_comic" for entry in friday_interventions)
-    assert all(entry["format"] != "product_micro_mission_comic" for entry in tuesday_interventions)
-    assert {entry["format"] for entry in tuesday_interventions} == {
-        "cinematic_brand_poster",
-        "educational_story_carousel",
-    }
+    assert all(entry["format"] == "product_comic_strip_carousel" for entry in tuesday_interventions)
+    assert all(entry["format"] == "product_story_page" for entry in friday_interventions)
     assert all(entry["canon_required"] for entry in interventions)
-    superhero_posts = [
-        entry for entry in interventions
-        if entry["format"] == "product_micro_mission_comic"
-    ]
-    assert plan["superhero_with_text_count"] == len(superhero_posts) == 17
-    assert all(entry["format_label"] == "Superhero with text" for entry in superhero_posts)
-    assert all(entry["visible_text"]["headline"] for entry in superhero_posts)
-    assert all(entry["visible_text"]["infenergy_line"] for entry in superhero_posts)
-    assert all(entry["visible_text"]["resolution_line"] for entry in superhero_posts)
-    assert all(entry["delivery_label"] == "Product Story comic strip" for entry in superhero_posts)
-    assert all(entry["platform"] == "instagram_story" for entry in superhero_posts)
-    assert all(entry["aspect_ratio"] == "9:16" for entry in superhero_posts)
-    assert all(entry["canvas_px"] == {"width": 1080, "height": 1920} for entry in superhero_posts)
-    assert all(entry["canvas_count"] == 1 for entry in superhero_posts)
-    assert all(entry["panel_count"] == 3 for entry in superhero_posts)
-    assert all(entry["layout"] == "single_vertical_comic_strip" for entry in superhero_posts)
-    assert all(entry["product_required"] is True for entry in superhero_posts)
-    assert all(entry["product_id"] == entry["product"]["product_id"] for entry in superhero_posts)
-    assert all(entry["product_name"] == entry["product"]["product_name"] for entry in superhero_posts)
-    assert all(entry["product_reference_required"] is True for entry in superhero_posts)
-    assert all(entry["product_integration"]["required"] is True for entry in superhero_posts)
-    assert all("Removing the product" in entry["product_integration"]["plot_test"] for entry in superhero_posts)
-    assert all(entry["product_name"] in entry["story_sequence"][2] for entry in superhero_posts)
-    assert len({entry["entertainment_mode"] for entry in superhero_posts}) == 6
-    assert all(entry["entertainment_hook"] and entry["visual_reveal"] for entry in superhero_posts)
-    assert 0 < sum(entry["humor_enabled"] for entry in superhero_posts) < len(superhero_posts)
-    assert all("never the customer" in entry["humor_guardrail"] for entry in superhero_posts)
-    assert all(len(entry["story_sequence"]) == 3 for entry in superhero_posts)
+    assert plan["weekly_comic_strip_carousel_count"] == len(tuesday_interventions) == 17
+    assert plan["weekly_story_page_count"] == len(friday_interventions) == 17
+    assert all(entry["format_label"] == "Comic strip carousel" for entry in tuesday_interventions)
+    assert all(entry["delivery_label"] == "Product comic strip carousel" for entry in tuesday_interventions)
+    assert all(entry["platform"] == "instagram_feed" for entry in tuesday_interventions)
+    assert all(entry["aspect_ratio"] == "4:5" for entry in tuesday_interventions)
+    assert all(entry["canvas_px"] == {"width": 1080, "height": 1350} for entry in tuesday_interventions)
+    assert all(entry["canvas_count"] == 3 for entry in tuesday_interventions)
+    assert all(entry["layout"] == "three_frame_comic_carousel" for entry in tuesday_interventions)
+    assert all(entry["format_label"] == "Story page post" for entry in friday_interventions)
+    assert all(entry["delivery_label"] == "Product Story page" for entry in friday_interventions)
+    assert all(entry["platform"] == "instagram_story" for entry in friday_interventions)
+    assert all(entry["aspect_ratio"] == "9:16" for entry in friday_interventions)
+    assert all(entry["canvas_px"] == {"width": 1080, "height": 1920} for entry in friday_interventions)
+    assert all(entry["canvas_count"] == 1 for entry in friday_interventions)
+    assert all(entry["layout"] == "single_vertical_story_page" for entry in friday_interventions)
+    assert all(entry["visible_text"]["headline"] for entry in interventions)
+    assert all(entry["visible_text"]["infenergy_line"] for entry in interventions)
+    assert all(entry["visible_text"]["resolution_line"] for entry in interventions)
+    assert all(entry["panel_count"] == 3 for entry in interventions)
+    assert all(entry["product_required"] is True for entry in interventions)
+    assert all(entry["product_id"] == entry["product"]["product_id"] for entry in interventions)
+    assert all(entry["product_reference_required"] is True for entry in interventions)
+    assert all(entry["product_integration"]["required"] is True for entry in interventions)
+    assert all("Removing the product" in entry["product_integration"]["plot_test"] for entry in interventions)
+    assert all(entry["product_name"] in entry["story_sequence"][2] for entry in interventions)
+    assert len({entry["entertainment_mode"] for entry in interventions}) == 6
+    assert all(entry["entertainment_hook"] and entry["visual_reveal"] for entry in interventions)
+    assert 0 < sum(entry["humor_enabled"] for entry in interventions) < len(interventions)
+    assert all("never the customer" in entry["humor_guardrail"] for entry in interventions)
+    assert all(len(entry["story_sequence"]) == 3 for entry in interventions)
     assert all(
-        any("not a carousel" in constraint for constraint in entry["delivery_constraints"])
-        for entry in superhero_posts
+        any("true swipeable carousel" in constraint for constraint in entry["delivery_constraints"])
+        for entry in tuesday_interventions
     )
     assert all(
         any("affect the plot" in constraint for constraint in entry["delivery_constraints"])
-        for entry in superhero_posts
+        for entry in interventions
     )
-    assert all(entry["image_status"] == "NOT_GENERATED" for entry in superhero_posts)
+    assert all(entry["image_status"] == "NOT_GENERATED" for entry in interventions)
+
+    complete_weeks = {
+        entry["week"] for entry in plan["entries"]
+        if {candidate["weekday"] for candidate in plan["entries"] if candidate["week"] == entry["week"]}
+        == {"Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"}
+    }
+    for week in complete_weeks:
+        formats = {entry["format"] for entry in plan["entries"] if entry["week"] == week}
+        assert {"product_comic_strip_carousel", "product_story_page", "infenergy_company_quote_visual"}.issubset(formats)
 
 
 def test_plan_includes_required_hero_and_mission_formats_with_approved_copy_rotation(tmp_path):
@@ -189,9 +197,8 @@ def test_plan_includes_required_hero_and_mission_formats_with_approved_copy_rota
         delivery_type: sum(entry.get("delivery_type") == delivery_type for entry in entries)
         for delivery_type in {
             "hero_text_still",
-            "superhero_carousel",
-            "micro_mission_still",
-            "comic_strip",
+            "comic_strip_carousel",
+            "story_page_post",
         }
     }
     copy_form_counts = {
@@ -201,13 +208,29 @@ def test_plan_includes_required_hero_and_mission_formats_with_approved_copy_rota
 
     assert all(count > 0 for count in delivery_counts.values())
     assert delivery_counts["hero_text_still"] == 17
-    assert delivery_counts["comic_strip"] == 17
-    assert delivery_counts["superhero_carousel"] + delivery_counts["micro_mission_still"] == 17
+    assert delivery_counts["comic_strip_carousel"] == 17
+    assert delivery_counts["story_page_post"] == 17
     assert len(copy_form_counts) == 10
     assert set(copy_form_counts.values()) == {12}
     assert all(entry.get("canon_required") for entry in entries if entry.get("delivery_type"))
-    assert all(entry.get("hero_text_required") for entry in entries if entry.get("delivery_type") in {"hero_text_still", "superhero_carousel"})
-    assert all(entry.get("still_images_only") for entry in entries if entry.get("delivery_type") in {"hero_text_still", "superhero_carousel", "micro_mission_still"})
+    assert all(entry.get("hero_text_required") for entry in entries if entry.get("delivery_type") in {"hero_text_still", "comic_strip_carousel", "story_page_post"})
+    assert all(entry.get("still_images_only") for entry in entries if entry.get("delivery_type") in {"hero_text_still", "comic_strip_carousel", "story_page_post"})
+
+    weekly_formats = {
+        entry["format"]: _gemini_generation_plan(
+            _plan_entry_thought(entry),
+            {"name": entry["product_name"], "visual_direction": "Use the verified reference.", "image_url": ""}
+            if entry.get("product_name") else None,
+        )
+        for entry in entries[:7]
+        if entry["format"] in {"product_comic_strip_carousel", "product_story_page", "infenergy_company_quote_visual"}
+    }
+    assert weekly_formats["product_comic_strip_carousel"]["required_image_count"] == 3
+    assert weekly_formats["product_comic_strip_carousel"]["aspect_ratio"] == "4:5"
+    assert weekly_formats["product_story_page"]["required_image_count"] == 1
+    assert weekly_formats["product_story_page"]["aspect_ratio"] == "9:16"
+    assert weekly_formats["infenergy_company_quote_visual"]["required_image_count"] == 1
+    assert weekly_formats["infenergy_company_quote_visual"]["aspect_ratio"] == "4:5"
 
 
 def test_weekly_company_quotes_are_verbatim_sourced_and_audience_matched(tmp_path):

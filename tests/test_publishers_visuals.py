@@ -330,7 +330,22 @@ class PublisherVisualTests(unittest.TestCase):
             )
 
         self.assertEqual(result["id"], "post-1")
+        self.assertEqual(result["media_type"], "IMAGE")
+        self.assertEqual(result["image_url"], "https://example.com/owner.png")
         review.assert_not_called()
+
+    def test_linkedin_fails_closed_when_approved_image_cannot_be_downloaded(self) -> None:
+        with patch.object(publish_linkedin, "_resolve_author_urn", return_value="urn:li:organization:1"), \
+            patch.object(publish_linkedin, "_is_reachable_image_url", return_value=False):
+            with self.assertRaisesRegex(RuntimeError, "linkedin_approved_primary_image_unavailable"):
+                publish_linkedin.publish(
+                    {
+                        "li_text": "Caption",
+                        "primary_publish_image_url": "https://example.com/approved.png",
+                        "owner_supplied_visual": True,
+                    },
+                    "",
+                )
 
     def test_instagram_story_uses_story_container_and_publish_protocol(self) -> None:
         create_response = Mock(ok=True)

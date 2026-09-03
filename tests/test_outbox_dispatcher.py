@@ -126,6 +126,7 @@ def test_dispatcher_maps_approved_remote_image_for_facebook():
 
     assert result == {"id": "fb-approved"}
     assert facebook.call_args.args[0]["primary_publish_image_url"] == package["image_url"]
+    assert facebook.call_args.args[0]["owner_supplied_visual"] is True
 
 
 def test_dispatcher_recovers_existing_no_routed_platforms_failure(tmp_path):

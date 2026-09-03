@@ -319,10 +319,10 @@ def publish(content: dict, wp_link: str, dry_run: bool = False) -> dict:
         return {"id": "dry-run"}
 
     author = _resolve_author_urn()
+    primary_publish_image_url = str(content.get("primary_publish_image_url", "")).strip()
 
     if not (image_path and os.path.exists(image_path)):
         candidates: list[str] = []
-        primary_publish_image_url = str(content.get("primary_publish_image_url", "")).strip()
         if _is_valid_public_image(primary_publish_image_url):
             candidates.append(primary_publish_image_url)
         product_image = str(content.get("product_image_url", "")).strip()
@@ -348,6 +348,10 @@ def publish(content: dict, wp_link: str, dry_run: bool = False) -> dict:
             except Exception as e:
                 print(f"[LinkedIn] Warning: failed to download fallback image URL: {e}")
 
+    if content.get("owner_supplied_visual") is True and not (image_path and os.path.exists(image_path)):
+        raise RuntimeError("linkedin_approved_primary_image_unavailable")
+
+    attached_asset = ""
     share_content = {
         "shareCommentary": {"text": text},
         "shareMediaCategory": "NONE",
@@ -357,6 +361,7 @@ def publish(content: dict, wp_link: str, dry_run: bool = False) -> dict:
         if normalized_path != image_path:
             temp_normalized_path = normalized_path
         asset = _upload_image_asset(author, normalized_path)
+        attached_asset = asset
         share_content = {
             "shareCommentary": {"text": text},
             "shareMediaCategory": "IMAGE",
@@ -404,7 +409,12 @@ def publish(content: dict, wp_link: str, dry_run: bool = False) -> dict:
         _raise_with_body(resp)
         post_id = resp.headers.get("x-restli-id", "posted")
         print(f"[LinkedIn] Posted: {post_id}")
-        return {"id": post_id}
+        return {
+            "id": post_id,
+            "media_type": "IMAGE" if attached_asset else "NONE",
+            "image_url": primary_publish_image_url if attached_asset else "",
+            "asset": attached_asset,
+        }
     finally:
         if temp_normalized_path:
             try:

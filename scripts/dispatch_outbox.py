@@ -71,6 +71,7 @@ def _publish(package: dict[str, Any], platform: str) -> dict[str, Any]:
     image_url = str(post.get("image_url") or package.get("image_url") or "").strip()
     if image_url.startswith("http") and not str(delivery_package.get("primary_publish_image_url") or "").strip():
         delivery_package["primary_publish_image_url"] = image_url
+        delivery_package["owner_supplied_visual"] = True
     final_caption = str(post.get("final_caption") or post.get("caption") or "")
     caption_keys = {"facebook": "fb_caption", "instagram": "ig_caption", "linkedin": "li_text"}
     delivery_package[caption_keys[platform]] = final_caption

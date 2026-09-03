@@ -353,6 +353,9 @@ def publish(content: dict, dry_run: bool = False) -> dict:
     else:
         image_url = candidates[0] if candidates else ""
 
+    if owner_supplied_visual and image_url != primary_publish_image_url:
+        raise RuntimeError("instagram_approved_primary_image_unavailable")
+
     if not image_url:
         reason = "required_gemini_visual_unavailable" if require_gemini else "no_valid_image_url_candidates"
         print(f"[Instagram] Skipped: {reason}")
@@ -426,7 +429,7 @@ def publish(content: dict, dry_run: bool = False) -> dict:
             raise RuntimeError(f"instagram_carousel_publish_failed_http_{published.status_code}: {_graph_error_text(published)}")
         data = published.json()
         print(f"[Instagram] Posted carousel: {data['id']}")
-        return {"id": data["id"]}
+        return {"id": data["id"], "media_type": "CAROUSEL", "image_urls": carousel_urls}
 
     resp = _post_with_retry(
         f"{GRAPH_BASE}/{ig_user_id}/media",
@@ -458,7 +461,7 @@ def publish(content: dict, dry_run: bool = False) -> dict:
         raise RuntimeError(f"instagram_media_publish_failed_http_{resp2.status_code}: {_graph_error_text(resp2)}")
     data = resp2.json()
     print(f"[Instagram] Posted: {data['id']}")
-    return {"id": data["id"]}
+    return {"id": data["id"], "media_type": "IMAGE", "image_url": image_url, "container_id": creation_id}
 
 
 def delete(media_id: str) -> dict:

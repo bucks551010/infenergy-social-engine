@@ -317,6 +317,7 @@ def _route_generate_orchestrator(
         editorial_framework=copy_pkg.get("editorial_framework") if isinstance(copy_pkg.get("editorial_framework"), dict) else {},
     )
     components.update({
+        "pillar": str(brief.get("pillar_id") or (brief.get("topic_path") or {}).get("pillar") or ""),
         "logic_hook": selected_hook,
         "logic_bridge": copy_body or components["logic_bridge"],
         "proof": "; ".join(str(fact) for fact in (offering.get("verified_facts") or [])[:4]) or components["proof"],
@@ -6501,6 +6502,7 @@ Return ONLY valid JSON with these exact keys (no markdown, no code fences):
             logical_strategy=logical_strategy,
             resolved_pain_point=str(talking_point.get("pain_point", "")),
         )
+        components["pillar"] = pillar
         platform_posts = _build_platform_posts(
             post_id=post_id,
             campaign_id=campaign_id,
@@ -6857,6 +6859,7 @@ Return ONLY valid JSON with these exact keys (no markdown, no code fences):
         logical_strategy=logical_strategy,
         resolved_pain_point=str(talking_point.get("pain_point", "")),
     )
+    components["pillar"] = pillar
     platform_posts = _build_platform_posts(
         post_id=post_id,
         campaign_id=campaign_id,

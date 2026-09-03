@@ -807,6 +807,26 @@ def test_canonical_editorial_pillars_produce_distinct_concrete_posts():
     assert len({caption.split("\n\n")[0] for caption in captions}) == len(pillars)
 
 
+def test_final_platform_formatter_receives_selected_pillar():
+    components = _components()
+    components.update({"product_id": None, "product_name": "", "pillar": "small_business_continuity"})
+    posts = generate_posts._build_platform_posts(
+        "pillar-wiring",
+        "fixture",
+        "small_business_owner",
+        "EDUCATION",
+        "https://example.com",
+        components,
+        90.0,
+    )
+
+    finalized = generate_posts._apply_platform_presentation_priority(posts, components)
+
+    assert finalized["facebook"]["caption"].startswith(
+        "In the first hour without power, can your business still take payment"
+    )
+
+
 def test_final_caption_qa_normalizes_product_prefixed_benefit_metadata():
     components = _components()
     components["benefit_fragment"] = "PowerPulse Pro 200: keeps compatible daily devices charged away from outlets"

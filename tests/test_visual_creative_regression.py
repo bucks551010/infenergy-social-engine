@@ -15,6 +15,22 @@ sys.path.insert(0, os.path.join(_REPO, "scripts"))
 
 import social_visuals  # noqa: E402
 import run_engine  # noqa: E402
+from social.visual_provider import EntertainmentStudioVisualProvider, default_provider  # noqa: E402
+
+
+def test_entertainment_studio_provider_accepts_shared_service_token(monkeypatch):
+    monkeypatch.setenv("ENTERTAINMENT_STUDIO_URL", "https://studio.example")
+    monkeypatch.delenv("ENTERTAINMENT_STUDIO_TOKEN", raising=False)
+    monkeypatch.setenv("SOCIAL_ENGINE_TOKEN", "shared-token")
+
+    provider = default_provider()
+
+    assert isinstance(provider, EntertainmentStudioVisualProvider)
+    assert provider.token == "shared-token"
+
+    monkeypatch.setenv("ENTERTAINMENT_STUDIO_TOKEN", "caller-token")
+
+    assert default_provider().token == "caller-token"
 
 
 def test_every_gemini_prompt_path_enforces_infenergy_originality_canon():

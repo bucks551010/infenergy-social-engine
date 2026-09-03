@@ -279,7 +279,10 @@ class EntertainmentStudioVisualProvider:
 def default_provider() -> "VisualProvider":
     """Select Studio for structured visual work, retaining Gemini/template fallback."""
     studio_url = os.environ.get("ENTERTAINMENT_STUDIO_URL", "").strip()
-    studio_token = os.environ.get("ENTERTAINMENT_STUDIO_TOKEN", "").strip()
+    studio_token = (
+        os.environ.get("ENTERTAINMENT_STUDIO_TOKEN", "").strip()
+        or os.environ.get("SOCIAL_ENGINE_TOKEN", "").strip()
+    )
     if studio_url and studio_token:
         return EntertainmentStudioVisualProvider(studio_url, studio_token)
     if os.environ.get("GEMINI_API_KEY", "").strip():

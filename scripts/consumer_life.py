@@ -108,6 +108,7 @@ def select_consumer_root(
     current_date: str | date,
     slot: str = "midday",
     preferred_world_id: str = "",
+    product_required: bool = False,
     sequence: int = 0,
     path: str = DEFAULT_PATH,
 ) -> dict[str, Any]:
@@ -117,6 +118,8 @@ def select_consumer_root(
         moment for moment in data["moments"]
         if not preferred_world_id or str(moment["world_id"]) == preferred_world_id
     ]
+    if product_required:
+        candidates = [moment for moment in candidates if moment["product_fit"]["mode"] != "none"]
     if not candidates:
         raise ValueError(f"no consumer moments for world: {preferred_world_id}")
     date_key = current_date.isoformat() if isinstance(current_date, date) else str(current_date)

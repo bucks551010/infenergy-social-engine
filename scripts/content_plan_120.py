@@ -799,6 +799,7 @@ def _daily_concept(
     consumer_root = select_consumer_root(
         current_date=current_date,
         slot="morning" if weekday == 4 else slot,
+        product_required=product is not None,
         sequence=day_number,
     )
     consumer_moment = consumer_root["moment"]

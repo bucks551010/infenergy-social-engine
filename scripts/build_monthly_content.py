@@ -22,6 +22,7 @@ from agents.learning_context import load_operational_learning
 from inventory_db import get_db_path
 from social.carousel_director import OFFICIAL_LOGO_URL, normalize_slide_dicts
 from posting_schedule import first_scheduled_at, growth_schedule
+from consumer_life import validate_consumer_receipt
 
 
 DATA_DIR = os.environ.get("DATA_DIR", os.path.join(os.path.dirname(__file__), "..", "data"))
@@ -637,7 +638,7 @@ def _package(knowledge: dict[str, Any], thought: dict[str, Any], content_date: s
     }
     primary_path = assets["primary"]["local_path"]
     primary_url = assets["primary"]["public_url"]
-    return {
+    package = {
         "content_id": content_id,
         "post_id": content_id,
         "content_date": content_date,
@@ -716,6 +717,19 @@ def _package(knowledge: dict[str, Any], thought: dict[str, Any], content_date: s
         "quality_warnings": [],
         "publish_decision": {"decision": "publish", "publishable": True, "reasons": [], "source": "canonical_company_truth"},
     }
+    if package.get("consumer_root"):
+        consumer_qa = validate_consumer_receipt(package)
+        package["consumer_receipt_qa"] = consumer_qa
+        if not consumer_qa["passed"]:
+            package["validation_status"] = "failed"
+            package["validation_errors"].extend(consumer_qa["errors"])
+            package["publish_decision"] = {
+                "decision": "reject",
+                "publishable": False,
+                "reasons": consumer_qa["errors"],
+                "source": "consumer_receipt_qa",
+            }
+    return package
 
 
 def _existing_content_ids(data_dir: str) -> set[str]:

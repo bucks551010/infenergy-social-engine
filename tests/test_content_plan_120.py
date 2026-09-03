@@ -92,6 +92,21 @@ def test_consumer_root_reaches_monthly_outbox_package(tmp_path):
     assert package["consumer_root_id"] == entry["consumer_root_id"]
     assert package["consumer_receipt"] == entry["consumer_receipt"]
     assert package["visual_plan"]["consumer_story_contract"] == entry["consumer_story_contract"]
+    assert package["consumer_receipt_qa"]["passed"] is True
+
+
+def test_product_days_never_use_a_no_product_consumer_moment(tmp_path):
+    _write_profiles(tmp_path)
+    entries = build_120_day_plan(
+        data_dir=str(tmp_path),
+        start_date="2026-09-03",
+    )["entries"]
+
+    assert all(
+        entry["consumer_root"]["moment"]["product_fit"]["mode"] != "none"
+        for entry in entries
+        if entry["product"]
+    )
 
 
 def test_plan_preserves_intervention_cadence_and_continuous_format_rotation(tmp_path):

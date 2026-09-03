@@ -36,9 +36,10 @@ def _delivery_enforced() -> bool:
 
 
 def _enabled_platforms(package: dict[str, Any]) -> list[str]:
-    if _delivery_enforced():
-        return list(PLATFORMS)
-    return configured_platforms(package)
+    configured = configured_platforms(package)
+    if configured:
+        return configured
+    return list(PLATFORMS) if _delivery_enforced() else []
 
 
 def _platform_due_at(package: dict[str, Any], platform: str, fallback: str) -> datetime:

@@ -129,6 +129,17 @@ def test_dispatcher_maps_approved_remote_image_for_facebook():
     assert facebook.call_args.args[0]["owner_supplied_visual"] is True
 
 
+def test_delivery_enforcement_never_adds_unrequested_platforms(monkeypatch):
+    monkeypatch.setattr(dispatch_outbox, "_delivery_enforced", lambda: True)
+
+    platforms = dispatch_outbox._enabled_platforms({
+        "platforms": ["instagram", "linkedin"],
+        "platform_policy": {"platforms": ["instagram", "linkedin"]},
+    })
+
+    assert platforms == ["instagram", "linkedin"]
+
+
 def test_dispatcher_recovers_existing_no_routed_platforms_failure(tmp_path):
     data_dir = str(tmp_path)
     outbox_id = _ready_package(data_dir, ["facebook"])
@@ -472,7 +483,7 @@ def test_dispatcher_recovers_packshot_only_package_before_publisher_call(tmp_pat
     facebook.assert_not_called()
 
 
-def test_enforced_delivery_dispatches_package_that_creative_review_rejected(tmp_path):
+def test_enforced_delivery_dispatches_rejected_creative_only_to_requested_platforms(tmp_path):
     data_dir = str(tmp_path)
     outbox_id = _ready_package(data_dir, ["facebook"])
     database = sqlite3.connect(get_db_path(data_dir))
@@ -494,6 +505,6 @@ def test_enforced_delivery_dispatches_package_that_creative_review_rejected(tmp_
 
     assert result["status"] == "PUBLISHED"
     facebook.assert_called_once()
-    instagram.assert_called_once()
-    linkedin.assert_called_once()
+    instagram.assert_not_called()
+    linkedin.assert_not_called()
     assert platform_transaction(data_dir, outbox_id, "facebook")["external_id"] == "fb-enforced"

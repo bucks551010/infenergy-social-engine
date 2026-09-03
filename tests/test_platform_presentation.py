@@ -877,3 +877,35 @@ def test_concrete_language_gate_also_blocks_product_free_abstract_copy():
     assert verdict["status"] == "REVISE_PRESENTATION"
     assert "abstract_public_copy" in verdict["reasons"]
     assert verdict["metrics"]["abstract_public_copy_matches"]
+
+
+def test_water_purifier_copy_never_uses_power_device_language():
+    product = {
+        "id": "WOSFER-DH-C10",
+        "name": "Wosfer Portable Water Purifier Bottle",
+        "categories": ["Water Purification"],
+        "metrics": ["650ml"],
+        "fact_snippet": "Uncompromising Purification for Any Adventure Equip yourself for any journey.",
+    }
+    components = generate_posts._build_post_components(
+        "Portable water filtration",
+        "Carry a defined source of filtered water.",
+        "Review the product.",
+        product,
+        "DESIRE",
+        product_intelligence={
+            "best_fit_audiences": ["travelers"],
+            "proof_points": [product["fact_snippet"]],
+            "product_brief": {},
+            "sales_angle": "clean water away from a tap",
+        },
+    )
+
+    for platform in ("facebook", "instagram", "linkedin"):
+        caption, _ = platform_presentation.format_caption(components, platform=platform)
+        low = caption.lower()
+        assert "backup power" not in low
+        assert "device list" not in low
+        assert "uncompromising purification" not in low
+        assert "filtration stages" in low
+        assert "replacement-filter requirements" in low

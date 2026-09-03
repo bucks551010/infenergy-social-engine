@@ -2993,11 +2993,46 @@ def _product_use_case_line(product: dict | None) -> str:
         return "Keep it in your home emergency kit, vehicle, backpack, or travel bag so you are not searching for power when you need it most."
     if "fan" in name_low:
         return "Keep it in your camping kit, vehicle, outage closet, or travel bag so airflow and backup charging are already covered."
-    if "filter" in name_low or "straw" in name_low:
+    if "filter" in name_low or "purifier" in name_low or "straw" in name_low or "water" in categories:
         return "Keep it in your preparedness kit, vehicle, backpack, or travel gear so clean-water backup is ready before you need it."
     if "travel" in categories or "portable" in categories:
         return "Keep it in your emergency kit, vehicle, backpack, or travel bag so backup power is ready before you actually need it."
     return "Keep it ready in your emergency kit, vehicle, backpack, or travel bag."
+
+
+def _product_comparison_line(product: dict | None) -> str:
+    if not isinstance(product, dict):
+        return "Compare the published specifications with the job this item must perform."
+    name_low = str(product.get("name", "") or "").lower()
+    categories = " ".join(str(item or "") for item in (product.get("categories", []) or [])).lower()
+    if "filter" in name_low or "purifier" in name_low or "straw" in name_low or "water" in categories:
+        return "Check the published filtration stages, filter life, bottle capacity, and replacement-filter requirements."
+    if "jump starter" in name_low:
+        return "Compare the published starting current and supported engine sizes with your vehicle."
+    if "solar" in name_low or "panel" in name_low:
+        return "Compare the panel voltage, connector, and published wattage with the power station input."
+    if "fan" in name_low:
+        return "Compare the published runtime, airflow settings, light modes, and charging output with the campsite or room."
+    if "power bank" in name_low or "charger" in name_low:
+        return "Compare the battery capacity, ports, and charging output with your phone, tablet, or other listed device."
+    return "List each device, its plug, its watts, and the hours it must run, then compare the total with the published output and capacity."
+
+
+def _product_comparison_cta(product: dict | None) -> str:
+    name = str((product or {}).get("name", "") or "this product").strip()
+    name_low = name.lower()
+    categories = " ".join(str(item or "") for item in ((product or {}).get("categories", []) or [])).lower()
+    if "filter" in name_low or "purifier" in name_low or "straw" in name_low or "water" in categories:
+        return f"Check {name} filtration specifications and replacement-filter requirements."
+    if "jump starter" in name_low:
+        return f"Compare {name} starting specifications with your vehicle."
+    if "solar" in name_low or "panel" in name_low:
+        return f"Compare {name} voltage, connector, and wattage with your power station."
+    if "fan" in name_low:
+        return f"Check {name} runtime, airflow settings, and charging output."
+    if "power bank" in name_low or "charger" in name_low:
+        return f"Compare {name} ports and charging output with your devices."
+    return f"Compare {name} output and capacity with your device list."
 
 
 def _product_copy_profile(product: dict | None) -> dict[str, str]:
@@ -4017,7 +4052,7 @@ def _build_post_components(
         proof_line = str(proofs[0]).strip() if isinstance(proofs, list) and proofs else f"{m1} and {m2}"
         brief_pain = str(product_brief.get("primary_pain_point", "")).strip() if isinstance(product_brief, dict) else ""
         situation = brief_pain or f"{audience_line} often choose a product before listing the devices, plugs, watts, and required runtime."
-        info = f"Compare {proof_line} with the watts, plug, and runtime for each device on the list."
+        info = _product_comparison_line(product)
         why = str(profile.get("benefit", "match real usage to the right product specs"))
         product_connection = f"Compare {product_name} with the listed devices and the published {proof_line}."
         proof = f"The specs that matter here: {proof_line}."
@@ -4032,7 +4067,7 @@ def _build_post_components(
     if stage == "EDUCATION":
         cta = "Save this checklist and compare your current setup."
     elif stage == "DESIRE":
-        cta = f"Compare {product_name} specifications with your device list."
+        cta = _product_comparison_cta(product)
     elif stage == "CONVERSION":
         cta = "Build your backup-power setup."
 

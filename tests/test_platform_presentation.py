@@ -87,7 +87,7 @@ def test_powerpulse_fixture_front_loads_value_without_losing_sales_depth():
     assert "That is where PowerPulse Pro 200 fits:" not in improved
     assert "Invite a practical response" not in improved
     assert "Reader job" not in improved
-    assert len(presentation["selected_hashtags"]) == 5
+    assert len(presentation["selected_hashtags"]) == 10
     assert "#TravelPower" in presentation["selected_hashtags"]
     assert presentation["optional_depth_present"]
     assert "verified product details" not in improved.lower()
@@ -123,8 +123,8 @@ def test_dense_single_paragraph_becomes_readable_without_losing_approved_sentenc
     assert improved.index("⚡ Key specs") < improved.index("Compare the real job")
     hashtag_line = improved.split("\n\n")[-1]
     assert hashtag_line.startswith("#PortablePower #Preparedness")
-    assert len(hashtag_line.split()) == 5
-    assert len(set(hashtag_line.split())) == 5
+    assert len(hashtag_line.split()) == 10
+    assert len(set(hashtag_line.split())) == 10
 
 
 def test_benefit_opening_uses_only_approved_component_meaning():
@@ -177,7 +177,7 @@ def test_product_free_caption_is_idempotent_and_never_invents_a_product():
 
     assert "✨" not in twice
     assert "For you, that means" not in twice
-    assert twice.startswith("Why is overnight charging not always the problem people assume?")
+    assert twice.startswith("The power is out, your phone is fading, and one battery is left. What gets charged first?")
     assert twice.count("👉 Save this guidance for your next planning session.") == 1
     assert twice.count("⚡ Key specs") <= 1
     assert "this product" not in twice.lower()
@@ -265,10 +265,10 @@ def test_presentation_preserves_existing_hashtags_and_semantics_across_platforms
     assert original_tags.issubset(facebook["selected_hashtags"])
     assert original_tags.issubset(instagram["selected_hashtags"])
     assert original_tags.issubset(linkedin["selected_hashtags"])
-    assert len(facebook["selected_hashtags"]) == 5
-    assert len(instagram["selected_hashtags"]) == 8
-    assert len(linkedin["selected_hashtags"]) == 5
-    assert len(set(facebook["selected_hashtags"])) == 5
+    assert len(facebook["selected_hashtags"]) == 10
+    assert len(instagram["selected_hashtags"]) == 10
+    assert len(linkedin["selected_hashtags"]) == 10
+    assert len(set(facebook["selected_hashtags"])) == 10
     assert "#TravelPower" in instagram_caption
     assert _components()["use_case_line"].lower() in facebook_caption.lower()
     assert facebook["platform_expression"] == "facebook_benefit_led_product_sales_editorial"
@@ -696,7 +696,7 @@ def test_non_product_live_preview_has_no_orphans_and_varies_by_platform():
         ]
         assert all(len(re.findall(r"\b[\w'-]+\b", paragraph)) >= 4 for paragraph in public_paragraphs)
         assert "panic?" not in caption
-        assert caption.split("\n\n")[0].endswith(".")
+        assert caption.split("\n\n")[0].endswith((".", "!", "?"))
         assert "a practical power decision" not in caption.lower()
     assert len(set(captions.values())) == 3
 
@@ -717,6 +717,61 @@ def test_final_caption_qa_rejects_orphan_public_paragraph():
 
     assert verdict["status"] == "REVISE_PRESENTATION"
     assert "orphan_public_paragraph" in verdict["reasons"]
+
+
+def test_product_free_copy_rewrites_abstract_labels_and_requires_ten_tags():
+    components = {
+        "product_id": None,
+        "funnel_stage": "DESIRE",
+        "product_name": "",
+        "logic_hook": "List the devices that must run before choosing a battery.",
+        "situation": "Planning context: options look similar until the lights go out.",
+        "logic_bridge": "Decision principle: turn a vague concern into a decision you can discuss.",
+        "why_it_matters": "The real tension: confidence depends on preparation.",
+        "transformation": "Operational takeaway: keep the plan visible.",
+        "feature_bullets": [],
+        "cta": "Save this checklist before the next outage.",
+    }
+    forbidden = (
+        "planning context:", "decision principle:", "operational takeaway:",
+        "the real tension:", "a better way to frame it:", "a useful reframe:",
+        "keep in mind:", "remember:", "vague concern", "confidence",
+    )
+
+    for platform in ("facebook", "instagram", "linkedin"):
+        caption, _ = platform_presentation.format_caption(components, platform=platform)
+        first_paragraph = caption.split("\n\n")[0]
+        assert first_paragraph == (
+            "The power is out, your phone is fading, and one battery is left. What gets charged first?"
+        )
+        assert not any(fragment in caption.lower() for fragment in forbidden)
+        assert len(re.findall(r"(?<!\w)#[A-Za-z0-9_]+", caption)) == 10
+        assert platform_presentation.final_caption_qa(
+            caption,
+            platform=platform,
+            components=components,
+        )["status"] == "PRESENTATION_READY"
+
+
+def test_final_caption_qa_rejects_editorial_labels_and_too_few_hashtags():
+    caption = (
+        "List the devices that must run before choosing a battery.\n\n"
+        "Planning context: an outage has started and the phone battery is low.\n\n"
+        "Decision principle: rank each device before choosing what to charge.\n\n"
+        "Operational takeaway: keep the finished list near the battery.\n\n"
+        "👉 Save this checklist.\n\n"
+        "#Preparedness #BackupPower #PowerOutage"
+    )
+
+    verdict = platform_presentation.final_caption_qa(
+        caption,
+        platform="facebook",
+        components={"product_id": None, "feature_bullets": []},
+    )
+
+    assert verdict["status"] == "REVISE_PRESENTATION"
+    assert "abstract_public_copy" in verdict["reasons"]
+    assert "hashtag_count_below_minimum" in verdict["reasons"]
 
 
 def test_final_caption_qa_normalizes_product_prefixed_benefit_metadata():

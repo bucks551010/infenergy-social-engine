@@ -18,7 +18,18 @@ _PLANNING_INSTRUCTION_PATTERNS = (
     r"\bencourage engagement\b",
     r"\badd (?:a )?practical question\b",
 )
-_HASHTAG_LIMITS = {"facebook": 5, "instagram": 8, "linkedin": 5}
+_HASHTAG_LIMITS = {"facebook": 10, "instagram": 10, "linkedin": 10}
+_MIN_HASHTAGS = 10
+_EDITORIAL_LABEL_PATTERN = re.compile(
+    r"^(?:planning context|decision principle|operational takeaway|the real tension|"
+    r"a better way to frame it|a useful reframe|keep in mind|remember|infenergy's perspective):\s*",
+    flags=re.IGNORECASE,
+)
+_ABSTRACT_ENGAGEMENT_PATTERN = re.compile(
+    r"\b(?:confidence|vague concern|decision you can discuss|options look similar|"
+    r"preparedness gear has a defined role|more control|peace of mind|operational continuity)\b",
+    flags=re.IGNORECASE,
+)
 
 
 def _paragraphs(text: str) -> list[str]:
@@ -410,6 +421,9 @@ def _usable_public_fragment(value: str, *, max_words: int = 35, min_words: int =
 
 def _engagement_safe_text(value: str) -> str:
     cleaned = _repair_unsupported_broad_claims(_usable_public_fragment(value))
+    cleaned = _EDITORIAL_LABEL_PATTERN.sub("", cleaned).strip()
+    if _ABSTRACT_ENGAGEMENT_PATTERN.search(cleaned):
+        return ""
     if re.search(
         r"\b(?:product|infenergy|shop|buy|purchase|specs?|compatibility|selected|link|risk score)\b",
         cleaned,
@@ -419,6 +433,31 @@ def _engagement_safe_text(value: str) -> str:
     if cleaned.lower().startswith("what changes when you take this seriously:") and cleaned.endswith("?"):
         cleaned = f"{cleaned[:-1]}."
     return cleaned
+
+
+def _engagement_hook(*values: str) -> str:
+    source = " ".join(str(value or "") for value in values).lower()
+    if any(token in source for token in ("water", "filter", "purifier")):
+        return "The tap stops running. Where does your next safe bottle of water come from?"
+    if any(token in source for token in ("phone", "battery", "device", "outage", "power")):
+        return "The power is out, your phone is fading, and one battery is left. What gets charged first?"
+    if any(token in source for token in ("vehicle", "car", "roadside", "engine")):
+        return "The engine will not start, and no other driver is nearby. What is already in your trunk?"
+    return "The normal routine stops without warning. Which task has to keep moving first?"
+
+
+def _engagement_hashtags(stage: str) -> list[str]:
+    if stage == "EDUCATION":
+        return [
+            "#PowerKnowledge", "#Preparedness", "#EnergyLiteracy", "#OutagePlanning",
+            "#EmergencyPlanning", "#HomePreparedness", "#BackupPower", "#PowerSafety",
+            "#FamilyPreparedness", "#PowerBackupTips",
+        ]
+    return [
+        "#PowerPreparedness", "#EverydayPower", "#Preparedness", "#OutagePlanning",
+        "#EmergencyPreparedness", "#BackupPower", "#HomePreparedness", "#PowerOutage",
+        "#FamilyPreparedness", "#PowerBackupTips",
+    ]
 
 
 def _benefit_opening(components: dict[str, Any], *, product_led: bool) -> list[str]:
@@ -549,15 +588,16 @@ def _engagement_editorial(
         str(components.get("why_it_matters") or components.get("why") or "").strip()
     )
     transformation = _engagement_safe_text(str(components.get("transformation") or "").strip())
-    situation = _engagement_safe_text(str(framework.get("human_reality") or situation)) or "Most households know preparation matters, but priorities often remain unranked until normal routines are interrupted."
+    situation = _engagement_safe_text(str(framework.get("human_reality") or situation)) or "During an outage, one available battery may have to cover phones, lights, medical devices, and work equipment."
     tension = _engagement_safe_text(str(framework.get("tension") or why))
     curiosity = _engagement_safe_text(str(framework.get("curiosity") or hook))
-    insight = _engagement_safe_text(str(framework.get("insight") or insight)) or "Start with the people and daily responsibilities that cannot simply pause, then name the first need you would protect."
+    insight = _engagement_safe_text(str(framework.get("insight") or insight)) or "Write each device on paper, add its required watts and runtime, then rank the list from essential to optional."
     perspective = _engagement_safe_text(str(framework.get("infenergy_perspective") or why))
     story = _engagement_safe_text(str(framework.get("story") or ""))
-    memory = _engagement_safe_text(str(framework.get("memory") or transformation)) or "One clear priority is the beginning of a plan the household can actually use."
-    why = tension or perspective or "A specific answer turns a vague concern into a decision you can discuss and improve."
+    memory = _engagement_safe_text(str(framework.get("memory") or transformation)) or "Keep the finished list beside the battery so anyone in the household can follow it."
+    why = tension or perspective or "Write down the first device or task that cannot stop, then rank the rest behind it."
     transformation = memory
+    opening = _engagement_hook(hook, curiosity, situation, insight, source_caption)
 
     if stage == "EDUCATION":
         if source_has_steps:
@@ -580,27 +620,27 @@ def _engagement_editorial(
                 actions.append(_sentence(f"{len(actions) + 1}. {defaults[len(actions)]}"))
         final_cta = cta if cta and not re.search(r"\b(?:shop|buy|product|specs?|link|tap|score|seconds?)\b", cta, flags=re.IGNORECASE) else "Save this framework for your next planning check."
         facebook_paragraphs = [
-            curiosity or hook,
+            opening,
             _sentence(situation),
-            _sentence(f"The tension: {why}"),
+            _sentence(why),
             "A practical way to use this:\n" + "\n".join(actions),
-            _sentence(f"Infenergy's perspective: {perspective or insight}"),
-            "" if re.search(r"\bremember:", source_caption, flags=re.IGNORECASE) else _sentence(f"Remember: {transformation}"),
+            _sentence(perspective or insight),
+            _sentence(transformation),
             f"👉 {final_cta}",
         ]
         instagram_paragraphs = [
-            curiosity or hook,
+            opening,
             _sentence(situation),
             "Try this three-part check:\n" + "\n".join(actions),
-            _sentence(f"Keep in mind: {transformation}"),
+            _sentence(transformation),
             f"👉 {final_cta}",
         ]
         linkedin_paragraphs = [
-            curiosity or hook,
-            _sentence(f"Planning context: {situation}"),
+            opening,
+            _sentence(situation),
             "A practical framework:\n" + "\n".join(actions),
-            _sentence(f"Decision principle: {perspective or insight}"),
-            _sentence(f"Operational takeaway: {transformation}"),
+            _sentence(perspective or insight),
+            _sentence(transformation),
             f"👉 {final_cta}",
         ]
         paragraphs = {
@@ -617,7 +657,7 @@ def _engagement_editorial(
             "focused_discovery",
         ]
         ideology = "teach_for_capability_without_forcing_a_sale"
-        base_tags = ["#PowerKnowledge", "#Preparedness", "#EnergyLiteracy"]
+        base_tags = _engagement_hashtags(stage)
     else:
         if hook.endswith((".", "!", "?")):
             question = hook
@@ -625,28 +665,30 @@ def _engagement_editorial(
             question = _sentence(hook)
         else:
             question = "When normal power disappears, what is the first part of daily life you would protect?"
-        final_cta = cta if cta and not re.search(r"\b(?:shop|buy|product|specs?|link|tap|score|seconds?)\b", cta, flags=re.IGNORECASE) else "Share the first priority you would protect and why."
+        final_cta = cta if cta and not re.search(r"\b(?:shop|buy|product|specs?|link|tap|score|seconds?|checklist)\b", cta, flags=re.IGNORECASE) else "Share the first priority you would protect and why."
         facebook_paragraphs = [
-            curiosity or question,
+            opening,
             _sentence(situation),
-            _sentence(f"The real tension: {why}"),
-            _sentence(f"A better way to frame it: {insight}"),
+            _sentence(why),
+            _sentence(insight),
             _sentence(story) if story else "",
-            "" if re.search(r"\bremember:", source_caption, flags=re.IGNORECASE) else _sentence(f"Remember: {transformation}"),
+            _sentence(transformation),
             f"👉 {final_cta}",
         ]
         instagram_paragraphs = [
-            curiosity or question,
+            opening,
             _sentence(situation),
-            _sentence(f"A useful reframe: {insight}"),
-            _sentence(f"Keep in mind: {transformation}"),
+            _sentence(insight),
+            _sentence(transformation),
             f"👉 {final_cta}",
         ]
         linkedin_paragraphs = [
-            curiosity or question,
-            _sentence(f"Planning context: {situation}"),
-            _sentence(f"Decision principle: {insight}"),
-            _sentence(f"Operational takeaway: {transformation}"),
+            opening,
+            _sentence(situation),
+            _sentence(why),
+            "Before comparing equipment, record the watts and runtime required by each device that must stay available.",
+            _sentence(insight),
+            _sentence(transformation),
             f"👉 {final_cta}",
         ]
         paragraphs = {
@@ -663,9 +705,9 @@ def _engagement_editorial(
             "focused_discovery",
         ]
         ideology = "earn_participation_through_relevance_not_bait"
-        base_tags = ["#PowerPreparedness", "#EverydayPower", "#Preparedness"]
+        base_tags = _engagement_hashtags(stage)
 
-    selected_tags = base_tags[:_HASHTAG_LIMITS.get(platform, 5)]
+    selected_tags = base_tags[:_HASHTAG_LIMITS.get(platform, _MIN_HASHTAGS)]
     refined = "\n\n".join(part for part in paragraphs if part.strip())
     if selected_tags:
         refined = f"{refined}\n\n{' '.join(selected_tags)}"
@@ -1023,7 +1065,9 @@ def final_caption_qa(
         r"the setting changes|the need for control|verified product details|"
         r"designed to support|used through this lens|reduce purchase risk|"
         r"confidence through|peace of mind|more controlled|the value is knowing|"
-        r"operational continuity|resilience solution)\b",
+        r"operational continuity|resilience solution|planning context|decision principle|"
+        r"operational takeaway|the real tension|a better way to frame it|a useful reframe|"
+        r"keep in mind|remember|confidence)\b",
         public_prose,
         flags=re.IGNORECASE,
     )
@@ -1041,10 +1085,12 @@ def final_caption_qa(
         reasons.append("promised_plan_missing_actionable_steps")
     if platform == "facebook" and numeric_proof_available and not metrics["specs_present"]:
         reasons.append("verified_proof_missing")
-    if platform == "facebook" and not metrics["link_present"]:
+    if product_led and platform == "facebook" and not metrics["link_present"]:
         reasons.append("required_link_missing")
     if metrics["paragraph_count"] < 4:
         reasons.append("paragraph_structure_missing")
+    if platform in _HASHTAG_LIMITS and metrics["hashtag_count"] < _MIN_HASHTAGS:
+        reasons.append("hashtag_count_below_minimum")
     public_paragraphs = [
         paragraph for paragraph in _paragraphs(caption)
         if not paragraph.startswith(("#", "👉", "http", "⚡ Key specs"))

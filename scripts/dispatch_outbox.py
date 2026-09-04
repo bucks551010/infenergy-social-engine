@@ -224,6 +224,8 @@ def _prepare_gemini_copy(package: dict[str, Any]) -> dict[str, Any]:
         "visible_text must contain headline, infenergy_line, resolution_line. platform_captions must contain facebook, instagram, linkedin. "
         "Make each platform caption native, concise, non-repetitive, human, and specific to the consumer moment. "
         "The three visible lines must work as an intentional visual sequence, not labels or production directions. "
+        "Each visible line must be seven words or fewer and 48 characters or fewer, with plain punctuation and no hashtags. "
+        "Write for premium image typography: decisive, spare, immediately readable, and free of repeated ideas. "
         "Never output POV:, FIELD TRUTH, internal taxonomy, unsupported specifications, prices, runtime, guarantees, testimonials, or invented product claims. "
         "Use only verified product facts supplied in the brief. Do not output markdown or keys beyond the required schema.\n\n"
         f"FACTUAL BRIEF:\n{json.dumps(brief, ensure_ascii=True, sort_keys=True)}"
@@ -254,6 +256,12 @@ def _prepare_gemini_copy(package: dict[str, Any]) -> dict[str, Any]:
         raise RuntimeError(f"gemini_copy_forbidden_label:{','.join(leaked)}")
     if any(len(str(captions[platform])) > 5000 for platform in PLATFORMS):
         raise RuntimeError("gemini_copy_caption_too_long")
+    oversized_visible = [
+        key for key in ("headline", "infenergy_line", "resolution_line")
+        if len(str(visible[key]).strip()) > 48 or len(str(visible[key]).split()) > 7
+    ]
+    if oversized_visible:
+        raise RuntimeError(f"gemini_copy_visible_text_too_long:{','.join(oversized_visible)}")
 
     thought.update({
         "statement": str(result["statement"]).strip(),
@@ -321,7 +329,7 @@ def _prepare_gemini_copy(package: dict[str, Any]) -> dict[str, Any]:
         text_instruction = (
             "Render these Gemini-authored lines directly into the finished image, each exactly once and spelled exactly: "
             + json.dumps(rendered_text, ensure_ascii=True)
-            + ". Use clean premium editorial typography integrated into the composition. Use crisp solid letterforms with no blue shadow, no blue glow, no neon edge, and no dark translucent text box. Render no other words, letters, numbers, captions, dialogue, labels, or logos."
+            + ". Use clean premium editorial typography integrated directly into open negative space. Use crisp solid letterforms with no blue shadow, no blue glow, no neon edge, no outline, and no dark or translucent text box. For a three-panel composition, place exactly one supplied line in each panel in the supplied order. Do not repeat any line at the bottom or add secondary captions. Render no other words, letters, numbers, captions, dialogue, labels, or logos."
         )
         scene_prompt = f"{text_instruction} {scene_prompt}"
         prompt_plan["gemini_image_prompt"] = scene_prompt

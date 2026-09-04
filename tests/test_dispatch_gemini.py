@@ -198,6 +198,7 @@ def test_prepare_gemini_copy_authors_captions_and_visual_text(monkeypatch):
     ]
     assert direction["gemini_typography_contract"]["blue_shadow_allowed"] is False
     assert "no blue shadow" in prompt["gemini_image_prompt"]
+    assert "exactly one supplied line in each panel" in prompt["gemini_image_prompt"]
     assert "Do not render words" not in prompt["gemini_image_prompt"]
     assert prepared["gemini_copy"]["qa"] == {"schema": "PASS", "forbidden_labels": "PASS", "product_claims": "PASS"}
 

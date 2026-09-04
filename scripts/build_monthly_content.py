@@ -162,6 +162,8 @@ def _synthetic_thought(*, identifier: str, kind: str, content_type: str, stateme
 def _plan_entry_thought(entry: dict[str, Any]) -> dict[str, Any]:
     exact_text = entry.get("exact_visible_text") if isinstance(entry.get("exact_visible_text"), list) else []
     statement = str((exact_text or [entry.get("title") or entry.get("hook") or "Power the next move."])[0]).strip()
+    if statement.upper().startswith("POV:"):
+        statement = statement[4:].strip()
     support = str(entry.get("support_statement") or entry.get("takeaway") or entry.get("story") or "").strip()
     product = entry.get("product") if isinstance(entry.get("product"), dict) else {}
     is_comic = entry.get("format") in {"product_micro_mission_comic", "product_comic_strip_carousel", "product_story_page"}

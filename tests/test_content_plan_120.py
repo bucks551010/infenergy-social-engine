@@ -120,6 +120,20 @@ def test_plan_thought_preserves_slot_and_deterministic_canvas_contract(tmp_path)
             assert image.size == (1080, 1350)
 
 
+def test_plan_thought_never_exposes_internal_public_labels(tmp_path):
+    _write_profiles(tmp_path)
+    entries = build_120_day_plan(
+        data_dir=str(tmp_path),
+        start_date="2026-09-04",
+        days=120,
+    )["entries"]
+
+    public_statements = [_plan_entry_thought(entry)["statement"].upper() for entry in entries]
+
+    assert all("POV:" not in statement for statement in public_statements)
+    assert all("FIELD TRUTH" not in statement for statement in public_statements)
+
+
 def test_story_plan_renders_vertical_asset_and_preserves_morning_slot(tmp_path):
     _write_profiles(tmp_path)
     entries = build_120_day_plan(

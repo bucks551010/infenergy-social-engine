@@ -7,12 +7,14 @@ import shutil
 import sys
 from pathlib import Path
 
+from PIL import Image
+
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
 from agents import carousel_slide_writer  # noqa: E402
-from build_monthly_content import CONTENT_PLAN_120, _captions, _gemini_generation_plan, _load_editorial_slate, _load_product_brief, _plan_entry_thought, _weekly_brand_mix_thoughts, build_monthly_calendar, latest_monthly_calendar, prepare_monthly_gemini_prompts  # noqa: E402
+from build_monthly_content import CONTENT_PLAN_120, _captions, _gemini_generation_plan, _load_editorial_slate, _load_product_brief, _plan_entry_thought, _render_assets, _weekly_brand_mix_thoughts, build_monthly_calendar, latest_monthly_calendar, prepare_monthly_gemini_prompts  # noqa: E402
 from content_plan_120 import build_120_day_plan  # noqa: E402
 from company_knowledge import agent_specialization, compact_generation_context, load_company_knowledge  # noqa: E402
 from content_operations import daily_status  # noqa: E402
@@ -236,6 +238,66 @@ def test_120_day_entries_translate_to_runtime_generation_contracts():
     assert "Story page containing exactly THREE" in story_generation["prompts"][0]["gemini_image_prompt"]
     assert message_generation["aspect_ratio"] == "4:5"
     assert sunday["exact_visible_text"][0] in message_generation["prompts"][0]["v5_direction"]["text_overlay"]["text"]
+
+
+def test_product_story_page_renders_three_designed_panels(tmp_path, monkeypatch):
+    monkeypatch.setenv("PUBLIC_BASE_URL", "https://example.test")
+    monkeypatch.setattr("build_monthly_content._load_product_reference", lambda _url: Image.new("RGBA", (200, 200), "#ffffff"))
+    thought = {
+        "id": "PLAN120-D001",
+        "pillar": "Freedom, Designed",
+        "format": "single",
+        "product_id": "03534566804e",
+        "statement": "At 84%, you have plans. At 3%, every outlet has excellent real estate.",
+        "expansion": "A clean mobile-power ritual protects momentum.",
+        "consumer_receipt": {"who": "rec-league organizer", "where": "community gym", "doing": "recording scores"},
+        "generation_contract": {
+            "format": "product_story_page",
+            "canvas_px": {"width": 1080, "height": 1920},
+            "product_name": "PowerCharge Pro - White",
+            "visible_text": {
+                "headline": "At 84%, you have plans. At 3%, every outlet has excellent real estate.",
+                "infenergy_line": "Pause. What job does the power actually need to do?",
+                "resolution_line": "A clean mobile-power ritual protects momentum better than last-minute outlet hunting.",
+            },
+        },
+    }
+
+    assets = _render_assets(str(tmp_path), thought, 0)
+
+    with Image.open(assets["primary"]["local_path"]) as rendered:
+        assert rendered.size == (1080, 1920)
+        assert len({rendered.getpixel((100, y)) for y in (240, 840, 1440)}) == 3
+    assert len(assets["slides"]) == 1
+    assert assets["review_issues"] == []
+
+
+def test_product_story_page_caption_is_concise_and_non_repetitive():
+    thought = {
+        "statement": "At 84%, you have plans. At 3%, every outlet has excellent real estate.",
+        "expansion": "Test the entire chain.",
+        "useful_detail": "Keep essential tasks accessible.",
+        "action": "Compare capacity, ports, and charging speed with the devices you carry.",
+        "prompt": "Explore",
+        "pillar": "Freedom, Designed",
+        "hashtags": ["Infenergy", "PowerReadiness", "PracticalPower"],
+        "consumer_receipt": {"who": "rec-league organizer", "where": "community gym", "doing": "recording scores"},
+        "generation_contract": {
+            "format": "product_story_page",
+            "visible_text": {
+                "headline": "At 84%, you have plans. At 3%, every outlet has excellent real estate.",
+                "infenergy_line": "Pause. What job does the power actually need to do?",
+                "resolution_line": "A clean mobile-power ritual protects momentum better than last-minute outlet hunting.",
+            },
+        },
+    }
+
+    captions = _captions(thought)
+
+    assert captions["facebook"].count("At 84%") == 1
+    assert "The friction:" not in captions["facebook"]
+    assert "What matters next:" not in captions["facebook"]
+    assert len(re.findall(r"(?<!\w)#[A-Za-z0-9_]+", captions["facebook"])) == 5
 
 
 def test_120_day_plan_queues_existing_runtime_packages(tmp_path, monkeypatch):

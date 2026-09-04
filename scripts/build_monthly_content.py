@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import io
 import json
 import os
 import sqlite3
@@ -12,6 +13,7 @@ import urllib.request
 import xml.etree.ElementTree as ET
 from copy import deepcopy
 from datetime import date, datetime, time, timedelta, timezone
+from functools import lru_cache
 from typing import Any
 
 from PIL import Image, ImageDraw, ImageFont
@@ -367,6 +369,109 @@ def _render_card(path: str, *, headline: str, supporting: str, pillar: str, inde
     image.save(path, format="PNG", optimize=True)
 
 
+def _draw_fitted_text(draw: ImageDraw.ImageDraw, text: str, box: tuple[int, int, int, int], *, fill: str, max_size: int, min_size: int = 24, bold: bool = False) -> None:
+    left, top, right, bottom = box
+    for size in range(max_size, min_size - 1, -2):
+        font = _font(size, bold=bold)
+        lines = _wrapped_lines(text, max(12, int((right - left) / (size * 0.56))))
+        line_height = int(size * 1.18)
+        if len(lines) * line_height <= bottom - top:
+            for line_index, line in enumerate(lines):
+                draw.text((left, top + line_index * line_height), line, font=font, fill=fill)
+            return
+
+
+@lru_cache(maxsize=32)
+def _load_product_reference(url: str) -> Image.Image | None:
+    if not url.startswith("https://"):
+        return None
+    try:
+        request = urllib.request.Request(url, headers={"User-Agent": "InfenergySocial/1.0"})
+        with urllib.request.urlopen(request, timeout=20) as response:
+            with Image.open(io.BytesIO(response.read())) as source:
+                return source.convert("RGBA")
+    except Exception:
+        return None
+
+
+def _render_product_story_page(path: str, *, contract: dict[str, Any], receipt: dict[str, Any], pillar: str, product_reference_url: str = "") -> list[str]:
+    canvas = contract.get("canvas_px") if isinstance(contract.get("canvas_px"), dict) else {}
+    width = int(canvas.get("width") or 1080)
+    height = int(canvas.get("height") or 1920)
+    image = Image.new("RGB", (width, height), "#F4F0E7")
+    draw = ImageDraw.Draw(image)
+    visible = contract.get("visible_text") if isinstance(contract.get("visible_text"), dict) else {}
+    panels = (
+        ("#DDE9E6", "#10212B", str(visible.get("headline") or contract.get("hook") or "")),
+        ("#F2C94C", "#10212B", str(visible.get("infenergy_line") or contract.get("takeaway") or "")),
+        ("#10212B", "#F7F4EC", str(visible.get("resolution_line") or contract.get("cta") or "")),
+    )
+    review_issues: list[str] = []
+    product_reference = _load_product_reference(product_reference_url)
+    if product_reference is None:
+        review_issues.append("verified_product_reference_unavailable")
+    margin = 54
+    gap = 18
+    header_height = 132
+    panel_height = int((height - header_height - (margin * 2) - (gap * 2)) / 3)
+
+    draw.rectangle((0, 0, width, header_height), fill="#F4F0E7")
+    draw.text((margin, 38), "INFENERGY", font=_font(34, bold=True), fill="#10212B")
+    draw.text((width - margin, 45), pillar.replace("_", " ").upper(), font=_font(20, bold=True), fill="#4F7658", anchor="ra")
+
+    for panel_index, (background, ink, copy) in enumerate(panels):
+        top = header_height + margin + panel_index * (panel_height + gap)
+        bottom = top + panel_height
+        draw.rounded_rectangle((margin, top, width - margin, bottom), radius=8, fill=background)
+        draw.text((margin + 34, top + 28), f"0{panel_index + 1}", font=_font(22, bold=True), fill=ink)
+
+        if panel_index == 0:
+            court_y = bottom - 118
+            draw.line((margin + 26, court_y, width - margin - 26, court_y), fill="#7AA49B", width=5)
+            draw.ellipse((width - 328, top + 74, width - 98, top + 304), outline="#7AA49B", width=8)
+            draw.rounded_rectangle((width - 290, top + 126, width - 136, top + 224), radius=10, fill="#10212B")
+            draw.text((width - 213, top + 144), "3%", font=_font(47, bold=True), fill="#F2C94C", anchor="ma")
+            scene = " / ".join(filter(None, (str(receipt.get("who") or ""), str(receipt.get("where") or ""), str(receipt.get("doing") or ""))))
+            _draw_fitted_text(draw, scene.upper(), (margin + 34, bottom - 88, width - margin - 34, bottom - 30), fill=ink, max_size=20, min_size=16, bold=True)
+        elif panel_index == 1:
+            center_x = width - 208
+            center_y = top + 176
+            draw.ellipse((center_x - 82, center_y - 82, center_x + 82, center_y + 82), fill="#F7F4EC")
+            draw.line((center_x, center_y - 48, center_x, center_y + 18), fill="#10212B", width=18)
+            draw.ellipse((center_x - 11, center_y + 43, center_x + 11, center_y + 65), fill="#10212B")
+        else:
+            product_name = str(contract.get("product_name") or (contract.get("product") or {}).get("product_name") or "PORTABLE POWER")
+            if product_reference is not None:
+                product = product_reference.copy()
+                product.thumbnail((250, 250), Image.Resampling.LANCZOS)
+                product_x = width - margin - 34 - product.width
+                product_y = top + 74
+                draw.rounded_rectangle((product_x - 14, product_y - 14, product_x + product.width + 14, product_y + product.height + 14), radius=8, fill="#FFFFFF")
+                image.paste(product, (product_x, product_y), product)
+                phone_left = width - 238
+                phone_top = top + 374
+                draw.rounded_rectangle((phone_left, phone_top, phone_left + 82, phone_top + 142), radius=14, outline="#F7F4EC", width=5)
+                draw.line((product_x + int(product.width * 0.7), product_y + product.height + 8, phone_left + 41, phone_top), fill="#F2C94C", width=6)
+                draw.ellipse((phone_left + 33, phone_top + 116, phone_left + 49, phone_top + 132), fill="#F2C94C")
+            _draw_fitted_text(draw, product_name.upper(), (width - 354, top + 334, width - 88, top + 368), fill="#F2C94C", max_size=15, min_size=12, bold=True)
+
+        _draw_fitted_text(
+            draw,
+            copy,
+            (margin + 34, top + 92, width - 390, bottom - 120),
+            fill=ink,
+            max_size=48 if panel_index else 52,
+            min_size=28,
+            bold=panel_index == 0,
+        )
+
+    draw.text((margin, height - 38), "FREEDOM, DESIGNED", font=_font(18, bold=True), fill="#10212B")
+    draw.text((width - margin, height - 38), "INFENERGYPOWER.COM", font=_font(18, bold=True), fill="#10212B", anchor="ra")
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    image.save(path, format="PNG", optimize=True)
+    return review_issues
+
+
 def _carousel_slides(thought: dict[str, Any]) -> list[dict[str, str]]:
     custom = thought.get("slides") if isinstance(thought.get("slides"), list) else []
     if len(custom) >= 2:
@@ -566,8 +671,27 @@ def _captions(thought: dict[str, Any]) -> dict[str, str]:
     ]
     normalized_tags = list(dict.fromkeys(str(tag).strip().lstrip("#") for tag in tag_pool if str(tag).strip()))[:10]
     hashtag_line = " ".join(f"#{tag}" for tag in normalized_tags)
-    copy_form = str(thought.get("copy_form") or "")
     receipt = thought.get("consumer_receipt") if isinstance(thought.get("consumer_receipt"), dict) else {}
+    contract = thought.get("generation_contract") if isinstance(thought.get("generation_contract"), dict) else {}
+    if contract.get("format") == "product_story_page":
+        visible = contract.get("visible_text") if isinstance(contract.get("visible_text"), dict) else {}
+        scene = ""
+        if receipt:
+            scene = f"A {receipt.get('who')} is {str(receipt.get('doing') or '').lower()} at the {receipt.get('where')} when the smallest dependency starts running the whole routine."
+        core = [
+            str(visible.get("headline") or statement),
+            scene,
+            str(visible.get("resolution_line") or expansion),
+            action,
+            " ".join(f"#{tag}" for tag in normalized_tags[:5]),
+        ]
+        linkedin = [str(visible.get("infenergy_line") or statement), *core[1:]]
+        return {
+            "facebook": "\n\n".join(block for block in core if block),
+            "instagram": "\n\n".join(block for block in core if block),
+            "linkedin": "\n\n".join(block for block in linkedin if block),
+        }
+    copy_form = str(thought.get("copy_form") or "")
     consumer_blocks = []
     if receipt:
         consumer_blocks = [
@@ -641,26 +765,40 @@ def _render_assets(data_dir: str, thought: dict[str, Any], index: int) -> dict[s
         int(canvas_px.get("height") or 1080),
     )
     assets: list[dict[str, str]] = []
+    review_issues: list[str] = []
+    product_reference_url = ""
+    product_id = str(thought.get("product_id") or "")
+    if contract.get("format") == "product_story_page" and product_id:
+        product_reference_url = str(_load_product_brief(data_dir, product_id).get("source_image_url") or "")
     for slide_index, slide in enumerate(slides, start=1):
         file_name = f"{stem}_{slide_index}.png"
         local_path = os.path.abspath(os.path.join(folder, file_name))
-        _render_card(
-            local_path,
-            headline=slide["headline"],
-            supporting=slide["supporting"],
-            pillar=thought["pillar"],
-            index=index + slide_index - 1,
-            slide_label=f"{slide_index}/{len(slides)}" if len(slides) > 1 else "",
-            role=str(slide.get("role") or "STORY").upper(),
-            canvas=canvas,
-        )
+        if contract.get("format") == "product_story_page":
+            review_issues.extend(_render_product_story_page(
+                local_path,
+                contract=contract,
+                receipt=thought.get("consumer_receipt") if isinstance(thought.get("consumer_receipt"), dict) else {},
+                pillar=thought["pillar"],
+                product_reference_url=product_reference_url,
+            ))
+        else:
+            _render_card(
+                local_path,
+                headline=slide["headline"],
+                supporting=slide["supporting"],
+                pillar=thought["pillar"],
+                index=index + slide_index - 1,
+                slide_label=f"{slide_index}/{len(slides)}" if len(slides) > 1 else "",
+                role=str(slide.get("role") or "STORY").upper(),
+                canvas=canvas,
+            )
         assets.append({
             "role": slide["role"],
             "local_path": local_path,
             "public_url": _public_url(file_name),
             "logo_url": str(slide.get("logo_url") or ""),
         })
-    return {"primary": assets[0], "slides": assets}
+    return {"primary": assets[0], "slides": assets, "review_issues": list(dict.fromkeys(review_issues))}
 
 
 def _package(knowledge: dict[str, Any], thought: dict[str, Any], content_date: str, index: int, data_dir: str, *, defer_images: bool = False) -> dict[str, Any]:
@@ -770,8 +908,18 @@ def _package(knowledge: dict[str, Any], thought: dict[str, Any], content_date: s
             "facebook": primary_path,
             "instagram": primary_path,
             "linkedin": primary_path,
-            "render_engines": {platform: "company_truth_renderer" for platform in PLATFORMS},
-            "artifact_reviews": {platform: {"verdict": "PASS", "issues": []} for platform in PLATFORMS},
+            "render_engines": {
+                platform: "deterministic_product_story_renderer" if (thought.get("generation_contract") or {}).get("format") == "product_story_page" else "company_truth_renderer"
+                for platform in PLATFORMS
+            },
+            "artifact_reviews": {
+                platform: {
+                    "verdict": "PASS" if not assets.get("review_issues") else "REGENERATE_VISUAL",
+                    "issues": list(assets.get("review_issues") or []),
+                    "contract_checks": ["three_distinct_panels", "approved_visible_text", "product_in_plot"] if (thought.get("generation_contract") or {}).get("format") == "product_story_page" else [],
+                }
+                for platform in PLATFORMS
+            },
         },
         "primary_publish_image_url": primary_url,
         "validation_status": "passed",

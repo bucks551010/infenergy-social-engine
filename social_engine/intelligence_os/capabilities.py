@@ -1165,6 +1165,106 @@ def register_core_capabilities(registry: CapabilityRegistry, policies: PolicyEng
             raise RuntimeError("outbox_changed_before_correction")
         return {**plan, "status": "PENDING_STRICT_GEMINI"}
 
+    def publication_republish(payload: dict[str, Any], context: ExecutionContext) -> dict[str, Any]:
+        from build_monthly_content import _gemini_generation_plan, _load_product_brief
+        from content_operations import daily_index, mark_ready
+        from posting_schedule import CENTRAL_TIME
+        from social_visuals import approve_product_reference
+
+        content_date = str(payload["content_date"])
+        source_outbox_id = str(payload["outbox_id"])
+        index = daily_index(context.data_dir, content_date)
+        source = next(
+            (
+                item
+                for detail in index.get("details", [])
+                for item in detail.get("outbox", [])
+                if str(item.get("outbox_id")) == source_outbox_id
+            ),
+            None,
+        )
+        if not source:
+            raise KeyError(f"outbox_not_found_for_date:{content_date}:{source_outbox_id}")
+        package = dict(source.get("package") or {})
+        thought = dict(package.get("generation_thought") or {})
+        if not thought:
+            raise ValueError("generation_thought_required_for_republication")
+        plan = {
+            "source_outbox_id": source_outbox_id,
+            "platforms": ["facebook", "instagram", "linkedin"],
+            "copy_provider": "gemini",
+            "visual_provider": "gemini",
+            "new_publication_transaction": True,
+        }
+        if context.dry_run:
+            return {"would_republish": plan, "production_mutated": False}
+
+        replacement_suffix = uuid.uuid4().hex[:10]
+        thought["id"] = f"{str(thought.get('id') or 'REPLACEMENT').removesuffix('-CORRECTED')}-REPUBLISH-{replacement_suffix}"
+        package["post_id"] = f"{str(package.get('post_id') or package.get('content_id') or 'replacement')}-republish-{replacement_suffix}"
+        package["content_id"] = package["post_id"]
+        package["generation_thought"] = thought
+        package["routing"] = {"platforms": plan["platforms"]}
+        package["platforms"] = plan["platforms"]
+        package["platform_policy"] = {"platforms": plan["platforms"]}
+        package["gemini_copy"] = {
+            "provider": "gemini",
+            "task": "copy_editing",
+            "status": "PENDING",
+            "strict_provider": True,
+            "fallback_allowed": False,
+            "generation_timing": "before_image_generation",
+            "required_outputs": ["statement", "expansion", "action", "visible_text", "platform_captions"],
+            "source_statement": str(thought.get("statement") or ""),
+        }
+        product_id = str(package.get("product_id") or thought.get("product_id") or "")
+        product = _load_product_brief(context.data_dir, product_id) if product_id else None
+        product_source = str(package.get("product_image_url") or (product or {}).get("source_image_url") or "").strip()
+        if product_id and product_source:
+            package["product_image_url"] = product_source
+            package["product_image_approval"] = approve_product_reference(product_id, product_source)
+        package["gemini_generation"] = _gemini_generation_plan(thought, product)
+        package["copy_generation_source"] = "pending_strict_gemini"
+        package["primary_publish_image_url"] = ""
+        package["carousel_assets"] = []
+        package["generated_visuals"] = {
+            "render_engines": {platform: "pending_gemini" for platform in plan["platforms"]},
+            "artifact_reviews": {
+                platform: {"verdict": "PENDING_GEMINI", "issues": []}
+                for platform in plan["platforms"]
+            },
+        }
+        package["platform_posts"] = {
+            platform: {
+                "platform": platform,
+                "caption": "",
+                "final_caption": "",
+                "destination_url": str(package.get("destination_url") or ""),
+                "content_format": "single_image_product",
+                "final_caption_qa": {"status": "PENDING_GEMINI", "reasons": ["strict_gemini_copy_required"]},
+            }
+            for platform in plan["platforms"]
+        }
+        package["fb_caption"] = ""
+        package["ig_caption"] = ""
+        package["li_text"] = ""
+        scheduled_at = datetime.now(CENTRAL_TIME).isoformat()
+        package["platform_schedule"] = {platform: scheduled_at for platform in plan["platforms"]}
+        package["replacement"] = {
+            "created_at_utc": utc_now(),
+            "reason": str(payload.get("reason") or "owner_requested_corrected_republication"),
+            **plan,
+        }
+        replacement_outbox_id = mark_ready(
+            context.data_dir,
+            content_date=content_date,
+            slot=str(source.get("slot") or "morning"),
+            scheduled_at=scheduled_at,
+            decision_id=str(source["decision_id"]),
+            package=package,
+        )
+        return {**plan, "status": "PENDING_STRICT_GEMINI", "replacement_outbox_id": replacement_outbox_id}
+
     def publication_delete(payload: dict[str, Any], context: ExecutionContext) -> dict[str, Any]:
         import importlib
 
@@ -1258,6 +1358,7 @@ def register_core_capabilities(registry: CapabilityRegistry, policies: PolicyEng
         Capability("publication.operations.get", "Get publication operations", "Inspect exact daily slots, candidate decisions, outbox state, platform transactions, failures, and readiness actions.", "SOCIAL", publication_operations, object_schema({"content_date": {"type": "string"}, "lead_hours": {"type": "integer"}})),
         Capability("publication.detail.get", "Get publication decision detail", "Retrieve one content council decision with candidates, rationale, outbox packages, and provider transaction evidence.", "SOCIAL", publication_detail, object_schema({"decision_id": {"type": "string"}}, ["decision_id"])),
         Capability("publication.correct_ready", "Correct ready publication", "Re-render and update one READY or externally blocked outbox package while preserving immutable confirmed platform publications. This does not publish or delete anything.", "SOCIAL", publication_correct_ready, object_schema({"content_date": {"type": "string"}, "outbox_id": {"type": "string"}, "reason": {"type": "string"}}, ["content_date", "outbox_id"]), risk_level="INTERNAL_MUTATION", permission_requirement="EXECUTE_WITH_APPROVAL", supports_rollback=False),
+        Capability("publication.republish", "Republish corrected publication", "Create a new all-platform publication transaction from an existing package, regenerate strict Gemini copy and visuals, and preserve all previous provider records.", "SOCIAL", publication_republish, object_schema({"content_date": {"type": "string"}, "outbox_id": {"type": "string"}, "reason": {"type": "string"}}, ["content_date", "outbox_id"]), risk_level="INTERNAL_MUTATION", cost_class="MEDIUM", permission_requirement="EXECUTE_WITH_APPROVAL", supports_rollback=False),
         Capability("publication.prepare_next", "Prepare next publication", "Generate and validate strict Gemini copy and visuals for the next eligible READY package without publishing it.", "SOCIAL", publication_prepare_next, object_schema({}), risk_level="INTERNAL_MUTATION", cost_class="MEDIUM", permission_requirement="EXECUTE_WITH_APPROVAL", supports_rollback=False),
         Capability("publication.dispatch", "Dispatch due publications", "Dispatch due approved outbox packages through preserved idempotent platform publishers; preview safely with dry run.", "SOCIAL", publication_dispatch, object_schema({}), risk_level="EXTERNAL_IRREVERSIBLE", cost_class="MEDIUM", permission_requirement="EXECUTE_WITH_APPROVAL", supports_rollback=False),
         Capability("publication.delete", "Delete exact publication", "Delete one exact platform publication by immutable provider ID after owner approval.", "SOCIAL", publication_delete, object_schema({"platform": {"type": "string"}, "post_id": {"type": "string"}}, ["platform", "post_id"]), risk_level="EXTERNAL_IRREVERSIBLE", permission_requirement="EXECUTE_WITH_APPROVAL", supports_rollback=False),

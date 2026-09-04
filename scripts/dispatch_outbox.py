@@ -224,7 +224,7 @@ def _prepare_gemini_copy(package: dict[str, Any]) -> dict[str, Any]:
         "visible_text must contain headline, infenergy_line, resolution_line. platform_captions must contain facebook, instagram, linkedin. "
         "Make each platform caption native, concise, non-repetitive, human, and specific to the consumer moment. "
         "The three visible lines must work as an intentional visual sequence, not labels or production directions. "
-        "Each visible line must be seven words or fewer and 48 characters or fewer, with plain punctuation and no hashtags. "
+        "The visible headline must be three words or fewer and 24 characters or fewer. The other two visible lines must be seven words or fewer and 48 characters or fewer. Use plain punctuation and no hashtags. "
         "Write for premium image typography: decisive, spare, immediately readable, and free of repeated ideas. "
         "Never output POV:, FIELD TRUTH, internal taxonomy, unsupported specifications, prices, runtime, guarantees, testimonials, or invented product claims. "
         "Use only verified product facts supplied in the brief. Do not output markdown or keys beyond the required schema.\n\n"
@@ -256,9 +256,10 @@ def _prepare_gemini_copy(package: dict[str, Any]) -> dict[str, Any]:
         raise RuntimeError(f"gemini_copy_forbidden_label:{','.join(leaked)}")
     if any(len(str(captions[platform])) > 5000 for platform in PLATFORMS):
         raise RuntimeError("gemini_copy_caption_too_long")
+    visible_limits = {"headline": (24, 3), "infenergy_line": (48, 7), "resolution_line": (48, 7)}
     oversized_visible = [
-        key for key in ("headline", "infenergy_line", "resolution_line")
-        if len(str(visible[key]).strip()) > 48 or len(str(visible[key]).split()) > 7
+        key for key, (character_limit, word_limit) in visible_limits.items()
+        if len(str(visible[key]).strip()) > character_limit or len(str(visible[key]).split()) > word_limit
     ]
     if oversized_visible:
         raise RuntimeError(f"gemini_copy_visible_text_too_long:{','.join(oversized_visible)}")

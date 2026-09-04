@@ -173,7 +173,7 @@ def test_prepare_gemini_copy_authors_captions_and_visual_text(monkeypatch):
         "expansion": "Protect the handoff before the routine moves.",
         "action": "Test the full setup where you use it.",
         "visible_text": {
-            "headline": "THE SMALLEST BATTERY RUNS THE DAY.",
+            "headline": "POWER THE HANDOFF.",
             "infenergy_line": "POWER THE HANDOFF.",
             "resolution_line": "TEST THE WHOLE ROUTINE.",
         },
@@ -193,7 +193,7 @@ def test_prepare_gemini_copy_authors_captions_and_visual_text(monkeypatch):
     prompt = prepared["gemini_generation"]["prompts"][0]
     direction = prompt["v5_direction"]
     assert direction["text_overlay"] == {"enabled": False}
-    assert direction["gemini_rendered_text"] == ["THE SMALLEST BATTERY RUNS THE DAY."]
+    assert direction["gemini_rendered_text"] == ["POWER THE HANDOFF."]
     assert direction["gemini_typography_contract"]["blue_shadow_allowed"] is False
     assert "no blue shadow" in prompt["gemini_image_prompt"]
     assert "Render the supplied headline once only" in prompt["gemini_image_prompt"]

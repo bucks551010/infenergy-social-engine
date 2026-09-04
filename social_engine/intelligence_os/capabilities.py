@@ -1047,6 +1047,95 @@ def register_core_capabilities(registry: CapabilityRegistry, policies: PolicyEng
             return {"would_dispatch_due": True, "readiness": operations_readiness(context.data_dir), "production_mutated": False}
         return dispatch_due(data_dir=context.data_dir)
 
+    def publication_correct_ready(payload: dict[str, Any], context: ExecutionContext) -> dict[str, Any]:
+        from build_monthly_content import _captions, _public_url, _render_assets
+        from content_operations import daily_index, platform_transaction, update_ready_package
+
+        content_date = str(payload["content_date"])
+        outbox_id = str(payload["outbox_id"])
+        index = daily_index(context.data_dir, content_date)
+        outbox = next(
+            (
+                item
+                for detail in index.get("details", [])
+                for item in detail.get("outbox", [])
+                if str(item.get("outbox_id")) == outbox_id
+            ),
+            None,
+        )
+        if not outbox:
+            raise KeyError(f"outbox_not_found_for_date:{content_date}:{outbox_id}")
+        if outbox.get("status") != "READY":
+            raise ValueError(f"outbox_not_ready_for_correction:{outbox.get('status')}")
+        package = dict(outbox.get("package") or {})
+        thought = dict(package.get("generation_thought") or {})
+        if not thought:
+            raise ValueError("generation_thought_required_for_correction")
+        transactions = {
+            platform: platform_transaction(context.data_dir, outbox_id, platform)
+            for platform in ("facebook", "instagram", "linkedin")
+        }
+        unsafe = [
+            platform
+            for platform, transaction in transactions.items()
+            if transaction and transaction.get("state") not in {"CONFIRMED_SUCCESS", "CONFIRMED_FAILURE", "AUTH_ACTION_REQUIRED"}
+        ]
+        if unsafe:
+            raise ValueError(f"platform_transaction_in_progress:{','.join(unsafe)}")
+        preserved = {
+            platform: transaction.get("external_id")
+            for platform, transaction in transactions.items()
+            if transaction.get("state") == "CONFIRMED_SUCCESS"
+        }
+        target_platforms = [platform for platform in ("facebook", "instagram", "linkedin") if platform not in preserved]
+        if not target_platforms:
+            raise ValueError("all_platforms_already_published")
+        plan = {
+            "outbox_id": outbox_id,
+            "preserved_publications": preserved,
+            "corrected_platforms": target_platforms,
+            "external_publication": False,
+        }
+        if context.dry_run:
+            return {"would_correct": plan, "production_mutated": False}
+
+        thought["id"] = f"{thought.get('id')}-CORRECTED"
+        assets = _render_assets(context.data_dir, thought, 0)
+        if assets.get("review_issues"):
+            raise RuntimeError(f"corrected_visual_review_failed:{','.join(assets['review_issues'])}")
+        captions = _captions(thought)
+        primary_path = assets["primary"]["local_path"]
+        primary_url = assets["primary"]["public_url"] or _public_url(Path(primary_path).name)
+        if not primary_url:
+            raise RuntimeError("corrected_visual_public_url_unavailable")
+        package["generation_thought"] = thought
+        package["primary_publish_image_url"] = primary_url
+        package["generated_visuals"] = {
+            **dict(package.get("generated_visuals") or {}),
+            **{platform: primary_path for platform in target_platforms},
+            "render_engines": {platform: "deterministic_product_story_renderer" for platform in target_platforms},
+            "artifact_reviews": {
+                platform: {
+                    "verdict": "PASS",
+                    "issues": [],
+                    "contract_checks": ["three_distinct_panels", "approved_visible_text", "verified_product_reference", "product_in_plot"],
+                }
+                for platform in target_platforms
+            },
+        }
+        for platform in target_platforms:
+            post = package.setdefault("platform_posts", {}).setdefault(platform, {"platform": platform})
+            post["caption"] = captions[platform]
+            post["final_caption"] = captions[platform]
+        package["correction"] = {
+            "corrected_at_utc": utc_now(),
+            "reason": str(payload.get("reason") or "creative_contract_mismatch"),
+            **plan,
+        }
+        if not update_ready_package(context.data_dir, outbox_id, package):
+            raise RuntimeError("outbox_changed_before_correction")
+        return {**plan, "status": "CORRECTED_READY", "primary_publish_image_url": primary_url}
+
     def publication_delete(payload: dict[str, Any], context: ExecutionContext) -> dict[str, Any]:
         import importlib
 
@@ -1139,6 +1228,7 @@ def register_core_capabilities(registry: CapabilityRegistry, policies: PolicyEng
         Capability("agents.run", "Run operational agent", "Run a registered specialist with parameters from agents.list. For a complete rendered carousel package, carousel_slide_writer with objective delegates to creative.carousel.generate and validates every asset without scheduling or publishing. Mutation-capable agent execution remains owner-approved.", "OPERATIONS", agent_run, object_schema({"name": {"type": "string"}, "params": {"type": "object"}}, ["name"]), risk_level="INTERNAL_MUTATION", permission_requirement="EXECUTE_WITH_APPROVAL", supports_rollback=True, rollback_handler=rollback_creative),
         Capability("publication.operations.get", "Get publication operations", "Inspect exact daily slots, candidate decisions, outbox state, platform transactions, failures, and readiness actions.", "SOCIAL", publication_operations, object_schema({"content_date": {"type": "string"}, "lead_hours": {"type": "integer"}})),
         Capability("publication.detail.get", "Get publication decision detail", "Retrieve one content council decision with candidates, rationale, outbox packages, and provider transaction evidence.", "SOCIAL", publication_detail, object_schema({"decision_id": {"type": "string"}}, ["decision_id"])),
+        Capability("publication.correct_ready", "Correct ready publication", "Re-render and update one READY outbox package while preserving immutable confirmed platform publications. This does not publish or delete anything.", "SOCIAL", publication_correct_ready, object_schema({"content_date": {"type": "string"}, "outbox_id": {"type": "string"}, "reason": {"type": "string"}}, ["content_date", "outbox_id"]), risk_level="INTERNAL_MUTATION", permission_requirement="EXECUTE_WITH_APPROVAL", supports_rollback=False),
         Capability("publication.dispatch", "Dispatch due publications", "Dispatch due approved outbox packages through preserved idempotent platform publishers; preview safely with dry run.", "SOCIAL", publication_dispatch, object_schema({}), risk_level="EXTERNAL_IRREVERSIBLE", cost_class="MEDIUM", permission_requirement="EXECUTE_WITH_APPROVAL", supports_rollback=False),
         Capability("publication.delete", "Delete exact publication", "Delete one exact platform publication by immutable provider ID after owner approval.", "SOCIAL", publication_delete, object_schema({"platform": {"type": "string"}, "post_id": {"type": "string"}}, ["platform", "post_id"]), risk_level="EXTERNAL_IRREVERSIBLE", permission_requirement="EXECUTE_WITH_APPROVAL", supports_rollback=False),
         Capability("brand.positioning.get", "Get brand positioning", "Return owner-first identity, purpose, worldview, competitive position, and voice constraints with preserved source hierarchy.", "BRAND", brand_positioning),

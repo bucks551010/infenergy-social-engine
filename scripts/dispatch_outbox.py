@@ -315,7 +315,7 @@ def _prepare_gemini_copy(package: dict[str, Any]) -> dict[str, Any]:
         prompt_plan["prompt_sha256"] = hashlib.sha256(scene_prompt.encode("utf-8")).hexdigest()
         direction = prompt_plan.get("v5_direction") if isinstance(prompt_plan.get("v5_direction"), dict) else {}
         overlay = direction.get("text_overlay") if isinstance(direction.get("text_overlay"), dict) else {}
-        rendered_text = list(contract["visible_text"].values())
+        rendered_text = [str(contract["visible_text"]["headline"]).strip()]
         overlay.clear()
         overlay["enabled"] = False
         direction["gemini_rendered_text"] = rendered_text
@@ -329,7 +329,7 @@ def _prepare_gemini_copy(package: dict[str, Any]) -> dict[str, Any]:
         text_instruction = (
             "Render these Gemini-authored lines directly into the finished image, each exactly once and spelled exactly: "
             + json.dumps(rendered_text, ensure_ascii=True)
-            + ". Use clean premium editorial typography integrated directly into open negative space. Use crisp solid letterforms with no blue shadow, no blue glow, no neon edge, no outline, and no dark or translucent text box. For a three-panel composition, place exactly one supplied line in each panel in the supplied order. Do not repeat any line at the bottom or add secondary captions. Render no other words, letters, numbers, captions, dialogue, labels, or logos."
+            + ". Use clean premium editorial typography integrated directly into open negative space. Use crisp solid letterforms with no blue shadow, no blue glow, no neon edge, no outline, and no dark or translucent text box. Render the supplied headline once only. Do not repeat it at the bottom or add secondary captions. Render no other words, letters, numbers, captions, dialogue, labels, or logos."
         )
         scene_prompt = f"{text_instruction} {scene_prompt}"
         prompt_plan["gemini_image_prompt"] = scene_prompt

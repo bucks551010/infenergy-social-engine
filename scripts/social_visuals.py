@@ -1048,6 +1048,7 @@ def _generate_gemini_full_creative(content: dict[str, Any], platform: str, visua
         "generation_started_at": started_at,
         "retry_count": 0,
         "fallback_used": False,
+        "local_text_overlay_used": False,
     }
 
     def completed(success: bool, reason: str, *, model: str = "", retry_count: int = 0) -> tuple[bool, str, dict[str, Any]]:
@@ -1158,30 +1159,33 @@ def _generate_gemini_full_creative(content: dict[str, Any], platform: str, visua
                     pass
 
         contents: Any = [prompt, *reference_parts] if reference_parts else prompt
-        metadata["image_provider_call_count"] = 1
+        max_generation_attempts = max(1, min(int(os.environ.get("GEMINI_IMAGE_REPAIR_ATTEMPTS", "3")), 4))
+        metadata["image_provider_call_count"] = 0
         try:
             config_kwargs: dict[str, Any] = {"response_modalities": ["TEXT", "IMAGE"]}
             try:
                 config_kwargs["image_config"] = types.ImageConfig(aspect_ratio=spec["aspect_ratio"])
             except Exception:
                 pass
-            response = client.models.generate_content(
-                model=model_name,
-                contents=contents,
-                config=types.GenerateContentConfig(**config_kwargs),
-            )
-            raw = _extract_inline_image_bytes(response)
-            if not raw:
-                reasons_by_model[model_name] = "no_image_bytes"
-            else:
+            for attempt in range(max_generation_attempts):
+                metadata["image_provider_call_count"] += 1
+                response = client.models.generate_content(
+                    model=model_name,
+                    contents=contents,
+                    config=types.GenerateContentConfig(**config_kwargs),
+                )
+                raw = _extract_inline_image_bytes(response)
+                if not raw:
+                    reasons_by_model[model_name] = "no_image_bytes"
+                    continue
                 image_module, _, _ = _load_pillow()
                 if image_module is None:
-                    return completed(False, "pillow_unavailable", model=model_name)
+                    return completed(False, "pillow_unavailable", model=model_name, retry_count=attempt)
 
                 generated = image_module.open(io.BytesIO(raw)).convert("RGB")
                 accepted, plate_reasons = _gemini_plate_quality(generated, platform)
                 if not accepted:
-                    reasons_by_model[model_name] = f"plate_quality_rejected:{','.join(plate_reasons)}"
+                    rejection_reason = f"plate_quality_rejected:{','.join(plate_reasons)}"
                 else:
                     root = _safe_json_dict(content.get("consumer_root"))
                     consumer_moment = _safe_json_dict(root.get("moment"))
@@ -1190,19 +1194,31 @@ def _generate_gemini_full_creative(content: dict[str, Any], platform: str, visua
                         gemini_rendered_text,
                     )
                     if not accepted:
-                        reasons_by_model[model_name] = f"semantic_quality_rejected:{','.join(semantic_reasons)}"
+                        rejection_reason = f"semantic_quality_rejected:{','.join(semantic_reasons)}"
                     else:
                         generated = _resize_cover(generated, spec["target"], image_module)
                         if generated.size != spec["target"]:
-                            reasons_by_model[model_name] = "resize_mismatch"
+                            rejection_reason = "resize_mismatch"
                         else:
                             generated, overlay_error = _apply_v5_text_overlay(generated, v5_direction)
                             if overlay_error:
-                                reasons_by_model[model_name] = overlay_error
+                                rejection_reason = overlay_error
                             else:
                                 os.makedirs(os.path.dirname(output_path), exist_ok=True)
                                 generated.save(output_path, format="PNG", optimize=True)
-                                return completed(True, "ok", model=model_name)
+                                return completed(True, "ok", model=model_name, retry_count=attempt)
+                reasons_by_model[model_name] = rejection_reason
+                if attempt + 1 < max_generation_attempts:
+                    repair_bytes, repair_mime = _normalize_reference_image(raw)
+                    correction_prompt = (
+                        "Revise the attached rejected candidate into a new finished image. Preserve the approved scene and "
+                        f"product identity, but correct every QA failure: {rejection_reason}. Follow this complete original "
+                        f"contract exactly: {prompt}"
+                    )
+                    contents = [correction_prompt]
+                    if repair_bytes:
+                        contents.append(types.Part.from_bytes(data=repair_bytes, mime_type=repair_mime or "image/png"))
+                    contents.extend(reference_parts)
         except Exception as e:
             error = f"api_exception:{type(e).__name__}:{str(e)[:160]}"
             reasons_by_model[model_name] = error
@@ -1210,7 +1226,7 @@ def _generate_gemini_full_creative(content: dict[str, Any], platform: str, visua
                 _GEMINI_IMAGE_UNAVAILABLE_REASON = error
                 return completed(False, error, model=model_name)
         summary = "; ".join(f"{model}={reason}" for model, reason in reasons_by_model.items()) or "no_attempts_made"
-        return completed(False, summary, model=model_name)
+        return completed(False, summary, model=model_name, retry_count=max_generation_attempts - 1)
     except Exception as e:
         return completed(False, f"setup_exception:{type(e).__name__}:{str(e)[:160]}")
 

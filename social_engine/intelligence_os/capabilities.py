@@ -1046,6 +1046,18 @@ def register_core_capabilities(registry: CapabilityRegistry, policies: PolicyEng
             from content_operations import operations_readiness
             return {"would_dispatch_due": True, "readiness": operations_readiness(context.data_dir), "production_mutated": False}
         return dispatch_due(data_dir=context.data_dir)
+    def publication_prepare_next(_: dict[str, Any], context: ExecutionContext) -> dict[str, Any]:
+        from dispatch_outbox import pregenerate_upcoming
+        if context.dry_run:
+            return {
+                "would_prepare_next": True,
+                "copy_provider": "gemini",
+                "visual_provider": "gemini",
+                "external_publication": False,
+                "production_mutated": False,
+            }
+        result = pregenerate_upcoming(data_dir=context.data_dir)
+        return {**result, "external_publication": False}
 
     def publication_correct_ready(payload: dict[str, Any], context: ExecutionContext) -> dict[str, Any]:
         from build_monthly_content import _gemini_generation_plan, _load_product_brief
@@ -1238,6 +1250,7 @@ def register_core_capabilities(registry: CapabilityRegistry, policies: PolicyEng
         Capability("publication.operations.get", "Get publication operations", "Inspect exact daily slots, candidate decisions, outbox state, platform transactions, failures, and readiness actions.", "SOCIAL", publication_operations, object_schema({"content_date": {"type": "string"}, "lead_hours": {"type": "integer"}})),
         Capability("publication.detail.get", "Get publication decision detail", "Retrieve one content council decision with candidates, rationale, outbox packages, and provider transaction evidence.", "SOCIAL", publication_detail, object_schema({"decision_id": {"type": "string"}}, ["decision_id"])),
         Capability("publication.correct_ready", "Correct ready publication", "Re-render and update one READY outbox package while preserving immutable confirmed platform publications. This does not publish or delete anything.", "SOCIAL", publication_correct_ready, object_schema({"content_date": {"type": "string"}, "outbox_id": {"type": "string"}, "reason": {"type": "string"}}, ["content_date", "outbox_id"]), risk_level="INTERNAL_MUTATION", permission_requirement="EXECUTE_WITH_APPROVAL", supports_rollback=False),
+        Capability("publication.prepare_next", "Prepare next publication", "Generate and validate strict Gemini copy and visuals for the next eligible READY package without publishing it.", "SOCIAL", publication_prepare_next, object_schema({}), risk_level="INTERNAL_MUTATION", cost_class="MEDIUM", permission_requirement="EXECUTE_WITH_APPROVAL", supports_rollback=False),
         Capability("publication.dispatch", "Dispatch due publications", "Dispatch due approved outbox packages through preserved idempotent platform publishers; preview safely with dry run.", "SOCIAL", publication_dispatch, object_schema({}), risk_level="EXTERNAL_IRREVERSIBLE", cost_class="MEDIUM", permission_requirement="EXECUTE_WITH_APPROVAL", supports_rollback=False),
         Capability("publication.delete", "Delete exact publication", "Delete one exact platform publication by immutable provider ID after owner approval.", "SOCIAL", publication_delete, object_schema({"platform": {"type": "string"}, "post_id": {"type": "string"}}, ["platform", "post_id"]), risk_level="EXTERNAL_IRREVERSIBLE", permission_requirement="EXECUTE_WITH_APPROVAL", supports_rollback=False),
         Capability("brand.positioning.get", "Get brand positioning", "Return owner-first identity, purpose, worldview, competitive position, and voice constraints with preserved source hierarchy.", "BRAND", brand_positioning),

@@ -672,7 +672,7 @@ def _package(knowledge: dict[str, Any], thought: dict[str, Any], content_date: s
     product_id = str(thought.get("product_id") or "").strip()
     product = _load_product_brief(data_dir, product_id) if product_id else None
     generation_plan = _gemini_generation_plan(thought, product)
-    if str(thought.get("source_note") or "") == "120-day Infenergy content plan":
+    if str(thought.get("id") or "").startswith("PLAN120-"):
         generation_plan.update({
             "provider": "deterministic",
             "generation_timing": "calendar_build",

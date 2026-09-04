@@ -101,6 +101,30 @@ def test_consumer_root_reaches_monthly_outbox_package(tmp_path):
     assert package["gemini_generation"]["prompts"] == []
 
 
+def test_company_voice_package_keeps_deterministic_generation_contract(tmp_path):
+    _write_profiles(tmp_path)
+    entry = build_120_day_plan(
+        data_dir=str(tmp_path),
+        start_date="2026-09-06",
+        days=1,
+    )["entries"][0]
+    thought = _plan_entry_thought(entry)
+    package = _package(
+        {"knowledge_id": "test-knowledge", "schema_version": "test.v1", "agent_specializations": {}},
+        thought,
+        entry["date"],
+        0,
+        str(tmp_path),
+        defer_images=True,
+    )
+
+    assert thought["source_note"] != "120-day Infenergy content plan"
+    assert package["gemini_generation"]["provider"] == "deterministic"
+    assert package["gemini_generation"]["strict_provider"] is False
+    assert package["gemini_generation"]["required_image_count"] == 0
+    assert package["gemini_generation"]["prompts"] == []
+
+
 def test_plan_thought_preserves_slot_and_deterministic_canvas_contract(tmp_path):
     _write_profiles(tmp_path)
     entries = build_120_day_plan(

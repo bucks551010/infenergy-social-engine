@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import hashlib
 import os
+import re
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -223,9 +224,13 @@ def _prepare_gemini_copy(package: dict[str, Any], data_dir: str = DATA_DIR) -> d
         "Return one JSON object with exactly these keys: statement, expansion, action, image_scene, visible_text, platform_captions. "
         "visible_text must contain headline, infenergy_line, resolution_line. platform_captions must contain facebook, instagram, linkedin. "
         "Make each platform caption native, concise, non-repetitive, human, and specific to the consumer moment. "
+        "image_scene must name a specific person, place, activity, power interruption, and visible product use that resolves the moment. "
+        "Reject empty tabletop, isolated desk, packshot, generic workspace, and product-only compositions. The product must be actively used by a person in a credible scene. "
         "The three visible lines must work as an intentional visual sequence, not labels or production directions. "
-        "The visible headline must be three words or fewer and 24 characters or fewer. The other two visible lines must be seven words or fewer and 48 characters or fewer. Use plain punctuation and no hashtags. "
-        "Write for premium image typography: decisive, spare, immediately readable, and free of repeated ideas. "
+        "The visible headline must be five words or fewer and 36 characters or fewer. The other two visible lines must be seven words or fewer and 48 characters or fewer. Use plain punctuation and no hashtags. "
+        "The headline must express the scene's specific tension, surprise, or human payoff. It must be memorable without becoming a slogan. Reject generic phrases such as Stay Connected, Power Your Day, Power Anywhere, Stay Powered, Be Prepared, or Never Stop. "
+        "Make the statement and captions earn the headline with a concrete observation and useful decision. Avoid vague claims such as seamless, dependable, essential, freedom, confidence, or peace of mind unless the supplied facts explicitly support them. "
+        "Write for premium image typography: decisive, spare, immediately readable, emotionally precise, and free of repeated ideas. "
         "Never output POV:, FIELD TRUTH, internal taxonomy, unsupported specifications, prices, runtime, guarantees, testimonials, or invented product claims. "
         "Use only verified product facts supplied in the brief. Do not output markdown or keys beyond the required schema.\n\n"
         f"FACTUAL BRIEF:\n{json.dumps(brief, ensure_ascii=True, sort_keys=True)}"
@@ -256,13 +261,19 @@ def _prepare_gemini_copy(package: dict[str, Any], data_dir: str = DATA_DIR) -> d
         raise RuntimeError(f"gemini_copy_forbidden_label:{','.join(leaked)}")
     if any(len(str(captions[platform])) > 5000 for platform in PLATFORMS):
         raise RuntimeError("gemini_copy_caption_too_long")
-    visible_limits = {"headline": (24, 3), "infenergy_line": (48, 7), "resolution_line": (48, 7)}
+    visible_limits = {"headline": (36, 5), "infenergy_line": (48, 7), "resolution_line": (48, 7)}
     oversized_visible = [
         key for key, (character_limit, word_limit) in visible_limits.items()
         if len(str(visible[key]).strip()) > character_limit or len(str(visible[key]).split()) > word_limit
     ]
     if oversized_visible:
         raise RuntimeError(f"gemini_copy_visible_text_too_long:{','.join(oversized_visible)}")
+    generic_headlines = {
+        "stay connected", "power your day", "power anywhere", "stay powered", "be prepared", "never stop",
+    }
+    normalized_headline = re.sub(r"[^a-z0-9 ]+", "", str(visible["headline"]).lower()).strip()
+    if normalized_headline in generic_headlines:
+        raise RuntimeError("gemini_copy_generic_headline")
 
     thought.update({
         "statement": str(result["statement"]).strip(),
@@ -331,11 +342,14 @@ def _prepare_gemini_copy(package: dict[str, Any], data_dir: str = DATA_DIR) -> d
             "blue_glow_allowed": False,
             "duplicated_text_allowed": False,
             "extra_text_allowed": False,
+            "hierarchy": "single editorial headline",
+            "placement": "scene-aware negative space",
+            "style": "premium editorial grotesk",
         }
         text_instruction = (
             "Render these Gemini-authored lines directly into the finished image, each exactly once and spelled exactly: "
             + json.dumps(rendered_text, ensure_ascii=True)
-            + ". Use clean premium editorial typography integrated directly into open negative space. Use crisp solid letterforms with no blue shadow, no blue glow, no neon edge, no outline, and no dark or translucent text box. Render the supplied headline once only. Do not repeat it at the bottom or add secondary captions. Render no other words, letters, numbers, captions, dialogue, labels, or logos."
+            + ". Treat the typography with the same craft and specificity as the photography. Use one confident premium editorial grotesk with optical kerning, balanced tracking, and a deliberate line break only when it strengthens meaning. Build a clear single-headline hierarchy at roughly 8-12% of canvas height. Align it to a strong scene edge or subject gesture inside genuinely open negative space; never center it mechanically across the product or person's face. Choose warm white, charcoal, or restrained amber according to the local background for strong natural contrast. Integrate the headline into the composition so image and message read as one idea. Use crisp solid letterforms with no blue shadow, no blue glow, no neon edge, no outline, no bevel, no fake 3D extrusion, and no dark or translucent text box. Do not use a floating card, banner, pill, label, or generic poster lockup. Render the supplied headline once only. Do not repeat it at the bottom or add secondary captions. Render no other words, letters, numbers, captions, dialogue, labels, or logos."
         )
         scene_prompt = f"{text_instruction} {scene_prompt}"
         prompt_plan["gemini_image_prompt"] = scene_prompt

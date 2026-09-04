@@ -544,7 +544,9 @@ def _gemini_semantic_plate_quality(
         text_requirements = (
             "The finished image must render each of these exact lines once, spelled exactly, with no other visible text: "
             f"{json.dumps(exact_lines, ensure_ascii=True)}. Typography must use crisp solid letterforms with no blue shadow, "
-            "blue glow, neon edge, or dark translucent text box. "
+            "blue glow, neon edge, or dark translucent text box. The headline must have a deliberate editorial hierarchy, "
+            "professional kerning and line breaks, strong natural contrast, and scene-aware placement in open negative space. "
+            "It must not cover the product, face, hands, or key action, and must feel composed with the photograph rather than pasted on. "
         )
     review_prompt = (
         "Review this social ad image. " + text_requirements + "It must contain a real "
@@ -553,7 +555,8 @@ def _gemini_semantic_plate_quality(
         "gibberish_or_garbled_text, looks_like_generic_ai_poster, infenergy_symbol_in_sky_or_atmosphere, "
         "derivative_existing_superhero_imitation, consumer_person_missing, consumer_setting_mismatch, "
         "consumer_activity_missing, consumer_visual_evidence_missing, unexpected_rendered_text, product_reference_mismatch, "
-        "exact_text_mismatch, duplicated_or_extra_text, blue_text_shadow_or_glow, dark_translucent_text_box. "
+        "exact_text_mismatch, duplicated_or_extra_text, blue_text_shadow_or_glow, dark_translucent_text_box, "
+        "weak_typographic_hierarchy, awkward_text_placement, poor_kerning_or_line_breaks, text_competes_with_subject. "
         "When on-image text is added after this review, set unexpected_rendered_text=true if the image contains any words, "
         "letters, numbers, captions, labels, or dialogue. When a second reference image is supplied, set "
         "product_reference_mismatch=true unless the depicted product faithfully preserves its shape, proportions, color, "
@@ -602,6 +605,10 @@ def _gemini_semantic_plate_quality(
                     "duplicated_or_extra_text",
                     "blue_text_shadow_or_glow",
                     "dark_translucent_text_box",
+                    "weak_typographic_hierarchy",
+                    "awkward_text_placement",
+                    "poor_kerning_or_line_breaks",
+                    "text_competes_with_subject",
                     *failure_keys,
                 )
             elif expected_headline or expected_cta:

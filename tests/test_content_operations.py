@@ -283,6 +283,35 @@ def test_operations_readiness_honors_explicit_single_required_slot(tmp_path):
     assert readiness["tomorrow"]["ready"] == 1
     assert readiness["content_supply_health"] == "READY"
     assert all(action["action"] != "REPLENISH" for action in readiness["actions"])
+    assert all(action["action"] != "RECOVER_OR_PULL_READY_RESERVE" for action in readiness["actions"])
+    assert readiness["next_slot"]["slot"] == "midday"
+
+
+def test_operations_readiness_derives_production_publisher_health(tmp_path, monkeypatch):
+    for day in ("2026-08-20", "2026-08-21"):
+        ensure_daily_slots(
+            str(tmp_path),
+            day,
+            _schedule(day),
+            {"platforms": ["facebook", "instagram", "linkedin"], "required_slots": ["midday"]},
+        )
+    monkeypatch.setattr(
+        "platform_publishing.list_platforms",
+        lambda: [
+            {"platform": "facebook", "publishing_enabled": True},
+            {"platform": "instagram", "publishing_enabled": True},
+            {"platform": "linkedin", "publishing_enabled": True},
+            {"platform": "youtube", "publishing_enabled": False},
+        ],
+    )
+
+    readiness = operations_readiness(
+        str(tmp_path),
+        now_utc=datetime(2026, 8, 20, 12, 30, tzinfo=timezone.utc),
+    )
+
+    assert readiness["publisher_health"] == "READY"
+    assert all(action["action"] != "RESTORE_PUBLISHER" for action in readiness["actions"])
 
 
 def test_restart_recovers_stale_claim_without_external_transaction(tmp_path):

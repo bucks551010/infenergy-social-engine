@@ -1092,7 +1092,22 @@ def operations_readiness(
     now = now_utc or datetime.now(timezone.utc)
     today = daily_status(data_dir, now.date())
     tomorrow = daily_status(data_dir, now.date() + timedelta(days=1))
-    publishers = publisher_ready or {}
+    if publisher_ready is None:
+        from platform_publishing import list_platforms
+
+        publishers = {
+            str(platform["platform"]): bool(platform.get("publishing_enabled"))
+            for platform in list_platforms()
+            if str(platform.get("platform")) in PLATFORMS
+        }
+    else:
+        publishers = publisher_ready
+    required_slots = {
+        str(slot)
+        for row in today["slots"]
+        for slot in (row.get("platform_policy", {}).get("required_slots") or [])
+        if str(slot) in SLOTS
+    } or set(SLOTS)
     actions: list[dict[str, str]] = []
     slots: list[dict[str, Any]] = []
     next_slot: dict[str, Any] | None = None
@@ -1103,7 +1118,8 @@ def operations_readiness(
             scheduled = now
         deadline = scheduled - timedelta(hours=max(0, lead_hours))
         accounted = row["status"] in {"READY", "DUE", "CLAIMED", "PUBLISHING", "PUBLISHED"}
-        late = now >= deadline and not accounted
+        required = row["slot"] in required_slots
+        late = required and now >= deadline and not accounted
         slot_state = {
             "slot": row["slot"],
             "scheduled_at": row["scheduled_at"],
@@ -1116,7 +1132,7 @@ def operations_readiness(
             "last_error": row.get("last_error"),
         }
         slots.append(slot_state)
-        if scheduled >= now and next_slot is None:
+        if required and scheduled >= now and next_slot is None:
             next_slot = slot_state
         if late:
             actions.append({"owner": "OPERATIONS_READINESS_SPECIALIST", "slot": row["slot"], "action": "RECOVER_OR_PULL_READY_RESERVE", "reason": row.get("last_error") or "readiness_deadline_missed"})

@@ -667,14 +667,22 @@ def complete_platform_transaction(
         connection.close()
 
 
-def release_outbox(data_dir: str, outbox_id: str, error: str, *, next_attempt_at: str | None = None) -> None:
+def release_outbox(
+    data_dir: str,
+    outbox_id: str,
+    error: str,
+    *,
+    next_attempt_at: str | None = None,
+    reset_attempts: bool = False,
+) -> None:
     now = _now()
     connection = _connect(data_dir)
     try:
         connection.execute("BEGIN IMMEDIATE")
         connection.execute(
-            "UPDATE content_outbox SET status='READY', claimed_at=NULL, next_attempt_at=?, last_error=? WHERE outbox_id=?",
-            (next_attempt_at, error, outbox_id),
+            """UPDATE content_outbox SET status='READY', claimed_at=NULL, next_attempt_at=?, last_error=?,
+                attempt_count=CASE WHEN ? THEN 0 ELSE attempt_count END WHERE outbox_id=?""",
+            (next_attempt_at, error, int(reset_attempts), outbox_id),
         )
         connection.execute(
             "UPDATE daily_slots SET status='READY', claimed_at=NULL, last_error=?, updated_at=? WHERE outbox_id=?",

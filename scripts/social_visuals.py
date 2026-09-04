@@ -519,10 +519,15 @@ def _gemini_semantic_plate_quality(
     if expected_headline == "" and expected_cta == "" and not moment:
         return True, []
     spec = _platform_visual_spec(platform)
+    text_requirements = (
+        "It must already contain rendered, legible on-image text: an \"Infenergy Power\" brand wordmark, "
+        f"a headline reading approximately '{expected_headline}', and a call-to-action reading approximately "
+        f"'{expected_cta}'. "
+        if expected_headline or expected_cta
+        else "On-image text is added after this review; do not fail this base image for missing text, headline, or CTA. "
+    )
     review_prompt = (
-        "Review this finished social ad card. It must already contain rendered, legible on-image text: "
-        "an \"Infenergy Power\" brand wordmark, a headline reading approximately "
-        f"'{expected_headline}', a call-to-action reading approximately '{expected_cta}', and a real "
+        "Review this social ad image. " + text_requirements + "It must contain a real "
         f"product staged in the {spec['product_zone']}. Return JSON only with booleans for: "
         "text_missing_or_illegible, headline_mismatch, cta_missing, product_missing, "
         "gibberish_or_garbled_text, looks_like_generic_ai_poster, infenergy_symbol_in_sky_or_atmosphere, "
@@ -552,9 +557,6 @@ def _gemini_semantic_plate_quality(
             if not isinstance(review, dict):
                 continue
             failure_keys = (
-                "text_missing_or_illegible",
-                "headline_mismatch",
-                "cta_missing",
                 "product_missing",
                 "gibberish_or_garbled_text",
                 "looks_like_generic_ai_poster",
@@ -565,6 +567,13 @@ def _gemini_semantic_plate_quality(
                 "consumer_activity_missing",
                 "consumer_visual_evidence_missing",
             )
+            if expected_headline or expected_cta:
+                failure_keys = (
+                    "text_missing_or_illegible",
+                    "headline_mismatch",
+                    "cta_missing",
+                    *failure_keys,
+                )
             reasons = [key for key in failure_keys if review.get(key) is True]
             return not reasons, reasons
         except Exception:

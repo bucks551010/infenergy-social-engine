@@ -1061,7 +1061,7 @@ def register_core_capabilities(registry: CapabilityRegistry, policies: PolicyEng
 
     def publication_correct_ready(payload: dict[str, Any], context: ExecutionContext) -> dict[str, Any]:
         from build_monthly_content import _gemini_generation_plan, _load_product_brief
-        from content_operations import daily_index, platform_transaction, update_ready_package
+        from content_operations import daily_index, platform_transaction, release_outbox, update_ready_package
 
         content_date = str(payload["content_date"])
         outbox_id = str(payload["outbox_id"])
@@ -1077,7 +1077,7 @@ def register_core_capabilities(registry: CapabilityRegistry, policies: PolicyEng
         )
         if not outbox:
             raise KeyError(f"outbox_not_found_for_date:{content_date}:{outbox_id}")
-        if outbox.get("status") != "READY":
+        if outbox.get("status") not in {"READY", "EXTERNAL_ACTION_REQUIRED"}:
             raise ValueError(f"outbox_not_ready_for_correction:{outbox.get('status')}")
         package = dict(outbox.get("package") or {})
         thought = dict(package.get("generation_thought") or {})
@@ -1112,6 +1112,9 @@ def register_core_capabilities(registry: CapabilityRegistry, policies: PolicyEng
         }
         if context.dry_run:
             return {"would_correct": plan, "production_mutated": False}
+
+        if outbox.get("status") == "EXTERNAL_ACTION_REQUIRED":
+            release_outbox(context.data_dir, outbox_id, "", reset_attempts=True)
 
         if not str(thought.get("id") or "").endswith("-CORRECTED"):
             thought["id"] = f"{thought.get('id')}-CORRECTED"

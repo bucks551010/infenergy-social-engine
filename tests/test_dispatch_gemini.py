@@ -15,6 +15,41 @@ import social_visuals  # noqa: E402
 from build_monthly_content import _gemini_generation_plan  # noqa: E402
 
 
+def test_semantic_plate_review_allows_text_free_base_before_overlay():
+    class Response:
+        text = '{"text_missing_or_illegible":true,"headline_mismatch":true,"cta_missing":true}'
+
+    class Models:
+        @staticmethod
+        def generate_content(**_kwargs):
+            return Response()
+
+    class Client:
+        models = Models()
+
+    class Part:
+        @staticmethod
+        def from_bytes(**_kwargs):
+            return object()
+
+    class GenerateContentConfig:
+        def __init__(self, **_kwargs):
+            pass
+
+    class Types:
+        pass
+
+    Types.Part = Part
+    Types.GenerateContentConfig = GenerateContentConfig
+
+    accepted, reasons = social_visuals._gemini_semantic_plate_quality(
+        Client(), Types, b"image", "instagram", consumer_moment={"person": "host"}
+    )
+
+    assert accepted is True
+    assert reasons == []
+
+
 def _package(carousel: bool = True) -> dict:
     thought = {
         "statement": "Preparedness over panic.",

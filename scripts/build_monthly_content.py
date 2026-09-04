@@ -802,35 +802,32 @@ def _render_assets(data_dir: str, thought: dict[str, Any], index: int) -> dict[s
 
 
 def _package(knowledge: dict[str, Any], thought: dict[str, Any], content_date: str, index: int, data_dir: str, *, defer_images: bool = False) -> dict[str, Any]:
-    assets = {"primary": {"local_path": "", "public_url": ""}, "slides": []} if defer_images else _render_assets(data_dir, thought, index)
+    is_plan_120 = str(thought.get("id") or "").startswith("PLAN120-")
+    defer_rendering = defer_images or is_plan_120
+    assets = {"primary": {"local_path": "", "public_url": ""}, "slides": [], "review_issues": []} if defer_rendering else _render_assets(data_dir, thought, index)
     captions = _captions(thought)
+    public_captions = {platform: "" for platform in PLATFORMS} if is_plan_120 else captions
     digest = knowledge_digest(knowledge)
     thought_digest = hashlib.sha256(json.dumps(thought, sort_keys=True, ensure_ascii=True).encode("utf-8")).hexdigest()
     content_id = hashlib.sha256(f"{content_date}:{thought['id']}:{digest}:{thought_digest}".encode("utf-8")).hexdigest()[:20]
     product_id = str(thought.get("product_id") or "").strip()
     product = _load_product_brief(data_dir, product_id) if product_id else None
     generation_plan = _gemini_generation_plan(thought, product)
-    if str(thought.get("id") or "").startswith("PLAN120-"):
-        generation_plan.update({
-            "provider": "deterministic",
-            "generation_timing": "calendar_build",
-            "strict_provider": False,
-            "fallback_allowed": True,
-            "required_image_count": 0,
-            "prompts": [],
-        })
     platform_posts = {
         platform: {
             "platform": platform,
-            "final_caption": captions[platform],
-            "caption": captions[platform],
+            "final_caption": public_captions[platform],
+            "caption": public_captions[platform],
             "destination_url": "https://www.infenergypower.com",
             "content_format": (
                 "carousel" if thought.get("format") == "carousel" and platform in ("facebook", "instagram")
                 else "single_image_product" if product
                 else "single_image_thought"
             ),
-            "final_caption_qa": {"status": "PRESENTATION_READY", "reasons": []},
+            "final_caption_qa": {
+                "status": "PENDING_GEMINI" if is_plan_120 else "PRESENTATION_READY",
+                "reasons": ["strict_gemini_copy_required"] if is_plan_120 else [],
+            },
         }
         for platform in PLATFORMS
     }
@@ -860,7 +857,17 @@ def _package(knowledge: dict[str, Any], thought: dict[str, Any], content_date: s
         "product_image_url": str(product.get("source_image_url") or "") if product else "",
         "product_verified_facts": list(product.get("verified_facts") or []) if product else [],
         "product_proof_rule": str(product.get("proof_rule") or "") if product else "",
-        "copy_generation_source": "canonical_company_knowledge",
+        "copy_generation_source": "pending_strict_gemini",
+        "gemini_copy": {
+            "provider": "gemini",
+            "task": "copy_editing",
+            "status": "PENDING",
+            "strict_provider": True,
+            "fallback_allowed": False,
+            "generation_timing": "before_image_generation",
+            "required_outputs": ["statement", "expansion", "action", "visible_text", "platform_captions"],
+            "source_statement": thought["statement"],
+        },
         "generation_thought": thought,
         "generation_contract": deepcopy(thought.get("generation_contract") or {}),
         "consumer_root": deepcopy(thought.get("consumer_root") or {}),
@@ -886,9 +893,9 @@ def _package(knowledge: dict[str, Any], thought: dict[str, Any], content_date: s
             for key in ("statement", "expansion", "useful_detail", "action", "prompt", "humor", "linkedin_lens", "editorial_pillar", "copy_form", "editorial_mode", "audience", "source_note", "overlay_text")
             if thought.get(key)
         },
-        "fb_caption": captions["facebook"],
-        "ig_caption": captions["instagram"],
-        "li_text": captions["linkedin"],
+        "fb_caption": public_captions["facebook"],
+        "ig_caption": public_captions["instagram"],
+        "li_text": public_captions["linkedin"],
         "platform_posts": platform_posts,
         "routing": {"platforms": list(PLATFORMS)},
         "destination_url": "https://www.infenergypower.com",
@@ -904,7 +911,7 @@ def _package(knowledge: dict[str, Any], thought: dict[str, Any], content_date: s
         },
         "gemini_generation": generation_plan,
         "carousel_assets": assets["slides"] if thought.get("format") == "carousel" else [],
-        "generated_visuals": {} if defer_images else {
+        "generated_visuals": {} if defer_rendering else {
             "facebook": primary_path,
             "instagram": primary_path,
             "linkedin": primary_path,
@@ -929,7 +936,7 @@ def _package(knowledge: dict[str, Any], thought: dict[str, Any], content_date: s
     }
     if package.get("consumer_root"):
         consumer_qa = validate_consumer_receipt(package)
-        copy_fidelity = assess_copy_fidelity(package)
+        copy_fidelity = {"passed": True, "checks": {}, "missing": [], "status": "PENDING_GEMINI"} if is_plan_120 else assess_copy_fidelity(package)
         package["consumer_receipt_qa"] = consumer_qa
         package["consumer_copy_fidelity"] = copy_fidelity
         if not consumer_qa["passed"] or not copy_fidelity["passed"]:

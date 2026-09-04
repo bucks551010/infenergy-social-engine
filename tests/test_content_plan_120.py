@@ -95,13 +95,16 @@ def test_consumer_root_reaches_monthly_outbox_package(tmp_path):
     assert package["consumer_receipt"] == entry["consumer_receipt"]
     assert package["visual_plan"]["consumer_story_contract"] == entry["consumer_story_contract"]
     assert package["consumer_receipt_qa"]["passed"] is True
-    assert package["gemini_generation"]["provider"] == "deterministic"
-    assert package["gemini_generation"]["strict_provider"] is False
-    assert package["gemini_generation"]["required_image_count"] == 0
-    assert package["gemini_generation"]["prompts"] == []
+    assert package["gemini_copy"]["provider"] == "gemini"
+    assert package["gemini_copy"]["strict_provider"] is True
+    assert package["gemini_copy"]["fallback_allowed"] is False
+    assert package["gemini_generation"]["provider"] == "gemini"
+    assert package["gemini_generation"]["strict_provider"] is True
+    assert package["gemini_generation"]["required_image_count"] >= 1
+    assert package["gemini_generation"]["prompts"]
 
 
-def test_company_voice_package_keeps_deterministic_generation_contract(tmp_path):
+def test_company_voice_package_uses_strict_gemini_generation_contract(tmp_path):
     _write_profiles(tmp_path)
     entry = build_120_day_plan(
         data_dir=str(tmp_path),
@@ -119,10 +122,28 @@ def test_company_voice_package_keeps_deterministic_generation_contract(tmp_path)
     )
 
     assert thought["source_note"] != "120-day Infenergy content plan"
-    assert package["gemini_generation"]["provider"] == "deterministic"
-    assert package["gemini_generation"]["strict_provider"] is False
-    assert package["gemini_generation"]["required_image_count"] == 0
-    assert package["gemini_generation"]["prompts"] == []
+    assert package["gemini_copy"]["provider"] == "gemini"
+    assert package["gemini_copy"]["strict_provider"] is True
+    assert package["gemini_generation"]["provider"] == "gemini"
+    assert package["gemini_generation"]["strict_provider"] is True
+    assert package["gemini_generation"]["required_image_count"] >= 1
+    assert package["gemini_generation"]["prompts"]
+
+
+def test_plan_package_never_renders_deterministic_placeholder_media(tmp_path):
+    _write_profiles(tmp_path)
+    entry = build_120_day_plan(data_dir=str(tmp_path), start_date="2026-09-06", days=1)["entries"][0]
+    package = _package(
+        {"knowledge_id": "test-knowledge", "schema_version": "test.v1", "agent_specializations": {}},
+        _plan_entry_thought(entry),
+        entry["date"],
+        0,
+        str(tmp_path),
+    )
+
+    assert package["generated_visuals"] == {}
+    assert package["primary_publish_image_url"] == ""
+    assert not (tmp_path / "public_media").exists()
 
 
 def test_plan_thought_preserves_slot_and_deterministic_canvas_contract(tmp_path):
@@ -158,7 +179,7 @@ def test_plan_thought_never_exposes_internal_public_labels(tmp_path):
     assert all("FIELD TRUTH" not in statement for statement in public_statements)
 
 
-def test_story_plan_renders_vertical_asset_and_preserves_morning_slot(tmp_path):
+def test_story_plan_requires_vertical_gemini_asset_and_preserves_morning_slot(tmp_path):
     _write_profiles(tmp_path)
     entries = build_120_day_plan(
         data_dir=str(tmp_path),
@@ -167,13 +188,13 @@ def test_story_plan_renders_vertical_asset_and_preserves_morning_slot(tmp_path):
     )["entries"]
     entry = next(candidate for candidate in entries if candidate["format"] == "product_story_page")
     thought = _plan_entry_thought(entry)
-
-    assets = _render_assets(str(tmp_path), thought, 0)
+    generation = _gemini_generation_plan(thought)
 
     assert thought["slot"] == entry["slot"] == "morning"
-    assert len(assets["slides"]) == 1
-    with Image.open(assets["primary"]["local_path"]) as image:
-        assert image.size == (1080, 1920)
+    assert generation["aspect_ratio"] == "9:16"
+    assert generation["required_image_count"] == 1
+    assert generation["strict_provider"] is True
+    assert generation["fallback_allowed"] is False
 
 
 def test_product_days_never_use_a_no_product_consumer_moment(tmp_path):

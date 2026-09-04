@@ -29,6 +29,10 @@ def _package(carousel: bool = True) -> dict:
         "content_id": "monthly-test",
         "routing": {"platforms": ["facebook", "instagram", "linkedin"]},
         "gemini_generation": _gemini_generation_plan(thought),
+        "gemini_copy": {
+            "provider": "gemini", "strict_provider": True, "fallback_allowed": False,
+            "status": "COMPLETE", "model_output_sha256": "prepared-copy", "task": "copy_editing",
+        },
         "platform_posts": {
             platform: {"final_caption": "Ready caption", "destination_url": "https://example.test"}
             for platform in ("facebook", "instagram", "linkedin")
@@ -37,6 +41,73 @@ def _package(carousel: bool = True) -> dict:
         "ig_caption": "Ready caption",
         "li_text": "Ready caption",
     }
+
+
+def test_prepare_gemini_copy_authors_captions_and_visual_text(monkeypatch):
+    package = _package(carousel=False)
+    package["gemini_copy"].update({"status": "PENDING", "model_output_sha256": "", "source_statement": "Preparedness over panic."})
+    package["generation_thought"] = {
+        "statement": "Preparedness over panic.", "expansion": "A simple plan creates room to think clearly.",
+        "action": "Choose one routine.", "pillar": "preparedness_mindset",
+    }
+    package["generation_contract"] = {"format": "product_story_page", "visible_text": {}}
+    monkeypatch.setattr(dispatch_outbox.model_router, "generate_json", lambda *args, **kwargs: {
+        "statement": "The smallest battery can run the whole day.",
+        "expansion": "Protect the handoff before the routine moves.",
+        "action": "Test the full setup where you use it.",
+        "visible_text": {
+            "headline": "THE SMALLEST BATTERY RUNS THE DAY.",
+            "infenergy_line": "POWER THE HANDOFF.",
+            "resolution_line": "TEST THE WHOLE ROUTINE.",
+        },
+        "platform_captions": {
+            "facebook": "The smallest battery can run the whole day. Test the handoff.",
+            "instagram": "Power the handoff, not only the biggest screen. #Infenergy",
+            "linkedin": "Operational continuity often depends on the smallest device. Test the complete workflow.",
+        },
+    })
+
+    prepared = dispatch_outbox._prepare_gemini_copy(package)
+
+    assert prepared["gemini_copy"]["status"] == "COMPLETE"
+    assert prepared["copy_generation_source"] == "gemini"
+    assert prepared["fb_caption"].startswith("The smallest battery")
+    assert prepared["platform_posts"]["instagram"]["final_caption"].startswith("Power the handoff")
+    overlay = prepared["gemini_generation"]["prompts"][0]["v5_direction"]["text_overlay"]
+    assert overlay["text"] == "Infenergy | THE SMALLEST BATTERY RUNS THE DAY."
+    assert prepared["gemini_copy"]["qa"] == {"schema": "PASS", "forbidden_labels": "PASS", "product_claims": "PASS"}
+
+
+def test_prepare_gemini_copy_fails_closed_without_model_output(monkeypatch):
+    package = _package(carousel=False)
+    package["gemini_copy"].update({"status": "PENDING", "model_output_sha256": ""})
+    monkeypatch.setattr(dispatch_outbox.model_router, "generate_json", lambda *args, **kwargs: None)
+    monkeypatch.setattr(dispatch_outbox.model_router, "last_error", lambda: "quota unavailable")
+
+    with __import__("pytest").raises(RuntimeError, match="gemini_copy_generation_failed:quota unavailable"):
+        dispatch_outbox._prepare_gemini_copy(package)
+
+
+def test_current_news_refresh_invalidates_completed_gemini_copy(monkeypatch):
+    package = _package(carousel=False)
+    package.update({
+        "weekly_role": "current_news",
+        "content_date": "2026-09-04",
+        "generation_thought": {
+            "statement": "Old headline", "overlay_text": "Old headline", "instagram_hook": "Old headline",
+            "expansion": "Explain the consequence.", "action": "Make one plan.", "prompt": "What changes?",
+            "pillar": "outage_readiness", "visual_motif": "A current event scene", "format": "single",
+        },
+    })
+    monkeypatch.setattr(dispatch_outbox, "_load_current_news", lambda _limit: [
+        {"title": "Fresh verified headline", "url": "https://news.example/fresh", "published": "today"},
+    ])
+
+    refreshed = dispatch_outbox._refresh_current_news_package(package)
+
+    assert refreshed["gemini_copy"]["status"] == "PENDING"
+    assert refreshed["gemini_copy"]["model_output_sha256"] == ""
+    assert refreshed["gemini_copy"]["source_statement"] == "Fresh verified headline"
 
 
 def test_prepare_gemini_assets_generates_every_carousel_slide_once(tmp_path, monkeypatch):

@@ -1048,7 +1048,7 @@ def register_core_capabilities(registry: CapabilityRegistry, policies: PolicyEng
         return dispatch_due(data_dir=context.data_dir)
 
     def publication_correct_ready(payload: dict[str, Any], context: ExecutionContext) -> dict[str, Any]:
-        from build_monthly_content import _captions, _public_url, _render_assets
+        from build_monthly_content import _gemini_generation_plan, _load_product_brief
         from content_operations import daily_index, platform_transaction, update_ready_package
 
         content_date = str(payload["content_date"])
@@ -1094,39 +1094,48 @@ def register_core_capabilities(registry: CapabilityRegistry, policies: PolicyEng
             "outbox_id": outbox_id,
             "preserved_publications": preserved,
             "corrected_platforms": target_platforms,
+            "copy_provider": "gemini",
+            "visual_provider": "gemini",
             "external_publication": False,
         }
         if context.dry_run:
             return {"would_correct": plan, "production_mutated": False}
 
-        thought["id"] = f"{thought.get('id')}-CORRECTED"
-        assets = _render_assets(context.data_dir, thought, 0)
-        if assets.get("review_issues"):
-            raise RuntimeError(f"corrected_visual_review_failed:{','.join(assets['review_issues'])}")
-        captions = _captions(thought)
-        primary_path = assets["primary"]["local_path"]
-        primary_url = assets["primary"]["public_url"] or _public_url(Path(primary_path).name)
-        if not primary_url:
-            raise RuntimeError("corrected_visual_public_url_unavailable")
+        if not str(thought.get("id") or "").endswith("-CORRECTED"):
+            thought["id"] = f"{thought.get('id')}-CORRECTED"
+        product_id = str(package.get("product_id") or thought.get("product_id") or "")
+        product = _load_product_brief(context.data_dir, product_id) if product_id else None
         package["generation_thought"] = thought
-        package["primary_publish_image_url"] = primary_url
-        package["generated_visuals"] = {
-            **dict(package.get("generated_visuals") or {}),
-            **{platform: primary_path for platform in target_platforms},
-            "render_engines": {platform: "deterministic_product_story_renderer" for platform in target_platforms},
-            "artifact_reviews": {
-                platform: {
-                    "verdict": "PASS",
-                    "issues": [],
-                    "contract_checks": ["three_distinct_panels", "approved_visible_text", "verified_product_reference", "product_in_plot"],
-                }
-                for platform in target_platforms
-            },
+        package["gemini_copy"] = {
+            "provider": "gemini",
+            "task": "copy_editing",
+            "status": "PENDING",
+            "strict_provider": True,
+            "fallback_allowed": False,
+            "generation_timing": "before_image_generation",
+            "required_outputs": ["statement", "expansion", "action", "visible_text", "platform_captions"],
+            "source_statement": str(thought.get("statement") or ""),
         }
+        package["gemini_generation"] = _gemini_generation_plan(thought, product)
+        package["copy_generation_source"] = "pending_strict_gemini"
+        package["primary_publish_image_url"] = ""
+        visuals = dict(package.get("generated_visuals") or {})
+        for platform in target_platforms:
+            visuals.pop(platform, None)
+        visuals["render_engines"] = {platform: "pending_gemini" for platform in target_platforms}
+        visuals["artifact_reviews"] = {
+            platform: {"verdict": "PENDING_GEMINI", "issues": []}
+            for platform in target_platforms
+        }
+        package["generated_visuals"] = visuals
         for platform in target_platforms:
             post = package.setdefault("platform_posts", {}).setdefault(platform, {"platform": platform})
-            post["caption"] = captions[platform]
-            post["final_caption"] = captions[platform]
+            post["caption"] = ""
+            post["final_caption"] = ""
+            post["final_caption_qa"] = {"status": "PENDING_GEMINI", "reasons": ["strict_gemini_copy_required"]}
+        package["fb_caption"] = package.get("fb_caption", "") if "facebook" in preserved else ""
+        package["ig_caption"] = package.get("ig_caption", "") if "instagram" in preserved else ""
+        package["li_text"] = package.get("li_text", "") if "linkedin" in preserved else ""
         package["correction"] = {
             "corrected_at_utc": utc_now(),
             "reason": str(payload.get("reason") or "creative_contract_mismatch"),
@@ -1134,7 +1143,7 @@ def register_core_capabilities(registry: CapabilityRegistry, policies: PolicyEng
         }
         if not update_ready_package(context.data_dir, outbox_id, package):
             raise RuntimeError("outbox_changed_before_correction")
-        return {**plan, "status": "CORRECTED_READY", "primary_publish_image_url": primary_url}
+        return {**plan, "status": "PENDING_STRICT_GEMINI"}
 
     def publication_delete(payload: dict[str, Any], context: ExecutionContext) -> dict[str, Any]:
         import importlib

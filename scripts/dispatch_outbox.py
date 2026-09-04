@@ -11,6 +11,7 @@ from typing import Any
 import publish_facebook
 import publish_instagram
 import publish_linkedin
+from social import model_router
 from social_visuals import generate_strict_gemini_image, review_rendered_visual
 from build_monthly_content import _captions, _gemini_generation_plan, _load_current_news
 from content_operations import (
@@ -29,6 +30,7 @@ from content_operations import (
 )
 
 DATA_DIR = os.environ.get("DATA_DIR", os.path.join(os.path.dirname(__file__), "..", "data"))
+FORBIDDEN_PUBLIC_LABELS = ("POV:", "FIELD TRUTH")
 
 
 def _delivery_enforced() -> bool:
@@ -146,6 +148,10 @@ def _refresh_current_news_package(package: dict[str, Any]) -> dict[str, Any]:
             "source_url": selected["url"],
         },
     })
+    copy_plan = package.get("gemini_copy") if isinstance(package.get("gemini_copy"), dict) else {}
+    if copy_plan.get("strict_provider") is True:
+        copy_plan.update({"status": "PENDING", "model_output_sha256": "", "source_statement": thought["statement"]})
+        package["gemini_copy"] = copy_plan
     for platform, caption in captions.items():
         post = ((package.get("platform_posts") or {}).get(platform) or {})
         post["caption"] = caption
@@ -171,8 +177,151 @@ def _strict_publish_artifact_error(package: dict[str, Any], platform: str) -> st
     return f"{platform}_strict_artifact_invalid:{','.join(str(issue) for issue in issues) or 'artifact_review_failed'}"
 
 
+def _gemini_copy_ready(package: dict[str, Any]) -> bool:
+    copy_plan = package.get("gemini_copy") if isinstance(package.get("gemini_copy"), dict) else {}
+    return (
+        copy_plan.get("provider") == "gemini"
+        and copy_plan.get("strict_provider") is True
+        and copy_plan.get("status") == "COMPLETE"
+        and bool(copy_plan.get("model_output_sha256"))
+    )
+
+
+def _prepare_gemini_copy(package: dict[str, Any]) -> dict[str, Any]:
+    copy_plan = package.get("gemini_copy") if isinstance(package.get("gemini_copy"), dict) else {}
+    if copy_plan.get("provider") != "gemini" or copy_plan.get("strict_provider") is not True or copy_plan.get("fallback_allowed") is not False:
+        raise RuntimeError("strict_gemini_copy_contract_missing")
+    if _gemini_copy_ready(package):
+        return package
+
+    thought = package.get("generation_thought") if isinstance(package.get("generation_thought"), dict) else {}
+    contract = package.get("generation_contract") if isinstance(package.get("generation_contract"), dict) else {}
+    receipt = package.get("consumer_receipt") if isinstance(package.get("consumer_receipt"), dict) else {}
+    brief = {
+        "brand": "Infenergy Power",
+        "content_date": package.get("content_date"),
+        "format": contract.get("format"),
+        "audience": contract.get("audience_name") or thought.get("audience"),
+        "creative_territory": contract.get("creative_territory") or thought.get("pillar"),
+        "content_job": contract.get("content_job"),
+        "consumer_moment": receipt,
+        "story_sequence": contract.get("story_sequence") or [],
+        "product": {
+            "name": package.get("product_name"),
+            "verified_facts": package.get("product_verified_facts") or [],
+            "proof_rule": package.get("product_proof_rule"),
+            "role": contract.get("product_role"),
+        },
+        "source_concept": {
+            "hook": contract.get("hook") or thought.get("statement"),
+            "takeaway": contract.get("takeaway") or thought.get("expansion"),
+            "cta": contract.get("cta") or thought.get("action"),
+        },
+    }
+    prompt = (
+        "Write the complete final public copy for this Infenergy social post from the supplied factual brief. "
+        "Return one JSON object with exactly these keys: statement, expansion, action, visible_text, platform_captions. "
+        "visible_text must contain headline, infenergy_line, resolution_line. platform_captions must contain facebook, instagram, linkedin. "
+        "Make each platform caption native, concise, non-repetitive, human, and specific to the consumer moment. "
+        "The three visible lines must work as an intentional visual sequence, not labels or production directions. "
+        "Never output POV:, FIELD TRUTH, internal taxonomy, unsupported specifications, prices, runtime, guarantees, testimonials, or invented product claims. "
+        "Use only verified product facts supplied in the brief. Do not output markdown or keys beyond the required schema.\n\n"
+        f"FACTUAL BRIEF:\n{json.dumps(brief, ensure_ascii=True, sort_keys=True)}"
+    )
+    result = model_router.generate_json(
+        str(copy_plan.get("task") or "copy_editing"),
+        prompt,
+        system_instruction="You are Infenergy's senior social creative director and copywriter. Produce publication-ready original copy grounded only in the supplied facts.",
+    )
+    if not isinstance(result, dict):
+        raise RuntimeError(f"gemini_copy_generation_failed:{model_router.last_error() or 'empty_or_invalid_response'}")
+
+    required_strings = ("statement", "expansion", "action")
+    visible = result.get("visible_text") if isinstance(result.get("visible_text"), dict) else {}
+    captions = result.get("platform_captions") if isinstance(result.get("platform_captions"), dict) else {}
+    missing = [key for key in required_strings if not str(result.get(key) or "").strip()]
+    missing.extend(f"visible_text.{key}" for key in ("headline", "infenergy_line", "resolution_line") if not str(visible.get(key) or "").strip())
+    missing.extend(f"platform_captions.{key}" for key in PLATFORMS if not str(captions.get(key) or "").strip())
+    if missing:
+        raise RuntimeError(f"gemini_copy_schema_invalid:{','.join(missing)}")
+
+    public_strings = [str(result[key]).strip() for key in required_strings]
+    public_strings.extend(str(visible[key]).strip() for key in ("headline", "infenergy_line", "resolution_line"))
+    public_strings.extend(str(captions[key]).strip() for key in PLATFORMS)
+    public_copy = "\n".join(public_strings)
+    leaked = [label for label in FORBIDDEN_PUBLIC_LABELS if label in public_copy.upper()]
+    if leaked:
+        raise RuntimeError(f"gemini_copy_forbidden_label:{','.join(leaked)}")
+    if any(len(str(captions[platform])) > 5000 for platform in PLATFORMS):
+        raise RuntimeError("gemini_copy_caption_too_long")
+
+    thought.update({
+        "statement": str(result["statement"]).strip(),
+        "overlay_text": str(visible["headline"]).strip(),
+        "instagram_hook": str(result["statement"]).strip(),
+        "expansion": str(result["expansion"]).strip(),
+        "action": str(result["action"]).strip(),
+    })
+    contract["visible_text"] = {key: str(visible[key]).strip() for key in ("headline", "infenergy_line", "resolution_line")}
+    package.update({
+        "thought_statement": thought["statement"],
+        "generation_thought": thought,
+        "generation_contract": contract,
+        "fb_caption": str(captions["facebook"]).strip(),
+        "ig_caption": str(captions["instagram"]).strip(),
+        "li_text": str(captions["linkedin"]).strip(),
+        "master_copy": {
+            "statement": thought["statement"],
+            "expansion": thought["expansion"],
+            "action": thought["action"],
+            "overlay_text": thought["overlay_text"],
+        },
+        "copy_generation_source": "gemini",
+    })
+    for platform, caption in (("facebook", package["fb_caption"]), ("instagram", package["ig_caption"]), ("linkedin", package["li_text"])):
+        post = ((package.get("platform_posts") or {}).get(platform) or {})
+        post["caption"] = caption
+        post["final_caption"] = caption
+        post["final_caption_qa"] = {"status": "PRESENTATION_READY", "reasons": [], "provider": "gemini"}
+
+    from validate_product_claims import validate_generated_content
+    claim_review = validate_generated_content(package)
+    if not claim_review.passed:
+        raise RuntimeError(f"gemini_copy_claims_rejected:{','.join(claim_review.get('errors') or [])}")
+
+    old_statement = str(copy_plan.get("source_statement") or package.get("thought_statement") or "")
+    generation = package.get("gemini_generation") if isinstance(package.get("gemini_generation"), dict) else {}
+    for prompt_plan in generation.get("prompts") or []:
+        if not isinstance(prompt_plan, dict):
+            continue
+        scene_prompt = str(prompt_plan.get("gemini_image_prompt") or "")
+        if old_statement:
+            scene_prompt = scene_prompt.replace(old_statement, thought["statement"])
+        prompt_plan["gemini_image_prompt"] = scene_prompt
+        prompt_plan["prompt_sha256"] = hashlib.sha256(scene_prompt.encode("utf-8")).hexdigest()
+        direction = prompt_plan.get("v5_direction") if isinstance(prompt_plan.get("v5_direction"), dict) else {}
+        overlay = direction.get("text_overlay") if isinstance(direction.get("text_overlay"), dict) else {}
+        overlay["text"] = f"Infenergy | {contract['visible_text']['headline']}"
+        if overlay.get("comic_panel_text") is not None:
+            overlay["comic_panel_text"] = list(contract["visible_text"].values())
+
+    output_digest = hashlib.sha256(json.dumps(result, ensure_ascii=True, sort_keys=True).encode("utf-8")).hexdigest()
+    copy_plan.update({
+        "status": "COMPLETE",
+        "generated_at_utc": datetime.now(timezone.utc).isoformat(),
+        "model_route": model_router.route_for(str(copy_plan.get("task") or "copy_editing")),
+        "model_output_sha256": output_digest,
+        "qa": {"schema": "PASS", "forbidden_labels": "PASS", "product_claims": "PASS"},
+    })
+    package["gemini_copy"] = copy_plan
+    return package
+
+
 def _prepare_gemini_assets(package: dict[str, Any], data_dir: str) -> dict[str, Any]:
     generation = package.get("gemini_generation") if isinstance(package.get("gemini_generation"), dict) else {}
+    copy_plan = package.get("gemini_copy") if isinstance(package.get("gemini_copy"), dict) else {}
+    if copy_plan.get("strict_provider") is True and not _gemini_copy_ready(package):
+        raise RuntimeError("strict_gemini_copy_not_ready")
     prompts = generation.get("prompts") if isinstance(generation.get("prompts"), list) else []
     required_count = int(generation.get("required_image_count") or 0)
     if generation.get("provider") != "gemini" or generation.get("fallback_allowed") is not False:
@@ -247,10 +396,13 @@ def pregenerate_upcoming(*, data_dir: str = DATA_DIR) -> dict[str, Any]:
             package = _refresh_current_news_package(package)
         generation = package.get("gemini_generation") if isinstance(package.get("gemini_generation"), dict) else {}
         required_count = int(generation.get("required_image_count") or 0)
-        if generation.get("strict_provider") is not True or _gemini_assets_ready(package, required_count):
+        copy_plan = package.get("gemini_copy") if isinstance(package.get("gemini_copy"), dict) else {}
+        if generation.get("strict_provider") is not True or (_gemini_copy_ready(package) and _gemini_assets_ready(package, required_count)):
             continue
         outbox_id = str(row["outbox_id"])
         try:
+            if copy_plan.get("strict_provider") is True:
+                package = _prepare_gemini_copy(package)
             prepared = _prepare_gemini_assets(package, data_dir)
             if not update_ready_package(data_dir, outbox_id, prepared):
                 return {"status": "DEFERRED", "outbox_id": outbox_id, "detail": "package_no_longer_ready"}
@@ -306,6 +458,9 @@ def dispatch_due(*, data_dir: str = DATA_DIR, now_utc: str | None = None) -> dic
     if generation.get("strict_provider") is True:
         try:
             package = _refresh_current_news_package(package)
+            copy_plan = package.get("gemini_copy") if isinstance(package.get("gemini_copy"), dict) else {}
+            if copy_plan.get("strict_provider") is True:
+                package = _prepare_gemini_copy(package)
             package = _prepare_gemini_assets(package, data_dir)
             update_claimed_package(data_dir, outbox_id, package)
         except Exception as exc:

@@ -325,9 +325,14 @@ def test_120_day_plan_queues_existing_runtime_packages(tmp_path, monkeypatch):
     assert all(not entry["package"]["generated_visuals"] for entry in calendar["entries"])
     assert all(entry["package"]["copy_form"] == entry["package"]["generation_contract"]["copy_form"] for entry in calendar["entries"])
     assert all(entry["package"]["editorial_pillar"] == entry["package"]["generation_contract"]["editorial_pillar"] for entry in calendar["entries"])
+    assert all(entry["package"]["copy_generation_source"] == "pending_strict_gemini" for entry in calendar["entries"])
+    assert all(entry["package"]["fb_caption"] == "" for entry in calendar["entries"])
+    assert all(entry["package"]["ig_caption"] == "" for entry in calendar["entries"])
+    assert all(entry["package"]["li_text"] == "" for entry in calendar["entries"])
     assert all(
-        len(re.findall(r"(?<!\w)#[A-Za-z0-9_]+", entry["package"]["fb_caption"].splitlines()[-1])) == 10
+        post["final_caption_qa"]["status"] == "PENDING_GEMINI"
         for entry in calendar["entries"]
+        for post in entry["package"]["platform_posts"].values()
     )
     assert all(
         label not in entry["package"]["fb_caption"]

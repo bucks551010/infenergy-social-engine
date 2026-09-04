@@ -80,6 +80,36 @@ def test_semantic_plate_review_rejects_unrequested_rendered_text():
     assert reasons == ["unexpected_rendered_text"]
 
 
+def test_semantic_plate_review_rejects_blue_shadow_on_gemini_text():
+    class Response:
+        text = '{"blue_text_shadow_or_glow":true}'
+
+    class Client:
+        class Models:
+            @staticmethod
+            def generate_content(**_kwargs):
+                return Response()
+
+        models = Models()
+
+    class Types:
+        class Part:
+            @staticmethod
+            def from_bytes(**_kwargs):
+                return object()
+
+        class GenerateContentConfig:
+            def __init__(self, **_kwargs):
+                pass
+
+    accepted, reasons = social_visuals._gemini_semantic_plate_quality(
+        Client(), Types, b"image", "instagram", expected_text_lines=["EXACT GEMINI COPY"]
+    )
+
+    assert accepted is False
+    assert reasons == ["blue_text_shadow_or_glow"]
+
+
 def test_product_reference_approval_binds_source_bytes(tmp_path):
     source = tmp_path / "product.png"
     source.write_bytes(b"verified-product-image")
@@ -160,8 +190,15 @@ def test_prepare_gemini_copy_authors_captions_and_visual_text(monkeypatch):
     assert prepared["copy_generation_source"] == "gemini"
     assert prepared["fb_caption"].startswith("The smallest battery")
     assert prepared["platform_posts"]["instagram"]["final_caption"].startswith("Power the handoff")
-    overlay = prepared["gemini_generation"]["prompts"][0]["v5_direction"]["text_overlay"]
-    assert overlay["text"] == "Infenergy | THE SMALLEST BATTERY RUNS THE DAY."
+    prompt = prepared["gemini_generation"]["prompts"][0]
+    direction = prompt["v5_direction"]
+    assert direction["text_overlay"] == {"enabled": False}
+    assert direction["gemini_rendered_text"] == [
+        "THE SMALLEST BATTERY RUNS THE DAY.", "POWER THE HANDOFF.", "TEST THE WHOLE ROUTINE.",
+    ]
+    assert direction["gemini_typography_contract"]["blue_shadow_allowed"] is False
+    assert "no blue shadow" in prompt["gemini_image_prompt"]
+    assert "Do not render words" not in prompt["gemini_image_prompt"]
     assert prepared["gemini_copy"]["qa"] == {"schema": "PASS", "forbidden_labels": "PASS", "product_claims": "PASS"}
 
 

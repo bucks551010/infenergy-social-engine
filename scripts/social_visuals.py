@@ -523,28 +523,37 @@ def _gemini_semantic_plate_quality(
     expected_cta: str = "",
     consumer_moment: dict[str, Any] | None = None,
     product_reference: bytes = b"",
+    expected_text_lines: list[str] | None = None,
 ) -> tuple[bool, list[str]]:
     enabled = str(os.environ.get("GEMINI_VISUAL_QA_ENABLED", "true")).strip().lower() not in {"0", "false", "no"}
     if not enabled:
         return True, []
     moment = consumer_moment or {}
-    if expected_headline == "" and expected_cta == "" and not moment:
+    exact_lines = [str(line).strip() for line in (expected_text_lines or []) if str(line).strip()]
+    if expected_headline == "" and expected_cta == "" and not exact_lines and not moment:
         return True, []
     spec = _platform_visual_spec(platform)
     text_requirements = (
         "It must already contain rendered, legible on-image text: an \"Infenergy Power\" brand wordmark, "
         f"a headline reading approximately '{expected_headline}', and a call-to-action reading approximately "
         f"'{expected_cta}'. "
-        if expected_headline or expected_cta
+        if expected_headline or expected_cta or exact_lines
         else "On-image text is added after this review; do not fail this base image for missing text, headline, or CTA. "
     )
+    if exact_lines:
+        text_requirements = (
+            "The finished image must render each of these exact lines once, spelled exactly, with no other visible text: "
+            f"{json.dumps(exact_lines, ensure_ascii=True)}. Typography must use crisp solid letterforms with no blue shadow, "
+            "blue glow, neon edge, or dark translucent text box. "
+        )
     review_prompt = (
         "Review this social ad image. " + text_requirements + "It must contain a real "
         f"product staged in the {spec['product_zone']}. Return JSON only with booleans for: "
         "text_missing_or_illegible, headline_mismatch, cta_missing, product_missing, "
         "gibberish_or_garbled_text, looks_like_generic_ai_poster, infenergy_symbol_in_sky_or_atmosphere, "
         "derivative_existing_superhero_imitation, consumer_person_missing, consumer_setting_mismatch, "
-        "consumer_activity_missing, consumer_visual_evidence_missing, unexpected_rendered_text, product_reference_mismatch. "
+        "consumer_activity_missing, consumer_visual_evidence_missing, unexpected_rendered_text, product_reference_mismatch, "
+        "exact_text_mismatch, duplicated_or_extra_text, blue_text_shadow_or_glow, dark_translucent_text_box. "
         "When on-image text is added after this review, set unexpected_rendered_text=true if the image contains any words, "
         "letters, numbers, captions, labels, or dialogue. When a second reference image is supplied, set "
         "product_reference_mismatch=true unless the depicted product faithfully preserves its shape, proportions, color, "
@@ -586,7 +595,16 @@ def _gemini_semantic_plate_quality(
                 "consumer_activity_missing",
                 "consumer_visual_evidence_missing",
             )
-            if expected_headline or expected_cta:
+            if exact_lines:
+                failure_keys = (
+                    "text_missing_or_illegible",
+                    "exact_text_mismatch",
+                    "duplicated_or_extra_text",
+                    "blue_text_shadow_or_glow",
+                    "dark_translucent_text_box",
+                    *failure_keys,
+                )
+            elif expected_headline or expected_cta:
                 failure_keys = (
                     "text_missing_or_illegible",
                     "headline_mismatch",
@@ -1088,7 +1106,10 @@ def _generate_gemini_full_creative(content: dict[str, Any], platform: str, visua
     prompt = _build_gemini_image_prompt(content, platform, visual_plan)
     metadata["visual_prompt_hash"] = hashlib.sha256(prompt.encode("utf-8")).hexdigest()
     v5_direction = _safe_json_dict(visual_plan.get("v5_direction"))
-    v5_text_forward = bool((_safe_json_dict(v5_direction.get("text_overlay"))).get("enabled"))
+    gemini_rendered_text = [
+        str(line).strip() for line in v5_direction.get("gemini_rendered_text", []) if str(line).strip()
+    ] if isinstance(v5_direction.get("gemini_rendered_text"), list) else []
+    v5_text_forward = bool(gemini_rendered_text)
     expected_headline, _ = _headline_lockup(content) if not v5_text_forward else ("", "")
     expected_cta = normalize_brand_text(str(content.get("selected_cta") or "Learn more")) if not v5_text_forward else ""
     repo_context = _load_visual_repo_context()
@@ -1165,7 +1186,8 @@ def _generate_gemini_full_creative(content: dict[str, Any], platform: str, visua
                     root = _safe_json_dict(content.get("consumer_root"))
                     consumer_moment = _safe_json_dict(root.get("moment"))
                     accepted, semantic_reasons = _gemini_semantic_plate_quality(
-                        client, types, raw, platform, expected_headline, expected_cta, consumer_moment, product_bytes
+                        client, types, raw, platform, expected_headline, expected_cta, consumer_moment, product_bytes,
+                        gemini_rendered_text,
                     )
                     if not accepted:
                         reasons_by_model[model_name] = f"semantic_quality_rejected:{','.join(semantic_reasons)}"

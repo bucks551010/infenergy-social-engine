@@ -579,12 +579,12 @@ def _gemini_generation_plan(thought: dict[str, Any], product: dict[str, Any] | N
                 f"Entertainment mode: {contract.get('entertainment_mode')}. Entertainment direction: {contract.get('entertainment_hook')} "
                 f"Required sequence: {sequence} Product plot rule: {integration.get('role')} {integration.get('plot_test')} "
                 f"Claim boundary: {integration.get('boundary')} Humor enabled: {bool(contract.get('humor_enabled'))}. {contract.get('humor_guardrail')} "
-                "Keep every exact dialogue line readable inside Instagram Story safe areas. "
+                "Preserve clean safe-area regions in each panel for the exact copy supplied at image-generation time. "
             )
         elif is_company_message:
             contract_instruction = (
-                "Deliver ONE 1080x1350 portrait 4:5 image. The approved message must appear exactly once, verbatim, with no paraphrase or extra headline. "
-                f"Integrate the typography into the scene using {contract.get('typography_material')}; Infenergy action: {contract.get('infenergy_action')} "
+                "Deliver ONE 1080x1350 portrait 4:5 image with a clean, intentional region reserved for the exact message supplied at image-generation time. "
+                f"The reserved region should visually support {contract.get('typography_material')}; Infenergy action: {contract.get('infenergy_action')} "
                 "Do not use a floating quote card or a generic character pose. "
             )
         scene_prompt = (
@@ -596,7 +596,7 @@ def _gemini_generation_plan(thought: dict[str, Any], product: dict[str, Any] | N
             "Show a believable real-life environment, natural human stakes, physically credible portable-energy context, "
             "cinematic directional light, rich material detail, and generous protected negative space in the upper third for an editorial overlay. "
             "Use a restrained palette of charcoal, deep navy, warm amber, clean white, and natural environmental colors. "
-            "Do not render words, letters, logos, numbers, labels, watermarks, UI, badges, product claims, or fake specifications. "
+            "Do not render any words, letters, logos, numbers, labels, watermarks, UI, badges, product claims, or fake specifications except the exact approved copy supplied at image-generation time. "
             "Avoid generic stock-photo smiles, disaster sensationalism, dominant purple, floating devices, visual clutter, and synthetic poster styling. "
             f"Output one finished {output_ratio} image only."
         )

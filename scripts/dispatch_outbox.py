@@ -297,13 +297,35 @@ def _prepare_gemini_copy(package: dict[str, Any]) -> dict[str, Any]:
         scene_prompt = str(prompt_plan.get("gemini_image_prompt") or "")
         if old_statement:
             scene_prompt = scene_prompt.replace(old_statement, thought["statement"])
+        for legacy_instruction in (
+            "Keep every exact dialogue line readable inside Instagram Story safe areas. ",
+            "Do not render words, letters, logos, numbers, labels, watermarks, UI, badges, product claims, or fake specifications. ",
+            "Do not draw dialogue, captions, speech bubbles, labels, or lettering. ",
+        ):
+            scene_prompt = scene_prompt.replace(legacy_instruction, "")
         prompt_plan["gemini_image_prompt"] = scene_prompt
         prompt_plan["prompt_sha256"] = hashlib.sha256(scene_prompt.encode("utf-8")).hexdigest()
         direction = prompt_plan.get("v5_direction") if isinstance(prompt_plan.get("v5_direction"), dict) else {}
         overlay = direction.get("text_overlay") if isinstance(direction.get("text_overlay"), dict) else {}
-        overlay["text"] = f"Infenergy | {contract['visible_text']['headline']}"
-        if overlay.get("comic_panel_text") is not None:
-            overlay["comic_panel_text"] = list(contract["visible_text"].values())
+        rendered_text = list(contract["visible_text"].values())
+        overlay.clear()
+        overlay["enabled"] = False
+        direction["gemini_rendered_text"] = rendered_text
+        direction["gemini_typography_contract"] = {
+            "exact_text_only": True,
+            "blue_shadow_allowed": False,
+            "blue_glow_allowed": False,
+            "duplicated_text_allowed": False,
+            "extra_text_allowed": False,
+        }
+        text_instruction = (
+            "Render these Gemini-authored lines directly into the finished image, each exactly once and spelled exactly: "
+            + json.dumps(rendered_text, ensure_ascii=True)
+            + ". Use clean premium editorial typography integrated into the composition. Use crisp solid letterforms with no blue shadow, no blue glow, no neon edge, and no dark translucent text box. Render no other words, letters, numbers, captions, dialogue, labels, or logos."
+        )
+        scene_prompt = f"{text_instruction} {scene_prompt}"
+        prompt_plan["gemini_image_prompt"] = scene_prompt
+        prompt_plan["prompt_sha256"] = hashlib.sha256(scene_prompt.encode("utf-8")).hexdigest()
 
     output_digest = hashlib.sha256(json.dumps(result, ensure_ascii=True, sort_keys=True).encode("utf-8")).hexdigest()
     copy_plan.update({

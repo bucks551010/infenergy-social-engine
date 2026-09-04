@@ -172,6 +172,7 @@ def test_prepare_gemini_copy_authors_captions_and_visual_text(monkeypatch):
         "statement": "The smallest battery can run the whole day.",
         "expansion": "Protect the handoff before the routine moves.",
         "action": "Test the full setup where you use it.",
+        "image_scene": "A traveler tests a compact charging kit at an airport work table.",
         "visible_text": {
             "headline": "POWER THE HANDOFF.",
             "infenergy_line": "POWER THE HANDOFF.",

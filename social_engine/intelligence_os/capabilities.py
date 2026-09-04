@@ -1200,10 +1200,39 @@ def register_core_capabilities(registry: CapabilityRegistry, policies: PolicyEng
             return {"would_republish": plan, "production_mutated": False}
 
         replacement_suffix = uuid.uuid4().hex[:10]
-        thought["id"] = f"{str(thought.get('id') or 'REPLACEMENT').removesuffix('-CORRECTED')}-REPUBLISH-{replacement_suffix}"
+        thought = {
+            "id": f"GEMINI-TODAY-{replacement_suffix}",
+            "kind": "fresh_gemini_product_editorial",
+            "format": "single",
+            "statement": "Create a completely new Infenergy post for today.",
+            "expansion": "Choose one specific, useful human portable-power moment that has not appeared in the supplied package.",
+            "action": "Give the audience one practical next step.",
+            "overlay_text": "Pending Gemini authorship",
+            "pillar": "Freedom, Designed",
+            "visual_motif": "A fresh, specific, photorealistic portable-power moment authored by Gemini.",
+            "visual_execution": "premium single-image editorial scene",
+            "image_scene": "Gemini must author a new scene from the factual product brief.",
+            "product_id": str(package.get("product_id") or ""),
+            "content_type": "product",
+            "generation_contract": {
+                "format": "single_image_product",
+                "audience_name": "people who depend on portable devices away from outlets",
+                "content_job": "fresh practical product education",
+                "product_role": str((package.get("generation_contract") or {}).get("product_role") or "portable charging continuity"),
+                "visible_text": {},
+            },
+        }
         package["post_id"] = f"{str(package.get('post_id') or package.get('content_id') or 'replacement')}-republish-{replacement_suffix}"
         package["content_id"] = package["post_id"]
         package["generation_thought"] = thought
+        package["generation_contract"] = dict(thought["generation_contract"])
+        package["consumer_root"] = {}
+        package["consumer_root_id"] = ""
+        package["consumer_world_id"] = ""
+        package["consumer_moment_id"] = ""
+        package["consumer_receipt"] = {}
+        package["consumer_story_contract"] = {}
+        package["consumer_selection_receipt"] = {}
         package["routing"] = {"platforms": plan["platforms"]}
         package["platforms"] = plan["platforms"]
         package["platform_policy"] = {"platforms": plan["platforms"]}
@@ -1214,7 +1243,7 @@ def register_core_capabilities(registry: CapabilityRegistry, policies: PolicyEng
             "strict_provider": True,
             "fallback_allowed": False,
             "generation_timing": "before_image_generation",
-            "required_outputs": ["statement", "expansion", "action", "visible_text", "platform_captions"],
+            "required_outputs": ["statement", "expansion", "action", "image_scene", "visible_text", "platform_captions"],
             "source_statement": str(thought.get("statement") or ""),
         }
         product_id = str(package.get("product_id") or thought.get("product_id") or "")
@@ -1264,6 +1293,16 @@ def register_core_capabilities(registry: CapabilityRegistry, policies: PolicyEng
             package=package,
         )
         return {**plan, "status": "PENDING_STRICT_GEMINI", "replacement_outbox_id": replacement_outbox_id}
+
+    def publication_hold(payload: dict[str, Any], context: ExecutionContext) -> dict[str, Any]:
+        from content_operations import hold_outbox
+
+        outbox_id = str(payload["outbox_id"])
+        reason = str(payload.get("reason") or "owner_rejected_content")
+        if context.dry_run:
+            return {"would_hold": outbox_id, "reason": reason, "production_mutated": False}
+        hold_outbox(context.data_dir, outbox_id, reason)
+        return {"status": "HELD", "outbox_id": outbox_id, "reason": reason}
 
     def publication_delete(payload: dict[str, Any], context: ExecutionContext) -> dict[str, Any]:
         import importlib
@@ -1359,6 +1398,7 @@ def register_core_capabilities(registry: CapabilityRegistry, policies: PolicyEng
         Capability("publication.detail.get", "Get publication decision detail", "Retrieve one content council decision with candidates, rationale, outbox packages, and provider transaction evidence.", "SOCIAL", publication_detail, object_schema({"decision_id": {"type": "string"}}, ["decision_id"])),
         Capability("publication.correct_ready", "Correct ready publication", "Re-render and update one READY or externally blocked outbox package while preserving immutable confirmed platform publications. This does not publish or delete anything.", "SOCIAL", publication_correct_ready, object_schema({"content_date": {"type": "string"}, "outbox_id": {"type": "string"}, "reason": {"type": "string"}}, ["content_date", "outbox_id"]), risk_level="INTERNAL_MUTATION", permission_requirement="EXECUTE_WITH_APPROVAL", supports_rollback=False),
         Capability("publication.republish", "Republish corrected publication", "Create a new all-platform publication transaction from an existing package, regenerate strict Gemini copy and visuals, and preserve all previous provider records.", "SOCIAL", publication_republish, object_schema({"content_date": {"type": "string"}, "outbox_id": {"type": "string"}, "reason": {"type": "string"}}, ["content_date", "outbox_id"]), risk_level="INTERNAL_MUTATION", cost_class="MEDIUM", permission_requirement="EXECUTE_WITH_APPROVAL", supports_rollback=False),
+        Capability("publication.hold", "Hold publication", "Prevent one ready publication package from being claimed or dispatched without deleting its audit history.", "SOCIAL", publication_hold, object_schema({"outbox_id": {"type": "string"}, "reason": {"type": "string"}}, ["outbox_id"]), risk_level="INTERNAL_MUTATION", permission_requirement="EXECUTE_WITH_APPROVAL", supports_rollback=False),
         Capability("publication.prepare_next", "Prepare next publication", "Generate and validate strict Gemini copy and visuals for the next eligible READY package without publishing it.", "SOCIAL", publication_prepare_next, object_schema({}), risk_level="INTERNAL_MUTATION", cost_class="MEDIUM", permission_requirement="EXECUTE_WITH_APPROVAL", supports_rollback=False),
         Capability("publication.dispatch", "Dispatch due publications", "Dispatch due approved outbox packages through preserved idempotent platform publishers; preview safely with dry run.", "SOCIAL", publication_dispatch, object_schema({}), risk_level="EXTERNAL_IRREVERSIBLE", cost_class="MEDIUM", permission_requirement="EXECUTE_WITH_APPROVAL", supports_rollback=False),
         Capability("publication.delete", "Delete exact publication", "Delete one exact platform publication by immutable provider ID after owner approval.", "SOCIAL", publication_delete, object_schema({"platform": {"type": "string"}, "post_id": {"type": "string"}}, ["platform", "post_id"]), risk_level="EXTERNAL_IRREVERSIBLE", permission_requirement="EXECUTE_WITH_APPROVAL", supports_rollback=False),

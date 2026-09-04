@@ -187,7 +187,7 @@ def _gemini_copy_ready(package: dict[str, Any]) -> bool:
     )
 
 
-def _prepare_gemini_copy(package: dict[str, Any]) -> dict[str, Any]:
+def _prepare_gemini_copy(package: dict[str, Any], data_dir: str = DATA_DIR) -> dict[str, Any]:
     copy_plan = package.get("gemini_copy") if isinstance(package.get("gemini_copy"), dict) else {}
     if copy_plan.get("provider") != "gemini" or copy_plan.get("strict_provider") is not True or copy_plan.get("fallback_allowed") is not False:
         raise RuntimeError("strict_gemini_copy_contract_missing")
@@ -220,7 +220,7 @@ def _prepare_gemini_copy(package: dict[str, Any]) -> dict[str, Any]:
     }
     prompt = (
         "Write the complete final public copy for this Infenergy social post from the supplied factual brief. "
-        "Return one JSON object with exactly these keys: statement, expansion, action, visible_text, platform_captions. "
+        "Return one JSON object with exactly these keys: statement, expansion, action, image_scene, visible_text, platform_captions. "
         "visible_text must contain headline, infenergy_line, resolution_line. platform_captions must contain facebook, instagram, linkedin. "
         "Make each platform caption native, concise, non-repetitive, human, and specific to the consumer moment. "
         "The three visible lines must work as an intentional visual sequence, not labels or production directions. "
@@ -238,7 +238,7 @@ def _prepare_gemini_copy(package: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(result, dict):
         raise RuntimeError(f"gemini_copy_generation_failed:{model_router.last_error() or 'empty_or_invalid_response'}")
 
-    required_strings = ("statement", "expansion", "action")
+    required_strings = ("statement", "expansion", "action", "image_scene")
     visible = result.get("visible_text") if isinstance(result.get("visible_text"), dict) else {}
     captions = result.get("platform_captions") if isinstance(result.get("platform_captions"), dict) else {}
     missing = [key for key in required_strings if not str(result.get(key) or "").strip()]
@@ -270,6 +270,7 @@ def _prepare_gemini_copy(package: dict[str, Any]) -> dict[str, Any]:
         "instagram_hook": str(result["statement"]).strip(),
         "expansion": str(result["expansion"]).strip(),
         "action": str(result["action"]).strip(),
+        "image_scene": str(result["image_scene"]).strip(),
     })
     contract["visible_text"] = {key: str(visible[key]).strip() for key in ("headline", "infenergy_line", "resolution_line")}
     package.update({
@@ -299,7 +300,11 @@ def _prepare_gemini_copy(package: dict[str, Any]) -> dict[str, Any]:
         raise RuntimeError(f"gemini_copy_claims_rejected:{','.join(claim_review.get('errors') or [])}")
 
     old_statement = str(copy_plan.get("source_statement") or package.get("thought_statement") or "")
-    generation = package.get("gemini_generation") if isinstance(package.get("gemini_generation"), dict) else {}
+    from build_monthly_content import _gemini_generation_plan, _load_product_brief
+    product_id = str(package.get("product_id") or thought.get("product_id") or "")
+    product = _load_product_brief(data_dir, product_id) if product_id else None
+    generation = _gemini_generation_plan(thought, product)
+    package["gemini_generation"] = generation
     for prompt_plan in generation.get("prompts") or []:
         if not isinstance(prompt_plan, dict):
             continue
@@ -433,7 +438,7 @@ def pregenerate_upcoming(*, data_dir: str = DATA_DIR) -> dict[str, Any]:
         outbox_id = str(row["outbox_id"])
         try:
             if copy_plan.get("strict_provider") is True:
-                package = _prepare_gemini_copy(package)
+                package = _prepare_gemini_copy(package, data_dir)
             prepared = _prepare_gemini_assets(package, data_dir)
             if not update_ready_package(data_dir, outbox_id, prepared):
                 return {"status": "DEFERRED", "outbox_id": outbox_id, "detail": "package_no_longer_ready"}
@@ -491,7 +496,7 @@ def dispatch_due(*, data_dir: str = DATA_DIR, now_utc: str | None = None) -> dic
             package = _refresh_current_news_package(package)
             copy_plan = package.get("gemini_copy") if isinstance(package.get("gemini_copy"), dict) else {}
             if copy_plan.get("strict_provider") is True:
-                package = _prepare_gemini_copy(package)
+                package = _prepare_gemini_copy(package, data_dir)
             package = _prepare_gemini_assets(package, data_dir)
             update_claimed_package(data_dir, outbox_id, package)
         except Exception as exc:

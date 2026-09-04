@@ -696,6 +696,30 @@ def release_outbox(
         connection.close()
 
 
+def hold_outbox(data_dir: str, outbox_id: str, reason: str) -> None:
+    now = _now()
+    connection = _connect(data_dir)
+    try:
+        connection.execute("BEGIN IMMEDIATE")
+        changed = connection.execute(
+            """UPDATE content_outbox SET status='HELD', claimed_at=NULL, next_attempt_at=NULL, last_error=?
+                WHERE outbox_id=? AND status IN ('READY', 'DUE', 'EXTERNAL_ACTION_REQUIRED')""",
+            (reason, outbox_id),
+        ).rowcount
+        if changed != 1:
+            raise ValueError(f"outbox_not_holdable:{outbox_id}")
+        connection.execute(
+            "UPDATE daily_slots SET status='HELD', claimed_at=NULL, last_error=?, updated_at=? WHERE outbox_id=?",
+            (reason, now, outbox_id),
+        )
+        connection.commit()
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
+
+
 def recover_outbox(data_dir: str, outbox_id: str, error: str) -> None:
     now = _now()
     connection = _connect(data_dir)

@@ -369,6 +369,17 @@ def _resolve_product_source(content: dict[str, Any], repo_context: dict[str, Any
     return ""
 
 
+def approve_product_reference(product_id: str, source_url: str) -> dict[str, str]:
+    source_bytes, _ = _read_image_bytes_any(source_url)
+    if not source_bytes:
+        raise RuntimeError("product_reference_unavailable")
+    return {
+        "product_id": str(product_id).strip(),
+        "source_url": str(source_url).strip(),
+        "sha256": hashlib.sha256(source_bytes).hexdigest(),
+    }
+
+
 def _extract_inline_image_bytes(response: Any) -> bytes:
     # Handle evolving SDK response formats by scanning candidate parts.
     candidates = getattr(response, "candidates", None) or []

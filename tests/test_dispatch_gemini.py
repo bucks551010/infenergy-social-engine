@@ -50,6 +50,19 @@ def test_semantic_plate_review_allows_text_free_base_before_overlay():
     assert reasons == []
 
 
+def test_product_reference_approval_binds_source_bytes(tmp_path):
+    source = tmp_path / "product.png"
+    source.write_bytes(b"verified-product-image")
+
+    approval = social_visuals.approve_product_reference("product-1", str(source))
+
+    assert approval == {
+        "product_id": "product-1",
+        "source_url": str(source),
+        "sha256": "38d5bb317c441f273223710fb2c978073e7cc99c6970694996915da2cc113d94",
+    }
+
+
 def _package(carousel: bool = True) -> dict:
     thought = {
         "statement": "Preparedness over panic.",

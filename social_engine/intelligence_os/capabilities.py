@@ -1062,6 +1062,7 @@ def register_core_capabilities(registry: CapabilityRegistry, policies: PolicyEng
     def publication_correct_ready(payload: dict[str, Any], context: ExecutionContext) -> dict[str, Any]:
         from build_monthly_content import _gemini_generation_plan, _load_product_brief
         from content_operations import daily_index, platform_transaction, release_outbox, update_ready_package
+        from social_visuals import approve_product_reference
 
         content_date = str(payload["content_date"])
         outbox_id = str(payload["outbox_id"])
@@ -1120,6 +1121,10 @@ def register_core_capabilities(registry: CapabilityRegistry, policies: PolicyEng
             thought["id"] = f"{thought.get('id')}-CORRECTED"
         product_id = str(package.get("product_id") or thought.get("product_id") or "")
         product = _load_product_brief(context.data_dir, product_id) if product_id else None
+        product_source = str(package.get("product_image_url") or (product or {}).get("source_image_url") or "").strip()
+        if product_id and product_source:
+            package["product_image_url"] = product_source
+            package["product_image_approval"] = approve_product_reference(product_id, product_source)
         package["generation_thought"] = thought
         package["gemini_copy"] = {
             "provider": "gemini",
@@ -1252,7 +1257,7 @@ def register_core_capabilities(registry: CapabilityRegistry, policies: PolicyEng
         Capability("agents.run", "Run operational agent", "Run a registered specialist with parameters from agents.list. For a complete rendered carousel package, carousel_slide_writer with objective delegates to creative.carousel.generate and validates every asset without scheduling or publishing. Mutation-capable agent execution remains owner-approved.", "OPERATIONS", agent_run, object_schema({"name": {"type": "string"}, "params": {"type": "object"}}, ["name"]), risk_level="INTERNAL_MUTATION", permission_requirement="EXECUTE_WITH_APPROVAL", supports_rollback=True, rollback_handler=rollback_creative),
         Capability("publication.operations.get", "Get publication operations", "Inspect exact daily slots, candidate decisions, outbox state, platform transactions, failures, and readiness actions.", "SOCIAL", publication_operations, object_schema({"content_date": {"type": "string"}, "lead_hours": {"type": "integer"}})),
         Capability("publication.detail.get", "Get publication decision detail", "Retrieve one content council decision with candidates, rationale, outbox packages, and provider transaction evidence.", "SOCIAL", publication_detail, object_schema({"decision_id": {"type": "string"}}, ["decision_id"])),
-        Capability("publication.correct_ready", "Correct ready publication", "Re-render and update one READY outbox package while preserving immutable confirmed platform publications. This does not publish or delete anything.", "SOCIAL", publication_correct_ready, object_schema({"content_date": {"type": "string"}, "outbox_id": {"type": "string"}, "reason": {"type": "string"}}, ["content_date", "outbox_id"]), risk_level="INTERNAL_MUTATION", permission_requirement="EXECUTE_WITH_APPROVAL", supports_rollback=False),
+        Capability("publication.correct_ready", "Correct ready publication", "Re-render and update one READY or externally blocked outbox package while preserving immutable confirmed platform publications. This does not publish or delete anything.", "SOCIAL", publication_correct_ready, object_schema({"content_date": {"type": "string"}, "outbox_id": {"type": "string"}, "reason": {"type": "string"}}, ["content_date", "outbox_id"]), risk_level="INTERNAL_MUTATION", permission_requirement="EXECUTE_WITH_APPROVAL", supports_rollback=False),
         Capability("publication.prepare_next", "Prepare next publication", "Generate and validate strict Gemini copy and visuals for the next eligible READY package without publishing it.", "SOCIAL", publication_prepare_next, object_schema({}), risk_level="INTERNAL_MUTATION", cost_class="MEDIUM", permission_requirement="EXECUTE_WITH_APPROVAL", supports_rollback=False),
         Capability("publication.dispatch", "Dispatch due publications", "Dispatch due approved outbox packages through preserved idempotent platform publishers; preview safely with dry run.", "SOCIAL", publication_dispatch, object_schema({}), risk_level="EXTERNAL_IRREVERSIBLE", cost_class="MEDIUM", permission_requirement="EXECUTE_WITH_APPROVAL", supports_rollback=False),
         Capability("publication.delete", "Delete exact publication", "Delete one exact platform publication by immutable provider ID after owner approval.", "SOCIAL", publication_delete, object_schema({"platform": {"type": "string"}, "post_id": {"type": "string"}}, ["platform", "post_id"]), risk_level="EXTERNAL_IRREVERSIBLE", permission_requirement="EXECUTE_WITH_APPROVAL", supports_rollback=False),

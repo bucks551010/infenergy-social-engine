@@ -486,7 +486,7 @@ def _has_scanline_corruption(image: Any) -> bool:
             )
             current_run = current_run + 1 if extreme_color else 0
             longest_run = max(longest_run, current_run)
-        if longest_run >= 24:
+        if longest_run >= int(sample.width * 0.75):
             suspicious_rows += 1
     return suspicious_rows >= 3
 
@@ -522,6 +522,7 @@ def _gemini_semantic_plate_quality(
     expected_headline: str = "",
     expected_cta: str = "",
     consumer_moment: dict[str, Any] | None = None,
+    product_reference: bytes = b"",
 ) -> tuple[bool, list[str]]:
     enabled = str(os.environ.get("GEMINI_VISUAL_QA_ENABLED", "true")).strip().lower() not in {"0", "false", "no"}
     if not enabled:
@@ -543,7 +544,11 @@ def _gemini_semantic_plate_quality(
         "text_missing_or_illegible, headline_mismatch, cta_missing, product_missing, "
         "gibberish_or_garbled_text, looks_like_generic_ai_poster, infenergy_symbol_in_sky_or_atmosphere, "
         "derivative_existing_superhero_imitation, consumer_person_missing, consumer_setting_mismatch, "
-        "consumer_activity_missing, consumer_visual_evidence_missing. Treat misspelled, duplicated, or nonsensical letters as "
+        "consumer_activity_missing, consumer_visual_evidence_missing, unexpected_rendered_text, product_reference_mismatch. "
+        "When on-image text is added after this review, set unexpected_rendered_text=true if the image contains any words, "
+        "letters, numbers, captions, labels, or dialogue. When a second reference image is supplied, set "
+        "product_reference_mismatch=true unless the depicted product faithfully preserves its shape, proportions, color, "
+        "controls, ports, markings, and physical details. Treat misspelled, duplicated, or nonsensical letters as "
         "gibberish_or_garbled_text=true. Any Infenergy logo, emblem, infinity-bolt symbol, wordmark, or proxy "
         "symbol in the sky, clouds, moon, stars, fog, smoke, searchlight, skyline, or atmospheric background "
         "makes infenergy_symbol_in_sky_or_atmosphere=true. Recognizable imitation of Batman or any existing "
@@ -559,9 +564,12 @@ def _gemini_semantic_plate_quality(
         if not model_name:
             continue
         try:
+            review_contents = [review_prompt, types.Part.from_bytes(data=raw, mime_type="image/png")]
+            if product_reference:
+                review_contents.append(types.Part.from_bytes(data=product_reference, mime_type="image/png"))
             response = client.models.generate_content(
                 model=model_name,
-                contents=[review_prompt, types.Part.from_bytes(data=raw, mime_type="image/png")],
+                contents=review_contents,
                 config=types.GenerateContentConfig(response_mime_type="application/json"),
             )
             review = json.loads(str(response.text or "{}"))
@@ -585,6 +593,10 @@ def _gemini_semantic_plate_quality(
                     "cta_missing",
                     *failure_keys,
                 )
+            else:
+                failure_keys = ("unexpected_rendered_text", *failure_keys)
+            if product_reference:
+                failure_keys = ("product_reference_mismatch", *failure_keys)
             reasons = [key for key in failure_keys if review.get(key) is True]
             return not reasons, reasons
         except Exception:
@@ -1109,6 +1121,7 @@ def _generate_gemini_full_creative(content: dict[str, Any], platform: str, visua
         metadata["content_reference_count"] = len(content_references)
 
         product_source = _resolve_product_source(content, repo_context=repo_context)
+        product_bytes = b""
         metadata["source_product_asset"] = product_source
         if product_source:
             identity_review = _product_image_identity_review(content, product_source, "")
@@ -1152,7 +1165,7 @@ def _generate_gemini_full_creative(content: dict[str, Any], platform: str, visua
                     root = _safe_json_dict(content.get("consumer_root"))
                     consumer_moment = _safe_json_dict(root.get("moment"))
                     accepted, semantic_reasons = _gemini_semantic_plate_quality(
-                        client, types, raw, platform, expected_headline, expected_cta, consumer_moment
+                        client, types, raw, platform, expected_headline, expected_cta, consumer_moment, product_bytes
                     )
                     if not accepted:
                         reasons_by_model[model_name] = f"semantic_quality_rejected:{','.join(semantic_reasons)}"

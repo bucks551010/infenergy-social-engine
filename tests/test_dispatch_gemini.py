@@ -50,6 +50,36 @@ def test_semantic_plate_review_allows_text_free_base_before_overlay():
     assert reasons == []
 
 
+def test_semantic_plate_review_rejects_unrequested_rendered_text():
+    class Response:
+        text = '{"unexpected_rendered_text":true}'
+
+    class Client:
+        class Models:
+            @staticmethod
+            def generate_content(**_kwargs):
+                return Response()
+
+        models = Models()
+
+    class Types:
+        class Part:
+            @staticmethod
+            def from_bytes(**_kwargs):
+                return object()
+
+        class GenerateContentConfig:
+            def __init__(self, **_kwargs):
+                pass
+
+    accepted, reasons = social_visuals._gemini_semantic_plate_quality(
+        Client(), Types, b"image", "instagram", consumer_moment={"person": "host"}
+    )
+
+    assert accepted is False
+    assert reasons == ["unexpected_rendered_text"]
+
+
 def test_product_reference_approval_binds_source_bytes(tmp_path):
     source = tmp_path / "product.png"
     source.write_bytes(b"verified-product-image")
@@ -61,6 +91,15 @@ def test_product_reference_approval_binds_source_bytes(tmp_path):
         "source_url": str(source),
         "sha256": "38d5bb317c441f273223710fb2c978073e7cc99c6970694996915da2cc113d94",
     }
+
+
+def test_scanline_review_allows_short_editorial_accent():
+    image = Image.new("RGB", (1080, 1920), "#20252a")
+    for vertical in range(80, 105):
+        for horizontal in range(60, 520):
+            image.putpixel((horizontal, vertical), (255, 180, 0))
+
+    assert social_visuals._has_scanline_corruption(image) is False
 
 
 def _package(carousel: bool = True) -> dict:

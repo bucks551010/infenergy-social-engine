@@ -219,29 +219,13 @@ def _prepare_gemini_copy(package: dict[str, Any], data_dir: str = DATA_DIR) -> d
             "cta": contract.get("cta") or thought.get("action"),
         },
     }
-    prompt = (
-        "Write the complete final public copy for this Infenergy social post from the supplied factual brief. "
-        "Return one JSON object with exactly these keys: statement, expansion, action, image_scene, visible_text, platform_captions. "
-        "visible_text must contain headline, infenergy_line, resolution_line. platform_captions must contain facebook, instagram, linkedin. "
-        "Make each platform caption native, concise, non-repetitive, human, and specific to the consumer moment. "
-        "image_scene must name a specific person, place, activity, power interruption, and visible product use that resolves the moment. "
-        "Reject empty tabletop, isolated desk, packshot, generic workspace, and product-only compositions. The product must be actively used by a person in a credible scene. "
-        "The three visible lines must work as an intentional visual sequence, not labels or production directions. "
-        "The visible headline must be five words or fewer and 36 characters or fewer. The other two visible lines must be seven words or fewer and 48 characters or fewer. Use plain punctuation and no hashtags. "
-        "The headline must express the scene's specific tension, surprise, or human payoff. It must be memorable without becoming a slogan. Reject generic phrases such as Stay Connected, Power Your Day, Power Anywhere, Stay Powered, Be Prepared, or Never Stop. "
-        "Make the statement and captions earn the headline with a concrete observation and useful decision. Avoid vague claims such as seamless, dependable, essential, freedom, confidence, or peace of mind unless the supplied facts explicitly support them. "
-        "Write for premium image typography: decisive, spare, immediately readable, emotionally precise, and free of repeated ideas. "
-        "Never output POV:, FIELD TRUTH, internal taxonomy, unsupported specifications, prices, runtime, guarantees, testimonials, or invented product claims. "
-        "Use only verified product facts supplied in the brief. Do not output markdown or keys beyond the required schema.\n\n"
-        f"FACTUAL BRIEF:\n{json.dumps(brief, ensure_ascii=True, sort_keys=True)}"
-    )
-    result = model_router.generate_json(
-        str(copy_plan.get("task") or "copy_editing"),
-        prompt,
-        system_instruction="You are Infenergy's senior social creative director and copywriter. Produce publication-ready original copy grounded only in the supplied facts.",
-    )
+    from agents.dispatcher import run_agent
+    author_receipt = run_agent("on_image_text_author", data_dir, {"brief": brief})
+    if author_receipt.get("error"):
+        raise RuntimeError(f"on_image_text_author_failed:{author_receipt.get('detail') or author_receipt['error']}")
+    result = author_receipt.get("authored")
     if not isinstance(result, dict):
-        raise RuntimeError(f"gemini_copy_generation_failed:{model_router.last_error() or 'empty_or_invalid_response'}")
+        raise RuntimeError("on_image_text_author_invalid_output")
 
     required_strings = ("statement", "expansion", "action", "image_scene")
     visible = result.get("visible_text") if isinstance(result.get("visible_text"), dict) else {}
@@ -298,6 +282,14 @@ def _prepare_gemini_copy(package: dict[str, Any], data_dir: str = DATA_DIR) -> d
             "overlay_text": thought["overlay_text"],
         },
         "copy_generation_source": "gemini",
+        "agent_orchestration": {
+            **(package.get("agent_orchestration") if isinstance(package.get("agent_orchestration"), dict) else {}),
+            "on_image_text_author": {
+                "status": author_receipt.get("status"),
+                "model_route": author_receipt.get("model_route"),
+                "snapshot_path": author_receipt.get("snapshot_path"),
+            },
+        },
     })
     for platform, caption in (("facebook", package["fb_caption"]), ("instagram", package["ig_caption"]), ("linkedin", package["li_text"])):
         post = ((package.get("platform_posts") or {}).get(platform) or {})
@@ -351,7 +343,7 @@ def _prepare_gemini_copy(package: dict[str, Any], data_dir: str = DATA_DIR) -> d
             + json.dumps(rendered_text, ensure_ascii=True)
             + ". Treat the typography with the same craft and specificity as the photography. Use one confident premium editorial grotesk with optical kerning, balanced tracking, and a deliberate line break only when it strengthens meaning. Build a clear single-headline hierarchy at roughly 8-12% of canvas height. Align it to a strong scene edge or subject gesture inside genuinely open negative space; never center it mechanically across the product or person's face. Choose warm white, charcoal, or restrained amber according to the local background for strong natural contrast. Integrate the headline into the composition so image and message read as one idea. Use crisp solid letterforms with no blue shadow, no blue glow, no neon edge, no outline, no bevel, no fake 3D extrusion, and no dark or translucent text box. Do not use a floating card, banner, pill, label, or generic poster lockup. Render the supplied headline once only. Do not repeat it at the bottom or add secondary captions. Render no other words, letters, numbers, captions, dialogue, labels, or logos."
         )
-        scene_prompt = f"{text_instruction} {scene_prompt}"
+        direction["typography_render_instruction"] = text_instruction
         prompt_plan["gemini_image_prompt"] = scene_prompt
         prompt_plan["prompt_sha256"] = hashlib.sha256(scene_prompt.encode("utf-8")).hexdigest()
 
@@ -410,6 +402,21 @@ def _prepare_gemini_assets(package: dict[str, Any], data_dir: str) -> dict[str, 
 
     if len(assets) != required_count or any(asset.get("render_engine") != "gemini" for asset in assets):
         raise RuntimeError("strict_gemini_generation_incomplete")
+    typography_runs = [
+        asset["generation"]["agent_orchestration"]["on_image_typography_designer"]
+        for asset in assets
+        if isinstance(asset.get("generation"), dict)
+        and isinstance(asset["generation"].get("agent_orchestration"), dict)
+        and isinstance(asset["generation"]["agent_orchestration"].get("on_image_typography_designer"), dict)
+    ]
+    if typography_runs:
+        orchestration = package.get("agent_orchestration") if isinstance(package.get("agent_orchestration"), dict) else {}
+        orchestration["on_image_typography_designer"] = {
+            "status": "COMPLETE",
+            "asset_count": len(typography_runs),
+            "runs": typography_runs,
+        }
+        package["agent_orchestration"] = orchestration
     generation.update({
         "status": "COMPLETE",
         "generated_at_utc": datetime.now(timezone.utc).isoformat(),

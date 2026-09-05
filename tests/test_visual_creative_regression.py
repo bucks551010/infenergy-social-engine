@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import io
 import sys
 from pathlib import Path
 from unittest.mock import patch
@@ -268,6 +269,90 @@ def test_gemini_image_quota_failure_short_circuits_following_calls(tmp_path, mon
     assert first[0] is False and second[0] is False
     assert calls["count"] == 1
     assert "resource_exhausted" in second[1].lower()
+
+
+def test_gemini_text_render_uses_image_aware_typography_agent(tmp_path, monkeypatch):
+    image_buffer = io.BytesIO()
+    Image.new("RGB", (1080, 1080), "#d8e0e4").save(image_buffer, format="PNG")
+    image_bytes = image_buffer.getvalue()
+    calls = []
+
+    class Models:
+        def generate_content(self, **kwargs):
+            calls.append(kwargs["contents"])
+            inline_data = types.SimpleNamespace(data=image_bytes)
+            part = types.SimpleNamespace(inline_data=inline_data)
+            content = types.SimpleNamespace(parts=[part])
+            return types.SimpleNamespace(candidates=[types.SimpleNamespace(content=content)])
+
+    fake_genai = types.ModuleType("google.genai")
+    fake_genai.Client = lambda **_kwargs: types.SimpleNamespace(models=Models())
+    fake_types = types.ModuleType("google.genai.types")
+    fake_types.GenerateContentConfig = lambda **kwargs: kwargs
+    fake_types.ImageConfig = lambda **kwargs: kwargs
+    fake_types.HttpOptions = lambda **kwargs: kwargs
+    fake_types.HttpRetryOptions = lambda **kwargs: kwargs
+    fake_types.Part = types.SimpleNamespace(from_bytes=lambda **kwargs: kwargs)
+    fake_genai.types = fake_types
+    monkeypatch.setattr(google, "genai", fake_genai)
+    monkeypatch.setitem(sys.modules, "google.genai", fake_genai)
+    monkeypatch.setitem(sys.modules, "google.genai.types", fake_types)
+    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
+    monkeypatch.setenv("GEMINI_IMAGE_REPAIR_ATTEMPTS", "1")
+    monkeypatch.setattr(social_visuals, "_GEMINI_IMAGE_UNAVAILABLE_REASON", "")
+    monkeypatch.setattr(social_visuals, "_load_visual_repo_context", lambda: {"references": [], "settings": {}})
+    monkeypatch.setattr(social_visuals, "_gemini_plate_quality", lambda *_args: (True, []))
+    monkeypatch.setattr(social_visuals, "_gemini_semantic_plate_quality", lambda *_args: (True, []))
+    designer_pixels = []
+
+    def design_receipt(_data_dir, pixels, headline, platform):
+        designer_pixels.append(pixels)
+        return {
+            "status": "COMPLETE",
+            "snapshot_path": "designer.json",
+            "typography": {
+                "zone": {"x": 0.08, "y": 0.1, "width": 0.42, "height": 0.2},
+                "anchor": "left architecture edge",
+                "alignment": "left",
+                "max_width_ratio": 0.42,
+                "canvas_height_ratio": 0.1,
+                "line_break": "BLUEPRINTS DO NOT WAIT.",
+                "color": "warm_white",
+                "weight": "bold",
+                "tracking": 0.01,
+                "decoration": "restrained amber accent rule",
+                "rationale": "Uses the open upper-left field.",
+                "protected_regions": ["person", "product", "cable"],
+            },
+        }
+
+    monkeypatch.setattr("agents.on_image_typography_designer.design_receipt", design_receipt)
+    output_path = str(tmp_path / "two-pass.png")
+    rendered, reason, metadata = social_visuals._generate_gemini_full_creative(
+        {"post_id": "two-pass"},
+        "instagram",
+        {
+            "gemini_image_prompt": "An architect charging a phone on a transit platform.",
+            "v5_direction": {
+                "gemini_rendered_text": ["BLUEPRINTS DO NOT WAIT."],
+                "typography_render_instruction": "Use no blue shadow, glow, outline, or text box.",
+                "text_overlay": {"enabled": False},
+            },
+        },
+        output_path,
+    )
+
+    assert rendered is True and reason == "ok"
+    assert len(calls) == 2
+    base_prompt = calls[0] if isinstance(calls[0], str) else calls[0][0]
+    assert "text-free base photograph" in base_prompt
+    assert "BLUEPRINTS DO NOT WAIT." not in base_prompt
+    assert "BLUEPRINTS DO NOT WAIT." in calls[1][0]
+    assert '"x": 0.08' in calls[1][0]
+    assert designer_pixels == [image_bytes]
+    assert metadata["image_provider_call_count"] == 2
+    assert metadata["local_text_overlay_used"] is False
+    assert metadata["agent_orchestration"]["on_image_typography_designer"]["status"] == "COMPLETE"
 
 
 def test_final_file_qa_preserves_packshot_only_rejection(tmp_path):

@@ -196,8 +196,9 @@ def test_prepare_gemini_copy_authors_captions_and_visual_text(monkeypatch):
     assert direction["text_overlay"] == {"enabled": False}
     assert direction["gemini_rendered_text"] == ["THE SMALL THING STALLED EVERYTHING."]
     assert direction["gemini_typography_contract"]["blue_shadow_allowed"] is False
-    assert "no blue shadow" in prompt["gemini_image_prompt"]
-    assert "Render the supplied headline once only" in prompt["gemini_image_prompt"]
+    assert "no blue shadow" in direction["typography_render_instruction"]
+    assert "Render the supplied headline once only" in direction["typography_render_instruction"]
+    assert "THE SMALL THING STALLED EVERYTHING." not in prompt["gemini_image_prompt"]
     assert "Do not render words" not in prompt["gemini_image_prompt"]
     assert prepared["gemini_copy"]["qa"] == {"schema": "PASS", "forbidden_labels": "PASS", "product_claims": "PASS"}
 

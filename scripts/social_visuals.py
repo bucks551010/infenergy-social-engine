@@ -1040,7 +1040,13 @@ def _overlay_font(font_module: Any, size: int, *, bold: bool) -> Any | None:
 _GEMINI_IMAGE_UNAVAILABLE_REASON = ""
 
 
-def _generate_gemini_full_creative(content: dict[str, Any], platform: str, visual_plan: dict[str, Any], output_path: str) -> tuple[bool, str, dict[str, Any]]:
+def _generate_gemini_full_creative(
+    content: dict[str, Any],
+    platform: str,
+    visual_plan: dict[str, Any],
+    output_path: str,
+    data_dir: str = "",
+) -> tuple[bool, str, dict[str, Any]]:
     global _GEMINI_IMAGE_UNAVAILABLE_REASON
     started_at = datetime.now(timezone.utc).isoformat()
     api_key = os.environ.get("GEMINI_API_KEY", "").strip()
@@ -1112,12 +1118,18 @@ def _generate_gemini_full_creative(content: dict[str, Any], platform: str, visua
         return completed(False, _GEMINI_IMAGE_UNAVAILABLE_REASON)
 
     prompt = _build_gemini_image_prompt(content, platform, visual_plan)
-    metadata["visual_prompt_hash"] = hashlib.sha256(prompt.encode("utf-8")).hexdigest()
     v5_direction = _safe_json_dict(visual_plan.get("v5_direction"))
     gemini_rendered_text = [
         str(line).strip() for line in v5_direction.get("gemini_rendered_text", []) if str(line).strip()
     ] if isinstance(v5_direction.get("gemini_rendered_text"), list) else []
     v5_text_forward = bool(gemini_rendered_text)
+    if v5_text_forward:
+        prompt = (
+            "Create the text-free base photograph first. Render no words, letters, numbers, logos, captions, labels, or typography anywhere. "
+            "Preserve intentional open negative space that belongs naturally to the scene for a later typography pass. "
+            + prompt
+        )
+    metadata["visual_prompt_hash"] = hashlib.sha256(prompt.encode("utf-8")).hexdigest()
     expected_headline, _ = _headline_lockup(content) if not v5_text_forward else ("", "")
     expected_cta = normalize_brand_text(str(content.get("selected_cta") or "Learn more")) if not v5_text_forward else ""
     repo_context = _load_visual_repo_context()
@@ -1168,6 +1180,8 @@ def _generate_gemini_full_creative(content: dict[str, Any], platform: str, visua
         contents: Any = [prompt, *reference_parts] if reference_parts else prompt
         max_generation_attempts = max(1, min(int(os.environ.get("GEMINI_IMAGE_REPAIR_ATTEMPTS", "3")), 4))
         metadata["image_provider_call_count"] = 0
+        candidate_has_typography = not v5_text_forward
+        typography_prompt = ""
         try:
             config_kwargs: dict[str, Any] = {"response_modalities": ["TEXT", "IMAGE"]}
             try:
@@ -1194,6 +1208,50 @@ def _generate_gemini_full_creative(content: dict[str, Any], platform: str, visua
                 if not accepted:
                     rejection_reason = f"plate_quality_rejected:{','.join(plate_reasons)}"
                 else:
+                    if v5_text_forward and not candidate_has_typography:
+                        from agents.on_image_typography_designer import design_receipt
+
+                        designer_receipt = design_receipt(
+                            data_dir or os.path.dirname(os.path.dirname(output_path)),
+                            raw,
+                            gemini_rendered_text[0],
+                            platform,
+                        )
+                        typography = designer_receipt["typography"]
+                        metadata["agent_orchestration"] = {
+                            "on_image_typography_designer": {
+                                "status": designer_receipt.get("status"),
+                                "snapshot_path": designer_receipt.get("snapshot_path"),
+                                "typography": typography,
+                            }
+                        }
+                        typography_prompt = (
+                            "Edit the attached text-free base image into the final publishable creative. Preserve the person, scene, product identity, cable, action, lighting, and composition. "
+                            f"Render this exact headline once and no other visible text: {json.dumps(gemini_rendered_text[0], ensure_ascii=True)}. "
+                            f"Apply this image-aware typography design exactly: {json.dumps(typography, ensure_ascii=True, sort_keys=True)}. "
+                            + str(v5_direction.get("typography_render_instruction") or "")
+                        )
+                        base_bytes, base_mime = _normalize_reference_image(raw)
+                        edit_contents: list[Any] = [typography_prompt]
+                        if base_bytes:
+                            edit_contents.append(types.Part.from_bytes(data=base_bytes, mime_type=base_mime or "image/png"))
+                        edit_contents.extend(reference_parts)
+                        metadata["image_provider_call_count"] += 1
+                        response = client.models.generate_content(
+                            model=model_name,
+                            contents=edit_contents,
+                            config=types.GenerateContentConfig(**config_kwargs),
+                        )
+                        raw = _extract_inline_image_bytes(response)
+                        if not raw:
+                            reasons_by_model[model_name] = "typography_render_no_image_bytes"
+                            continue
+                        generated = image_module.open(io.BytesIO(raw)).convert("RGB")
+                        accepted, plate_reasons = _gemini_plate_quality(generated, platform)
+                        if not accepted:
+                            reasons_by_model[model_name] = f"typography_plate_quality_rejected:{','.join(plate_reasons)}"
+                            continue
+                        candidate_has_typography = True
                     root = _safe_json_dict(content.get("consumer_root"))
                     consumer_moment = _safe_json_dict(root.get("moment"))
                     accepted, semantic_reasons = _gemini_semantic_plate_quality(
@@ -1220,7 +1278,7 @@ def _generate_gemini_full_creative(content: dict[str, Any], platform: str, visua
                     correction_prompt = (
                         "Revise the attached rejected candidate into a new finished image. Preserve the approved scene and "
                         f"product identity, but correct every QA failure: {rejection_reason}. Follow this complete original "
-                        f"contract exactly: {prompt}"
+                        f"contract exactly: {typography_prompt if candidate_has_typography else prompt}"
                     )
                     contents = [correction_prompt]
                     if repair_bytes:

@@ -22,6 +22,8 @@ from . import (
     engagement_ingestion,
     hashtag_intelligence,
     learning_ingestion,
+    on_image_text_author,
+    on_image_typography_designer,
     performance_reflection,
     posting_time_optimizer,
     product_intelligence,
@@ -38,6 +40,8 @@ _REGISTRY: dict[str, Callable[..., dict]] = {
     "content_forensic": content_forensic.run,
     "performance_reflection": performance_reflection.run,
     "learning_ingestion": learning_ingestion.run,
+    "on_image_text_author": on_image_text_author.run,
+    "on_image_typography_designer": on_image_typography_designer.run,
     "topic_intelligence": topic_intelligence.run,
     "carousel_slide_writer": carousel_slide_writer.run,
     "visual_qa_reviewer": visual_qa_reviewer.run,
@@ -77,6 +81,8 @@ _PARAMETER_ALIASES: dict[str, dict[str, str]] = {
         "audience_archetype": "archetype_key",
     },
     "visual_qa_reviewer": {"visual_direction": "direction"},
+    "on_image_text_author": {"factual_brief": "brief"},
+    "on_image_typography_designer": {"image": "image_path", "text": "headline"},
 }
 
 

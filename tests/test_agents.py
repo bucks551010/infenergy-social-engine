@@ -53,6 +53,8 @@ class AgentsTests(unittest.TestCase):
             "learning_ingestion",
             "topic_intelligence",
             "carousel_slide_writer",
+            "on_image_text_author",
+            "on_image_typography_designer",
             "visual_qa_reviewer",
             "product_intelligence",
             "product_matcher",
@@ -145,6 +147,9 @@ class AgentsTests(unittest.TestCase):
 
         self.assertEqual(sorted(contracts), available_agents())
         self.assertEqual(contracts["carousel_slide_writer"]["aliases"]["objective"], "creative_brief")
+        self.assertEqual(contracts["on_image_text_author"]["aliases"]["factual_brief"], "brief")
+        self.assertEqual(contracts["on_image_typography_designer"]["aliases"]["image"], "image_path")
+        self.assertEqual(contracts["on_image_typography_designer"]["aliases"]["text"], "headline")
         self.assertIn("slide_count", contracts["carousel_slide_writer"]["parameters"])
         self.assertTrue(contracts["candidate_pool"]["accepts_additional_parameters"])
 

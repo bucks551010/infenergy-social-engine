@@ -382,6 +382,10 @@ def test_inventory_backlog_and_today_schedule_are_read_only(tmp_path):
     )
     assert [item["outbox_id"] for item in find_eligible_creative(data_dir, {"platform": "facebook"})] == [outbox_id]
     assert today_schedule(data_dir, day)["packages"][0]["outbox_id"] == outbox_id
+    connection = sqlite3.connect(os.path.join(data_dir, "inventory.db"))
+    connection.execute("UPDATE content_outbox SET scheduled_at=? WHERE outbox_id=?", (f"{day}T13:00:00", outbox_id))
+    connection.commit()
+    connection.close()
     assert classify_backlog(data_dir, now_utc="2026-08-19T12:00:00+00:00")["ready_relevant"][0]["outbox_id"] == outbox_id
 
 

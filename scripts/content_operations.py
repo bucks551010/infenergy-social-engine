@@ -703,6 +703,7 @@ def find_eligible_creative(data_dir: str, requirements: dict[str, Any], *, limit
 
 def classify_backlog(data_dir: str, *, now_utc: str | None = None) -> dict[str, list[dict[str, Any]]]:
     now = datetime.fromisoformat((now_utc or _now()).replace("Z", "+00:00"))
+    now = now.replace(tzinfo=timezone.utc) if now.tzinfo is None else now.astimezone(timezone.utc)
     buckets = {
         "ready_relevant": [], "preparation_required": [], "blocked_budget": [],
         "blocked_canon": [], "blocked_inventory": [], "expired": [],
@@ -719,6 +720,7 @@ def classify_backlog(data_dir: str, *, now_utc: str | None = None) -> dict[str, 
         row = dict(raw)
         state = str(row.get("lifecycle_state") or "")
         scheduled = datetime.fromisoformat(str(row["scheduled_at"]).replace("Z", "+00:00"))
+        scheduled = scheduled.replace(tzinfo=timezone.utc) if scheduled.tzinfo is None else scheduled.astimezone(timezone.utc)
         if state == PackageState.PUBLISHED.value:
             bucket = "published"
         elif state == PackageState.BLOCKED_BUDGET.value:

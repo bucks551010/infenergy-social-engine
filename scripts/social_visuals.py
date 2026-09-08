@@ -12,6 +12,7 @@ from typing import Any
 
 import requests
 
+from social.gemini_budget import GeminiBudgetExceeded, preflight_gemini_workflow, tracked_gemini_call
 from url_safety import is_safe_http_url
 
 BASE_DIR = os.path.dirname(__file__)
@@ -471,22 +472,33 @@ def _has_scanline_corruption(image: Any) -> bool:
     if image_module is None:
         return False
     nearest = getattr(getattr(image_module, "Resampling", image_module), "NEAREST", 0)
-    sample = image.convert("RGB").resize((240, 240), nearest)
+    source = image.convert("RGB")
+    sample_width = min(source.width, 480)
+    sample = source if source.width == sample_width else source.resize((sample_width, source.height), nearest)
     pixels = sample.load()
     suspicious_rows = 0
     for y in range(sample.height):
-        longest_run = 0
-        current_run = 0
+        longest_pure_run = 0
+        current_pure_run = 0
+        longest_saturated_run = 0
+        current_saturated_run = 0
         for x in range(sample.width):
             red, green, blue = pixels[x, y]
-            extreme_color = (
-                max(red, green, blue) >= 230
-                and min(red, green, blue) <= 25
-                and max(red, green, blue) - min(red, green, blue) >= 180
+            channels = sorted((red, green, blue))
+            saturated_color = channels[2] >= 230 and channels[2] - channels[0] >= 180
+            pure_channel_color = (
+                channels[2] >= 230
+                and channels[1] <= 40
+                and channels[2] - channels[0] >= 180
             )
-            current_run = current_run + 1 if extreme_color else 0
-            longest_run = max(longest_run, current_run)
-        if longest_run >= int(sample.width * 0.75):
+            current_pure_run = current_pure_run + 1 if pure_channel_color else 0
+            longest_pure_run = max(longest_pure_run, current_pure_run)
+            current_saturated_run = current_saturated_run + 1 if saturated_color else 0
+            longest_saturated_run = max(longest_saturated_run, current_saturated_run)
+        if (
+            longest_pure_run >= max(60, int(sample.width * 0.35))
+            or longest_saturated_run >= int(sample.width * 0.75)
+        ):
             suspicious_rows += 1
     return suspicious_rows >= 3
 
@@ -507,10 +519,9 @@ def _normalize_reference_image(raw: bytes) -> tuple[bytes, str]:
 
 def _gemini_http_options(types: Any) -> Any:
     timeout_seconds = max(10, int(os.environ.get("GEMINI_REQUEST_TIMEOUT_SECONDS", "90")))
-    attempts = max(1, min(3, int(os.environ.get("GEMINI_REQUEST_ATTEMPTS", "2"))))
     return types.HttpOptions(
         timeout=timeout_seconds * 1000,
-        retry_options=types.HttpRetryOptions(attempts=attempts),
+        retry_options=types.HttpRetryOptions(attempts=1),
     )
 
 
@@ -524,13 +535,14 @@ def _gemini_semantic_plate_quality(
     consumer_moment: dict[str, Any] | None = None,
     product_reference: bytes = b"",
     expected_text_lines: list[str] | None = None,
+    quality_profile: str = "",
 ) -> tuple[bool, list[str]]:
     enabled = str(os.environ.get("GEMINI_VISUAL_QA_ENABLED", "true")).strip().lower() not in {"0", "false", "no"}
     if not enabled:
         return True, []
     moment = consumer_moment or {}
     exact_lines = [str(line).strip() for line in (expected_text_lines or []) if str(line).strip()]
-    if expected_headline == "" and expected_cta == "" and not exact_lines and not moment:
+    if expected_headline == "" and expected_cta == "" and not exact_lines and not moment and not quality_profile:
         return True, []
     spec = _platform_visual_spec(platform)
     text_requirements = (
@@ -544,23 +556,34 @@ def _gemini_semantic_plate_quality(
         text_requirements = (
             "The finished image must render each of these exact lines once, spelled exactly, with no other visible text: "
             f"{json.dumps(exact_lines, ensure_ascii=True)}. Typography must use crisp solid letterforms with no blue shadow, "
-            "blue glow, neon edge, or dark translucent text box. The headline must have a deliberate editorial hierarchy, "
-            "professional kerning and line breaks, strong natural contrast, and scene-aware placement in open negative space. "
+            "blue glow, neon edge, or dark translucent text box. The headline must be the unmistakable first-read element, "
+            "occupy roughly 12-18% of canvas height, and use bold or black weight, professional kerning and line breaks, "
+            "strong natural contrast, an image-specific accent, and scene-aware placement in open negative space. "
             "It must not cover the product, face, hands, or key action, and must feel composed with the photograph rather than pasted on. "
         )
+    is_micro_mission = quality_profile == "micro_mission_story"
+    subject_requirements = (
+        "It must be one continuous vertical comic-book scene, not a multi-panel page: an immediate civilian threat, Infenergy "
+        "performing decisive physical superhero action using intelligent energy, and the civilian visibly reaching safety because "
+        "of that action. Infenergy must not merely advise, point, pose, or hold equipment. He must appear exactly once and his face, "
+        "suit, build, colors, cape, and physically attached chest emblem must match the supplied character reference. "
+        if is_micro_mission
+        else f"It must contain a real product staged in the {spec['product_zone']}. "
+    )
     review_prompt = (
-        "Review this social ad image. " + text_requirements + "It must contain a real "
-        f"product staged in the {spec['product_zone']}. Return JSON only with booleans for: "
+        "Review this finished Infenergy visual. " + text_requirements + subject_requirements + "Return JSON only with booleans for: "
         "text_missing_or_illegible, headline_mismatch, cta_missing, product_missing, "
         "gibberish_or_garbled_text, looks_like_generic_ai_poster, infenergy_symbol_in_sky_or_atmosphere, "
         "derivative_existing_superhero_imitation, consumer_person_missing, consumer_setting_mismatch, "
         "consumer_activity_missing, consumer_visual_evidence_missing, unexpected_rendered_text, product_reference_mismatch, "
         "exact_text_mismatch, duplicated_or_extra_text, blue_text_shadow_or_glow, dark_translucent_text_box, "
-        "weak_typographic_hierarchy, awkward_text_placement, poor_kerning_or_line_breaks, text_competes_with_subject. "
+        "weak_typographic_hierarchy, headline_not_dominant, typography_looks_unstyled, insufficient_text_contrast, "
+        "awkward_text_placement, poor_kerning_or_line_breaks, text_competes_with_subject, "
+        "single_scene_story_unclear, superhero_action_missing, civilian_rescue_missing, character_inconsistent. "
         "When on-image text is added after this review, set unexpected_rendered_text=true if the image contains any words, "
-        "letters, numbers, captions, labels, or dialogue. When a second reference image is supplied, set "
-        "product_reference_mismatch=true unless the depicted product faithfully preserves its shape, proportions, color, "
-        "controls, ports, markings, and physical details. Treat misspelled, duplicated, or nonsensical letters as "
+        "letters, numbers, captions, labels, or dialogue. When a second reference image is supplied for a Micro Mission, use it "
+        "to judge character_inconsistent; otherwise set product_reference_mismatch=true unless the depicted product faithfully "
+        "preserves its shape, proportions, color, controls, ports, markings, and physical details. Treat misspelled, duplicated, or nonsensical letters as "
         "gibberish_or_garbled_text=true. Any Infenergy logo, emblem, infinity-bolt symbol, wordmark, or proxy "
         "symbol in the sky, clouds, moon, stars, fog, smoke, searchlight, skyline, or atmospheric background "
         "makes infenergy_symbol_in_sky_or_atmosphere=true. Recognizable imitation of Batman or any existing "
@@ -579,18 +602,24 @@ def _gemini_semantic_plate_quality(
             review_contents = [review_prompt, types.Part.from_bytes(data=raw, mime_type="image/png")]
             if product_reference:
                 review_contents.append(types.Part.from_bytes(data=product_reference, mime_type="image/png"))
-            response = client.models.generate_content(
-                model=model_name,
-                contents=review_contents,
-                config=types.GenerateContentConfig(response_mime_type="application/json"),
-            )
+            if os.environ.get("GEMINI_API_KEY", "").strip():
+                with tracked_gemini_call("reasoning", model_name, f"semantic visual QA for {platform}", initiating_subsystem="social_visuals.semantic_qa"):
+                    response = client.models.generate_content(
+                        model=model_name,
+                        contents=review_contents,
+                        config=types.GenerateContentConfig(response_mime_type="application/json"),
+                    )
+            else:
+                response = client.models.generate_content(
+                    model=model_name,
+                    contents=review_contents,
+                    config=types.GenerateContentConfig(response_mime_type="application/json"),
+                )
             review = json.loads(str(response.text or "{}"))
             if not isinstance(review, dict):
                 continue
             failure_keys = (
-                "product_missing",
                 "gibberish_or_garbled_text",
-                "looks_like_generic_ai_poster",
                 "infenergy_symbol_in_sky_or_atmosphere",
                 "derivative_existing_superhero_imitation",
                 "consumer_person_missing",
@@ -598,6 +627,16 @@ def _gemini_semantic_plate_quality(
                 "consumer_activity_missing",
                 "consumer_visual_evidence_missing",
             )
+            if is_micro_mission:
+                failure_keys = (
+                    "single_scene_story_unclear",
+                    "superhero_action_missing",
+                    "civilian_rescue_missing",
+                    "character_inconsistent",
+                    *failure_keys,
+                )
+            else:
+                failure_keys = ("product_missing", "looks_like_generic_ai_poster", *failure_keys)
             if exact_lines:
                 failure_keys = (
                     "text_missing_or_illegible",
@@ -606,6 +645,9 @@ def _gemini_semantic_plate_quality(
                     "blue_text_shadow_or_glow",
                     "dark_translucent_text_box",
                     "weak_typographic_hierarchy",
+                    "headline_not_dominant",
+                    "typography_looks_unstyled",
+                    "insufficient_text_contrast",
                     "awkward_text_placement",
                     "poor_kerning_or_line_breaks",
                     "text_competes_with_subject",
@@ -620,13 +662,16 @@ def _gemini_semantic_plate_quality(
                 )
             else:
                 failure_keys = ("unexpected_rendered_text", *failure_keys)
-            if product_reference:
+            if product_reference and not is_micro_mission:
                 failure_keys = ("product_reference_mismatch", *failure_keys)
+            missing_keys = [key for key in failure_keys if not isinstance(review.get(key), bool)]
+            if missing_keys:
+                return False, [f"semantic_review_incomplete:{','.join(missing_keys)}"]
             reasons = [key for key in failure_keys if review.get(key) is True]
             return not reasons, reasons
         except Exception:
             continue
-    return True, ["semantic_review_unavailable"]
+    return False, ["semantic_review_unavailable"]
 
 
 _CONSUMER_STAGE_LABELS = {
@@ -1037,6 +1082,61 @@ def _overlay_font(font_module: Any, size: int, *, bold: bool) -> Any | None:
     return None
 
 
+def _apply_designer_typography(image: Any, headline: str, typography: dict[str, Any]) -> tuple[Any, str]:
+    image_module, draw_module, font_module = _load_pillow()
+    if image_module is None or draw_module is None or font_module is None:
+        return image, "pillow_unavailable_for_designer_typography"
+    zone = typography.get("zone") if isinstance(typography.get("zone"), dict) else {}
+    try:
+        width, height = image.size
+        left = int(width * float(zone["x"]))
+        top = int(height * float(zone["y"]))
+        zone_width = int(width * float(zone["width"]))
+        zone_height = int(height * float(zone["height"]))
+    except (KeyError, TypeError, ValueError):
+        return image, "designer_typography_zone_invalid"
+    if min(zone_width, zone_height) <= 0:
+        return image, "designer_typography_zone_invalid"
+
+    exact_text = normalize_brand_text(str(headline or "")).strip()
+    line_break = normalize_brand_text(str(typography.get("line_break") or exact_text)).strip()
+    if line_break.replace("\n", " ").strip() != exact_text:
+        return image, "designer_typography_text_changed"
+    lines = [line.strip() for line in line_break.splitlines() if line.strip()] or [exact_text]
+    draw = draw_module.Draw(image, "RGBA")
+    target_height = min(zone_height, max(36, int(height * float(typography.get("canvas_height_ratio") or 0.15))))
+    font_size = max(24, target_height // max(1, len(lines)))
+    font = None
+    while font_size >= 24:
+        font = _overlay_font(font_module, font_size, bold=True)
+        if font and all(draw.textbbox((0, 0), line, font=font)[2] <= zone_width for line in lines):
+            break
+        font_size -= 2
+    if font is None or font_size < 24:
+        return image, "designer_typography_does_not_fit"
+
+    colors = {
+        "warm_white": (255, 248, 232, 255),
+        "charcoal": (21, 25, 29, 255),
+        "restrained_amber": (247, 163, 15, 255),
+    }
+    fill = colors.get(str(typography.get("color") or "warm_white"), colors["warm_white"])
+    stroke_fill = (5, 10, 14, 230) if fill != colors["charcoal"] else (255, 248, 232, 220)
+    alignment = str(typography.get("alignment") or "left")
+    line_height = int(font_size * 1.12)
+    text_y = top + max(0, (zone_height - line_height * len(lines)) // 2)
+    for index, line in enumerate(lines):
+        text_width = draw.textbbox((0, 0), line, font=font)[2]
+        text_x = left if alignment == "left" else left + zone_width - text_width if alignment == "right" else left + (zone_width - text_width) // 2
+        draw.text(
+            (text_x, text_y + index * line_height), line, font=font, fill=fill,
+            stroke_width=max(2, int(min(width, height) * 0.003)), stroke_fill=stroke_fill,
+        )
+    rule_y = min(height - 2, text_y + line_height * len(lines) + max(6, font_size // 5))
+    draw.line((left, rule_y, left + min(zone_width, max(48, zone_width // 3)), rule_y), fill=(247, 163, 15, 255), width=max(4, font_size // 12))
+    return image, ""
+
+
 _GEMINI_IMAGE_UNAVAILABLE_REASON = ""
 
 
@@ -1130,8 +1230,10 @@ def _generate_gemini_full_creative(
             + prompt
         )
     metadata["visual_prompt_hash"] = hashlib.sha256(prompt.encode("utf-8")).hexdigest()
-    expected_headline, _ = _headline_lockup(content) if not v5_text_forward else ("", "")
-    expected_cta = normalize_brand_text(str(content.get("selected_cta") or "Learn more")) if not v5_text_forward else ""
+    quality_profile = str(content.get("visual_quality_profile") or "")
+    text_free_profile = quality_profile == "micro_mission_story"
+    expected_headline, _ = _headline_lockup(content) if not v5_text_forward and not text_free_profile else ("", "")
+    expected_cta = normalize_brand_text(str(content.get("selected_cta") or "Learn more")) if not v5_text_forward and not text_free_profile else ""
     repo_context = _load_visual_repo_context()
     repo_refs = repo_context.get("references", []) if isinstance(repo_context, dict) else []
     reasons_by_model: dict[str, str] = {}
@@ -1143,7 +1245,12 @@ def _generate_gemini_full_creative(
         model_name = str(os.environ.get("GEMINI_IMAGE_MODEL", "")).strip() or "gemini-2.5-flash-image"
         spec = _platform_visual_spec(platform)
         reference_parts: list[Any] = []
-        content_references = [str(source) for source in content.get("reference_image_urls", []) if str(source).startswith("http")]
+        character_reference_bytes = b""
+        content_references = [
+            str(source)
+            for source in content.get("reference_image_urls", [])
+            if str(source).startswith("http") or os.path.isfile(str(source))
+        ]
         generic_references = [
             str(reference.get("reference_url") or "").strip()
             for reference in (repo_refs if isinstance(repo_refs, list) else [])
@@ -1155,6 +1262,8 @@ def _generate_gemini_full_creative(
             image_bytes, mime_type = _normalize_reference_image(image_bytes)
             if not image_bytes:
                 continue
+            if not character_reference_bytes:
+                character_reference_bytes = image_bytes
             try:
                 reference_parts.append(types.Part.from_bytes(data=image_bytes, mime_type=mime_type or "image/jpeg"))
             except Exception:
@@ -1178,7 +1287,9 @@ def _generate_gemini_full_creative(
                     pass
 
         contents: Any = [prompt, *reference_parts] if reference_parts else prompt
-        max_generation_attempts = max(1, min(int(os.environ.get("GEMINI_IMAGE_REPAIR_ATTEMPTS", "3")), 4))
+        repair_attempts = max(0, min(int(os.environ.get("GEMINI_IMAGE_REPAIR_ATTEMPTS", "0")), 5))
+        max_generation_attempts = repair_attempts + 1
+        preflight_gemini_workflow(image_calls=max_generation_attempts)
         metadata["image_provider_call_count"] = 0
         candidate_has_typography = not v5_text_forward
         typography_prompt = ""
@@ -1190,11 +1301,18 @@ def _generate_gemini_full_creative(
                 pass
             for attempt in range(max_generation_attempts):
                 metadata["image_provider_call_count"] += 1
-                response = client.models.generate_content(
-                    model=model_name,
-                    contents=contents,
-                    config=types.GenerateContentConfig(**config_kwargs),
-                )
+                with tracked_gemini_call(
+                    "image", model_name, f"social visual {content.get('post_id') or 'unknown'} attempt {attempt + 1}",
+                    package_id=str(content.get("outbox_id") or content.get("post_id") or ""),
+                    campaign_id=str(content.get("campaign_id") or ""),
+                    attempt_number=attempt + 1,
+                    initiating_subsystem="social_visuals",
+                ):
+                    response = client.models.generate_content(
+                        model=model_name,
+                        contents=contents,
+                        config=types.GenerateContentConfig(**config_kwargs),
+                    )
                 raw = _extract_inline_image_bytes(response)
                 if not raw:
                     reasons_by_model[model_name] = "no_image_bytes"
@@ -1225,41 +1343,31 @@ def _generate_gemini_full_creative(
                                 "typography": typography,
                             }
                         }
-                        typography_prompt = (
-                            "Edit the attached text-free base image into the final publishable creative. Preserve the person, scene, product identity, cable, action, lighting, and composition. "
-                            f"Render this exact headline once and no other visible text: {json.dumps(gemini_rendered_text[0], ensure_ascii=True)}. "
-                            f"Apply this image-aware typography design exactly: {json.dumps(typography, ensure_ascii=True, sort_keys=True)}. "
-                            + str(v5_direction.get("typography_render_instruction") or "")
-                        )
-                        base_bytes, base_mime = _normalize_reference_image(raw)
-                        edit_contents: list[Any] = [typography_prompt]
-                        if base_bytes:
-                            edit_contents.append(types.Part.from_bytes(data=base_bytes, mime_type=base_mime or "image/png"))
-                        edit_contents.extend(reference_parts)
-                        metadata["image_provider_call_count"] += 1
-                        response = client.models.generate_content(
-                            model=model_name,
-                            contents=edit_contents,
-                            config=types.GenerateContentConfig(**config_kwargs),
-                        )
-                        raw = _extract_inline_image_bytes(response)
-                        if not raw:
-                            reasons_by_model[model_name] = "typography_render_no_image_bytes"
+                        generated = _resize_cover(generated, spec["target"], image_module)
+                        generated, typography_error = _apply_designer_typography(generated, gemini_rendered_text[0], typography)
+                        if typography_error:
+                            reasons_by_model[model_name] = typography_error
                             continue
-                        generated = image_module.open(io.BytesIO(raw)).convert("RGB")
-                        accepted, plate_reasons = _gemini_plate_quality(generated, platform)
-                        if not accepted:
-                            reasons_by_model[model_name] = f"typography_plate_quality_rejected:{','.join(plate_reasons)}"
-                            continue
+                        metadata["local_text_overlay_used"] = True
+                        rendered = io.BytesIO()
+                        generated.save(rendered, format="PNG", optimize=True)
+                        raw = rendered.getvalue()
                         candidate_has_typography = True
                     root = _safe_json_dict(content.get("consumer_root"))
                     consumer_moment = _safe_json_dict(root.get("moment"))
                     accepted, semantic_reasons = _gemini_semantic_plate_quality(
-                        client, types, raw, platform, expected_headline, expected_cta, consumer_moment, product_bytes,
-                        gemini_rendered_text,
+                        client, types, raw, platform, expected_headline, expected_cta, consumer_moment,
+                        product_bytes or (character_reference_bytes if text_free_profile else b""),
+                        gemini_rendered_text or content.get("expected_text_lines"),
+                        str(content.get("visual_quality_profile") or ""),
                     )
                     if not accepted:
                         rejection_reason = f"semantic_quality_rejected:{','.join(semantic_reasons)}"
+                        if text_free_profile:
+                            rejected_path = f"{output_path}.rejected-{attempt + 1}.png"
+                            os.makedirs(os.path.dirname(rejected_path), exist_ok=True)
+                            generated.save(rejected_path, format="PNG", optimize=True)
+                            metadata.setdefault("rejected_artifacts", []).append(rejected_path)
                     else:
                         generated = _resize_cover(generated, spec["target"], image_module)
                         if generated.size != spec["target"]:
@@ -1271,6 +1379,7 @@ def _generate_gemini_full_creative(
                             else:
                                 os.makedirs(os.path.dirname(output_path), exist_ok=True)
                                 generated.save(output_path, format="PNG", optimize=True)
+                                metadata["semantic_quality_gate_version"] = 2
                                 return completed(True, "ok", model=model_name, retry_count=attempt)
                 reasons_by_model[model_name] = rejection_reason
                 if attempt + 1 < max_generation_attempts:
@@ -1284,6 +1393,9 @@ def _generate_gemini_full_creative(
                     if repair_bytes:
                         contents.append(types.Part.from_bytes(data=repair_bytes, mime_type=repair_mime or "image/png"))
                     contents.extend(reference_parts)
+        except GeminiBudgetExceeded as exc:
+            _GEMINI_IMAGE_UNAVAILABLE_REASON = str(exc)
+            return completed(False, str(exc), model=model_name, retry_count=metadata["image_provider_call_count"])
         except Exception as e:
             error = f"api_exception:{type(e).__name__}:{str(e)[:160]}"
             reasons_by_model[model_name] = error

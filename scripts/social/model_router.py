@@ -12,6 +12,8 @@ import time
 from dataclasses import dataclass, field
 from typing import Any
 
+from social.gemini_budget import GeminiBudgetExceeded, tracked_gemini_call
+
 
 DEFAULT_MODEL_ROUTES: dict[str, str] = {
     "classification": "gemini-3.6-flash",
@@ -105,11 +107,12 @@ def generate_json(task: str, prompt: str, *, system_instruction: str = "") -> di
             config_kwargs: dict[str, Any] = {"response_mime_type": "application/json"}
             if system_instruction:
                 config_kwargs["system_instruction"] = system_instruction
-            response = client.models.generate_content(
-                model=model,
-                contents=prompt,
-                config=types.GenerateContentConfig(**config_kwargs),
-            )
+            with tracked_gemini_call("reasoning", model, task, initiating_subsystem="model_router"):
+                response = client.models.generate_content(
+                    model=model,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(**config_kwargs),
+                )
             text = str(getattr(response, "text", "") or "").strip()
             if not text:
                 errors.append(f"model={model}: empty response text")
@@ -120,6 +123,8 @@ def generate_json(task: str, prompt: str, *, system_instruction: str = "") -> di
                 continue
             _LAST_ERROR = None
             return parsed
+        except GeminiBudgetExceeded:
+            raise
         except Exception as exc:
             error = f"model={model}: {type(exc).__name__}: {exc}"
             errors.append(error)

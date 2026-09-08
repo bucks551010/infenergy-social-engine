@@ -158,7 +158,14 @@ def test_three_day_nine_slot_simulation_converges_with_failures_and_restarts(tmp
     for day_offset in range(3):
         day = (start + timedelta(days=day_offset)).date().isoformat()
         status = daily_status(data_dir, day)
-        assert status["published"] == 3
-        assert status["missing"] == 0
-        assert all(slot["status"] == "PUBLISHED" for slot in status["slots"])
+        expected_published = 2 if day_offset == 0 else 3
+        assert status["published"] == expected_published
+        if day_offset == 0:
+            held = [slot for slot in status["slots"] if slot["status"] == "EXTERNAL_ACTION_REQUIRED"]
+            assert len(held) == 1
+            assert "injected provider timeout" in held[0]["last_error"]
+        else:
+            assert status["missing"] == 0
+            assert all(slot["status"] == "PUBLISHED" for slot in status["slots"])
     assert len(outboxes) == 9
+    assert instagram_attempts["count"] == 3

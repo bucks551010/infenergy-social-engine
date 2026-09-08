@@ -11,6 +11,7 @@ import os
 from typing import Any
 
 from ._base import utc_now, write_snapshot
+from social.gemini_budget import GeminiBudgetExceeded, tracked_gemini_call
 
 
 def _default_report() -> dict:
@@ -44,14 +45,15 @@ def review(image_bytes: bytes, platform: str) -> dict:
             "retry_note (short string, empty if none), "
             "acceptable (bool), confidence (0.0-1.0). Reply JSON only."
         )
-        resp = client.models.generate_content(
-            model=model,
-            contents=[
-                types.Part.from_bytes(data=image_bytes, mime_type="image/jpeg"),
-                prompt,
-            ],
-            config=types.GenerateContentConfig(response_mime_type="application/json"),
-        )
+        with tracked_gemini_call("reasoning", model, f"visual QA for {platform}", initiating_subsystem="visual_qa_reviewer"):
+            resp = client.models.generate_content(
+                model=model,
+                contents=[
+                    types.Part.from_bytes(data=image_bytes, mime_type="image/jpeg"),
+                    prompt,
+                ],
+                config=types.GenerateContentConfig(response_mime_type="application/json"),
+            )
         import json
         data = json.loads((resp.text or "").strip())
         if not isinstance(data, dict):
@@ -59,6 +61,8 @@ def review(image_bytes: bytes, platform: str) -> dict:
         report = _default_report()
         report.update({k: data[k] for k in report.keys() if k in data})
         return report
+    except GeminiBudgetExceeded:
+        raise
     except Exception:
         return _default_report()
 

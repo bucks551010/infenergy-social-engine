@@ -168,6 +168,14 @@ p { line-height: 1.55; }
 .master-transaction-list code { color: var(--muted); font-size: 8px; overflow-wrap: anywhere; }
 .master-transaction-list > article > span, .master-transaction-list > article > small { color: var(--muted); font-size: 10px; }
 .generation-workspace { padding: 22px; margin-bottom: 18px; }
+.post-type-launcher { padding: 20px; margin-bottom: 18px; border-color: #755424; background: linear-gradient(145deg, #172820, #15170f); }
+.launcher-heading { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
+.launcher-heading h2 { font-size: 22px; }
+.launcher-heading p:last-child { margin: 6px 0 0; color: var(--muted); font-size: 11px; }
+.launcher-heading > span { flex: 0 0 auto; padding: 7px 10px; color: #171208; font-size: 9px; font-weight: 900; border-radius: 999px; background: var(--accent); }
+.launcher-actions { display: flex; gap: 7px; margin-top: 16px; overflow-x: auto; }
+.launcher-actions button { min-height: 38px; padding: 9px 11px; white-space: nowrap; color: var(--text); border: 1px solid var(--line); border-radius: 8px; background: var(--panel2); }
+.launcher-actions button:hover { border-color: var(--accent); background: #1c1a12; }
 .generation-hero, .generation-plan-head { display: flex; justify-content: space-between; gap: 24px; align-items: center; }
 .generation-hero h2, .generation-plan-head h2 { margin: 3px 0 7px; font-size: 26px; }
 .generation-hero p, .generation-plan-head p { max-width: 720px; margin: 0; color: var(--muted); font-size: 12px; }

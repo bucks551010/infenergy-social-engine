@@ -15,6 +15,7 @@ import publish_wordpress
 import publish_facebook
 import publish_instagram
 import publish_linkedin
+from content_operations import enqueue_durable_package
 from score_content import score_content
 from social.candidate_pool import CandidatePool
 from social.publish_decision import decide as decide_publication
@@ -1528,48 +1529,15 @@ def main() -> None:
 
         claim_corrections = _enforce_candidate_claim_boundary(content)
         validation = validate_generated_content(content)
-        hard_block = str(os.environ.get("ORCHESTRATION_HARD_BLOCK", "false")).strip().lower() in {"1", "true", "yes", "on"}
         if content.get("orchestration_blocked"):
-            if hard_block:
-                validation = {
-                    "passed": False,
-                    "errors": list(validation.get("errors", [])) + ["orchestration_control_plane_blocked"],
-                    "warnings": list(validation.get("warnings", [])),
-                }
-            else:
-                validation = {
-                    "passed": bool(validation.get("passed", False)),
-                    "errors": list(validation.get("errors", [])),
-                    "warnings": list(validation.get("warnings", [])) + ["orchestration_control_plane_soft_fail"],
-                }
-
-        strict_runtime_claims = str(os.environ.get("STRICT_RUNTIME_CLAIMS", "false")).strip().lower() in {"1", "true", "yes", "on"}
-        if manual_platforms and manual_duplicate_mode == "allow_all" and not strict_runtime_claims:
-            runtime_errors = [e for e in list(validation.get("errors", [])) if str(e) == "runtime_claim_not_supported"]
-            if runtime_errors:
-                kept_errors = [e for e in list(validation.get("errors", [])) if str(e) != "runtime_claim_not_supported"]
-                validation = {
-                    "passed": len(kept_errors) == 0,
-                    "errors": kept_errors,
-                    "warnings": list(validation.get("warnings", [])) + ["runtime_claim_not_supported_soft_fail"],
-                }
+            validation = {
+                "passed": False,
+                "errors": list(validation.get("errors", [])) + ["orchestration_control_plane_blocked"],
+                "warnings": list(validation.get("warnings", [])),
+            }
         scoring = score_content(content, requested_platforms=manual_platforms)
         _attach_platform_quality(content, scoring)
         duplicates = check_duplicates(content, generate_posts.load_history(), windows=windows)
-        if manual_platforms and manual_duplicate_mode == "allow_all":
-            if duplicates.get("reasons"):
-                content.setdefault("quality_warnings", []).append("manual_duplicate_mode:allow_all")
-            duplicates["reasons"] = []
-            duplicates["ok"] = True
-        elif manual_platforms and manual_duplicate_mode == "exact_only":
-            reasons = [str(r) for r in duplicates.get("reasons", [])]
-            exact_reasons = [
-                r for r in reasons if r in {"duplicate_exact_caption_within_window", "duplicate_opening_sentence_within_window"}
-            ]
-            if len(exact_reasons) != len(reasons):
-                content.setdefault("quality_warnings", []).append("manual_duplicate_mode:exact_only")
-            duplicates["reasons"] = exact_reasons
-            duplicates["ok"] = len(exact_reasons) == 0
         content["validation_status"] = "passed" if validation.get("passed") else "failed"
         content["validation_errors"] = validation.get("errors", [])
         content["validation_warnings"] = validation.get("warnings", [])
@@ -1606,6 +1574,9 @@ def main() -> None:
             orchestrator_quality=content.get("orchestrator_quality"),
             visual_errors=candidate_visual_errors,
             evidence_readiness=candidate_evidence_readiness,
+            copy_generation_method=content.get("copy_generation_method"),
+            visual_generation=(content.get("generated_visuals") or {}).get("generation", {}),
+            visual_required=True,
         )
         content["publish_decision"] = publish_decision
         current_strategy = _strategy_lock_for_revision(content)
@@ -1681,68 +1652,6 @@ def main() -> None:
             quarantine_reason = ",".join(str(reason) for reason in duplicate_reasons) if duplicate_reasons else "validation_or_quality_failure"
             if _quarantine_failed_pooled_candidate(candidate_pool, content, reason=quarantine_reason):
                 print(f"[POOL] Quarantined failed candidate before retry: {str(content.get('candidate_id'))[:8]}...")
-
-        # Manual live override path: if operator explicitly requests allow_all, swap to a known-safe
-        # product/stage combo for one retry so publishing can proceed.
-        if (
-            idx == 0
-            and manual_platforms
-            and manual_duplicate_mode == "allow_all"
-            and not validation.get("passed")
-            and (not product_id_override)
-            and (not funnel_stage_override)
-        ):
-            content = generate_posts.generate(
-                slot,
-                funnel_stage_override="ATTENTION",
-                product_id_override="INF-9792",
-                pipeline_override=pipeline_override,
-                no_product=no_product,
-            )
-            validation = validate_generated_content(content)
-            strict_runtime_claims = str(os.environ.get("STRICT_RUNTIME_CLAIMS", "false")).strip().lower() in {"1", "true", "yes", "on"}
-            if not strict_runtime_claims:
-                kept_errors = [e for e in list(validation.get("errors", [])) if str(e) != "runtime_claim_not_supported"]
-                validation = {
-                    "passed": len(kept_errors) == 0,
-                    "errors": kept_errors,
-                    "warnings": list(validation.get("warnings", [])) + ["runtime_claim_not_supported_soft_fail"],
-                }
-            scoring = score_content(content, requested_platforms=manual_platforms)
-            _attach_platform_quality(content, scoring)
-            duplicates = check_duplicates(content, generate_posts.load_history(), windows=windows)
-            if manual_duplicate_mode == "allow_all":
-                duplicates["reasons"] = []
-                duplicates["ok"] = True
-            content["validation_status"] = "passed" if validation.get("passed") else "failed"
-            content["validation_errors"] = validation.get("errors", [])
-            content["validation_warnings"] = validation.get("warnings", [])
-            content["quality_score"] = scoring.get("total")
-            content["quality_component_scores"] = scoring.get("component_scores", {})
-            content["duplicate_check"] = duplicates
-            content.update(duplicates.get("signatures", {}))
-            publish_decision = decide_publication(
-                legacy_score=scoring,
-                validation=validation,
-                duplicates=duplicates,
-                conversion_quality_score=cqs_total,
-                orchestrator_quality=content.get("orchestrator_quality"),
-                evidence_readiness=_evidence_readiness(content),
-            )
-            content["publish_decision"] = publish_decision
-            attempts.append(
-                {
-                    "attempt": idx + 1,
-                    "score": scoring.get("total"),
-                    "decision": "manual_safe_retry",
-                    "validation_passed": validation.get("passed"),
-                    "validation_errors": validation.get("errors", []),
-                    "duplicates_ok": duplicates.get("ok"),
-                    "duplicate_reasons": duplicates.get("reasons", []),
-                }
-            )
-            if publish_decision["publishable"]:
-                break
 
         # A critic-directed revision is bounded to three candidates total.
         if idx < candidate_count - 1 and scoring.get("decision") != "reject" and (
@@ -1842,10 +1751,13 @@ def main() -> None:
         orchestrator_quality=content.get("orchestrator_quality"),
         visual_errors=visual_gate_errors,
         evidence_readiness=_final_channel_evidence_readiness(content, effective_channels),
+        copy_generation_method=content.get("copy_generation_method"),
+        visual_generation=(content.get("generated_visuals") or {}).get("generation", {}),
+        visual_required=True,
     )
     content["publish_decision"] = final_decision
     has_eligible_social_channel = any(effective_channels.get(platform) for platform in ("facebook", "instagram", "linkedin"))
-    hard_orchestration_block = content.get("orchestration_blocked") and os.getenv("ORCHESTRATION_HARD_BLOCK", "false").lower() == "true"
+    hard_orchestration_block = bool(content.get("orchestration_blocked"))
     if not final_decision["publishable"] and not shadow_mode and (has_eligible_social_channel or hard_orchestration_block):
         print("[SKIP] Content did not pass validation/quality thresholds; recording skipped run")
         # Quarantine pooled candidates that failed so they won't be re-selected indefinitely
@@ -2077,6 +1989,26 @@ def main() -> None:
         generate_posts.save_history(history)
         _write_run_outcome("skipped_no_eligible_platforms", slot=slot, detail="no_eligible_platforms")
         print("\n=== Done (skipped) ===\n")
+        return
+
+    if not dry_run:
+        routed_platforms = [platform for platform in ("facebook", "instagram", "linkedin") if effective_channels.get(platform)]
+        content["routing"] = {"platforms": routed_platforms}
+        content["unique_creative_required"] = True
+        platform_posts = content.setdefault("platform_posts", {})
+        platform_posts.setdefault("facebook", {"final_caption": content.get("fb_caption", "")})
+        platform_posts.setdefault("instagram", {"final_caption": content.get("ig_caption", "")})
+        platform_posts.setdefault("linkedin", {"final_caption": content.get("li_text", "")})
+        source_date = content_date or routing_now_utc.date().isoformat()
+        outbox_id = enqueue_durable_package(
+            generate_posts.DATA_DIR,
+            source_id=f"daily:{source_date}:{slot}:{content.get('post_id') or content.get('content_id') or 'generated'}",
+            package=content,
+            scheduled_at=now_utc.isoformat(),
+            actor="run_engine.daily",
+        )
+        _write_run_outcome("queued_for_durable_dispatch", slot=slot, detail=outbox_id)
+        print(json.dumps({"status": "QUEUED", "outbox_id": outbox_id, "platforms": routed_platforms}))
         return
 
     print("[2/5] WordPress...")

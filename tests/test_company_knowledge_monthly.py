@@ -162,7 +162,7 @@ def test_month_builder_persists_ready_assets_and_is_idempotent(tmp_path, monkeyp
     assert prompts[0]["v5_direction"]["semantic_role"] == "COVER"
     assert prompts[-1]["v5_direction"]["semantic_role"] == "FINALE"
     assert prompts[-1]["v5_direction"]["official_logo_path"].endswith("infenergy_official_logo.png")
-    assert all("Do not render words" in prompt["gemini_image_prompt"] for prompt in prompts)
+    assert all("Do not render any words" in prompt["gemini_image_prompt"] for prompt in prompts)
     assert all(prompt["v5_direction"]["text_overlay"]["enabled"] for prompt in prompts)
 
     second = build_monthly_calendar(

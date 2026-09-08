@@ -147,6 +147,7 @@ class PhaseElevenTwelveTests(unittest.TestCase):
             funnel_stage_override="TRUST",
             product_id_override="123",
             pipeline_override="",
+            pillar_override="",
         )
         self.assertEqual(list(content["platform_posts"].keys()), ["facebook"])
         self.assertIn("funnel_stage_override_applied", content["preview_notes"])

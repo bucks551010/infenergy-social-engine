@@ -216,9 +216,9 @@ class PhaseThirteenFourteenTests(unittest.TestCase):
             },
         )
 
-        self.assertEqual(decision["decision"], "publish")
-        self.assertIn("specificity_weak", decision["advisory_reasons"])
-        self.assertNotEqual(decision["advisory_reasons"], ["critic_preference_unmet"])
+        self.assertEqual(decision["decision"], "do_not_publish")
+        self.assertIn("specificity_weak", decision["reasons"])
+        self.assertIn("critic_below_publish_threshold", decision["reasons"])
         self.assertEqual(decision["critic_component_scores"]["specificity"], 0.5)
 
     def test_facebook_readiness_does_not_depend_on_wordpress(self) -> None:
@@ -516,9 +516,9 @@ class PhaseThirteenFourteenTests(unittest.TestCase):
             patch.dict(os.environ, {"SOCIAL_DRY_RUN": "true", "POST_SLOT": "morning", "POST_CANDIDATE_COUNT": "2"}, clear=False):
             run_engine.main()
 
-        self.assertEqual(mock_generate.call_count, 2)
+        self.assertEqual(mock_generate.call_count, 1)
         self.assertEqual(save_calls[-1]["posts"][-1]["status"], "skipped_no_eligible_platforms")
-        self.assertEqual(len(save_calls[-1]["posts"][-1]["generation_attempts"]), 2)
+        self.assertEqual(len(save_calls[-1]["posts"][-1]["generation_attempts"]), 1)
 
     def test_run_engine_selects_highest_quality_candidate_from_seven(self) -> None:
         save_calls: list[dict] = []

@@ -225,6 +225,53 @@ def test_unapproved_product_reference_never_reaches_gemini(tmp_path, monkeypatch
     assert metadata["product_reference_identity_review"]["identity_approved"] is False
 
 
+def test_local_character_reference_reaches_gemini(tmp_path, monkeypatch):
+    reference_path = tmp_path / "infenergy-canon.png"
+    _image(reference_path, (512, 512))
+    output_path = tmp_path / "story.png"
+    image_buffer = io.BytesIO()
+    Image.new("RGB", (1080, 1920), "#d8e0e4").save(image_buffer, format="PNG")
+    image_bytes = image_buffer.getvalue()
+    calls = []
+
+    class Models:
+        def generate_content(self, **kwargs):
+            calls.append(kwargs["contents"])
+            inline_data = types.SimpleNamespace(data=image_bytes)
+            part = types.SimpleNamespace(inline_data=inline_data)
+            return types.SimpleNamespace(candidates=[types.SimpleNamespace(content=types.SimpleNamespace(parts=[part]))])
+
+    fake_genai = types.ModuleType("google.genai")
+    fake_genai.Client = lambda **_kwargs: types.SimpleNamespace(models=Models())
+    fake_types = types.ModuleType("google.genai.types")
+    fake_types.GenerateContentConfig = lambda **kwargs: kwargs
+    fake_types.ImageConfig = lambda **kwargs: kwargs
+    fake_types.HttpOptions = lambda **kwargs: kwargs
+    fake_types.HttpRetryOptions = lambda **kwargs: kwargs
+    fake_types.Part = types.SimpleNamespace(from_bytes=lambda **kwargs: kwargs)
+    fake_genai.types = fake_types
+    monkeypatch.setattr(google, "genai", fake_genai)
+    monkeypatch.setitem(sys.modules, "google.genai", fake_genai)
+    monkeypatch.setitem(sys.modules, "google.genai.types", fake_types)
+    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
+    monkeypatch.setattr(social_visuals, "_GEMINI_IMAGE_UNAVAILABLE_REASON", "")
+    monkeypatch.setattr(social_visuals, "_load_visual_repo_context", lambda: {"references": [], "settings": {}})
+    monkeypatch.setattr(social_visuals, "_gemini_plate_quality", lambda *_args: (True, []))
+    monkeypatch.setattr(social_visuals, "_gemini_semantic_plate_quality", lambda *_args: (True, []))
+
+    rendered, reason, metadata = social_visuals._generate_gemini_full_creative(
+        {"post_id": "micro-mission", "reference_image_urls": [str(reference_path)]},
+        "iis_reel_cover",
+        {"v5_direction": {"format": "story"}, "gemini_image_prompt": "Create one superhero story."},
+        str(output_path),
+    )
+
+    assert rendered is True
+    assert reason == "ok"
+    assert metadata["content_reference_count"] == 1
+    assert any(isinstance(part, dict) and part.get("data") for part in calls[0][1:])
+
+
 def test_product_free_editorial_source_is_not_misclassified_as_packshot(tmp_path):
     artifact = tmp_path / "editorial.png"
     _image(artifact, social_visuals._platform_visual_spec("linkedin")["target"])
@@ -343,15 +390,13 @@ def test_gemini_text_render_uses_image_aware_typography_agent(tmp_path, monkeypa
     )
 
     assert rendered is True and reason == "ok"
-    assert len(calls) == 2
+    assert len(calls) == 1
     base_prompt = calls[0] if isinstance(calls[0], str) else calls[0][0]
     assert "text-free base photograph" in base_prompt
     assert "BLUEPRINTS DO NOT WAIT." not in base_prompt
-    assert "BLUEPRINTS DO NOT WAIT." in calls[1][0]
-    assert '"x": 0.08' in calls[1][0]
     assert designer_pixels == [image_bytes]
-    assert metadata["image_provider_call_count"] == 2
-    assert metadata["local_text_overlay_used"] is False
+    assert metadata["image_provider_call_count"] == 1
+    assert metadata["local_text_overlay_used"] is True
     assert metadata["agent_orchestration"]["on_image_typography_designer"]["status"] == "COMPLETE"
 
 

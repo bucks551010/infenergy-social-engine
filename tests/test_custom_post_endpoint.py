@@ -44,7 +44,7 @@ def _payload():
         "caption": "Exact IIS caption",
         "image_url": "https://example.com/image.png",
         "platforms": ["facebook", "instagram", "linkedin"],
-        "live": True,
+        "live": False,
     }
 
 
@@ -337,6 +337,7 @@ def test_custom_post_requires_final_artifact_review_without_owner_bypass():
 
 def test_custom_post_stops_before_publish_when_artifact_preflight_requires_repair():
     payload = _payload()
+    payload["live"] = True
     payload["platforms"] = ["facebook"]
     with tempfile.TemporaryDirectory() as data_dir, patch.dict(os.environ, {"DATA_DIR": data_dir}, clear=False), \
         patch.object(worker, "_custom_post_artifact_preflight", return_value=["visual_1_originality_review_not_passed"]), \
@@ -351,6 +352,7 @@ def test_custom_post_stops_before_publish_when_artifact_preflight_requires_repai
 
 def test_custom_post_stops_before_publish_when_iis_provenance_is_not_current():
     payload = _payload()
+    payload["live"] = True
     payload.update({"platforms": ["facebook"], "source_system": "iis", "iis_creative_id": "creative-1"})
     with tempfile.TemporaryDirectory() as data_dir, patch.dict(os.environ, {"DATA_DIR": data_dir}, clear=False), \
         patch.object(worker, "_verify_iis_publish_package", return_value=["submitted_images_not_in_approved_iis_package"]), \
@@ -360,6 +362,23 @@ def test_custom_post_stops_before_publish_when_iis_provenance_is_not_current():
     assert status == 422
     assert response["error"] == "iis_publish_package_verification_failed"
     facebook.assert_not_called()
+
+
+def test_live_custom_post_enqueues_without_calling_platform_publishers():
+    payload = _payload()
+    payload["live"] = True
+    with tempfile.TemporaryDirectory() as data_dir, patch.dict(os.environ, {"DATA_DIR": data_dir}, clear=False), \
+        patch("publish_facebook.publish") as facebook, patch("publish_instagram.publish") as instagram, \
+        patch("publish_linkedin.publish") as linkedin:
+        first_status, first = worker._publish_custom_post(payload)
+        second_status, second = worker._publish_custom_post(payload)
+
+    assert first_status == second_status == 202
+    assert first["status"] == second["status"] == "queued"
+    assert first["outbox_id"] == second["outbox_id"]
+    facebook.assert_not_called()
+    instagram.assert_not_called()
+    linkedin.assert_not_called()
 
 
 def test_iis_single_image_export_is_an_approved_publish_asset():

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import sqlite3
@@ -10,6 +11,14 @@ from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
 from inventory_db import get_db_path, init_inventory_db
+from canon_registry import attach_product_canon
+from publication_contract import (
+    PackageState,
+    asset_identity,
+    assert_transition_allowed,
+    creative_fingerprints,
+    evaluate_publication_readiness,
+)
 
 SLOTS = ("morning", "midday", "evening")
 PLATFORMS = ("facebook", "instagram", "linkedin")
@@ -191,13 +200,564 @@ def init_content_operations(data_dir: str) -> str:
                 UNIQUE(request_key),
                 FOREIGN KEY(outbox_id) REFERENCES content_outbox(outbox_id)
             );
+
+            CREATE TABLE IF NOT EXISTS package_transitions (
+                transition_id TEXT PRIMARY KEY,
+                outbox_id TEXT NOT NULL,
+                source_state TEXT NOT NULL,
+                destination_state TEXT NOT NULL,
+                reason_code TEXT NOT NULL,
+                actor TEXT NOT NULL,
+                correlation_id TEXT NOT NULL,
+                attempt_id TEXT,
+                detail_json TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY(outbox_id) REFERENCES content_outbox(outbox_id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_package_transitions_outbox
+                ON package_transitions(outbox_id, created_at);
+
+            CREATE TABLE IF NOT EXISTS asset_reservations (
+                asset_identity TEXT PRIMARY KEY,
+                outbox_id TEXT NOT NULL,
+                reservation_state TEXT NOT NULL CHECK(reservation_state IN ('RESERVED', 'CONSUMED', 'RELEASED')),
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                FOREIGN KEY(outbox_id) REFERENCES content_outbox(outbox_id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_asset_reservations_outbox
+                ON asset_reservations(outbox_id, reservation_state);
+
+            CREATE TABLE IF NOT EXISTS publication_history (
+                publication_id TEXT PRIMARY KEY,
+                outbox_id TEXT NOT NULL,
+                platform TEXT NOT NULL,
+                asset_identity TEXT NOT NULL,
+                asset_sha256 TEXT,
+                perceptual_fingerprint TEXT,
+                copy_fingerprint TEXT NOT NULL,
+                external_id TEXT NOT NULL,
+                published_at TEXT NOT NULL,
+                UNIQUE(outbox_id, platform),
+                UNIQUE(platform, external_id),
+                FOREIGN KEY(outbox_id) REFERENCES content_outbox(outbox_id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_publication_history_asset
+                ON publication_history(asset_identity, platform);
+
+            CREATE TABLE IF NOT EXISTS ai_generation_attempts (
+                attempt_id TEXT PRIMARY KEY,
+                call_id TEXT NOT NULL UNIQUE,
+                provider TEXT NOT NULL,
+                model TEXT NOT NULL,
+                operation_type TEXT NOT NULL,
+                outbox_id TEXT,
+                campaign_id TEXT,
+                asset_id TEXT,
+                attempt_number INTEGER NOT NULL CHECK(attempt_number > 0),
+                reason TEXT NOT NULL,
+                initiating_subsystem TEXT NOT NULL,
+                status TEXT NOT NULL CHECK(status IN ('RESERVED', 'SUCCEEDED', 'FAILED')),
+                estimated_usage_json TEXT NOT NULL,
+                actual_usage_json TEXT,
+                created_at TEXT NOT NULL,
+                completed_at TEXT,
+                FOREIGN KEY(outbox_id) REFERENCES content_outbox(outbox_id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_ai_attempts_outbox
+                ON ai_generation_attempts(outbox_id, created_at);
             """
         )
         columns = {row[1] for row in connection.execute("PRAGMA table_info(content_outbox)").fetchall()}
         if "next_attempt_at" not in columns:
             connection.execute("ALTER TABLE content_outbox ADD COLUMN next_attempt_at TEXT")
+        additive_columns = {
+            "lifecycle_state": "TEXT NOT NULL DEFAULT 'DRAFT'",
+            "reason_code": "TEXT NOT NULL DEFAULT 'LEGACY_STATE_IMPORTED'",
+            "readiness_json": "TEXT NOT NULL DEFAULT '{}'",
+            "correlation_id": "TEXT",
+            "active_attempt_id": "TEXT",
+            "lease_owner": "TEXT",
+            "lease_expires_at": "TEXT",
+            "package_version": "INTEGER NOT NULL DEFAULT 1",
+        }
+        for name, definition in additive_columns.items():
+            if name not in columns:
+                connection.execute(f"ALTER TABLE content_outbox ADD COLUMN {name} {definition}")
+        valid_lifecycle_states = ",".join(f"'{state.value}'" for state in PackageState)
+        connection.executescript(
+            f"""
+            CREATE TRIGGER IF NOT EXISTS validate_outbox_lifecycle_insert
+            BEFORE INSERT ON content_outbox
+            WHEN NEW.lifecycle_state NOT IN ({valid_lifecycle_states})
+            BEGIN SELECT RAISE(ABORT, 'invalid_lifecycle_state'); END;
+            CREATE TRIGGER IF NOT EXISTS validate_outbox_lifecycle_update
+            BEFORE UPDATE OF lifecycle_state ON content_outbox
+            WHEN NEW.lifecycle_state NOT IN ({valid_lifecycle_states})
+            BEGIN SELECT RAISE(ABORT, 'invalid_lifecycle_state'); END;
+            CREATE TRIGGER IF NOT EXISTS validate_platform_transaction_insert
+            BEFORE INSERT ON platform_transactions
+            WHEN NEW.state NOT IN ('REQUEST_SENT','CONFIRMED_SUCCESS','CONFIRMED_FAILURE','AMBIGUOUS','AUTH_ACTION_REQUIRED')
+            BEGIN SELECT RAISE(ABORT, 'invalid_platform_transaction_state'); END;
+            CREATE TRIGGER IF NOT EXISTS validate_platform_transaction_update
+            BEFORE UPDATE OF state ON platform_transactions
+            WHEN NEW.state NOT IN ('REQUEST_SENT','CONFIRMED_SUCCESS','CONFIRMED_FAILURE','AMBIGUOUS','AUTH_ACTION_REQUIRED')
+            BEGIN SELECT RAISE(ABORT, 'invalid_platform_transaction_state'); END;
+            """
+        )
+        connection.execute(
+            "UPDATE content_outbox SET correlation_id=COALESCE(correlation_id, outbox_id) WHERE correlation_id IS NULL"
+        )
         connection.commit()
         return get_db_path(data_dir)
+    finally:
+        connection.close()
+
+
+def _record_transition(
+    connection: sqlite3.Connection,
+    *,
+    outbox_id: str,
+    destination: str,
+    reason_code: str,
+    actor: str,
+    attempt_id: str | None = None,
+    detail: dict[str, Any] | None = None,
+) -> None:
+    row = connection.execute(
+        "SELECT lifecycle_state, correlation_id FROM content_outbox WHERE outbox_id=?",
+        (outbox_id,),
+    ).fetchone()
+    if not row:
+        raise ValueError(f"outbox_not_found:{outbox_id}")
+    source = str(row["lifecycle_state"] or PackageState.DRAFT.value)
+    assert_transition_allowed(source, destination)
+    now = _now()
+    connection.execute(
+        """
+        UPDATE content_outbox SET lifecycle_state=?, reason_code=?, active_attempt_id=?,
+            package_version=package_version+1 WHERE outbox_id=?
+        """,
+        (destination, reason_code, attempt_id, outbox_id),
+    )
+    connection.execute(
+        """
+        INSERT INTO package_transitions
+        (transition_id, outbox_id, source_state, destination_state, reason_code,
+         actor, correlation_id, attempt_id, detail_json, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            uuid.uuid4().hex,
+            outbox_id,
+            source,
+            destination,
+            reason_code,
+            actor,
+            str(row["correlation_id"] or outbox_id),
+            attempt_id,
+            _json(detail or {}),
+            now,
+        ),
+    )
+
+
+def transition_package(
+    data_dir: str,
+    outbox_id: str,
+    destination: str,
+    reason_code: str,
+    *,
+    actor: str,
+    attempt_id: str | None = None,
+    detail: dict[str, Any] | None = None,
+) -> None:
+    connection = _connect(data_dir)
+    try:
+        connection.execute("BEGIN IMMEDIATE")
+        _record_transition(
+            connection,
+            outbox_id=outbox_id,
+            destination=destination,
+            reason_code=reason_code,
+            actor=actor,
+            attempt_id=attempt_id,
+            detail=detail,
+        )
+        connection.commit()
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
+
+
+def _publication_identities(connection: sqlite3.Connection, exclude_outbox_id: str = "") -> set[str]:
+    identities: set[str] = set()
+    for row in connection.execute(
+        "SELECT asset_identity, asset_sha256, perceptual_fingerprint, copy_fingerprint FROM publication_history WHERE outbox_id<>?",
+        (exclude_outbox_id,),
+    ):
+        for kind, value in zip(("asset", "sha256", "perceptual", "copy"), row):
+            if value:
+                identities.add(f"{kind}:{value}")
+    return identities
+
+
+def _active_reservations(connection: sqlite3.Connection) -> dict[str, str]:
+    return {
+        str(row[0]): str(row[1])
+        for row in connection.execute(
+            "SELECT asset_identity, outbox_id FROM asset_reservations WHERE reservation_state IN ('RESERVED', 'CONSUMED')"
+        )
+    }
+
+
+def _reserve_asset(connection: sqlite3.Connection, outbox_id: str, package: dict[str, Any]) -> None:
+    if package.get("unique_creative_required") is not True:
+        return
+    identities = creative_fingerprints(package, configured_platforms(package))
+    if not identities:
+        raise ValueError("unique_asset_identity_missing")
+    now = _now()
+    for identity in identities:
+        existing = connection.execute(
+            "SELECT outbox_id, reservation_state FROM asset_reservations WHERE asset_identity=?",
+            (identity,),
+        ).fetchone()
+        if existing and str(existing["outbox_id"]) != outbox_id and str(existing["reservation_state"]) != "RELEASED":
+            raise ValueError("asset_reserved_by_other_package")
+        connection.execute(
+            """
+            INSERT INTO asset_reservations(asset_identity, outbox_id, reservation_state, created_at, updated_at)
+            VALUES (?, ?, 'RESERVED', ?, ?)
+            ON CONFLICT(asset_identity) DO UPDATE SET
+                outbox_id=excluded.outbox_id, reservation_state='RESERVED', updated_at=excluded.updated_at
+            """,
+            (identity, outbox_id, now, now),
+        )
+
+
+def evaluate_outbox_readiness(
+    data_dir: str,
+    outbox_id: str,
+    *,
+    dispatch_enabled: bool | None = None,
+    actor: str = "readiness_evaluator",
+    persist: bool = True,
+) -> dict[str, Any]:
+    connection = _connect(data_dir)
+    try:
+        connection.execute("BEGIN IMMEDIATE")
+        row = connection.execute(
+            "SELECT package_json, scheduled_at, lifecycle_state FROM content_outbox WHERE outbox_id=?",
+            (outbox_id,),
+        ).fetchone()
+        if not row:
+            raise ValueError(f"outbox_not_found:{outbox_id}")
+        package = _decode(row["package_json"], {})
+        evaluation = evaluate_publication_readiness(
+            package,
+            scheduled_at=str(row["scheduled_at"]),
+            platforms=configured_platforms(package),
+            dispatch_enabled=(str(os.environ.get("CONTENT_DISPATCH_ENABLED", "false")).lower() in {"1", "true", "yes", "on"}) if dispatch_enabled is None else dispatch_enabled,
+            publication_history=_publication_identities(connection, outbox_id),
+            reserved_assets=_active_reservations(connection),
+            package_id=outbox_id,
+        )
+        result = evaluation.to_dict()
+        if persist:
+            connection.execute(
+                "UPDATE content_outbox SET readiness_json=?, reason_code=? WHERE outbox_id=?",
+                (_json(result), result["reason_codes"][0], outbox_id),
+            )
+            if evaluation.ready:
+                _reserve_asset(connection, outbox_id, package)
+        connection.commit()
+        return result
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
+
+
+def record_publication_history(
+    data_dir: str,
+    *,
+    outbox_id: str,
+    platform: str,
+    external_id: str,
+) -> None:
+    connection = _connect(data_dir)
+    try:
+        connection.execute("BEGIN IMMEDIATE")
+        row = connection.execute("SELECT package_json FROM content_outbox WHERE outbox_id=?", (outbox_id,)).fetchone()
+        if not row:
+            raise ValueError(f"outbox_not_found:{outbox_id}")
+        package = _decode(row["package_json"], {})
+        identity = asset_identity(package)
+        caption = str(((package.get("platform_posts") or {}).get(platform) or {}).get("final_caption") or "")
+        generation = package.get("gemini_generation") if isinstance(package.get("gemini_generation"), dict) else {}
+        assets = generation.get("assets") if isinstance(generation.get("assets"), list) else []
+        first = assets[0] if assets and isinstance(assets[0], dict) else {}
+        asset_sha256 = str(first.get("sha256") or package.get("asset_sha256") or "").strip().lower()
+        perceptual = str(first.get("perceptual_hash") or package.get("perceptual_fingerprint") or "").strip().lower()
+        copy_fingerprint = hashlib.sha256(" ".join(caption.lower().split()).encode("utf-8")).hexdigest()
+        connection.execute(
+            """
+            INSERT OR IGNORE INTO publication_history
+            (publication_id, outbox_id, platform, asset_identity, asset_sha256, perceptual_fingerprint, copy_fingerprint, external_id, published_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (uuid.uuid4().hex, outbox_id, platform, identity, asset_sha256 or None, perceptual or None, copy_fingerprint, external_id, _now()),
+        )
+        for fingerprint in creative_fingerprints(package, configured_platforms(package)):
+            connection.execute(
+                "UPDATE asset_reservations SET reservation_state='CONSUMED', updated_at=? WHERE asset_identity=? AND outbox_id=?",
+                (_now(), fingerprint, outbox_id),
+            )
+        connection.commit()
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
+
+
+def why_not_published(data_dir: str, outbox_id: str) -> dict[str, Any]:
+    connection = _connect(data_dir)
+    try:
+        package = connection.execute("SELECT * FROM content_outbox WHERE outbox_id=?", (outbox_id,)).fetchone()
+        if not package:
+            return {"outbox_id": outbox_id, "found": False, "reason_codes": ["PACKAGE_NOT_FOUND"]}
+        transitions = [dict(row) for row in connection.execute(
+            "SELECT source_state, destination_state, reason_code, actor, correlation_id, attempt_id, detail_json, created_at FROM package_transitions WHERE outbox_id=? ORDER BY created_at",
+            (outbox_id,),
+        )]
+        for transition in transitions:
+            transition["detail"] = _decode(transition.pop("detail_json"), {})
+        deliveries = [dict(row) for row in connection.execute(
+            "SELECT platform, state, external_id, attempt_count, last_error, updated_at FROM platform_transactions WHERE outbox_id=? ORDER BY platform",
+            (outbox_id,),
+        )]
+        row = dict(package)
+        readiness = _decode(row.pop("readiness_json"), {})
+        row.pop("package_json", None)
+        return {
+            "outbox_id": outbox_id,
+            "found": True,
+            "current_state": row.get("lifecycle_state"),
+            "legacy_status": row.get("status"),
+            "scheduled_at": row.get("scheduled_at"),
+            "reason_codes": readiness.get("reason_codes") or [row.get("reason_code")],
+            "readiness": readiness,
+            "transitions": transitions,
+            "platform_deliveries": deliveries,
+            "platform_api_calls": sum(int(item.get("attempt_count") or 0) for item in deliveries),
+        }
+    finally:
+        connection.close()
+
+
+def publishing_metrics(data_dir: str, *, now_utc: str | None = None) -> dict[str, Any]:
+    now = now_utc or _now()
+    connection = _connect(data_dir)
+    try:
+        states = {str(row[0]): int(row[1]) for row in connection.execute(
+            "SELECT lifecycle_state, COUNT(*) FROM content_outbox GROUP BY lifecycle_state"
+        )}
+        overdue = int(connection.execute(
+            "SELECT COUNT(*) FROM content_outbox WHERE datetime(scheduled_at)<datetime(?) AND lifecycle_state NOT IN ('PUBLISHED','CANCELLED')",
+            (now,),
+        ).fetchone()[0])
+        deliveries = {str(row[0]): int(row[1]) for row in connection.execute(
+            "SELECT state, COUNT(*) FROM platform_transactions GROUP BY state"
+        )}
+        stuck = int(connection.execute(
+            """SELECT COUNT(*) FROM content_outbox
+               WHERE lifecycle_state IN ('PREPARING','AWAITING_QA','DISPATCHING')
+                 AND datetime(COALESCE(claimed_at, ready_at, created_at)) < datetime(?, '-30 minutes')""",
+            (now,),
+        ).fetchone()[0])
+        return {
+            "package_states": states,
+            "past_scheduled_time": overdue,
+            "stuck_transient_states": stuck,
+            "platform_transactions": deliveries,
+        }
+    finally:
+        connection.close()
+
+
+def reserve_ai_attempt(
+    data_dir: str,
+    *,
+    call_id: str,
+    provider: str,
+    model: str,
+    operation_type: str,
+    outbox_id: str = "",
+    campaign_id: str = "",
+    asset_id: str = "",
+    attempt_number: int = 1,
+    reason: str = "",
+    initiating_subsystem: str = "unknown",
+    estimated_usage: dict[str, Any] | None = None,
+) -> str:
+    init_content_operations(data_dir)
+    attempt_id = uuid.uuid4().hex
+    connection = _connect(data_dir)
+    try:
+        valid_outbox = None
+        if outbox_id:
+            valid_outbox = connection.execute(
+                "SELECT outbox_id FROM content_outbox WHERE outbox_id=?", (outbox_id,)
+            ).fetchone()
+        connection.execute(
+            """
+            INSERT INTO ai_generation_attempts
+            (attempt_id, call_id, provider, model, operation_type, outbox_id, campaign_id,
+             asset_id, attempt_number, reason, initiating_subsystem, status,
+             estimated_usage_json, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'RESERVED', ?, ?)
+            """,
+            (
+                attempt_id, call_id, provider, model, operation_type,
+                outbox_id if valid_outbox else None, campaign_id or None, asset_id or None,
+                max(1, int(attempt_number)), reason, initiating_subsystem,
+                _json(estimated_usage or {}), _now(),
+            ),
+        )
+        connection.commit()
+        return attempt_id
+    finally:
+        connection.close()
+
+
+def complete_ai_attempt(
+    data_dir: str,
+    *,
+    call_id: str,
+    status: str,
+    actual_usage: dict[str, Any] | None = None,
+) -> None:
+    if status not in {"SUCCEEDED", "FAILED"}:
+        raise ValueError(f"invalid_ai_attempt_status:{status}")
+    connection = _connect(data_dir)
+    try:
+        changed = connection.execute(
+            """UPDATE ai_generation_attempts SET status=?, actual_usage_json=?, completed_at=?
+               WHERE call_id=? AND status='RESERVED'""",
+            (status, _json(actual_usage or {}), _now(), call_id),
+        ).rowcount
+        if changed != 1:
+            raise ValueError(f"ai_attempt_not_reserved:{call_id}")
+        connection.commit()
+    finally:
+        connection.close()
+
+
+def find_eligible_creative(data_dir: str, requirements: dict[str, Any], *, limit: int = 10) -> list[dict[str, Any]]:
+    """Return existing ready packages that satisfy requirements; never generate content."""
+    platform = str(requirements.get("platform") or "").strip().lower()
+    provider = str(requirements.get("provider") or "").strip().lower()
+    product_id = str(requirements.get("product_id") or "").strip()
+    campaign_id = str(requirements.get("campaign_id") or "").strip()
+    connection = _connect(data_dir)
+    try:
+        rows = connection.execute(
+            """SELECT outbox_id, package_json, scheduled_at, lifecycle_state, created_at
+               FROM content_outbox
+               WHERE lifecycle_state IN ('READY_TO_DISPATCH','PREPARATION_REQUIRED','AWAITING_QA')
+               ORDER BY datetime(scheduled_at), created_at LIMIT 250"""
+        ).fetchall()
+    finally:
+        connection.close()
+    eligible: list[dict[str, Any]] = []
+    for row in rows:
+        package = _decode(row["package_json"], {})
+        platforms = configured_platforms(package)
+        generation = package.get("gemini_generation") if isinstance(package.get("gemini_generation"), dict) else {}
+        if platform and platform not in platforms:
+            continue
+        if provider and str(generation.get("provider") or "").lower() != provider:
+            continue
+        if product_id and str(package.get("product_id") or "") != product_id:
+            continue
+        if campaign_id and str(package.get("campaign_id") or "") != campaign_id:
+            continue
+        readiness = evaluate_outbox_readiness(data_dir, str(row["outbox_id"]), dispatch_enabled=True, persist=False)
+        if readiness["ready"]:
+            eligible.append({
+                "outbox_id": str(row["outbox_id"]),
+                "scheduled_at": str(row["scheduled_at"]),
+                "asset_identity": asset_identity(package),
+                "platforms": platforms,
+                "package": package,
+            })
+        if len(eligible) >= max(1, min(100, int(limit))):
+            break
+    return eligible
+
+
+def classify_backlog(data_dir: str, *, now_utc: str | None = None) -> dict[str, list[dict[str, Any]]]:
+    now = datetime.fromisoformat((now_utc or _now()).replace("Z", "+00:00"))
+    buckets = {
+        "ready_relevant": [], "preparation_required": [], "blocked_budget": [],
+        "blocked_canon": [], "blocked_inventory": [], "expired": [],
+        "published": [], "operator_review": [],
+    }
+    connection = _connect(data_dir)
+    try:
+        rows = connection.execute(
+            "SELECT outbox_id, content_date, scheduled_at, lifecycle_state, reason_code FROM content_outbox ORDER BY datetime(scheduled_at)"
+        ).fetchall()
+    finally:
+        connection.close()
+    for raw in rows:
+        row = dict(raw)
+        state = str(row.get("lifecycle_state") or "")
+        scheduled = datetime.fromisoformat(str(row["scheduled_at"]).replace("Z", "+00:00"))
+        if state == PackageState.PUBLISHED.value:
+            bucket = "published"
+        elif state == PackageState.BLOCKED_BUDGET.value:
+            bucket = "blocked_budget"
+        elif state == PackageState.BLOCKED_CANON.value:
+            bucket = "blocked_canon"
+        elif state in {PackageState.BLOCKED_NO_ELIGIBLE_ASSET.value, PackageState.BLOCKED_DUPLICATE.value}:
+            bucket = "blocked_inventory"
+        elif state in {PackageState.PREPARATION_REQUIRED.value, PackageState.PREPARING.value, PackageState.AWAITING_QA.value, PackageState.QA_REJECTED.value}:
+            bucket = "preparation_required"
+        elif state == PackageState.READY_TO_DISPATCH.value and scheduled >= now - timedelta(days=2):
+            bucket = "ready_relevant"
+        elif state not in {PackageState.CANCELLED.value} and scheduled < now - timedelta(days=2):
+            bucket = "expired"
+        else:
+            bucket = "operator_review"
+        buckets[bucket].append(row)
+    return buckets
+
+
+def today_schedule(data_dir: str, content_date: str | None = None) -> dict[str, Any]:
+    day = str(content_date or datetime.now(timezone.utc).date().isoformat())
+    connection = _connect(data_dir)
+    try:
+        rows = connection.execute(
+            """SELECT o.outbox_id, o.content_id, o.slot, o.scheduled_at, o.status,
+                      o.lifecycle_state, o.reason_code, o.readiness_json, o.package_json
+               FROM content_outbox o WHERE o.content_date=? ORDER BY datetime(o.scheduled_at)""",
+            (day,),
+        ).fetchall()
+        items = []
+        for raw in rows:
+            row = dict(raw)
+            package = _decode(row.pop("package_json"), {})
+            row["readiness"] = _decode(row.pop("readiness_json"), {})
+            row["platforms"] = configured_platforms(package)
+            row["asset_identity"] = asset_identity(package)
+            items.append(row)
+        return {"date": day, "count": len(items), "packages": items}
     finally:
         connection.close()
 
@@ -380,6 +940,7 @@ def mark_ready(
     decision_id: str,
     package: dict[str, Any],
 ) -> str:
+    package = attach_product_canon(data_dir, package)
     outbox_id = uuid.uuid4().hex
     content_id = str(package.get("content_id") or package.get("post_id") or uuid.uuid4().hex)
     now = _now()
@@ -416,10 +977,18 @@ def mark_ready(
             """
             INSERT INTO content_outbox
             (outbox_id, content_id, decision_id, content_date, slot, scheduled_at,
-             package_json, status, created_at, ready_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, 'READY', ?, ?)
+             package_json, status, created_at, ready_at, lifecycle_state, reason_code,
+             readiness_json, correlation_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 'READY', ?, ?, 'DRAFT', 'PACKAGE_CREATED', '{}', ?)
             """,
-            (outbox_id, content_id, decision_id, content_date, slot, scheduled_at, _json(package), now, now),
+            (outbox_id, content_id, decision_id, content_date, slot, scheduled_at, _json(package), now, now, outbox_id),
+        )
+        _record_transition(
+            connection,
+            outbox_id=outbox_id,
+            destination=PackageState.PREPARATION_REQUIRED.value,
+            reason_code="PACKAGE_ENQUEUED",
+            actor="content_operations.mark_ready",
         )
         connection.execute(
             """
@@ -434,12 +1003,93 @@ def mark_ready(
             (_json(blackboard), now, decision_id),
         )
         connection.commit()
-        return outbox_id
     except Exception:
         connection.rollback()
         raise
     finally:
         connection.close()
+    readiness = evaluate_outbox_readiness(data_dir, outbox_id, dispatch_enabled=True)
+    if readiness["ready"]:
+        transition_package(
+            data_dir,
+            outbox_id,
+            PackageState.READY_TO_DISPATCH.value,
+            "READINESS_PASSED",
+            actor="content_operations.mark_ready",
+            detail=readiness,
+        )
+    return outbox_id
+
+
+def enqueue_durable_package(
+    data_dir: str,
+    *,
+    source_id: str,
+    package: dict[str, Any],
+    scheduled_at: str | None = None,
+    actor: str = "content_operations.enqueue_durable_package",
+) -> str:
+    """Atomically enqueue an idempotent package that is not owned by a daily slot."""
+    init_content_operations(data_dir)
+    package = attach_product_canon(data_dir, package)
+    normalized_source_id = str(source_id).strip()
+    if not normalized_source_id:
+        raise ValueError("source_id_required")
+    content_id = f"external:{normalized_source_id}"
+    due_at = scheduled_at or _now()
+    content_date = due_at[:10]
+    slot = f"external-{hashlib.sha256(normalized_source_id.encode('utf-8')).hexdigest()[:16]}"
+    outbox_id = uuid.uuid4().hex
+    decision_id = uuid.uuid4().hex
+    now = _now()
+    connection = _connect(data_dir)
+    try:
+        connection.execute("BEGIN IMMEDIATE")
+        existing = connection.execute(
+            "SELECT outbox_id FROM content_outbox WHERE content_id=? ORDER BY created_at DESC LIMIT 1",
+            (content_id,),
+        ).fetchone()
+        if existing:
+            connection.commit()
+            return str(existing["outbox_id"])
+        connection.execute(
+            "INSERT INTO council_sessions VALUES (?, ?, ?, 'READY', ?, '[]', ?, ?)",
+            (decision_id, content_date, slot, _json({"source_id": normalized_source_id, "actor": actor}), now, now),
+        )
+        connection.execute(
+            """
+            INSERT INTO content_outbox
+            (outbox_id, content_id, decision_id, content_date, slot, scheduled_at,
+             package_json, status, created_at, ready_at, lifecycle_state, reason_code,
+             readiness_json, correlation_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 'READY', ?, ?, 'DRAFT', 'PACKAGE_CREATED', '{}', ?)
+            """,
+            (outbox_id, content_id, decision_id, content_date, slot, due_at, _json(package), now, now, outbox_id),
+        )
+        _record_transition(
+            connection,
+            outbox_id=outbox_id,
+            destination=PackageState.PREPARATION_REQUIRED.value,
+            reason_code="PACKAGE_ENQUEUED",
+            actor=actor,
+        )
+        connection.commit()
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
+    readiness = evaluate_outbox_readiness(data_dir, outbox_id, dispatch_enabled=True, actor=f"{actor}.readiness")
+    if readiness["ready"]:
+        transition_package(
+            data_dir,
+            outbox_id,
+            PackageState.READY_TO_DISPATCH.value,
+            "READINESS_PASSED",
+            actor=actor,
+            detail=readiness,
+        )
+    return outbox_id
 
 
 def claim_due(data_dir: str, now_utc: str | None = None) -> dict[str, Any] | None:
@@ -464,20 +1114,42 @@ def claim_due(data_dir: str, now_utc: str | None = None) -> dict[str, Any] | Non
             connection.commit()
             return None
         claimed_at = now
+        if str(row["lifecycle_state"] or "") not in {
+            PackageState.READY_TO_DISPATCH.value,
+            PackageState.PARTIALLY_PUBLISHED.value,
+            PackageState.FAILED_DELIVERY.value,
+        }:
+            connection.commit()
+            return None
+        attempt_id = uuid.uuid4().hex
         changed = connection.execute(
             """
-            UPDATE content_outbox SET status='CLAIMED', claimed_at=?, attempt_count=attempt_count+1
+            UPDATE content_outbox SET status='CLAIMED', claimed_at=?, attempt_count=attempt_count+1,
+                lease_owner=?, lease_expires_at=?
             WHERE outbox_id=? AND (
                 status IN ('READY', 'DUE')
                 OR (status='EXTERNAL_ACTION_REQUIRED' AND last_error='no_routed_platforms')
                 OR (status='RECOVERING' AND last_error='ready_package_has_no_routed_platforms')
             )
             """,
-            (claimed_at, row["outbox_id"]),
+            (
+                claimed_at,
+                f"pid:{os.getpid()}",
+                (datetime.fromisoformat(now.replace("Z", "+00:00")) + timedelta(minutes=15)).isoformat(),
+                row["outbox_id"],
+            ),
         ).rowcount
         if changed != 1:
             connection.rollback()
             return None
+        _record_transition(
+            connection,
+            outbox_id=str(row["outbox_id"]),
+            destination=PackageState.DISPATCHING.value,
+            reason_code="DISPATCH_LEASE_ACQUIRED",
+            actor="content_operations.claim_due",
+            attempt_id=attempt_id,
+        )
         connection.execute(
             """
             UPDATE daily_slots SET status='CLAIMED', claimed_at=?, updated_at=?
@@ -490,6 +1162,7 @@ def claim_due(data_dir: str, now_utc: str | None = None) -> dict[str, Any] | Non
         result["status"] = "CLAIMED"
         result["claimed_at"] = claimed_at
         result["attempt_count"] = int(result.get("attempt_count") or 0) + 1
+        result["active_attempt_id"] = attempt_id
         result["package"] = _decode(result.pop("package_json"), {})
         return result
     except Exception:
@@ -545,7 +1218,8 @@ def update_ready_package(data_dir: str, outbox_id: str, package: dict[str, Any])
     connection = _connect(data_dir)
     try:
         changed = connection.execute(
-            "UPDATE content_outbox SET package_json=? WHERE outbox_id=? AND status='READY'",
+            """UPDATE content_outbox SET package_json=?, next_attempt_at=NULL, last_error=NULL, attempt_count=0
+                WHERE outbox_id=? AND status='READY'""",
             (_json(package), outbox_id),
         ).rowcount
         connection.commit()
@@ -679,14 +1353,38 @@ def release_outbox(
     connection = _connect(data_dir)
     try:
         connection.execute("BEGIN IMMEDIATE")
+        lifecycle = connection.execute(
+            "SELECT lifecycle_state, active_attempt_id FROM content_outbox WHERE outbox_id=?",
+            (outbox_id,),
+        ).fetchone()
+        if lifecycle and lifecycle["lifecycle_state"] == PackageState.DISPATCHING.value:
+            _record_transition(
+                connection,
+                outbox_id=outbox_id,
+                destination=PackageState.READY_TO_DISPATCH.value,
+                reason_code="DELIVERY_RELEASED_FOR_RETRY",
+                actor="content_operations.release_outbox",
+                attempt_id=lifecycle["active_attempt_id"],
+                detail={"error": error, "next_attempt_at": next_attempt_at},
+            )
+        current_state = str(lifecycle["lifecycle_state"] or "") if lifecycle else ""
+        retryable_states = {
+            PackageState.DISPATCHING.value,
+            PackageState.READY_TO_DISPATCH.value,
+            PackageState.PARTIALLY_PUBLISHED.value,
+            PackageState.FAILED_DELIVERY.value,
+        }
+        legacy_status = "READY" if current_state in retryable_states else "RECOVERING"
+        effective_next_attempt = next_attempt_at if legacy_status == "READY" else None
         connection.execute(
-            """UPDATE content_outbox SET status='READY', claimed_at=NULL, next_attempt_at=?, last_error=?,
+            """UPDATE content_outbox SET status=?, claimed_at=NULL, next_attempt_at=?, last_error=?,
+                lease_owner=NULL, lease_expires_at=NULL, active_attempt_id=NULL,
                 attempt_count=CASE WHEN ? THEN 0 ELSE attempt_count END WHERE outbox_id=?""",
-            (next_attempt_at, error, int(reset_attempts), outbox_id),
+            (legacy_status, effective_next_attempt, error, int(reset_attempts), outbox_id),
         )
         connection.execute(
-            "UPDATE daily_slots SET status='READY', claimed_at=NULL, last_error=?, updated_at=? WHERE outbox_id=?",
-            (error, now, outbox_id),
+            "UPDATE daily_slots SET status=?, claimed_at=NULL, last_error=?, updated_at=? WHERE outbox_id=?",
+            (legacy_status, error, now, outbox_id),
         )
         connection.commit()
     except Exception:
@@ -725,8 +1423,22 @@ def recover_outbox(data_dir: str, outbox_id: str, error: str) -> None:
     connection = _connect(data_dir)
     try:
         connection.execute("BEGIN IMMEDIATE")
+        lifecycle = connection.execute(
+            "SELECT lifecycle_state, active_attempt_id FROM content_outbox WHERE outbox_id=?",
+            (outbox_id,),
+        ).fetchone()
+        if lifecycle and lifecycle["lifecycle_state"] in {PackageState.DISPATCHING.value, PackageState.READY_TO_DISPATCH.value}:
+            _record_transition(
+                connection,
+                outbox_id=outbox_id,
+                destination=PackageState.PREPARATION_REQUIRED.value,
+                reason_code="PACKAGE_RECOVERY_REQUIRED",
+                actor="content_operations.recover_outbox",
+                attempt_id=lifecycle["active_attempt_id"],
+                detail={"error": error},
+            )
         connection.execute(
-            "UPDATE content_outbox SET status='RECOVERING', claimed_at=NULL, last_error=? WHERE outbox_id=?",
+            "UPDATE content_outbox SET status='RECOVERING', claimed_at=NULL, lease_owner=NULL, lease_expires_at=NULL, active_attempt_id=NULL, last_error=? WHERE outbox_id=?",
             (error, outbox_id),
         )
         connection.execute(
@@ -870,9 +1582,33 @@ def finalize_outbox(
     connection = _connect(data_dir)
     try:
         connection.execute("BEGIN IMMEDIATE")
+        lifecycle = connection.execute(
+            "SELECT lifecycle_state, active_attempt_id FROM content_outbox WHERE outbox_id=?",
+            (outbox_id,),
+        ).fetchone()
+        lifecycle_target = {
+            "PUBLISHED": PackageState.PUBLISHED.value,
+            "FAILED": PackageState.FAILED_DELIVERY.value,
+            "EXTERNAL_ACTION_REQUIRED": PackageState.RECONCILIATION_REQUIRED.value,
+        }[status]
+        if lifecycle and lifecycle["lifecycle_state"] != lifecycle_target:
+            _record_transition(
+                connection,
+                outbox_id=outbox_id,
+                destination=lifecycle_target,
+                reason_code={
+                    "PUBLISHED": "ALL_PLATFORM_RECEIPTS_CONFIRMED",
+                    "FAILED": "DELIVERY_TERMINAL_FAILURE",
+                    "EXTERNAL_ACTION_REQUIRED": "DELIVERY_RECONCILIATION_REQUIRED",
+                }[status],
+                actor="content_operations.finalize_outbox",
+                attempt_id=lifecycle["active_attempt_id"],
+                detail={"error": error},
+            )
         connection.execute(
             """
-            UPDATE content_outbox SET status=?, published_at=?, last_error=? WHERE outbox_id=?
+            UPDATE content_outbox SET status=?, published_at=?, last_error=?, claimed_at=NULL,
+                lease_owner=NULL, lease_expires_at=NULL, active_attempt_id=NULL WHERE outbox_id=?
             """,
             (status, published_at, error or None, outbox_id),
         )

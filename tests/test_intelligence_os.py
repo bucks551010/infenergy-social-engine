@@ -238,6 +238,27 @@ def test_entertainment_studio_provider_transports_storypage_contract(monkeypatch
     assert production["sequenceBriefs"][2]["heroPanel"] is True
 
 
+def test_entertainment_studio_provider_rejects_generic_sequence_fallbacks():
+    from social.visual_provider import EntertainmentStudioVisualProvider
+
+    provider = EntertainmentStudioVisualProvider("https://studio.test", "token")
+    try:
+        provider.generate(
+            art_direction={
+                "creative_request": {"requestedRoute": "MICRO_MISSION"},
+                "visual_message": "A concrete mission",
+                "sequence_briefs": [{"title": "Opening", "prompt": ""}, {"title": "Result", "prompt": "The lights return."}],
+            },
+            positive_prompt="mission",
+            negative_prompt="",
+            platform="instagram",
+        )
+    except RuntimeError as exc:
+        assert "incomplete_sequence_briefs" in str(exc)
+    else:
+        raise AssertionError("Incomplete sequence briefs must fail closed")
+
+
 def test_flagship_transports_generation_topic_to_studio(tmp_path, monkeypatch):
     service = bootstrap(str(tmp_path))
     captured = {}

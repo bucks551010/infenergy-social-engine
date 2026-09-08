@@ -5,7 +5,7 @@ import os
 import sqlite3
 import sys
 from datetime import date
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 _REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(_REPO, "scripts"))
@@ -94,6 +94,7 @@ def test_dispatcher_routes_intelligence_os_package_without_legacy_routing(tmp_pa
             "facebook": {"final_caption": "Facebook final"},
             "instagram": {"final_caption": "Instagram final"},
         },
+        "primary_publish_image_url": "https://example.test/intelligence-os.png",
         "carousel_assets": [],
     }
     connection.execute(
@@ -148,6 +149,7 @@ def test_dispatcher_recovers_existing_no_routed_platforms_failure(tmp_path):
         "post_id": "recover-intelligence-os-post",
         "platforms": ["facebook"],
         "platform_posts": {"facebook": {"final_caption": "Recovered post"}},
+        "primary_publish_image_url": "https://example.test/recovered.png",
     }
     connection.execute(
         "UPDATE content_outbox SET package_json=?, status='EXTERNAL_ACTION_REQUIRED', last_error='no_routed_platforms' WHERE outbox_id=?",
@@ -177,6 +179,7 @@ def test_dispatcher_recovers_intelligence_os_package_stranded_by_inventory_recon
         "post_id": "recover-reconciled-intelligence-os-post",
         "platform_policy": {"platforms": ["facebook"]},
         "platform_posts": {"facebook": {"final_caption": "Recovered reconciled post"}},
+        "primary_publish_image_url": "https://example.test/reconciled.png",
     }
     connection.execute(
         "UPDATE content_outbox SET package_json=?, status='RECOVERING', last_error='ready_package_has_no_routed_platforms' WHERE outbox_id=?",
@@ -244,7 +247,7 @@ def test_recent_outbox_activity_exposes_persisted_publication_receipts(tmp_path)
     }]
 
 
-def test_strict_generation_failure_is_only_attempted_once_per_batch(tmp_path, monkeypatch):
+def test_strict_generation_missing_assets_never_runs_generation_during_dispatch(tmp_path, monkeypatch):
     data_dir = str(tmp_path)
     outbox_id = _ready_package(data_dir, ["facebook"])
     connection = sqlite3.connect(get_db_path(data_dir))
@@ -257,10 +260,8 @@ def test_strict_generation_failure_is_only_attempted_once_per_batch(tmp_path, mo
     )
     connection.commit()
     connection.close()
-    monkeypatch.setattr(
-        dispatch_outbox, "_prepare_gemini_assets",
-        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("429 RESOURCE_EXHAUSTED")),
-    )
+    prepare = Mock()
+    monkeypatch.setattr(dispatch_outbox, "_prepare_gemini_assets", prepare)
 
     result = dispatch_outbox.dispatch_due_batch(
         data_dir=data_dir, now_utc="2026-08-19T13:00:01+00:00", limit=25,
@@ -268,8 +269,13 @@ def test_strict_generation_failure_is_only_attempted_once_per_batch(tmp_path, mo
 
     assert result["processed"] == 1
     assert result["published"] == 0
-    assert result["results"][0]["status"] == "RETRYABLE_FAILURE"
-    assert result["results"][0]["next_attempt_at"] == "2026-08-19T13:30:01+00:00"
+    assert result["results"][0]["status"] == "AWAITING_PREPARATION"
+    prepare.assert_not_called()
+
+    second = dispatch_outbox.dispatch_due_batch(
+        data_dir=data_dir, now_utc="2026-08-19T13:00:02+00:00", limit=25,
+    )
+    assert second["processed"] == 0
 
 
 def test_daily_package_publishes_each_platform_at_its_own_growth_window(tmp_path):

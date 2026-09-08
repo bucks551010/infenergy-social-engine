@@ -13,6 +13,7 @@ import os
 from typing import Any
 
 from ._base import utc_now, write_snapshot
+from social.gemini_budget import GeminiBudgetExceeded, tracked_gemini_call
 
 
 SLIDE_ROLES = (
@@ -143,11 +144,13 @@ def _gemini_slides(
             "No emojis. No hashtags. Use the product name on no more than two slides."
         )
         client = genai.Client(api_key=api_key)
-        resp = client.models.generate_content(
-            model=os.environ.get("GEMINI_MODEL", "gemini-2.5-flash"),
-            contents=prompt,
-            config=types.GenerateContentConfig(response_mime_type="application/json"),
-        )
+        model = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+        with tracked_gemini_call("reasoning", model, f"carousel copy ({slide_count} slides)", initiating_subsystem="carousel_slide_writer"):
+            resp = client.models.generate_content(
+                model=model,
+                contents=prompt,
+                config=types.GenerateContentConfig(response_mime_type="application/json"),
+            )
         text = (resp.text or "").strip()
         if not text:
             return None
@@ -167,6 +170,8 @@ def _gemini_slides(
                 }
             )
         return cleaned
+    except GeminiBudgetExceeded:
+        raise
     except Exception:
         return None
 

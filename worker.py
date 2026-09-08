@@ -25,9 +25,11 @@ import generate_posts
 import inventory_db
 import intelligence_packages
 from build_monthly_content import build_monthly_calendar, latest_monthly_calendar, prepare_monthly_gemini_prompts
-from content_operations import apply_growth_schedule_to_ready_inventory, daily_status, init_content_operations, recent_outbox_activity, reconcile_confirmed_transactions, reconcile_ready_inventory, reconcile_stale_claims
+from content_operations import apply_growth_schedule_to_ready_inventory, classify_backlog, daily_status, enqueue_durable_package, evaluate_outbox_readiness, hold_outbox, init_content_operations, publishing_metrics, recent_outbox_activity, reconcile_confirmed_transactions, reconcile_ready_inventory, reconcile_stale_claims, release_outbox, today_schedule, why_not_published
 from campaign_runtime import eligible_channels_for_slot, load_channel_schedule, load_funnel_config, stage_for_slot
+from social.gemini_budget import budget_snapshot
 from social_visuals import review_rendered_visual
+from runtime_config import load_runtime_config, validate_startup_config
 
 RUN_LOCK = threading.Lock()
 LAST_RUN = {
@@ -133,7 +135,9 @@ def run_manual_monthly_generation(job_id: str, *, days: int, start_date: str | N
             )
             return
         pregenerated = 0
-        while True:
+        queued = int(calendar.get("queued") or 0)
+        package_limit = max(1, min(int(os.environ.get("GEMINI_MONTHLY_PREGEN_PACKAGE_LIMIT", "2")), 31))
+        while pregenerated < package_limit:
             result = _pregenerate_one_package()
             result_status = str(result.get("status") or "")
             if result_status == "PREGENERATED":
@@ -142,6 +146,12 @@ def run_manual_monthly_generation(job_id: str, *, days: int, start_date: str | N
                     phase="PREGENERATING", pregenerated_packages=pregenerated,
                     last_outbox_id=result.get("outbox_id"),
                 )
+                if pregenerated >= queued:
+                    _save_monthly_generation_status(
+                        status="COMPLETE", phase="COMPLETE", pregenerated_packages=pregenerated,
+                        completed_at_utc=_utc_now(), error=None,
+                    )
+                    return
                 continue
             if result_status == "IDLE":
                 _save_monthly_generation_status(
@@ -155,6 +165,10 @@ def run_manual_monthly_generation(job_id: str, *, days: int, start_date: str | N
                 failed_outbox_id=result.get("outbox_id"),
             )
             return
+        _save_monthly_generation_status(
+            status="PAUSED_BUDGET", phase="PREGENERATING", pregenerated_packages=pregenerated,
+            error=f"monthly pregeneration paused after the configured {package_limit}-package limit",
+        )
     except Exception as exc:
         _save_monthly_generation_status(
             status="RETRYABLE_FAILURE", phase="FAILED", error=f"{type(exc).__name__}:{exc}",
@@ -369,6 +383,27 @@ def _publish_custom_post(payload: dict) -> tuple[int, dict]:
             content["publish_instagram_story"] = instagram_story
             content["platform_posts"]["instagram"]["media_type"] = "REEL"
             content["platform_posts"]["facebook"]["media_type"] = "REEL"
+        content["routing"] = {"platforms": platforms}
+        content["unique_creative_required"] = True
+        if not dry_run:
+            unsupported = [platform for platform in platforms if platform not in {"facebook", "instagram", "linkedin"}]
+            if unsupported:
+                return 422, {"status": "blocked_configuration", "error": "durable_dispatch_platform_not_supported", "platforms": unsupported}
+            outbox_id = enqueue_durable_package(
+                _data_dir(),
+                source_id=f"custom:{external_id}",
+                package=content,
+                actor="worker.custom_post",
+            )
+            record.update({"status": "queued", "outbox_id": outbox_id, "updated_at_utc": _utc_now()})
+            _safe_write_json(_custom_post_history_path(), history)
+            return 202, {
+                "status": "queued",
+                "external_id": external_id,
+                "outbox_id": outbox_id,
+                "diagnostics_url": f"/why-not-published?outbox_id={outbox_id}",
+                "time_utc": _utc_now(),
+            }
         for platform in platforms:
             previous = results.get(platform)
             if isinstance(previous, dict) and previous.get("status") == "processing":
@@ -1200,7 +1235,8 @@ class HealthHandler(BaseHTTPRequestHandler):
             self.send_error(404)
             return
 
-        if not file_name or os.path.splitext(file_name)[1].lower() not in {".png", ".jpg", ".jpeg"} or not os.path.isfile(media_path):
+        supported_media = {".png", ".jpg", ".jpeg", ".webp", ".mp4", ".mov"}
+        if not file_name or os.path.splitext(file_name)[1].lower() not in supported_media or not os.path.isfile(media_path):
             self.send_error(404)
             return
 
@@ -1351,11 +1387,22 @@ class HealthHandler(BaseHTTPRequestHandler):
             return
 
         if parsed.path in ("/", "/health", "/healthz"):
+            startup = validate_startup_config()
             payload = {
-                "status": "ok",
+                "status": "ok" if startup["status"] == "READY" else "degraded",
                 "service": "infenergy-social-engine",
                 "time_utc": _utc_now(),
                 "uptime_seconds": _uptime_seconds(),
+                "gemini_budget": budget_snapshot(),
+                "deployment": startup["config"],
+                "startup_validation": {key: startup[key] for key in ("status", "blockers", "warnings", "evaluated_at")},
+                "publishing": publishing_metrics(_data_dir()),
+                "media": {
+                    "public_directory": os.path.abspath(os.path.join(_data_dir(), "public_media")),
+                    "working_directory": os.path.abspath(os.path.join(_data_dir(), "generated_visuals")),
+                    "library_endpoint": "/media-library",
+                    "browser_route": "/media/{filename}",
+                },
             }
             body = json.dumps(payload).encode("utf-8")
             self.send_response(200)
@@ -1363,6 +1410,34 @@ class HealthHandler(BaseHTTPRequestHandler):
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)
+            return
+
+        if parsed.path == "/media-library":
+            params = parse_qs(parsed.query)
+            authorized, status_code, error_payload = _os_authorized(self, params)
+            if not authorized:
+                self._send_json(status_code, error_payload)
+                return
+            media_dir = os.path.join(_data_dir(), "public_media")
+            files = []
+            if os.path.isdir(media_dir):
+                for file_name in os.listdir(media_dir):
+                    local_path = os.path.join(media_dir, file_name)
+                    if os.path.isfile(local_path) and os.path.splitext(file_name)[1].lower() in {".png", ".jpg", ".jpeg", ".webp"}:
+                        files.append({
+                            "file_name": file_name,
+                            "url": f"/media/{file_name}",
+                            "bytes": os.path.getsize(local_path),
+                            "modified_at_utc": datetime.fromtimestamp(os.path.getmtime(local_path), timezone.utc).isoformat(),
+                        })
+            files.sort(key=lambda item: item["modified_at_utc"], reverse=True)
+            self._send_json(200, {
+                "status": "ok",
+                "directory": os.path.abspath(media_dir),
+                "working_directory": os.path.abspath(os.path.join(_data_dir(), "generated_visuals")),
+                "count": len(files),
+                "images": files[:200],
+            })
             return
 
         if parsed.path == "/status":
@@ -1381,6 +1456,16 @@ class HealthHandler(BaseHTTPRequestHandler):
                 "recent_quality": _quality_summary(recent_posts),
                 "visual_repo_bootstrap": VISUAL_REPO_BOOTSTRAP,
                 "operational_intelligence": _operational_intelligence_snapshot(),
+                "gemini_budget": budget_snapshot(),
+                "deployment": load_runtime_config().public_dict(),
+                "startup_validation": validate_startup_config(),
+                "publishing_metrics": publishing_metrics(_data_dir()),
+                "media": {
+                    "public_directory": os.path.abspath(os.path.join(_data_dir(), "public_media")),
+                    "working_directory": os.path.abspath(os.path.join(_data_dir(), "generated_visuals")),
+                    "library_endpoint": "/media-library",
+                    "browser_route": "/media/{filename}",
+                },
             }
             body = json.dumps(payload).encode("utf-8")
             self.send_response(200)
@@ -1388,6 +1473,63 @@ class HealthHandler(BaseHTTPRequestHandler):
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)
+            return
+
+        if parsed.path in {"/why-not-published", "/can-this-post"}:
+            params = parse_qs(parsed.query)
+            authorized, status_code, error_payload = _os_authorized(self, params)
+            if not authorized:
+                self._send_json(status_code, error_payload)
+                return
+            outbox_id = str((params.get("outbox_id") or [""])[0]).strip()
+            if not outbox_id:
+                self._send_json(400, {"error": "outbox_id_required"})
+                return
+            diagnostic = why_not_published(_data_dir(), outbox_id)
+            if parsed.path == "/can-this-post" and diagnostic.get("found"):
+                diagnostic["fresh_readiness"] = evaluate_outbox_readiness(
+                    _data_dir(),
+                    outbox_id,
+                    dispatch_enabled=load_runtime_config().dispatch_enabled,
+                    actor="worker.can_this_post",
+                )
+            self._send_json(200 if diagnostic.get("found") else 404, diagnostic)
+            return
+
+        if parsed.path in {"/today-schedule", "/publishing-backlog"}:
+            params = parse_qs(parsed.query)
+            authorized, status_code, error_payload = _os_authorized(self, params)
+            if not authorized:
+                self._send_json(status_code, error_payload)
+                return
+            if parsed.path == "/today-schedule":
+                day = str((params.get("date") or [""])[0]).strip() or None
+                self._send_json(200, today_schedule(_data_dir(), day))
+            else:
+                self._send_json(200, classify_backlog(_data_dir()))
+            return
+
+        if parsed.path in {"/hold-outbox", "/release-outbox"}:
+            params = parse_qs(parsed.query)
+            authorized, status_code, error_payload = _os_authorized(self, params)
+            if not authorized:
+                self._send_json(status_code, error_payload)
+                return
+            outbox_id = str((params.get("outbox_id") or [""])[0]).strip()
+            if not outbox_id:
+                self._send_json(400, {"error": "outbox_id_required"})
+                return
+            try:
+                if parsed.path == "/hold-outbox":
+                    reason = str((params.get("reason") or ["operator_hold"])[0]).strip() or "operator_hold"
+                    hold_outbox(_data_dir(), outbox_id, reason)
+                    result = {"status": "HELD", "outbox_id": outbox_id, "reason": reason}
+                else:
+                    release_outbox(_data_dir(), outbox_id, "operator_release", reset_attempts=True)
+                    result = {"status": "RELEASED", "outbox_id": outbox_id}
+                self._send_json(200, result)
+            except ValueError as exc:
+                self._send_json(409, {"error": str(exc), "outbox_id": outbox_id})
             return
 
         if parsed.path == "/gemini-visual-repo-bootstrap":
@@ -2720,7 +2862,12 @@ def run_delivery_watchdog() -> dict:
         "terminal_failures": len(terminal_failures),
         "recovery_requested": needs_inventory,
     }
-    if needs_inventory:
+    autonomous_recovery = (
+        _env_is_true("AUTONOMOUS_AI_ENABLED", False)
+        and _env_is_true("CONTENT_FACTORY_ENABLED", False)
+    )
+    result["autonomous_recovery_enabled"] = autonomous_recovery
+    if needs_inventory and autonomous_recovery:
         print(f"[DELIVERY_WATCHDOG] coverage gap: {json.dumps(result, sort_keys=True)}")
         _start_factory_thread()
     return result
@@ -2733,20 +2880,30 @@ def register_scheduled_jobs() -> None:
         schedule.every().day.at(midday_utc).do(_start_dispatch_thread, "midday")
         schedule.every().day.at(evening_utc).do(_start_dispatch_thread, "evening")
         schedule.every(5).minutes.do(_start_dispatch_thread, "due_sweep")
-        schedule.every(10).minutes.do(_start_pregeneration_thread)
         schedule.every(10).minutes.do(run_delivery_watchdog)
-    if os.environ.get("CONTENT_FACTORY_ENABLED", "true").lower() in {"1", "true", "yes", "on"}:
-        schedule.every(30).minutes.do(_start_factory_thread)
-    schedule.every(6).hours.do(run_intelligence_enrichment)
-    schedule.every().day.at(intelligence_light_utc).do(run_intelligence_heartbeat, "LIGHT_HEARTBEAT")
-    schedule.every().day.at("10:00").do(run_candidate_batch)
-    schedule.every().monday.at(intelligence_standard_utc).do(run_intelligence_heartbeat, "STANDARD_HEARTBEAT")
-    schedule.every().sunday.at(intelligence_deep_utc).do(run_intelligence_heartbeat, "DEEP_HEARTBEAT")
-    if os.environ.get("INTELLIGENCE_OS_ENABLED", "true").lower() in {"1", "true", "yes", "on"}:
-        from social_engine.intelligence_os.foundation import heartbeat
-        schedule.every(15).minutes.do(heartbeat, _data_dir())
+    if _env_is_true("CONTENT_PREGENERATION_ENABLED", False):
+        primary = str(os.environ.get("CONTENT_PREGENERATION_PRIMARY_UTC", "05:15")).strip()
+        retry = str(os.environ.get("CONTENT_PREGENERATION_RETRY_UTC", "11:15")).strip()
+        schedule.every().day.at(primary).do(_start_pregeneration_thread)
+        schedule.every().day.at(retry).do(_start_pregeneration_thread)
+    autonomous_ai = os.environ.get("AUTONOMOUS_AI_ENABLED", "false").lower() in {"1", "true", "yes", "on"}
+    if autonomous_ai:
+        if os.environ.get("CONTENT_FACTORY_ENABLED", "false").lower() in {"1", "true", "yes", "on"}:
+            schedule.every(30).minutes.do(_start_factory_thread)
+        schedule.every(6).hours.do(run_intelligence_enrichment)
+        schedule.every().day.at(intelligence_light_utc).do(run_intelligence_heartbeat, "LIGHT_HEARTBEAT")
+        schedule.every().day.at("10:00").do(run_candidate_batch)
+        schedule.every().monday.at(intelligence_standard_utc).do(run_intelligence_heartbeat, "STANDARD_HEARTBEAT")
+        schedule.every().sunday.at(intelligence_deep_utc).do(run_intelligence_heartbeat, "DEEP_HEARTBEAT")
+        if os.environ.get("INTELLIGENCE_OS_ENABLED", "true").lower() in {"1", "true", "yes", "on"}:
+            from social_engine.intelligence_os.foundation import heartbeat
+            schedule.every(15).minutes.do(heartbeat, _data_dir())
 
 def main() -> None:
+    startup = validate_startup_config()
+    print(json.dumps({"event": "startup_configuration", **startup}, sort_keys=True))
+    if startup["blockers"]:
+        raise RuntimeError(f"STARTUP_CONFIGURATION_BLOCKED:{','.join(startup['blockers'])}")
     if os.environ.get("INTELLIGENCE_OS_ENABLED", "true").lower() in {"1", "true", "yes", "on"}:
         from social_engine.intelligence_os.foundation import bootstrap
         intelligence_os = bootstrap(_data_dir())
@@ -2767,7 +2924,8 @@ def main() -> None:
     else:
         print(f"Visual repo bootstrap failed: {bootstrap.get('error')}")
 
-    run_intelligence_enrichment()
+    if os.environ.get("AUTONOMOUS_AI_ENABLED", "false").lower() in {"1", "true", "yes", "on"}:
+        run_intelligence_enrichment()
 
     growth_schedule_result = apply_growth_schedule_to_ready_inventory(_data_dir())
     print(f"Growth schedule applied: {growth_schedule_result['updated']} ready packages")
@@ -2782,6 +2940,7 @@ def main() -> None:
     if os.environ.get("CONTENT_DISPATCH_ENABLED", "true").lower() in {"1", "true", "yes", "on"}:
         run_delivery_watchdog()
         _start_dispatch_thread("startup_sweep")
+    if _env_is_true("CONTENT_PREGENERATION_ENABLED", False) and _env_is_true("CONTENT_PREGENERATION_ON_STARTUP", False):
         _start_pregeneration_thread()
 
     if os.environ.get("RUN_FACTORY_ON_STARTUP", "false").lower() in {"1", "true", "yes", "on"}:

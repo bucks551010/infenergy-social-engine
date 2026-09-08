@@ -7,6 +7,7 @@ import os
 import sys
 import tempfile
 import unittest
+from datetime import datetime, timezone
 from unittest.mock import patch
 
 ROOT = os.path.dirname(os.path.dirname(__file__))
@@ -530,7 +531,10 @@ class AgentsTests(unittest.TestCase):
                 },
             ],
         )
-        result = cross_post_recycler.run(self._tmp)
+        result = cross_post_recycler.run(
+            self._tmp,
+            now_utc=datetime(2026, 8, 10, tzinfo=timezone.utc),
+        )
         picks = result["picks"]
         self.assertTrue(all(p["source_post_id"] != "yesterday" for p in picks))
 

@@ -109,6 +109,8 @@ def test_patch_requests_reach_the_intelligence_os_handler(monkeypatch, tmp_path)
 
 def test_publication_clocks_dispatch_and_never_generate():
     os.environ.pop("CONTENT_DISPATCH_ENABLED", None)
+    os.environ.pop("CONTENT_PREGENERATION_ENABLED", None)
+    os.environ.pop("AUTONOMOUS_AI_ENABLED", None)
     worker.register_scheduled_jobs()
     jobs = worker.schedule.jobs
     dispatch_jobs = [job for job in jobs if job.job_func.func is worker._start_dispatch_thread]
@@ -118,8 +120,8 @@ def test_publication_clocks_dispatch_and_never_generate():
     watchdog_jobs = [job for job in jobs if job.job_func.func is worker.run_delivery_watchdog]
 
     assert len(dispatch_jobs) == 4
-    assert len(pregeneration_jobs) == 1
-    assert len(factory_jobs) == 1
+    assert pregeneration_jobs == []
+    assert factory_jobs == []
     assert legacy_clock_jobs == []
     assert len(watchdog_jobs) == 1
     assert {job.job_func.args[0] for job in dispatch_jobs} == {"morning", "midday", "evening", "due_sweep"}
@@ -134,9 +136,20 @@ def test_dispatch_schedule_can_be_paused_while_month_is_built(monkeypatch):
     assert dispatch_jobs == []
 
 
-def test_factory_remains_scheduled_without_being_required_on_startup(monkeypatch):
+def test_preparation_has_two_bounded_daily_windows(monkeypatch):
+    monkeypatch.setenv("CONTENT_DISPATCH_ENABLED", "true")
+    monkeypatch.setenv("CONTENT_PREGENERATION_ENABLED", "true")
+
+    worker.register_scheduled_jobs()
+
+    preparation_jobs = [job for job in worker.schedule.jobs if job.job_func.func is worker._start_pregeneration_thread]
+    assert len(preparation_jobs) == 2
+
+
+def test_factory_requires_explicit_autonomous_ai_opt_in(monkeypatch):
     monkeypatch.delenv("RUN_FACTORY_ON_STARTUP", raising=False)
-    monkeypatch.delenv("CONTENT_FACTORY_ENABLED", raising=False)
+    monkeypatch.setenv("AUTONOMOUS_AI_ENABLED", "true")
+    monkeypatch.setenv("CONTENT_FACTORY_ENABLED", "true")
     worker.register_scheduled_jobs()
 
     factory_jobs = [job for job in worker.schedule.jobs if job.job_func.func is worker._start_factory_thread]
@@ -146,6 +159,7 @@ def test_factory_remains_scheduled_without_being_required_on_startup(monkeypatch
 
 
 def test_factory_schedule_can_be_disabled_when_month_is_prebuilt(monkeypatch):
+    monkeypatch.setenv("AUTONOMOUS_AI_ENABLED", "true")
     monkeypatch.setenv("CONTENT_FACTORY_ENABLED", "false")
 
     worker.register_scheduled_jobs()
@@ -166,11 +180,30 @@ def test_delivery_watchdog_requests_factory_when_today_has_no_publishable_invent
         "slots": [],
     })
     monkeypatch.setattr(worker, "_start_factory_thread", lambda: recoveries.append("requested"))
+    monkeypatch.setenv("AUTONOMOUS_AI_ENABLED", "true")
+    monkeypatch.setenv("CONTENT_FACTORY_ENABLED", "true")
 
     result = worker.run_delivery_watchdog()
 
     assert result["recovery_requested"] is True
     assert recoveries == ["requested"]
+
+
+def test_delivery_watchdog_reports_gap_without_autonomous_generation(monkeypatch):
+    recoveries = []
+    monkeypatch.setattr(worker, "_data_dir", lambda: "unused")
+    monkeypatch.setattr(worker, "daily_status", lambda *_: {
+        "published": 0, "ready": 0, "missing": 3, "slots": [],
+    })
+    monkeypatch.setattr(worker, "_start_factory_thread", lambda: recoveries.append("requested"))
+    monkeypatch.setenv("AUTONOMOUS_AI_ENABLED", "false")
+    monkeypatch.setenv("CONTENT_FACTORY_ENABLED", "false")
+
+    result = worker.run_delivery_watchdog()
+
+    assert result["recovery_requested"] is True
+    assert result["autonomous_recovery_enabled"] is False
+    assert recoveries == []
 
 
 def test_delivery_watchdog_does_not_replace_covered_inventory(monkeypatch):
@@ -216,6 +249,9 @@ def test_main_runs_due_sweep_immediately_on_startup(monkeypatch):
     dispatches = []
     pregenerations = []
     monkeypatch.setenv("CONTENT_DISPATCH_ENABLED", "true")
+    monkeypatch.setenv("CONTENT_PREGENERATION_ENABLED", "true")
+    monkeypatch.setenv("CONTENT_PREGENERATION_ON_STARTUP", "true")
+    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
     monkeypatch.setattr(worker, "start_health_server", lambda: None)
     monkeypatch.setattr(worker, "_load_meta_runtime_from_state", lambda: (False, "not_configured"))
     monkeypatch.setattr(worker, "_auto_bootstrap_visual_repo", lambda: {"status": "ok", "summary": {}})

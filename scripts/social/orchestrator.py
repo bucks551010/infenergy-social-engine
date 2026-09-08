@@ -50,22 +50,6 @@ from . import (
 )
 
 
-_DEFAULT_CTA_BY_JOB = {
-    "TEACH_ME": "Learn more",
-    "HELP_ME": "See how it works",
-    "EXPLAIN_THIS": "Learn more",
-    "SHOW_ME": "See how it works",
-    "WARN_ME": "See how to stay ready",
-    "PREPARE_ME": "Get outage-ready",
-    "HELP_ME_CHOOSE": "Compare options",
-    "SAVE_ME_TIME": "Shop the fix",
-    "SAVE_ME_MONEY": "Compare options",
-    "MAKE_ME_CURIOUS": "Learn more",
-    "GIVE_ME_A_REFERENCE": "Save this",
-    "START_A_CONVERSATION": "Share your take",
-}
-
-
 # Optional Business Intelligence Foundation hookup. Gated on the
 # ENABLE_BUSINESS_INTELLIGENCE env flag so all existing behavior is
 # preserved when the foundation is not enabled.
@@ -323,7 +307,7 @@ def _runtime_strategy_lock(brief: engines.EngineBrief, lean_context: dict[str, A
         "proof": facts,
         "claim_limits": "Use only verified product facts; do not imply unsupported protection or urgency.",
         "visual_objective": "make the product-fit decision easier to understand",
-        "CTA_strategy": persona_cta or marketing.get("cta") or _DEFAULT_CTA_BY_JOB.get(brief.reader_job, "Learn more"),
+        "CTA_strategy": persona_cta or marketing.get("cta") or "",
         "consumer_persona": persona,
         "infenergy_reason_why": str(consumer_profile.get("infenergy_reason_why") or "practical preparedness for real life"),
         "purchase_triggers": list(persona.get("purchase_triggers") or consumer_profile.get("purchase_triggers") or []),
@@ -477,17 +461,18 @@ def _llm_copy_beats(
         "Write truthful, specific, non-generic copy. Avoid AI-slop phrases such as "
         "'game-changer', 'unlock', 'revolutionize', 'in today's fast-paced world', 'buckle up'."
     )
+    requested_keys = [*structure_beats, "cta"]
     prompt_parts.append(
         "Return a JSON object with exactly these keys, each a short 1-2 sentence string, "
-        "no markdown: " + ", ".join(structure_beats) + "."
+        "no markdown: " + ", ".join(requested_keys) + ". The CTA must name the concrete next action and its purpose."
     )
 
     result = model_router.generate_json("copy_editing", " ".join(prompt_parts))
     if not isinstance(result, dict):
         return None
-    if not all(str(result.get(b, "")).strip() for b in structure_beats):
+    if not all(str(result.get(key, "")).strip() for key in requested_keys):
         return None
-    return {b: str(result[b]).strip() for b in structure_beats}
+    return {key: str(result[key]).strip() for key in requested_keys}
 
 
 def _editorial_framework(strategy: dict[str, Any], offering: dict[str, Any] | None) -> dict[str, Any]:
@@ -812,21 +797,21 @@ class SocialIntelligenceOrchestrator:
             sanitized, removed = claim_intelligence.remove_unsupported_numeric_claims(value, claim_verified_facts)
             beat_content[beat] = sanitized
             removed_numeric_claims.extend(removed)
-        copy_generation_method = "llm" if llm_beats else "template_fallback"
+        copy_generation_method = "gemini" if llm_beats else "template_fallback"
         copy_fallback_reason = None if llm_beats else model_router.last_error()
         hook_text = beat_content.get("hook") or beat_content.get("question") or beat_content.get("problem") or ""
         selected_hook = creative_packet.get("selected_copy_concept", {}).get("opening", "")
         if selected_hook and not llm_beats:
             hook_text = selected_hook
             beat_content["hook"] = selected_hook
-        body_text = " ".join(v for k, v in beat_content.items() if k != "hook" and v)
+        body_text = " ".join(v for k, v in beat_content.items() if k not in {"hook", "cta"} and v)
         takeaway = beat_content.get("takeaway") or beat_content.get("lesson") or beat_content.get("implication") or brief.angle
         anchor = copy_intelligence.extract_memory_anchor(body_text, takeaway=takeaway)
         brief.hook = hook_text
         brief.body_beats = beat_content
         brief.takeaway = takeaway
         brief.memory_anchor = anchor
-        selected_cta = (locked or {}).get("CTA_strategy") or _DEFAULT_CTA_BY_JOB.get(brief.reader_job, "Learn more")
+        selected_cta = str((llm_beats or {}).get("cta") or (locked or {}).get("CTA_strategy") or "").strip()
 
         # 4. Visual direction
         necessity = visual_intelligence.visual_necessity_score(

@@ -46,7 +46,7 @@ def _next_archetype(current: str) -> str:
         return _ARCHETYPE_ROTATION[0]
 
 
-def run(data_dir: str) -> dict:
+def run(data_dir: str, *, now_utc: datetime | None = None) -> dict:
     history_path = os.path.join(data_dir, "post_history.json")
     try:
         with open(history_path, "r", encoding="utf-8") as f:
@@ -62,8 +62,9 @@ def run(data_dir: str) -> dict:
     top_n = env_int("RECYCLER_TOP_N", 3)
     min_score = env_int("RECYCLER_MIN_SCORE", 10)
 
-    cutoff = datetime.now(timezone.utc) - timedelta(days=lookback_days)
-    cooldown_cutoff = datetime.now(timezone.utc) - timedelta(days=cooldown_days)
+    evaluated_at = now_utc or datetime.now(timezone.utc)
+    cutoff = evaluated_at - timedelta(days=lookback_days)
+    cooldown_cutoff = evaluated_at - timedelta(days=cooldown_days)
 
     scored: list[tuple[float, dict]] = []
     for row in posts:

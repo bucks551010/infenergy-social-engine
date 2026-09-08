@@ -12,6 +12,7 @@ from typing import Any
 from google import genai
 from google.genai import types
 from social import carousel_director
+from social.gemini_budget import GeminiBudgetExceeded, tracked_gemini_call
 from consumer_life import assess_copy_fidelity, assess_product_compatibility, select_consumer_root
 
 
@@ -4659,11 +4660,12 @@ def _generate_json_with_gemini(prompt: str, model_candidates: list[str], attempt
     for model_name in model_candidates:
         for attempt in range(max(1, attempts_per_model)):
             try:
-                response = client.models.generate_content(
-                    model=model_name,
-                    contents=prompt,
-                    config=types.GenerateContentConfig(response_mime_type="application/json"),
-                )
+                with tracked_gemini_call("reasoning", model_name, f"legacy caption generation attempt {attempt + 1}", attempt_number=attempt + 1, initiating_subsystem="generate_posts"):
+                    response = client.models.generate_content(
+                        model=model_name,
+                        contents=prompt,
+                        config=types.GenerateContentConfig(response_mime_type="application/json"),
+                    )
                 raw = (response.text or "").strip()
                 if not raw:
                     last_error = f"{model_name}:empty_response"
@@ -4674,6 +4676,8 @@ def _generate_json_with_gemini(prompt: str, model_candidates: list[str], attempt
                     if raw.lower().startswith("json"):
                         raw = raw[4:]
                 return json.loads(raw.strip())
+            except GeminiBudgetExceeded:
+                raise
             except Exception as e:
                 last_error = f"{model_name}:attempt{attempt + 1}:{type(e).__name__}:{str(e)[:200]}"
                 continue

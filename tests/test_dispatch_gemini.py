@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import os
+import json
 import sys
 from pathlib import Path
+from unittest.mock import Mock
 
-from PIL import Image
+from PIL import Image, ImageChops
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -15,9 +17,24 @@ import social_visuals  # noqa: E402
 from build_monthly_content import _gemini_generation_plan  # noqa: E402
 
 
+def _semantic_response(**overrides):
+    keys = (
+        "text_missing_or_illegible", "headline_mismatch", "cta_missing", "product_missing",
+        "gibberish_or_garbled_text", "looks_like_generic_ai_poster", "infenergy_symbol_in_sky_or_atmosphere",
+        "derivative_existing_superhero_imitation", "consumer_person_missing", "consumer_setting_mismatch",
+        "consumer_activity_missing", "consumer_visual_evidence_missing", "unexpected_rendered_text",
+        "product_reference_mismatch", "exact_text_mismatch", "duplicated_or_extra_text",
+        "blue_text_shadow_or_glow", "dark_translucent_text_box", "weak_typographic_hierarchy",
+        "headline_not_dominant", "typography_looks_unstyled", "insufficient_text_contrast",
+        "awkward_text_placement", "poor_kerning_or_line_breaks", "text_competes_with_subject",
+        "single_scene_story_unclear", "superhero_action_missing", "civilian_rescue_missing", "character_inconsistent",
+    )
+    return json.dumps({**{key: False for key in keys}, **overrides})
+
+
 def test_semantic_plate_review_allows_text_free_base_before_overlay():
     class Response:
-        text = '{"text_missing_or_illegible":true,"headline_mismatch":true,"cta_missing":true}'
+        text = _semantic_response(text_missing_or_illegible=True, headline_mismatch=True, cta_missing=True)
 
     class Models:
         @staticmethod
@@ -52,7 +69,7 @@ def test_semantic_plate_review_allows_text_free_base_before_overlay():
 
 def test_semantic_plate_review_rejects_unrequested_rendered_text():
     class Response:
-        text = '{"unexpected_rendered_text":true}'
+        text = _semantic_response(unexpected_rendered_text=True)
 
     class Client:
         class Models:
@@ -82,7 +99,7 @@ def test_semantic_plate_review_rejects_unrequested_rendered_text():
 
 def test_semantic_plate_review_rejects_blue_shadow_on_gemini_text():
     class Response:
-        text = '{"blue_text_shadow_or_glow":true}'
+        text = _semantic_response(blue_text_shadow_or_glow=True)
 
     class Client:
         class Models:
@@ -132,6 +149,28 @@ def test_scanline_review_allows_short_editorial_accent():
     assert social_visuals._has_scanline_corruption(image) is False
 
 
+def test_designer_typography_renders_gemini_plan_without_image_edit():
+    image = Image.new("RGB", (1080, 1080), "#30363b")
+    original = image.copy()
+    rendered, error = social_visuals._apply_designer_typography(
+        image,
+        "BUILD THE BED TONIGHT.",
+        {
+            "zone": {"x": 0.08, "y": 0.08, "width": 0.72, "height": 0.24},
+            "alignment": "left",
+            "canvas_height_ratio": 0.15,
+            "line_break": "BUILD THE BED\nTONIGHT.",
+            "color": "warm_white",
+            "weight": "black",
+            "decoration": "short amber underline",
+        },
+    )
+
+    assert error == ""
+    assert rendered.getbbox() == (0, 0, 1080, 1080)
+    assert ImageChops.difference(rendered, original).getbbox() is not None
+
+
 def _package(carousel: bool = True) -> dict:
     thought = {
         "statement": "Preparedness over panic.",
@@ -149,6 +188,7 @@ def _package(carousel: bool = True) -> dict:
         "gemini_copy": {
             "provider": "gemini", "strict_provider": True, "fallback_allowed": False,
             "status": "COMPLETE", "model_output_sha256": "prepared-copy", "task": "copy_editing",
+            "qa": {"clarity": "PASS"},
         },
         "platform_posts": {
             platform: {"final_caption": "Ready caption", "destination_url": "https://example.test"}
@@ -179,9 +219,9 @@ def test_prepare_gemini_copy_authors_captions_and_visual_text(monkeypatch):
             "resolution_line": "TEST THE WHOLE ROUTINE.",
         },
         "platform_captions": {
-            "facebook": "The smallest battery can run the whole day. Test the handoff.",
-            "instagram": "Power the handoff, not only the biggest screen. #Infenergy",
-            "linkedin": "Operational continuity often depends on the smallest device. Test the complete workflow.",
+            "facebook": "A dead phone can stop your travel day. Use Infenergy to charge the complete kit before leaving.",
+            "instagram": "A dead phone can stop the whole trip. Use Infenergy to charge every device before leaving.",
+            "linkedin": "One dead phone can interrupt a mobile workday. Use Infenergy to test and charge the complete setup before departure.",
         },
     })
 
@@ -189,8 +229,8 @@ def test_prepare_gemini_copy_authors_captions_and_visual_text(monkeypatch):
 
     assert prepared["gemini_copy"]["status"] == "COMPLETE"
     assert prepared["copy_generation_source"] == "gemini"
-    assert prepared["fb_caption"].startswith("The smallest battery")
-    assert prepared["platform_posts"]["instagram"]["final_caption"].startswith("Power the handoff")
+    assert prepared["fb_caption"].startswith("A dead phone")
+    assert prepared["platform_posts"]["instagram"]["final_caption"].startswith("A dead phone")
     prompt = prepared["gemini_generation"]["prompts"][0]
     direction = prompt["v5_direction"]
     assert direction["text_overlay"] == {"enabled": False}
@@ -200,7 +240,63 @@ def test_prepare_gemini_copy_authors_captions_and_visual_text(monkeypatch):
     assert "Render the supplied headline once only" in direction["typography_render_instruction"]
     assert "THE SMALL THING STALLED EVERYTHING." not in prompt["gemini_image_prompt"]
     assert "Do not render words" not in prompt["gemini_image_prompt"]
-    assert prepared["gemini_copy"]["qa"] == {"schema": "PASS", "forbidden_labels": "PASS", "product_claims": "PASS"}
+    assert prepared["gemini_copy"]["qa"] == {"schema": "PASS", "forbidden_labels": "PASS", "clarity": "PASS", "product_claims": "PASS"}
+
+
+def test_copy_clarity_rejects_published_ambiguous_linkedin_language():
+    result = {
+        "platform_captions": {
+            "facebook": "Infenergy powers the projector and speakers outside. Test one full scene before guests arrive.",
+            "instagram": "Use Infenergy to power the full outdoor movie setup. Run one scene before friends sit down.",
+            "linkedin": "Technical handoffs fail when environmental variables change. Testing outdoor AV setups indoors hides distance drops and power routing issues. Run a real-world rehearsal before live events.",
+        }
+    }
+
+    issues = dispatch_outbox._copy_clarity_issues(result)
+
+    assert "linkedin_ambiguous_language" in issues
+    assert "linkedin_infenergy_role_missing" in issues
+
+
+def test_copy_clarity_accepts_concrete_pack_and_build_actions():
+    result = {
+        "platform_captions": {
+            platform: "Pack Infenergy with the charged drill before moving day begins. Build the bed tonight before local hardware stores close."
+            for platform in ("facebook", "instagram", "linkedin")
+        }
+    }
+
+    assert dispatch_outbox._copy_clarity_issues(result) == []
+
+
+def test_semantic_plate_review_rejects_weakly_designed_typography():
+    class Response:
+        text = _semantic_response(headline_not_dominant=True, typography_looks_unstyled=True)
+
+    class Client:
+        class Models:
+            @staticmethod
+            def generate_content(**_kwargs):
+                return Response()
+
+        models = Models()
+
+    class Types:
+        class Part:
+            @staticmethod
+            def from_bytes(**_kwargs):
+                return object()
+
+        class GenerateContentConfig:
+            def __init__(self, **_kwargs):
+                pass
+
+    accepted, reasons = social_visuals._gemini_semantic_plate_quality(
+        Client(), Types, b"image", "instagram", expected_text_lines=["EXACT GEMINI COPY"]
+    )
+
+    assert accepted is False
+    assert reasons == ["headline_not_dominant", "typography_looks_unstyled"]
 
 
 def test_prepare_gemini_copy_fails_closed_without_model_output(monkeypatch):
@@ -283,26 +379,28 @@ def test_prepare_gemini_assets_preserves_portrait_generation_contract(tmp_path, 
     assert platforms == ["iis_reel_cover"]
 
 
-def test_dispatch_blocks_every_platform_when_gemini_generation_fails(monkeypatch):
+def test_dispatch_never_generates_when_preparation_is_incomplete(monkeypatch):
     recovered = []
     published = []
     monkeypatch.setattr(
         dispatch_outbox,
         "claim_due",
-        lambda data_dir, now_utc: {"outbox_id": "outbox-1", "package": _package(carousel=False)},
+        lambda data_dir, now_utc: {"outbox_id": "outbox-1", "scheduled_at": "2026-08-23T16:00:00+00:00", "package": _package(carousel=False)},
     )
-    monkeypatch.setattr(
-        dispatch_outbox,
-        "_prepare_gemini_assets",
-        lambda package, data_dir: (_ for _ in ()).throw(RuntimeError("gemini_generation_failed:quota")),
-    )
-    monkeypatch.setattr(dispatch_outbox, "release_outbox", lambda data_dir, outbox_id, error: recovered.append(error))
+    generation = Mock()
+    monkeypatch.setattr(dispatch_outbox, "_prepare_gemini_assets", generation)
+    monkeypatch.setattr(dispatch_outbox, "evaluate_outbox_readiness", lambda *args, **kwargs: {
+        "ready": False, "state": "PREPARATION_REQUIRED", "reason_codes": ["PREPARATION_ASSET_MISSING"],
+    })
+    monkeypatch.setattr(dispatch_outbox, "transition_package", lambda *args, **kwargs: None)
+    monkeypatch.setattr(dispatch_outbox, "release_outbox", lambda data_dir, outbox_id, error, **kwargs: recovered.append(error))
     monkeypatch.setattr(dispatch_outbox, "_publish", lambda package, platform: published.append(platform))
 
     result = dispatch_outbox.dispatch_due(data_dir="unused", now_utc="2026-08-23T17:00:00+00:00")
 
-    assert result["status"] == "RETRYABLE_FAILURE"
-    assert recovered and "gemini_generation_failed" in recovered[0]
+    assert result["status"] == "AWAITING_PREPARATION"
+    assert recovered == ["PREPARATION_ASSET_MISSING"]
+    generation.assert_not_called()
     assert published == []
 
 
@@ -327,6 +425,28 @@ def test_completed_gemini_assets_are_reinspected_before_reuse(tmp_path, monkeypa
     assert dispatch_outbox._gemini_assets_ready(package, 1) is False
 
 
+def test_cached_assets_without_current_semantic_gate_are_not_reused(tmp_path, monkeypatch):
+    package = _package(carousel=False)
+    image_path = tmp_path / "legacy.png"
+    image_path.write_bytes(b"png")
+    package["gemini_generation"].update({
+        "status": "COMPLETE",
+        "assets": [{
+            "render_engine": "gemini",
+            "local_path": str(image_path),
+            "public_url": "https://example.test/media/legacy.png",
+            "generation": {},
+        }],
+    })
+    monkeypatch.setattr(
+        dispatch_outbox,
+        "review_rendered_visual",
+        lambda path, platform: {"verdict": "PASS", "issues": []},
+    )
+
+    assert dispatch_outbox._gemini_assets_ready(package, 1) is False
+
+
 def test_dispatch_preflights_all_strict_artifacts_before_any_publisher_call(monkeypatch):
     package = _package(carousel=False)
     package["gemini_generation"].update({"status": "COMPLETE", "assets": []})
@@ -336,10 +456,11 @@ def test_dispatch_preflights_all_strict_artifacts_before_any_publisher_call(monk
     monkeypatch.setattr(
         dispatch_outbox,
         "claim_due",
-        lambda data_dir, now_utc: {"outbox_id": "outbox-1", "package": package},
+        lambda data_dir, now_utc: {"outbox_id": "outbox-1", "scheduled_at": "2026-08-23T16:00:00+00:00", "package": package},
     )
     monkeypatch.setattr(dispatch_outbox, "_prepare_gemini_assets", lambda package, data_dir: package)
     monkeypatch.setattr(dispatch_outbox, "update_claimed_package", lambda *args: None)
+    monkeypatch.setattr(dispatch_outbox, "evaluate_outbox_readiness", lambda *args, **kwargs: {"ready": True, "state": "READY_TO_DISPATCH", "reason_codes": ["READY"]})
     monkeypatch.setattr(dispatch_outbox, "platform_transaction", lambda data_dir, outbox_id, platform: {})
     monkeypatch.setattr(
         dispatch_outbox,
@@ -379,10 +500,11 @@ def test_linkedin_preflight_failure_blocks_facebook_and_instagram(monkeypatch):
     monkeypatch.setattr(
         dispatch_outbox,
         "claim_due",
-        lambda data_dir, now_utc: {"outbox_id": "outbox-1", "package": package},
+        lambda data_dir, now_utc: {"outbox_id": "outbox-1", "scheduled_at": "2026-08-23T16:00:00+00:00", "package": package},
     )
     monkeypatch.setattr(dispatch_outbox, "_prepare_gemini_assets", lambda package, data_dir: package)
     monkeypatch.setattr(dispatch_outbox, "update_claimed_package", lambda *args: None)
+    monkeypatch.setattr(dispatch_outbox, "evaluate_outbox_readiness", lambda *args, **kwargs: {"ready": True, "state": "READY_TO_DISPATCH", "reason_codes": ["READY"]})
     monkeypatch.setattr(
         dispatch_outbox,
         "_strict_publish_artifact_error",
@@ -424,8 +546,9 @@ def test_truth_overlay_uses_text_first_scene_preserving_editorial_treatment():
     )
 
     assert error == ""
-    assert rendered.getpixel((70, 70)) != (216, 224, 228)
-    assert rendered.getpixel((1100, 100)) != (216, 224, 228)
+    upper_region = rendered.crop((0, 0, 1200, 420))
+    assert upper_region.getbbox() is not None
+    assert len(upper_region.getcolors(maxcolors=1200 * 420) or []) > 1
     assert rendered.getpixel((600, 500)) == (216, 224, 228)
 
 
@@ -478,6 +601,8 @@ def test_pregenerate_updates_ready_package_without_claim_or_publish(monkeypatch)
         lambda *args, **kwargs: [{"outbox_id": "outbox-1", "package": package}],
     )
     monkeypatch.setattr(dispatch_outbox, "_gemini_assets_ready", lambda *args: False)
+    monkeypatch.setattr(dispatch_outbox, "transition_package", lambda *args, **kwargs: None)
+    monkeypatch.setattr(dispatch_outbox, "evaluate_outbox_readiness", lambda *args, **kwargs: {"ready": True, "state": "READY_TO_DISPATCH", "primary_reason": "READY"})
     monkeypatch.setattr(dispatch_outbox, "_prepare_gemini_assets", lambda *args: prepared)
     monkeypatch.setattr(dispatch_outbox, "update_ready_package", lambda *args: updates.append(args) or True)
     monkeypatch.setattr(dispatch_outbox, "_publish", lambda *args: published.append(args))
@@ -489,7 +614,7 @@ def test_pregenerate_updates_ready_package_without_claim_or_publish(monkeypatch)
     assert published == []
 
 
-def test_pregenerate_failure_leaves_package_retryable(monkeypatch):
+def test_pregenerate_failure_records_terminal_preparation_state(monkeypatch):
     package = _package(carousel=False)
     updates = []
     monkeypatch.setattr(
@@ -498,6 +623,7 @@ def test_pregenerate_failure_leaves_package_retryable(monkeypatch):
         lambda *args, **kwargs: [{"outbox_id": "outbox-1", "package": package}],
     )
     monkeypatch.setattr(dispatch_outbox, "_gemini_assets_ready", lambda *args: False)
+    monkeypatch.setattr(dispatch_outbox, "transition_package", lambda *args, **kwargs: None)
     monkeypatch.setattr(
         dispatch_outbox,
         "_prepare_gemini_assets",
@@ -507,7 +633,7 @@ def test_pregenerate_failure_leaves_package_retryable(monkeypatch):
 
     result = dispatch_outbox.pregenerate_upcoming(data_dir="unused")
 
-    assert result["status"] == "RETRYABLE_FAILURE"
+    assert result["status"] == "FAILED_PREPARATION"
     assert "provider timeout" in result["error"]
     assert updates == []
 
@@ -531,6 +657,8 @@ def test_pregenerate_skips_completed_package_and_prepares_next(monkeypatch):
         "_gemini_assets_ready",
         lambda package, required_count: package is completed,
     )
+    monkeypatch.setattr(dispatch_outbox, "transition_package", lambda *args, **kwargs: None)
+    monkeypatch.setattr(dispatch_outbox, "evaluate_outbox_readiness", lambda *args, **kwargs: {"ready": True, "state": "READY_TO_DISPATCH", "primary_reason": "READY"})
     monkeypatch.setattr(dispatch_outbox, "_prepare_gemini_assets", lambda *args: prepared)
     monkeypatch.setattr(dispatch_outbox, "update_ready_package", lambda *args: updates.append(args) or True)
 

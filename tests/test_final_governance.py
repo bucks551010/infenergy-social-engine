@@ -18,6 +18,8 @@ def _decision(readiness: dict):
         conversion_quality_score=100.0,
         orchestrator_quality={"overall": 92.0, "critic_findings": []},
         evidence_readiness=readiness,
+        copy_generation_method="gemini",
+        visual_generation={"visual_provider": "gemini"},
     )
 
 
@@ -87,7 +89,7 @@ def test_incidental_medium_claim_does_not_block_and_verified_central_claim_can_p
     assert _decision(verified_readiness)["publishable"] is True
 
 
-def test_absent_conversion_score_is_not_recorded_as_a_perfect_score():
+def test_absent_conversion_score_and_evidence_block_publication():
     decision = publish_decision.decide(
         legacy_score={"total": 97.0, "platform_results": {}},
         validation={"passed": True, "errors": []},
@@ -96,9 +98,45 @@ def test_absent_conversion_score_is_not_recorded_as_a_perfect_score():
         orchestrator_quality={"overall": 92.0, "critic_findings": []},
     )
 
-    assert decision["publishable"] is True
+    assert decision["publishable"] is False
     assert decision["conversion_quality_score"] is None
     assert decision["conversion_quality_available"] is False
+    assert "conversion_quality_not_assessed" in decision["reasons"]
+    assert "evidence_not_assessed" in decision["reasons"]
+
+
+def test_low_quality_and_duplicate_conflicts_block_publication():
+    decision = publish_decision.decide(
+        legacy_score={"total": 70.0, "platform_results": {}},
+        validation={"passed": True, "errors": []},
+        duplicates={"ok": False, "reasons": ["same_hook_recently_published"]},
+        conversion_quality_score=72.0,
+        orchestrator_quality={"overall": 70.0, "critic_findings": ["message_is_generic"]},
+        evidence_readiness={"ready": True, "status": "READY"},
+    )
+
+    assert decision["publishable"] is False
+    assert "same_hook_recently_published" in decision["reasons"]
+    assert "quality_below_publish_threshold" in decision["reasons"]
+    assert "conversion_quality_below_publish_threshold" in decision["reasons"]
+    assert "critic_below_publish_threshold" in decision["reasons"]
+
+
+def test_non_gemini_copy_and_visual_provenance_block_publication():
+    decision = publish_decision.decide(
+        legacy_score={"total": 97.0, "platform_results": {}},
+        validation={"passed": True, "errors": []},
+        duplicates={"ok": True, "reasons": []},
+        conversion_quality_score=100.0,
+        orchestrator_quality={"overall": 92.0, "critic_findings": []},
+        evidence_readiness={"ready": True, "status": "READY"},
+        copy_generation_method="template_fallback",
+        visual_generation={"visual_provider": "template_render"},
+    )
+
+    assert decision["publishable"] is False
+    assert "copy_not_gemini_authored" in decision["reasons"]
+    assert "visual_not_gemini_generated" in decision["reasons"]
 
 
 def test_supported_rewrite_and_abstention_are_available_without_weakening_high_risk_policy():

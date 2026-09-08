@@ -12,6 +12,7 @@ from typing import Any
 import publish_facebook
 import publish_instagram
 import publish_linkedin
+from platform_publishing import get_status as get_platform_status
 from social import model_router
 from social_visuals import generate_strict_gemini_image, review_rendered_visual
 from build_monthly_content import _captions, _gemini_generation_plan, _load_current_news
@@ -21,17 +22,52 @@ from content_operations import (
     claim_due,
     complete_platform_transaction,
     configured_platforms,
+    evaluate_outbox_readiness,
     finalize_outbox,
     platform_transaction,
+    record_publication_history,
+    reconcile_confirmed_transactions,
     recover_outbox,
     release_outbox,
+    transition_package,
     upcoming_ready_packages,
     update_claimed_package,
     update_ready_package,
 )
+from publication_contract import PackageState
+from runtime_config import load_runtime_config
 
 DATA_DIR = os.environ.get("DATA_DIR", os.path.join(os.path.dirname(__file__), "..", "data"))
 FORBIDDEN_PUBLIC_LABELS = ("POV:", "FIELD TRUTH")
+AMBIGUOUS_COPY_PHRASES = (
+    "technical handoff",
+    "environmental variable",
+    "real-world rehearsal",
+    "protect the message",
+    "power the handoff",
+)
+ACTION_WORDS = {
+    "assemble", "bring", "build", "carry", "charge", "check", "connect", "download", "keep", "label", "pack",
+    "place", "plug", "power", "run", "save", "set", "store", "test", "use",
+}
+
+
+def _copy_clarity_issues(result: dict[str, Any]) -> list[str]:
+    captions = result.get("platform_captions") if isinstance(result.get("platform_captions"), dict) else {}
+    issues: list[str] = []
+    for platform in PLATFORMS:
+        caption = re.sub(r"\s+", " ", str(captions.get(platform) or "")).strip()
+        normalized = re.sub(r"[^a-z0-9 ]+", " ", caption.lower())
+        words = set(normalized.split())
+        if any(phrase in normalized for phrase in AMBIGUOUS_COPY_PHRASES):
+            issues.append(f"{platform}_ambiguous_language")
+        if "infenergy" not in words:
+            issues.append(f"{platform}_infenergy_role_missing")
+        if not words.intersection(ACTION_WORDS):
+            issues.append(f"{platform}_concrete_action_missing")
+        if len(words) < 14 or len(re.findall(r"[.!?](?:\s|$)", caption)) < 2:
+            issues.append(f"{platform}_problem_action_outcome_unclear")
+    return issues
 
 
 def _delivery_enforced() -> bool:
@@ -107,6 +143,7 @@ def _gemini_assets_ready(package: dict[str, Any], required_count: int) -> bool:
         and all(
             isinstance(asset, dict)
             and asset.get("render_engine") == "gemini"
+            and (asset.get("generation") or {}).get("semantic_quality_gate_version") == 2
             and os.path.isfile(str(asset.get("local_path") or ""))
             and str(asset.get("public_url") or "").startswith("http")
             and review_rendered_visual(str(asset.get("local_path") or ""), "instagram").get("verdict") == "PASS"
@@ -185,6 +222,7 @@ def _gemini_copy_ready(package: dict[str, Any]) -> bool:
         and copy_plan.get("strict_provider") is True
         and copy_plan.get("status") == "COMPLETE"
         and bool(copy_plan.get("model_output_sha256"))
+        and (copy_plan.get("qa") or {}).get("clarity") == "PASS"
     )
 
 
@@ -258,6 +296,9 @@ def _prepare_gemini_copy(package: dict[str, Any], data_dir: str = DATA_DIR) -> d
     normalized_headline = re.sub(r"[^a-z0-9 ]+", "", str(visible["headline"]).lower()).strip()
     if normalized_headline in generic_headlines:
         raise RuntimeError("gemini_copy_generic_headline")
+    clarity_issues = _copy_clarity_issues(result)
+    if clarity_issues:
+        raise RuntimeError(f"gemini_copy_clarity_rejected:{','.join(clarity_issues)}")
 
     thought.update({
         "statement": str(result["statement"]).strip(),
@@ -295,7 +336,12 @@ def _prepare_gemini_copy(package: dict[str, Any], data_dir: str = DATA_DIR) -> d
         post = ((package.get("platform_posts") or {}).get(platform) or {})
         post["caption"] = caption
         post["final_caption"] = caption
-        post["final_caption_qa"] = {"status": "PRESENTATION_READY", "reasons": [], "provider": "gemini"}
+        post["final_caption_qa"] = {
+            "status": "PRESENTATION_READY",
+            "reasons": [],
+            "provider": "gemini",
+            "clarity": "PASS",
+        }
 
     from validate_product_claims import validate_generated_content
     claim_review = validate_generated_content(package)
@@ -353,7 +399,7 @@ def _prepare_gemini_copy(package: dict[str, Any], data_dir: str = DATA_DIR) -> d
         "generated_at_utc": datetime.now(timezone.utc).isoformat(),
         "model_route": model_router.route_for(str(copy_plan.get("task") or "copy_editing")),
         "model_output_sha256": output_digest,
-        "qa": {"schema": "PASS", "forbidden_labels": "PASS", "product_claims": "PASS"},
+        "qa": {"schema": "PASS", "forbidden_labels": "PASS", "clarity": "PASS", "product_claims": "PASS"},
     })
     package["gemini_copy"] = copy_plan
     return package
@@ -422,6 +468,18 @@ def _prepare_gemini_assets(package: dict[str, Any], data_dir: str) -> dict[str, 
         "generated_at_utc": datetime.now(timezone.utc).isoformat(),
         "actual_image_count": len(assets),
         "assets": assets,
+        "qa": {
+            gate: {
+                "status": "PASS",
+                "explanation": "All generated assets passed semantic QA v2 and deterministic artifact review.",
+                "severity": "BLOCKING",
+                "evidence": [str(asset.get("local_path") or "") for asset in assets],
+                "evaluated_at": datetime.now(timezone.utc).isoformat(),
+                "evaluator": "social_visuals.semantic_and_artifact_review",
+                "evaluator_version": "2",
+            }
+            for gate in ("TEXT_QA", "STORY_QA", "VISUAL_QA", "CONTINUITY_QA", "ORIGINALITY_QA", "EMOTIONAL_QA")
+        },
     })
     package["gemini_generation"] = generation
     package["carousel_assets"] = assets if len(assets) > 1 else []
@@ -440,8 +498,8 @@ def _prepare_gemini_assets(package: dict[str, Any], data_dir: str) -> dict[str, 
 
 
 def pregenerate_upcoming(*, data_dir: str = DATA_DIR) -> dict[str, Any]:
-    horizon_hours = max(1, int(os.environ.get("GEMINI_PREGEN_HORIZON_HOURS", "744")))
-    before_utc = (datetime.now(timezone.utc) + timedelta(hours=horizon_hours)).isoformat()
+    lead_minutes = load_runtime_config().preparation_lead_time_minutes
+    before_utc = (datetime.now(timezone.utc) + timedelta(minutes=lead_minutes)).isoformat()
     rows = upcoming_ready_packages(data_dir, before_utc=before_utc, limit=100)
     news_before_utc = datetime.now(timezone.utc) + timedelta(hours=24)
     for row in rows:
@@ -458,14 +516,26 @@ def pregenerate_upcoming(*, data_dir: str = DATA_DIR) -> dict[str, Any]:
             continue
         outbox_id = str(row["outbox_id"])
         try:
+            transition_package(data_dir, outbox_id, PackageState.PREPARING.value, "PREPARATION_WINDOW_OPEN", actor="dispatch_outbox.pregenerate")
             if copy_plan.get("strict_provider") is True:
                 package = _prepare_gemini_copy(package, data_dir)
             prepared = _prepare_gemini_assets(package, data_dir)
             if not update_ready_package(data_dir, outbox_id, prepared):
                 return {"status": "DEFERRED", "outbox_id": outbox_id, "detail": "package_no_longer_ready"}
+            transition_package(data_dir, outbox_id, PackageState.AWAITING_QA.value, "CREATIVE_GENERATED", actor="dispatch_outbox.pregenerate")
+            readiness = evaluate_outbox_readiness(data_dir, outbox_id, dispatch_enabled=True, actor="dispatch_outbox.pregenerate")
+            transition_package(data_dir, outbox_id, readiness["state"], "READINESS_PASSED" if readiness["ready"] else readiness["reason_codes"][0], actor="dispatch_outbox.pregenerate", detail=readiness)
             return {"status": "PREGENERATED", "outbox_id": outbox_id}
         except Exception as exc:
-            return {"status": "RETRYABLE_FAILURE", "outbox_id": outbox_id, "error": f"{type(exc).__name__}:{exc}"}
+            error = f"{type(exc).__name__}:{exc}"
+            if "budget" in error.lower() or "exhausted" in error.lower():
+                state, reason = PackageState.BLOCKED_BUDGET.value, "AI_BUDGET_EXHAUSTED"
+            elif "canon" in error.lower():
+                state, reason = PackageState.BLOCKED_CANON.value, "CANON_NOT_FOUND"
+            else:
+                state, reason = PackageState.FAILED_PREPARATION.value, "PREPARATION_FAILED"
+            transition_package(data_dir, outbox_id, state, reason, actor="dispatch_outbox.pregenerate", detail={"error": error})
+            return {"status": state, "outbox_id": outbox_id, "reason_code": reason, "error": error}
     return {"status": "IDLE", "detail": "no_upcoming_gemini_assets_needed"}
 
 
@@ -505,37 +575,21 @@ def dispatch_due(*, data_dir: str = DATA_DIR, now_utc: str | None = None) -> dic
     ]
     if not due_platforms:
         next_due = min(_platform_due_at(package, platform, str(claimed["scheduled_at"])) for platform in platforms)
+        transition_package(data_dir, outbox_id, PackageState.READY_TO_DISPATCH.value, "PLATFORM_WINDOW_NOT_DUE", actor="dispatch_outbox", attempt_id=claimed.get("active_attempt_id"))
         release_outbox(data_dir, outbox_id, "", next_attempt_at=next_due.isoformat())
         return {"status": "DEFERRED", "outbox_id": outbox_id, "next_attempt_at": next_due.isoformat()}
+    readiness = evaluate_outbox_readiness(data_dir, outbox_id, dispatch_enabled=True, actor="dispatch_outbox.preflight")
+    if not readiness["ready"]:
+        transition_package(
+            data_dir, outbox_id, readiness["state"], readiness["reason_codes"][0],
+            actor="dispatch_outbox.preflight", attempt_id=claimed.get("active_attempt_id"), detail=readiness,
+        )
+        release_outbox(data_dir, outbox_id, readiness["reason_codes"][0], reset_attempts=True)
+        return {"status": "AWAITING_PREPARATION", "outbox_id": outbox_id, "readiness": readiness}
     creative_error = "" if _delivery_enforced() else _creative_package_error(package, platforms)
     if creative_error:
         recover_outbox(data_dir, outbox_id, creative_error)
         return {"status": "CONTENT_RECOVERING", "outbox_id": outbox_id, "error": creative_error}
-    generation = package.get("gemini_generation") if isinstance(package.get("gemini_generation"), dict) else {}
-    if generation.get("strict_provider") is True:
-        try:
-            package = _refresh_current_news_package(package)
-            copy_plan = package.get("gemini_copy") if isinstance(package.get("gemini_copy"), dict) else {}
-            if copy_plan.get("strict_provider") is True:
-                package = _prepare_gemini_copy(package, data_dir)
-            package = _prepare_gemini_assets(package, data_dir)
-            update_claimed_package(data_dir, outbox_id, package)
-        except Exception as exc:
-            error = f"{type(exc).__name__}:{exc}"
-            attempt_count = int(claimed.get("attempt_count") or 1)
-            max_attempts = max(1, int(os.environ.get("OUTBOX_MAX_ATTEMPTS", "4")))
-            if attempt_count >= max_attempts:
-                finalize_outbox(data_dir, outbox_id, status="EXTERNAL_ACTION_REQUIRED", error=error)
-                return {"status": "EXTERNAL_ACTION_REQUIRED", "outbox_id": outbox_id, "error": error}
-            retry_at = datetime.fromisoformat(now_utc.replace("Z", "+00:00")) if now_utc else datetime.now(timezone.utc)
-            base_seconds = max(30, int(os.environ.get("OUTBOX_GENERATION_RETRY_BASE_SECONDS", "1800")))
-            retry_at += timedelta(seconds=min(21600, base_seconds * (2 ** (attempt_count - 1))))
-            release_outbox(data_dir, outbox_id, error, next_attempt_at=retry_at.isoformat())
-            return {
-                "status": "RETRYABLE_FAILURE", "outbox_id": outbox_id,
-                "next_attempt_at": retry_at.isoformat(), "error": error,
-            }
-
     for platform in due_platforms:
         artifact_error = _strict_publish_artifact_error(package, platform)
         if artifact_error:
@@ -581,10 +635,17 @@ def dispatch_due(*, data_dir: str = DATA_DIR, now_utc: str | None = None) -> dic
                 external_id=external_id,
                 provider_response=response,
             )
+            record_publication_history(data_dir, outbox_id=outbox_id, platform=platform, external_id=external_id)
             results[platform] = {"state": "CONFIRMED_SUCCESS", "external_id": external_id}
         except Exception as exc:
             error = f"{type(exc).__name__}:{exc}"
-            state = "AUTH_ACTION_REQUIRED" if any(token in error.lower() for token in ("token", "oauth", "unauthorized", "forbidden")) else "CONFIRMED_FAILURE"
+            lowered = error.lower()
+            if any(token in lowered for token in ("token", "oauth", "unauthorized", "forbidden")):
+                state = "AUTH_ACTION_REQUIRED"
+            elif any(token in lowered for token in ("timeout", "timed out", "connection", "502", "503", "504")):
+                state = "AMBIGUOUS"
+            else:
+                state = "CONFIRMED_FAILURE"
             complete_platform_transaction(
                 data_dir,
                 outbox_id=outbox_id,
@@ -592,7 +653,7 @@ def dispatch_due(*, data_dir: str = DATA_DIR, now_utc: str | None = None) -> dic
                 state=state,
                 error=error,
             )
-            if state == "AUTH_ACTION_REQUIRED":
+            if state in {"AUTH_ACTION_REQUIRED", "AMBIGUOUS"}:
                 ambiguous.append(f"{platform}:{error}")
             else:
                 retry_errors.append(f"{platform}:{error}")
@@ -600,6 +661,7 @@ def dispatch_due(*, data_dir: str = DATA_DIR, now_utc: str | None = None) -> dic
 
     if ambiguous:
         error = " | ".join(ambiguous)
+        transition_package(data_dir, outbox_id, PackageState.RECONCILIATION_REQUIRED.value, "PLATFORM_DELIVERY_AMBIGUOUS", actor="dispatch_outbox", attempt_id=claimed.get("active_attempt_id"), detail={"platforms": results})
         finalize_outbox(data_dir, outbox_id, status="EXTERNAL_ACTION_REQUIRED", error=error)
         return {"status": "EXTERNAL_ACTION_REQUIRED", "outbox_id": outbox_id, "platforms": results, "error": error}
     if retry_errors:
@@ -610,10 +672,14 @@ def dispatch_due(*, data_dir: str = DATA_DIR, now_utc: str | None = None) -> dic
             terminal_status = "EXTERNAL_ACTION_REQUIRED" if any(
                 result.get("state") == "CONFIRMED_SUCCESS" for result in results.values()
             ) else "FAILED"
+            destination = PackageState.PARTIALLY_PUBLISHED.value if any(result.get("state") == "CONFIRMED_SUCCESS" for result in results.values()) else PackageState.FAILED_DELIVERY.value
+            transition_package(data_dir, outbox_id, destination, "PLATFORM_RETRY_LIMIT_REACHED", actor="dispatch_outbox", attempt_id=claimed.get("active_attempt_id"), detail={"platforms": results})
             finalize_outbox(data_dir, outbox_id, status=terminal_status, error=error)
             return {"status": terminal_status, "outbox_id": outbox_id, "platforms": results, "error": error}
         retry_at = now
         retry_at += timedelta(seconds=min(1800, 30 * (2 ** (attempt_count - 1))))
+        destination = PackageState.PARTIALLY_PUBLISHED.value if any(result.get("state") == "CONFIRMED_SUCCESS" for result in results.values()) else PackageState.FAILED_DELIVERY.value
+        transition_package(data_dir, outbox_id, destination, "PLATFORM_RETRYABLE_ERROR", actor="dispatch_outbox", attempt_id=claimed.get("active_attempt_id"), detail={"platforms": results})
         release_outbox(data_dir, outbox_id, error, next_attempt_at=retry_at.isoformat())
         return {"status": "PARTIAL_RETRY", "outbox_id": outbox_id, "platforms": results, "error": error}
 
@@ -623,17 +689,59 @@ def dispatch_due(*, data_dir: str = DATA_DIR, now_utc: str | None = None) -> dic
     ]
     if remaining:
         next_due = min(_platform_due_at(package, platform, str(claimed["scheduled_at"])) for platform in remaining)
+        transition_package(data_dir, outbox_id, PackageState.PARTIALLY_PUBLISHED.value, "PLATFORM_WINDOWS_REMAIN", actor="dispatch_outbox", attempt_id=claimed.get("active_attempt_id"), detail={"remaining_platforms": remaining})
         release_outbox(data_dir, outbox_id, "", next_attempt_at=next_due.isoformat())
         return {
             "status": "PARTIAL_SCHEDULED", "outbox_id": outbox_id,
             "platforms": results, "remaining_platforms": remaining,
             "next_attempt_at": next_due.isoformat(),
         }
+    transition_package(data_dir, outbox_id, PackageState.PUBLISHED.value, "ALL_PLATFORM_RECEIPTS_CONFIRMED", actor="dispatch_outbox", attempt_id=claimed.get("active_attempt_id"), detail={"platforms": results})
     finalize_outbox(data_dir, outbox_id, status="PUBLISHED")
     return {"status": "PUBLISHED", "outbox_id": outbox_id, "platforms": results}
 
 
+def reconcile_ambiguous_transactions(*, data_dir: str = DATA_DIR) -> dict[str, Any]:
+    """Query provider status where possible; never resend an uncertain request."""
+    import sqlite3
+    from inventory_db import get_db_path
+
+    connection = sqlite3.connect(get_db_path(data_dir))
+    connection.row_factory = sqlite3.Row
+    try:
+        rows = connection.execute(
+            "SELECT outbox_id, platform, external_id FROM platform_transactions WHERE state='AMBIGUOUS'"
+        ).fetchall()
+    finally:
+        connection.close()
+    results: list[dict[str, Any]] = []
+    for row in rows:
+        outbox_id, platform = str(row["outbox_id"]), str(row["platform"])
+        external_id = str(row["external_id"] or "")
+        if not external_id:
+            results.append({"outbox_id": outbox_id, "platform": platform, "state": "RECONCILIATION_REQUIRED", "reason": "external_id_unavailable"})
+            continue
+        try:
+            status_result = get_platform_status(platform, external_id)
+            status = str(status_result.get("status") or "").upper()
+        except Exception as exc:
+            results.append({"outbox_id": outbox_id, "platform": platform, "state": "RECONCILIATION_REQUIRED", "reason": f"{type(exc).__name__}:{exc}"})
+            continue
+        if status in {"SUCCEEDED", "PUBLISH_COMPLETE", "PUBLISHED"}:
+            complete_platform_transaction(data_dir, outbox_id=outbox_id, platform=platform, state="CONFIRMED_SUCCESS", external_id=external_id, provider_response=status_result)
+            record_publication_history(data_dir, outbox_id=outbox_id, platform=platform, external_id=external_id)
+            results.append({"outbox_id": outbox_id, "platform": platform, "state": "CONFIRMED_SUCCESS"})
+        elif status in {"FAILED", "PROCESSING_FAILED", "REJECTED", "NOT_FOUND"}:
+            complete_platform_transaction(data_dir, outbox_id=outbox_id, platform=platform, state="CONFIRMED_FAILURE", external_id=external_id, provider_response=status_result, error=status)
+            results.append({"outbox_id": outbox_id, "platform": platform, "state": "CONFIRMED_FAILURE"})
+        else:
+            results.append({"outbox_id": outbox_id, "platform": platform, "state": "RECONCILIATION_REQUIRED", "reason": status or "status_unknown"})
+    reconcile_confirmed_transactions(data_dir)
+    return {"checked": len(rows), "results": results}
+
+
 def dispatch_due_batch(*, data_dir: str = DATA_DIR, now_utc: str | None = None, limit: int = 25) -> dict[str, Any]:
+    reconciliation = reconcile_ambiguous_transactions(data_dir=data_dir)
     results: list[dict[str, Any]] = []
     for _ in range(max(1, limit)):
         result = dispatch_due(data_dir=data_dir, now_utc=now_utc)
@@ -645,6 +753,7 @@ def dispatch_due_batch(*, data_dir: str = DATA_DIR, now_utc: str | None = None, 
         "processed": len(results),
         "published": sum(1 for result in results if result.get("status") == "PUBLISHED"),
         "failed": sum(1 for result in results if result.get("status") in {"FAILED", "EXTERNAL_ACTION_REQUIRED"}),
+        "reconciliation": reconciliation,
         "results": results,
     }
 

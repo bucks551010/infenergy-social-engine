@@ -1,8 +1,12 @@
 from __future__ import annotations
 
 import os
+import json
+import sqlite3
 import sys
 from datetime import date, datetime, timezone
+
+import pytest
 
 _REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(_REPO, "scripts"))
@@ -12,17 +16,22 @@ from content_operations import (  # noqa: E402
     begin_platform_transaction,
     claim_due,
     complete_platform_transaction,
+    complete_ai_attempt,
+    classify_backlog,
     content_detail,
     create_council_session,
     daily_status,
     daily_markdown,
     ensure_daily_slots,
+    find_eligible_creative,
     init_content_operations,
     mark_ready,
     mark_slot_external_action,
     operations_readiness,
     reconcile_ready_inventory,
     reconcile_stale_claims,
+    reserve_ai_attempt,
+    today_schedule,
     upcoming_ready_packages,
     update_ready_package,
 )
@@ -74,6 +83,13 @@ def test_daily_slots_outbox_and_archive_survive_restart(tmp_path):
             "instagram": {"final_caption": "Instagram final\n\nSecond paragraph"},
             "linkedin": {"final_caption": "LinkedIn final\n\nSecond paragraph"},
         },
+        "routing": {"platforms": ["facebook", "instagram", "linkedin"]},
+        "platform_posts": {
+            "facebook": {"final_caption": "Facebook final"},
+            "instagram": {"final_caption": "Instagram final"},
+            "linkedin": {"final_caption": "LinkedIn final"},
+        },
+        "primary_publish_image_url": "https://example.test/final.png",
         "media_asset": {"status": "READY", "role": "FINAL_SOCIAL_CREATIVE"},
     }
     outbox_id = mark_ready(
@@ -117,12 +133,12 @@ def test_pregeneration_updates_only_unclaimed_ready_package(tmp_path):
         slot="morning",
         scheduled_at=_schedule(day)["morning"],
         decision_id=decision_id,
-        package={"content_id": "content-1", "generation": "pending"},
+        package={"content_id": "content-1", "generation": "pending", "routing": {"platforms": ["facebook"]}, "platform_posts": {"facebook": {"final_caption": "Ready copy"}}, "primary_publish_image_url": "https://example.test/ready.png"},
     )
 
     rows = upcoming_ready_packages(data_dir, before_utc="2026-08-20T00:00:00+00:00")
     assert [row["outbox_id"] for row in rows] == [outbox_id]
-    assert update_ready_package(data_dir, outbox_id, {"content_id": "content-1", "generation": "complete"}) is True
+    assert update_ready_package(data_dir, outbox_id, {"content_id": "content-1", "generation": "complete", "routing": {"platforms": ["facebook"]}, "platform_posts": {"facebook": {"final_caption": "Ready copy"}}, "primary_publish_image_url": "https://example.test/ready.png"}) is True
 
     claimed = claim_due(data_dir, "2026-08-19T13:00:01+00:00")
     assert claimed["package"]["generation"] == "complete"
@@ -325,7 +341,7 @@ def test_restart_recovers_stale_claim_without_external_transaction(tmp_path):
         slot="morning",
         scheduled_at=_schedule(day)["morning"],
         decision_id=decision_id,
-        package={"content_id": "content-1", "routing": {"platforms": ["facebook"]}},
+        package={"content_id": "content-1", "routing": {"platforms": ["facebook"]}, "platform_posts": {"facebook": {"final_caption": "Ready copy"}}, "primary_publish_image_url": "https://example.test/ready.png"},
     )
     claim_due(data_dir, "2026-08-20T13:00:01+00:00")
 
@@ -338,6 +354,44 @@ def test_restart_recovers_stale_claim_without_external_transaction(tmp_path):
 
     assert recovered == [{"outbox_id": outbox_id, "reason": "stale_claim_recovered_after_restart"}]
     assert status["slots"][0]["status"] == "READY"
+
+
+def test_ai_attempts_are_durable_and_complete_once(tmp_path):
+    data_dir = str(tmp_path)
+    reserve_ai_attempt(
+        data_dir, call_id="call-1", provider="gemini", model="test-model",
+        operation_type="image", attempt_number=1, reason="test", initiating_subsystem="pytest",
+    )
+    complete_ai_attempt(data_dir, call_id="call-1", status="SUCCEEDED", actual_usage={"images": 1})
+    connection = sqlite3.connect(os.path.join(data_dir, "inventory.db"))
+    row = connection.execute("SELECT status, actual_usage_json, completed_at FROM ai_generation_attempts WHERE call_id='call-1'").fetchone()
+    connection.close()
+    assert row[0] == "SUCCEEDED"
+    assert json.loads(row[1]) == {"images": 1}
+    assert row[2]
+
+
+def test_inventory_backlog_and_today_schedule_are_read_only(tmp_path):
+    data_dir = str(tmp_path)
+    day = "2026-08-19"
+    ensure_daily_slots(data_dir, day, _schedule(day), {"platforms": ["facebook"]})
+    decision = create_council_session(data_dir, content_date=day, slot="morning", blackboard={})
+    outbox_id = mark_ready(
+        data_dir, content_date=day, slot="morning", scheduled_at=_schedule(day)["morning"], decision_id=decision,
+        package={"content_id": "eligible", "routing": {"platforms": ["facebook"]}, "platform_posts": {"facebook": {"final_caption": "Ready copy"}}, "primary_publish_image_url": "https://example.test/eligible.png"},
+    )
+    assert [item["outbox_id"] for item in find_eligible_creative(data_dir, {"platform": "facebook"})] == [outbox_id]
+    assert today_schedule(data_dir, day)["packages"][0]["outbox_id"] == outbox_id
+    assert classify_backlog(data_dir, now_utc="2026-08-19T12:00:00+00:00")["ready_relevant"][0]["outbox_id"] == outbox_id
+
+
+def test_database_rejects_invalid_lifecycle_state(tmp_path):
+    data_dir = str(tmp_path)
+    init_content_operations(data_dir)
+    connection = sqlite3.connect(os.path.join(data_dir, "inventory.db"))
+    with pytest.raises(sqlite3.IntegrityError, match="invalid_lifecycle_state"):
+        connection.execute("INSERT INTO content_outbox (outbox_id,content_id,decision_id,content_date,slot,scheduled_at,package_json,status,created_at,ready_at,lifecycle_state) VALUES ('o','c','d','2026-01-01','s','2026-01-01T00:00:00+00:00','{}','READY','n','n','MADE_UP')")
+    connection.close()
 
 
 def test_human_readable_daily_ledger_is_derived_from_canonical_records(tmp_path):

@@ -671,6 +671,32 @@ $('#new-creative').addEventListener('click', async () => {
     toast('New idea saved');
   } catch (error) { toast(error.message); }
 });
+document.addEventListener('click', (event) => {
+  const button = event.target.closest('[data-micro-mission]');
+  if (!button) return;
+  const stage = button.dataset.microMission;
+  const prompts = {
+    idea: 'Generate three original Infenergy: Micro Missions ideas. Each must fit one 1080x1920 Instagram Story graphic and include an immediate human threat, Infenergy observing and adapting, decisive superhero action, and a visible human result. Gemini must author all story and visible copy. Do not generate images yet.',
+    regenerate: 'Regenerate the current Infenergy: Micro Missions concept from scratch as one 1080x1920 Story graphic. Make the intervention unmistakably superheroic. Use Gemini only and return an editable story before image generation.',
+    edit: 'Open the current Infenergy: Micro Missions story for editing. Preserve one 1080x1920 Story asset and show the threat, observation, adaptation, decisive rescue, changed human result, and exact Gemini-authored visible copy.',
+    finalize: 'Finalize the current Infenergy: Micro Missions story and generate exactly one 1080x1920 Story graphic with Gemini. Run technical and semantic QA. Reject passive advice, carousel output, generic superhero substitution, malformed anatomy, and unreadable text.',
+    schedule: 'Schedule the finalized and approved Infenergy: Micro Missions Story. Keep the single 1080x1920 asset, generate Gemini-authored platform copy, and ask me for the publication date and time.',
+    publish: 'Publish the finalized and approved Infenergy: Micro Missions asset to Instagram Story now. Never publish a carousel or QA-failed version. Return the platform receipt.',
+    sample: 'Generate one draft sample image for Infenergy: Micro Missions at 1080x1920 using Gemini only. Show a decisive superhero rescue and visible human result. Do not publish it.',
+  };
+  if (stage === 'idea' || stage === 'regenerate') {
+    $('#generation-form').hidden = false;
+    state.generationDays = 1;
+    $('#generation-days').value = '1';
+    $('#generation-guidance').value = prompts[stage];
+    $('#generation-guidance').focus();
+    $('#generation-form').scrollIntoView?.({ behavior: 'smooth', block: 'start' });
+    return;
+  }
+  $('#command-input').value = prompts[stage];
+  activateView('command');
+  $('#command-input').focus();
+});
 renderGenerationControls();
 $('#generation-start').value = new Date().toISOString().slice(0, 10);
 $('#generation-toggle').addEventListener('click', () => { $('#generation-form').hidden = !$('#generation-form').hidden; });

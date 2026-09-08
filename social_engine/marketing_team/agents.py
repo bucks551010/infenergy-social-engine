@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
 
+from social.gemini_budget import GeminiBudgetExceeded, reserve_gemini_call
+
 
 @dataclass
 class MarketingAgent:
@@ -39,6 +41,7 @@ def _ai_json(prompt: str) -> dict[str, Any] | None:
         from google.genai import types
 
         client = genai.Client(api_key=api_key)
+        reserve_gemini_call("reasoning", model_name, "marketing team analysis")
         response = client.models.generate_content(
             model=model_name,
             contents=prompt,
@@ -53,6 +56,8 @@ def _ai_json(prompt: str) -> dict[str, Any] | None:
             if raw.lower().startswith("json"):
                 raw = raw[4:]
         return json.loads(raw.strip())
+    except GeminiBudgetExceeded:
+        raise
     except Exception:
         return None
 

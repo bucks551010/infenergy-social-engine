@@ -10,6 +10,7 @@ from __future__ import annotations
 import os
 
 from ._base import utc_now, write_snapshot
+from social.gemini_budget import GeminiBudgetExceeded, tracked_gemini_call
 
 
 def _fallback(platform: str, product_name: str, scene_prompt: str) -> str:
@@ -35,14 +36,18 @@ def _gemini_alt(platform: str, product_name: str, scene_prompt: str) -> str | No
             "The sentence must be plain descriptive text, no marketing language, no emojis, no hashtags."
         )
         client = genai.Client(api_key=api_key)
-        resp = client.models.generate_content(
-            model=os.environ.get("GEMINI_MODEL", "gemini-2.5-flash"),
-            contents=prompt,
-            config=types.GenerateContentConfig(response_mime_type="text/plain"),
-        )
+        model = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+        with tracked_gemini_call("reasoning", model, f"alt text for {platform}", initiating_subsystem="alt_text_accessibility"):
+            resp = client.models.generate_content(
+                model=model,
+                contents=prompt,
+                config=types.GenerateContentConfig(response_mime_type="text/plain"),
+            )
         text = (resp.text or "").strip().replace("\n", " ")
         if 20 <= len(text) <= 280:
             return text
+    except GeminiBudgetExceeded:
+        raise
     except Exception:
         return None
     return None

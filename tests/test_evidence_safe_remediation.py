@@ -19,6 +19,8 @@ def _final_decision(readiness: dict) -> dict:
         conversion_quality_score=100.0,
         orchestrator_quality={"overall": 90.0, "critic_findings": []},
         evidence_readiness=readiness,
+        copy_generation_method="gemini",
+        visual_generation={"provider": "gemini"},
     )
 
 

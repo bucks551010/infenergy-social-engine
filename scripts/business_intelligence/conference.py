@@ -32,6 +32,8 @@ _OPERATIONAL: tuple[AgentSpec, ...] = (
     AgentSpec("learning_ingestion", "operational", "Turns outcomes into reusable learning signals", ("learning_signals",), ("post_history", "engagement_metrics")),
     AgentSpec("topic_intelligence", "operational", "Maintains timely topic opportunities", ("topic_opportunities",), ("topic_queue", "content_territories"), ("external_research_access",)),
     AgentSpec("carousel_slide_writer", "operational", "Expands approved narratives into carousel slides", ("carousel_copy",), ("creative_context", "audience_model")),
+    AgentSpec("on_image_text_author", "operational", "Authors constrained on-image copy", ("on_image_copy",), ("creative_context", "voice_dna")),
+    AgentSpec("on_image_typography_designer", "operational", "Plans typography placement for approved creative", ("typography_plan",), ("on_image_copy", "visual_context")),
     AgentSpec("visual_qa_reviewer", "operational", "Checks visual quality and brand compliance", ("visual_qa",), ("visual_dna",), ("generated_visuals",)),
     AgentSpec("product_matcher", "operational", "Matches content opportunities to catalog products", ("product_match",), ("product_catalog", "product_briefs", "audience_model")),
     AgentSpec("brand_voice_drift", "operational", "Detects copy that drifts from voice DNA", ("voice_drift_review",), ("voice_dna", "post_history")),

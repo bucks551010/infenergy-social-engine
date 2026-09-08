@@ -24,6 +24,9 @@ def decide(
     orchestrator_quality: dict[str, Any] | None = None,
     visual_errors: list[str] | None = None,
     evidence_readiness: dict[str, Any] | None = None,
+    copy_generation_method: str | None = None,
+    visual_generation: dict[str, Any] | None = None,
+    visual_required: bool = True,
     recovery_exhausted: bool = False,
 ) -> dict[str, Any]:
     """Return the only publish decision consumed by the runtime."""
@@ -36,22 +39,31 @@ def decide(
     if not validation.get("passed", False):
         reasons.extend(str(error) for error in validation.get("errors", []))
     if not duplicates.get("ok", True):
-        advisory_reasons.extend(str(reason) for reason in duplicates.get("reasons", []))
+        reasons.extend(str(reason) for reason in duplicates.get("reasons", []))
     if visual_errors:
         reasons.extend(visual_errors)
-    if evidence_readiness and not evidence_readiness.get("ready", False):
+    if evidence_readiness is None:
+        reasons.append("evidence_not_assessed")
+    elif not evidence_readiness.get("ready", False):
         reasons.append(str(evidence_readiness.get("status") or "evidence_not_ready"))
+    if str(copy_generation_method or "").strip().lower() != "gemini":
+        reasons.append("copy_not_gemini_authored")
+    visual_provider = str((visual_generation or {}).get("visual_provider") or (visual_generation or {}).get("provider") or "").strip().lower()
+    if visual_required and visual_provider != "gemini":
+        reasons.append("visual_not_gemini_generated")
     critic_findings = [
         str(reason) for reason in (orchestrator_quality or {}).get("critic_findings", (orchestrator_quality or {}).get("reasons", []))
         if str(reason)
     ]
     if legacy_total < PUBLISH_SCORE:
-        advisory_reasons.append("quality_preference_unmet")
-    if conversion_quality_score is not None and conversion_quality_score < CONVERSION_SCORE:
-        advisory_reasons.append("conversion_quality_preference_unmet")
+        reasons.append("quality_below_publish_threshold")
+    if conversion_quality_score is None:
+        reasons.append("conversion_quality_not_assessed")
+    elif conversion_quality_score < CONVERSION_SCORE:
+        reasons.append("conversion_quality_below_publish_threshold")
     if critic_total is not None and critic_total < PUBLISH_SCORE:
-        advisory_reasons.extend(critic_findings)
-        advisory_reasons.append("critic_preference_unmet")
+        reasons.extend(critic_findings)
+        reasons.append("critic_below_publish_threshold")
     decision = "do_not_publish" if reasons else "publish"
 
     return {
@@ -65,8 +77,13 @@ def decide(
         "critic_decision_reason": "critic_below_publish_threshold" if critic_total is not None and critic_total < PUBLISH_SCORE else "critic_threshold_met",
         "conversion_quality_score": float(conversion_quality_score) if conversion_quality_score is not None else None,
         "conversion_quality_available": conversion_quality_score is not None,
-        "reasons": reasons,
+        "reasons": list(dict.fromkeys(reasons)),
         "advisory_reasons": list(dict.fromkeys(advisory_reasons)),
         "platform_results": legacy_score.get("platform_results", {}),
-        "evidence_readiness": evidence_readiness or {"ready": True, "status": "NOT_ASSESSED"},
+        "evidence_readiness": evidence_readiness or {"ready": False, "status": "NOT_ASSESSED"},
+        "generation_provenance": {
+            "copy": str(copy_generation_method or ""),
+            "visual": visual_provider,
+            "visual_required": visual_required,
+        },
     }

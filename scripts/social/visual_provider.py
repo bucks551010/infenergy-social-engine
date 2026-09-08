@@ -1,11 +1,11 @@
-"""Visual provider interface + template fallback (Master Build §92).
+"""Visual provider interface for preview recipes and live Gemini images.
 
 The abstract ``VisualProvider`` decouples the pipeline from any specific
 image-generation SDK.  ``GeminiVisualProvider`` is the real provider
 (delegates pixel generation to the already-proven ``social_visuals``
 Gemini image pipeline, per §34 — don't reinvent what existing code does
-well). ``TemplateRenderProvider`` returns a deterministic "recipe" object
-used as an automatic fallback when Gemini is unavailable or fails.
+well). ``TemplateRenderProvider`` is available for explicit preview tooling,
+but live Gemini requests fail closed instead of substituting generic creative.
 """
 
 from __future__ import annotations
@@ -97,15 +97,11 @@ class GeminiVisualProvider:
 
     Delegates to ``social_visuals.generate_visuals`` (the same pipeline the
     legacy generator uses in production: prompt compilation, brand/product
-    reference images, plate + semantic quality QA, retries). Falls back to
-    ``TemplateRenderProvider`` output whenever Gemini is unavailable or the
-    call fails, so the orchestrator never breaks without network access.
+    reference images, plate + semantic quality QA, retries). Provider failures
+    are publication blockers because a template recipe is not a finished image.
     """
 
     name = "gemini"
-
-    def __init__(self) -> None:
-        self._fallback = TemplateRenderProvider()
 
     def generate(
         self,
@@ -116,26 +112,14 @@ class GeminiVisualProvider:
         platform: str,
     ) -> VisualResult:
         if not os.environ.get("GEMINI_API_KEY", "").strip():
-            return self._fallback.generate(
-                art_direction=art_direction,
-                positive_prompt=positive_prompt,
-                negative_prompt=negative_prompt,
-                platform=platform,
-            )
+            raise RuntimeError("gemini_visual_provider_unavailable:api_key_missing")
         try:
             try:
                 import social_visuals  # type: ignore
             except ImportError:
                 from scripts import social_visuals  # type: ignore
         except Exception as exc:
-            fb = self._fallback.generate(
-                art_direction=art_direction,
-                positive_prompt=positive_prompt,
-                negative_prompt=negative_prompt,
-                platform=platform,
-            )
-            fb.provider_meta["gemini_import_error"] = str(exc)
-            return fb
+            raise RuntimeError(f"gemini_visual_provider_unavailable:{type(exc).__name__}") from exc
 
         layout = art_direction.get("layout_grammar", {}) or {}
         v5_direction = art_direction.get("v5_direction", {}) if isinstance(art_direction.get("v5_direction"), dict) else {}
@@ -191,14 +175,8 @@ class GeminiVisualProvider:
                 "reason": str((result.get("fallback_reasons", {}) or {}).get(plat_key, "no_asset"))[:240] if isinstance(result, dict) else "invalid_result",
             })
         if not asset_path and fallback_attempts:
-            fb = self._fallback.generate(
-                art_direction=art_direction,
-                positive_prompt=positive_prompt,
-                negative_prompt=negative_prompt,
-                platform=platform,
-            )
-            fb.provider_meta["fallback_ladder"] = fallback_attempts
-            return fb
+            reasons = ";".join(f"{item['kind']}={item['reason']}" for item in fallback_attempts)
+            raise RuntimeError(f"gemini_visual_generation_failed:{reasons}")
 
         return VisualResult(
             provider=self.name,
@@ -211,34 +189,39 @@ class GeminiVisualProvider:
 
 
 class EntertainmentStudioVisualProvider:
-    """Routes structured visual work to Studio and preserves Gemini fallback."""
+    """Routes complete structured visual work to Studio and fails closed."""
 
     name = "entertainment_studio"
 
     def __init__(self, base_url: str, token: str, *, fallback: VisualProvider | None = None, timeout: float = 180.0) -> None:
         self.base_url = base_url.rstrip("/")
         self.token = token
-        self.fallback = fallback or GeminiVisualProvider()
         self.timeout = timeout
 
     def generate(self, *, art_direction: dict[str, Any], positive_prompt: str, negative_prompt: str, platform: str) -> VisualResult:
         creative_request = art_direction.get("creative_request")
         route = str((creative_request or {}).get("requestedRoute") or "")
         if not isinstance(creative_request, dict) or not route:
-            return self.fallback.generate(art_direction=art_direction, positive_prompt=positive_prompt, negative_prompt=negative_prompt, platform=platform)
+            raise RuntimeError("entertainment_studio_request_invalid:creative_request_and_route_required")
+        headline = str(art_direction.get("visual_message") or "").strip()
+        if not headline:
+            raise RuntimeError("entertainment_studio_request_invalid:concrete_headline_required")
         production = {
-            "headline": str(art_direction.get("visual_message") or "Infenergy").strip()[:300],
+            "headline": headline[:300],
             "kind": str(art_direction.get("visual_format") or "cinematic").lower() if str(art_direction.get("visual_format") or "").lower() in {"cinematic", "product", "typography", "comic", "carousel", "storypage"} else "cinematic",
             "aspectRatio": str(((creative_request.get("composition") or {}).get("aspectRatio") or "4:5")) if str(((creative_request.get("composition") or {}).get("aspectRatio") or "4:5")) in {"1:1", "4:5", "9:16", "16:9"} else "4:5",
-            "provider": os.environ.get("ENTERTAINMENT_STUDIO_IMAGE_PROVIDER", "openai").strip().lower() or "openai",
+            "provider": "gemini",
             "promptPrefix": positive_prompt[:2000],
         }
         sequence_briefs = art_direction.get("sequence_briefs")
         if isinstance(sequence_briefs, list) and len(sequence_briefs) >= 2:
+            incomplete = [index + 1 for index, item in enumerate(sequence_briefs) if not isinstance(item, dict) or not str(item.get("title") or "").strip() or not str(item.get("prompt") or "").strip()]
+            if incomplete:
+                raise RuntimeError(f"entertainment_studio_request_invalid:incomplete_sequence_briefs={incomplete}")
             production["sequenceBriefs"] = [
                 {
-                    "title": str(item.get("title") or f"Frame {index + 1}")[:180],
-                    "prompt": str(item.get("prompt") or "Continue the same cinematic story.")[:3000],
+                    "title": str(item["title"]).strip()[:180],
+                    "prompt": str(item["prompt"]).strip()[:3000],
                     "useCanon": bool(item.get("useCanon", True)),
                     **({"role": str(item["role"])} if item.get("role") in {"COVER", "STORY", "FINALE", "PANEL"} else {}),
                     **({"speaker": str(item["speaker"])[:100]} if item.get("speaker") else {}),
@@ -246,8 +229,7 @@ class EntertainmentStudioVisualProvider:
                     **({"caption": str(item["caption"])[:500]} if item.get("caption") else {}),
                     **({"heroPanel": bool(item["heroPanel"])} if "heroPanel" in item else {}),
                 }
-                for index, item in enumerate(sequence_briefs[:10])
-                if isinstance(item, dict)
+                for item in sequence_briefs[:10]
             ]
         try:
             response = requests.post(
@@ -271,13 +253,11 @@ class EntertainmentStudioVisualProvider:
                 provider_meta={"platform": platform, "creative_request": creative_request, "creative_result": result, "replayed": bool(payload.get("replayed"))},
             )
         except Exception as exc:
-            fallback = self.fallback.generate(art_direction=art_direction, positive_prompt=positive_prompt, negative_prompt=negative_prompt, platform=platform)
-            fallback.provider_meta["entertainment_studio_fallback"] = {"route": route, "reason": str(exc)[:500]}
-            return fallback
+            raise RuntimeError(f"entertainment_studio_generation_failed:route={route}:{type(exc).__name__}:{str(exc)[:500]}") from exc
 
 
 def default_provider() -> "VisualProvider":
-    """Select Studio for structured visual work, retaining Gemini/template fallback."""
+    """Select live generation when configured; otherwise return a preview-only recipe."""
     studio_url = os.environ.get("ENTERTAINMENT_STUDIO_URL", "").strip()
     studio_token = (
         os.environ.get("ENTERTAINMENT_STUDIO_TOKEN", "").strip()

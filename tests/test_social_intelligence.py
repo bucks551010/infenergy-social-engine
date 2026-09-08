@@ -226,7 +226,7 @@ def test_orchestrator_bridge_builds_publishable_platform_contract(monkeypatch):
             "takeaway": "Compare watt-hours and the device load before you buy.",
             "memory_anchor": "Compare watt-hours and the device load before you buy.",
             "cta": "Compare options",
-            "generation_method": "llm",
+            "generation_method": "gemini",
             "strategy_lock": {"audience": "mobile_professional", "angle": "compare watt-hours", "positioning": "decision support", "non_price_edge": {"kind": "DECISION_SUPPORT_EDGE"}, "claim_limits": "verified facts only"},
         },
         "visual": {"visual_format": "fact_card"},
@@ -252,7 +252,7 @@ def test_orchestrator_bridge_builds_publishable_platform_contract(monkeypatch):
     assert result["wp_content"]
     assert "PowerPulse Pro 200" in result["ig_caption"]
     assert "41,600mAh" in result["ig_caption"]
-    assert result["copy_generation_method"] == "llm"
+    assert result["copy_generation_method"] == "gemini"
     for platform in ("facebook", "instagram", "linkedin"):
         package = result["platform_posts"][platform]
         assert package["strategy_lock"] == expected["copy"]["strategy_lock"]
@@ -657,7 +657,11 @@ def test_creative_cognition_reaches_platform_expressions_and_publish_decision(tm
     decision = publish_decision.decide(
         legacy_score={"total": 90, "platform_results": {"instagram": {"decision": "approve"}}},
         validation={"passed": True, "errors": []}, duplicates={"ok": True, "reasons": []},
+        conversion_quality_score=90,
         orchestrator_quality={"overall": 90},
+        evidence_readiness={"ready": True, "status": "READY"},
+        copy_generation_method="gemini",
+        visual_generation={"visual_provider": "gemini"},
     )
 
     assert legacy["creative_decision_packet"]["meetings"] or legacy["creative_decision_packet"]["ACTION"] == "create"
@@ -1258,9 +1262,9 @@ def test_publish_decision_is_the_single_gate_for_critics_and_runtime():
         orchestrator_quality={"overall": 78},
     )
 
-    assert result["decision"] == "publish"
-    assert "critic_preference_unmet" in result["advisory_reasons"]
-    assert result["publishable"]
+    assert result["decision"] == "do_not_publish"
+    assert "critic_below_publish_threshold" in result["reasons"]
+    assert result["publishable"] is False
 
 
 def test_publish_decision_blocks_failed_validation_even_with_high_scores():
@@ -1275,7 +1279,7 @@ def test_publish_decision_blocks_failed_validation_even_with_high_scores():
     assert "unsupported_claim" in result["reasons"]
 
 
-def test_quality_is_advisory_after_recovery_but_truth_remains_mandatory():
+def test_quality_and_truth_remain_mandatory_after_recovery():
     recovered = publish_decision.decide(
         legacy_score={"total": 60, "platform_results": {}},
         validation={"passed": True, "errors": []},
@@ -1292,8 +1296,8 @@ def test_quality_is_advisory_after_recovery_but_truth_remains_mandatory():
         recovery_exhausted=True,
     )
 
-    assert recovered["publishable"] is True
-    assert "quality_preference_unmet" in recovered["advisory_reasons"]
+    assert recovered["publishable"] is False
+    assert "quality_below_publish_threshold" in recovered["reasons"]
     assert unsafe["publishable"] is False
     assert "unsupported_claim" in unsafe["reasons"]
 
@@ -1555,7 +1559,7 @@ def test_copy_editing_prompt_receives_structured_revision_objectives(monkeypatch
     def fake_generate_json(task, prompt, **_kwargs):
         captured["task"] = task
         captured["prompt"] = prompt
-        return {"hook": "Match the battery to the devices you carry."}
+        return {"hook": "Match the battery to the devices you carry.", "cta": "Compare your device load with the battery's verified output before choosing it."}
 
     monkeypatch.setattr(model_router, "generate_json", fake_generate_json)
     objectives = orchestrator._revision_objectives(
@@ -1569,7 +1573,10 @@ def test_copy_editing_prompt_receives_structured_revision_objectives(monkeypatch
 
     result = orchestrator._llm_copy_beats(brief, ["hook"], None, revision_feedback=objectives)
 
-    assert result == {"hook": "Match the battery to the devices you carry."}
+    assert result == {
+        "hook": "Match the battery to the devices you carry.",
+        "cta": "Compare your device load with the battery's verified output before choosing it.",
+    }
     assert captured["task"] == "copy_editing"
     assert "keeps compatible daily devices charged away from outlets" in captured["prompt"]
     assert "before a trip" in captured["prompt"]

@@ -258,7 +258,19 @@ def _route_generate_orchestrator(
     elif not isinstance(kw.get("approved_strategy"), dict):
         approved_strategy, council_decision = _living_strategy_for_generation()
         if approved_strategy:
-            kw["approved_strategy"] = approved_strategy
+            from social.strategy_lock import REQUIRED as REQUIRED_STRATEGY_FIELDS
+
+            missing_strategy_fields = [
+                field for field in REQUIRED_STRATEGY_FIELDS if not approved_strategy.get(field)
+            ]
+            if missing_strategy_fields:
+                council_decision = {
+                    "decision": "fallback_runtime_lock",
+                    "reason": "persisted_council_strategy_incomplete",
+                    "missing_fields": missing_strategy_fields,
+                }
+            else:
+                kw["approved_strategy"] = approved_strategy
     else:
         council_decision = {"decision": "strategy_selected", "source": "caller_override"}
     if consumer_root:

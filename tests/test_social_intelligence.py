@@ -143,6 +143,36 @@ def test_generate_uses_social_intelligence_when_enabled(monkeypatch):
     assert result["anchored_offering"]["name"] == "Portable power station"
 
 
+def test_incomplete_persisted_strategy_falls_back_to_runtime_lock(monkeypatch):
+    captured = {}
+    expected = {
+        "post_id": "social-runtime-lock",
+        "copy": {"hook": "Choose the range that fits your ride"},
+        "visual": {"visual_format": "product_hero"},
+        "quality": {"overall": 92},
+    }
+    monkeypatch.setattr(
+        generate_posts,
+        "_living_strategy_for_generation",
+        lambda: ({"audience": "commuters", "angle": "long-range confidence"}, {"decision": "strategy_selected"}),
+    )
+    monkeypatch.setattr(
+        generate_posts,
+        "run_social_intelligence",
+        lambda count=1, platform="instagram_feed", **kw: captured.update(kw) or [expected],
+    )
+
+    result = generate_posts._route_generate_orchestrator(
+        "morning",
+        platform="instagram_feed",
+        product_id_override="BW-1500W-60AH",
+    )
+
+    assert result["post_id"] == "social-runtime-lock"
+    assert captured["product_id_override"] == "BW-1500W-60AH"
+    assert "approved_strategy" not in captured
+
+
 def test_production_orchestrator_adapter_uses_recipe_provider_before_final_render(monkeypatch):
     import importlib
 

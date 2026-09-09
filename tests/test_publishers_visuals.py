@@ -646,6 +646,44 @@ class PublisherVisualTests(unittest.TestCase):
             )
             self.assertEqual(visuals["artifact_reviews"]["instagram"]["verdict"], "PASS")
 
+    def test_product_image_approval_requires_matching_canonical_source(self) -> None:
+        import hashlib
+        from social_visuals import build_product_image_approval
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source_path = os.path.join(temp_dir, "product.png")
+            source_bytes = b"locked-product-image"
+            with open(source_path, "wb") as source_file:
+                source_file.write(source_bytes)
+            content = {"product_id": "BW-1500W-60AH", "product_image_url": source_path}
+
+            approval = build_product_image_approval(content, source_path)
+
+            self.assertEqual(approval["product_id"], "BW-1500W-60AH")
+            self.assertEqual(approval["source_url"], source_path)
+            self.assertEqual(approval["sha256"], hashlib.sha256(source_bytes).hexdigest())
+            self.assertEqual(build_product_image_approval(content, f"{source_path}.other"), {})
+
+    def test_facebook_square_is_shared_with_instagram_with_independent_review(self) -> None:
+        calls = []
+
+        def render(content, platform, plan, output_path):
+            calls.append(platform)
+            with open(output_path, "wb") as output_file:
+                output_file.write(platform.encode("ascii"))
+            return True, "", {"image_provider_call_count": 1}
+
+        with tempfile.TemporaryDirectory() as temp_dir, patch("social_visuals.VISUAL_DIR", temp_dir), patch(
+            "social_visuals._generate_gemini_full_creative", side_effect=render
+        ), patch("social_visuals.review_rendered_visual", side_effect=lambda path, platform: {"verdict": "PASS", "platform": platform}):
+            visuals = generate_visuals({"post_id": "shared-square"}, {})
+
+        self.assertEqual(calls, ["facebook", "linkedin"])
+        self.assertEqual(visuals["render_engines"]["instagram"], "gemini_shared_square")
+        self.assertEqual(visuals["artifact_reviews"]["instagram"]["platform"], "instagram")
+        self.assertEqual(visuals["image_provider_call_count"], 2)
+        self.assertEqual(visuals["image_provider_call_budget"], 2)
+
     def test_live_visual_gate_rejects_missing_product_source_and_overlay(self) -> None:
         content = {
             "product_id": "SFT-20K",

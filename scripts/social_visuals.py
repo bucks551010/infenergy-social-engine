@@ -3,6 +3,7 @@ from __future__ import annotations
 import io
 import os
 import glob
+import shutil
 from datetime import datetime, timezone
 import hashlib
 import re
@@ -1617,6 +1618,23 @@ def _product_image_identity_review(content: dict[str, Any], source: str, artifac
     }
 
 
+def build_product_image_approval(content: dict[str, Any], canonical_source: str) -> dict[str, str]:
+    """Build immutable image approval only when runtime and catalog sources agree."""
+    product_id = str(content.get("product_id") or "").strip()
+    canonical_source = str(canonical_source or "").strip()
+    resolved_source = _resolve_product_source(content)
+    if not product_id or not canonical_source or resolved_source != canonical_source:
+        return {}
+    source_bytes, _ = _read_image_bytes_any(resolved_source)
+    if not source_bytes:
+        return {}
+    return {
+        "product_id": product_id,
+        "source_url": resolved_source,
+        "sha256": hashlib.sha256(source_bytes).hexdigest(),
+    }
+
+
 def _fallback_creative_review(content: dict[str, Any], plan: dict[str, Any], artifact_path: str, platform: str) -> dict[str, Any]:
     """Classify source assets for review without making them publishable fallbacks."""
     product_led = bool(str(content.get("product_id") or "").strip())
@@ -1665,6 +1683,24 @@ def generate_visuals(content: dict[str, Any], visual_plan: dict[str, Any] | None
     for platform in ("facebook", "instagram", "linkedin"):
         file_name = f"{post_id}_{platform}.png"
         file_path = os.path.join(VISUAL_DIR, file_name)
+
+        if platform == "instagram" and render_engines.get("facebook") == "gemini":
+            facebook_path = str(visuals.get("facebook") or "")
+            if facebook_path and os.path.isfile(facebook_path):
+                shutil.copyfile(facebook_path, file_path)
+                render_engines[platform] = "gemini_shared_square"
+                product_overlay_applied[platform] = product_overlay_applied.get("facebook", False)
+                visuals[platform] = file_path
+                artifact_reviews[platform] = review_rendered_visual(file_path, platform)
+                visual_generation[platform] = {
+                    "generation_status": "shared_artifact_success",
+                    "image_provider_call_count": 0,
+                    "source_platform": "facebook",
+                    "source_artifact": facebook_path,
+                    "artifact_path": file_path,
+                    "artifact_exists": True,
+                }
+                continue
 
         # Prefer Gemini, then keep publishing viable with the selected product's
         # verified catalog image when the provider is unavailable.
@@ -1729,7 +1765,7 @@ def generate_visuals(content: dict[str, Any], visual_plan: dict[str, Any] | None
         int(metadata.get("image_provider_call_count") or 0)
         for metadata in visual_generation.values()
     )
-    visuals["image_provider_call_budget"] = 3
+    visuals["image_provider_call_budget"] = 2
     visuals["artifact_reviews"] = artifact_reviews
     visuals["gemini_available"] = str(gemini_available).lower()
     visuals["style_reference_count"] = str(len(repo_refs) if isinstance(repo_refs, list) else 0)

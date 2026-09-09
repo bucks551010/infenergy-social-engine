@@ -483,6 +483,12 @@ def _route_generate_orchestrator(
     _apply_recurring_series_package(legacy, platform_posts, recurring_series)
     _apply_recurring_series_generation_contract(legacy, visual_pkg, recurring_series, product_for_adaptation)
     legacy["visual_plan"] = visual_pkg
+    product_image_approval = build_product_image_approval(
+        legacy,
+        str((catalog_product or {}).get("image_url") or ""),
+    )
+    if product_image_approval:
+        legacy["product_image_approval"] = product_image_approval
     legacy["generated_visuals"] = (
         {"deferred": True, "reason": "text_only_candidate_pool"}
         if _text_only_generation()
@@ -552,7 +558,7 @@ from anti_repeat import load_anti_repeat_windows
 from build_utm_url import build_utm_url
 from social.candidate_pool import build_rotation_ledger, select_least_recently_used
 from social.product_eligibility import filter_evidence_eligible_products
-from social_visuals import generate_visuals, normalize_brand_content, normalize_brand_text
+from social_visuals import build_product_image_approval, generate_visuals, normalize_brand_content, normalize_brand_text
 from agents import product_intelligence
 from agents import conversion_strategist
 from agent_control_plane import (

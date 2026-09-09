@@ -238,6 +238,49 @@ def _living_strategy_for_generation() -> tuple[dict[str, Any] | None, dict[str, 
         return None, {"decision": "fallback_runtime_lock", "reason": f"living_state_unavailable:{type(exc).__name__}"}
 
 
+def _apply_gemini_platform_copy(
+    platform_posts: dict[str, dict[str, Any]],
+    copy_pkg: dict[str, Any],
+    components: dict[str, Any],
+) -> dict[str, dict[str, Any]]:
+    """Preserve Gemini's ordered public copy instead of replacing it with template prose."""
+    if str(copy_pkg.get("generation_method") or "").lower() != "gemini":
+        return platform_posts
+    beats = copy_pkg.get("body_beats") if isinstance(copy_pkg.get("body_beats"), dict) else {}
+    ordered = [
+        str(value).strip()
+        for key, value in beats.items()
+        if key not in {"cta", "hashtags"} and str(value).strip()
+    ]
+    cta = str(copy_pkg.get("cta") or beats.get("cta") or "").strip()
+    hashtags = str(beats.get("hashtags") or "").strip()
+    public_parts = list(dict.fromkeys([*ordered, cta, hashtags]))
+    if not public_parts:
+        return platform_posts
+
+    from social import platform_presentation
+
+    for platform, package in platform_posts.items():
+        caption = platform_presentation.render_platform_caption(
+            "\n\n".join(public_parts),
+            destination_url=str(package.get("utm_url") or package.get("destination_url") or "").strip(),
+            platform=platform,
+        )
+        package["caption"] = caption
+        package["final_caption"] = caption
+        package["presentation"] = {
+            **(package.get("presentation") if isinstance(package.get("presentation"), dict) else {}),
+            **platform_presentation.evaluate(caption, platform=platform, components=components),
+            "copy_source": "gemini",
+        }
+        package["final_caption_qa"] = platform_presentation.final_caption_qa(
+            caption,
+            platform=platform,
+            components=components,
+        )
+    return platform_posts
+
+
 def _route_generate_orchestrator(
     slot: str = "",
     *,
@@ -336,7 +379,7 @@ def _route_generate_orchestrator(
         "name": offering.get("name", ""),
         "sku": offering.get("sku", ""),
         "categories": [offering.get("category", "")] if offering.get("category") else [],
-        "metrics": (catalog_product or {}).get("metrics", []) or list(offering.get("verified_facts", [])),
+        "metrics": list(offering.get("verified_facts", [])) or (catalog_product or {}).get("metrics", []),
         "fact_snippet": (catalog_product or {}).get("fact_snippet", "") or offering.get("description_clean", ""),
         "image_url": (offering.get("images") or [""])[0],
     }
@@ -371,6 +414,7 @@ def _route_generate_orchestrator(
         platform_interpretations=(first.get("creative_decision_packet") or {}).get("platform_interpretations") or {},
     )
     platform_posts = _apply_platform_presentation_priority(platform_posts, components)
+    platform_posts = _apply_gemini_platform_copy(platform_posts, copy_pkg, components)
     creative_packet = first.get("creative_decision_packet") or {}
     platform_selection = _select_social_platforms(copy_pkg.get("strategy_lock") if isinstance(copy_pkg.get("strategy_lock"), dict) else {})
     for platform, package in platform_posts.items():
@@ -411,7 +455,7 @@ def _route_generate_orchestrator(
         "destination_url": SITE_URL,
         "product_price": (catalog_product or {}).get("price", ""),
         "product_sale_price": (catalog_product or {}).get("sale_price", ""),
-        "product_metrics": (catalog_product or {}).get("metrics", []) or list(offering.get("verified_facts", [])),
+        "product_metrics": list(offering.get("verified_facts", [])) or (catalog_product or {}).get("metrics", []),
         "product_categories": product_for_adaptation["categories"] or (catalog_product or {}).get("categories", []),
         "product_facts": (catalog_product or {}).get("fact_snippet", "") or offering.get("description_clean", ""),
         "product_in_stock": (catalog_product or {}).get("in_stock", "") or offering.get("stock_status", ""),
@@ -3040,6 +3084,8 @@ def _product_use_case_line(product: dict | None) -> str:
         return "Keep it ready in your emergency kit, vehicle, backpack, or travel bag."
     name_low = str(product.get("name", "") or "").lower()
     categories = " ".join(str(x or "") for x in (product.get("categories", []) or [])).lower()
+    if any(token in f"{name_low} {categories}" for token in ("e-bike", "ebike", "electric bike", "electric bicycle")):
+        return "Use it for routes that match the published range, rider fit, terrain, and charging requirements."
     if "jump starter" in name_low:
         return "Keep it in your vehicle, roadside kit, garage, or travel bag so backup power is there when the unexpected hits."
     if "power bank" in name_low or "charger" in name_low:
@@ -3058,6 +3104,8 @@ def _product_comparison_line(product: dict | None) -> str:
         return "Compare the published specifications with the job this item must perform."
     name_low = str(product.get("name", "") or "").lower()
     categories = " ".join(str(item or "") for item in (product.get("categories", []) or [])).lower()
+    if any(token in f"{name_low} {categories}" for token in ("e-bike", "ebike", "electric bike", "electric bicycle")):
+        return "Compare the published range, motor, battery, rider fit, terrain, and charging requirements with your route."
     if "filter" in name_low or "purifier" in name_low or "straw" in name_low or "water" in categories:
         return "Check the published filtration stages, filter life, bottle capacity, and replacement-filter requirements."
     if "jump starter" in name_low:
@@ -3075,6 +3123,8 @@ def _product_comparison_cta(product: dict | None) -> str:
     name = str((product or {}).get("name", "") or "this product").strip()
     name_low = name.lower()
     categories = " ".join(str(item or "") for item in ((product or {}).get("categories", []) or [])).lower()
+    if any(token in f"{name_low} {categories}" for token in ("e-bike", "ebike", "electric bike", "electric bicycle")):
+        return f"Compare {name} range, fit, and riding specifications with your route."
     if "filter" in name_low or "purifier" in name_low or "straw" in name_low or "water" in categories:
         return f"Check {name} filtration specifications and replacement-filter requirements."
     if "jump starter" in name_low:
@@ -3115,7 +3165,19 @@ def _product_copy_profile(product: dict | None) -> dict[str, str]:
         "category_pain": "Generic recommendations often leave buyers with the wrong tool for the job.",
     }
 
-    if "solar" in name_low or "panel" in name_low or (("solar" in categories or "panel" in categories) and not power_station_evidence):
+    if any(token in f"{name_low} {categories}" for token in ("e-bike", "ebike", "electric bike", "electric bicycle")):
+        profile.update({
+            "role": "electric bicycle",
+            "benefit": "adds powered mobility for commuting and longer rides",
+            "after_state": "You can plan daily travel around a route, rider fit, and charging schedule that match the bicycle's published specifications.",
+            "transformation": "The commute becomes a defined mobility decision based on range, terrain, fit, and charging access instead of a generic distance claim.",
+            "why_it_matters": "Published range and speed only become useful when they are compared with the rider, route, load, terrain, and charging plan.",
+            "fit_line": f"helps riders compare their route with published details such as {primary_metric}",
+            "proof_intro": "Checked against the published motor, battery, range, speed, and riding specifications",
+            "offer_line": f"The {name or 'electric bicycle'} is for riders comparing powered mobility with the demands of a real route.",
+            "category_pain": "An electric bicycle is a poor fit when range, terrain, rider fit, and charging needs are not evaluated together.",
+        })
+    elif "solar" in name_low or "panel" in name_low or (("solar" in categories or "panel" in categories) and not power_station_evidence):
         profile.update({
             "role": "foldable solar charging panel",
             "benefit": "adds off-grid charging support for compatible power stations and devices",

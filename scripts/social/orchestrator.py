@@ -400,7 +400,7 @@ def _llm_copy_beats(
             "Use this commercial progression: lived human moment, current belief, desired belief, "
             "dominant proposition, product fit, mechanism, verified proof, functional transformation, "
             "emotional transformation, ownership or future pacing, honest objection handling, then one CTA. "
-            "Do not lead with the product name or a specification list."
+            "Start the hook with the exact product name and one concrete customer benefit; do not start with a specification list."
         )
     else:
         prompt_parts.append(
@@ -461,10 +461,11 @@ def _llm_copy_beats(
         "Write truthful, specific, non-generic copy. Avoid AI-slop phrases such as "
         "'game-changer', 'unlock', 'revolutionize', 'in today's fast-paced world', 'buckle up'."
     )
-    requested_keys = [*structure_beats, "cta"]
+    requested_keys = [*structure_beats, "cta", "hashtags"]
     prompt_parts.append(
         "Return a JSON object with exactly these keys, each a short 1-2 sentence string, "
-        "no markdown: " + ", ".join(requested_keys) + ". The CTA must name the concrete next action and its purpose."
+        "no markdown except hashtags: " + ", ".join(requested_keys) + ". The CTA must name the concrete next action and its purpose. "
+        "The hashtags value must contain 4-5 relevant, space-separated hashtags and no other text."
     )
 
     result = model_router.generate_json("copy_editing", " ".join(prompt_parts))
@@ -804,7 +805,7 @@ class SocialIntelligenceOrchestrator:
         if selected_hook and not llm_beats:
             hook_text = selected_hook
             beat_content["hook"] = selected_hook
-        body_text = " ".join(v for k, v in beat_content.items() if k not in {"hook", "cta"} and v)
+        body_text = " ".join(v for k, v in beat_content.items() if k not in {"hook", "cta", "hashtags"} and v)
         takeaway = beat_content.get("takeaway") or beat_content.get("lesson") or beat_content.get("implication") or brief.angle
         anchor = copy_intelligence.extract_memory_anchor(body_text, takeaway=takeaway)
         brief.hook = hook_text

@@ -263,7 +263,14 @@ def test_orchestrator_bridge_builds_publishable_platform_contract(monkeypatch):
             "images": [],
         },
         "copy": {
-            "hook": "What does 41,600mAh tell you about real backup power?",
+            "hook": "PowerPulse Pro 200 makes battery capacity easier to compare.",
+            "body_beats": {
+                "hook": "PowerPulse Pro 200 makes battery capacity easier to compare.",
+                "answer": "Because watt-hours describe stored energy, 154Wh and 41,600mAh help compare the work a battery can support.",
+                "takeaway": "Compare watt-hours and the device load before you buy.",
+                "cta": "Compare options",
+                "hashtags": "#PortablePower #BatteryCapacity #DeviceFit #InfenergyPower",
+            },
             "body_text": "Because watt-hours describe stored energy, 154Wh helps compare the work a battery can support.",
             "takeaway": "Compare watt-hours and the device load before you buy.",
             "memory_anchor": "Compare watt-hours and the device load before you buy.",
@@ -1601,7 +1608,11 @@ def test_copy_editing_prompt_receives_structured_revision_objectives(monkeypatch
     def fake_generate_json(task, prompt, **_kwargs):
         captured["task"] = task
         captured["prompt"] = prompt
-        return {"hook": "Match the battery to the devices you carry.", "cta": "Compare your device load with the battery's verified output before choosing it."}
+        return {
+            "hook": "Match the battery to the devices you carry.",
+            "cta": "Compare your device load with the battery's verified output before choosing it.",
+            "hashtags": "#PortablePower #DeviceFit #Preparedness #InfenergyPower",
+        }
 
     monkeypatch.setattr(model_router, "generate_json", fake_generate_json)
     objectives = orchestrator._revision_objectives(
@@ -1618,12 +1629,45 @@ def test_copy_editing_prompt_receives_structured_revision_objectives(monkeypatch
     assert result == {
         "hook": "Match the battery to the devices you carry.",
         "cta": "Compare your device load with the battery's verified output before choosing it.",
+        "hashtags": "#PortablePower #DeviceFit #Preparedness #InfenergyPower",
     }
     assert captured["task"] == "copy_editing"
     assert "keeps compatible daily devices charged away from outlets" in captured["prompt"]
     assert "before a trip" in captured["prompt"]
     assert "stock marketing transitions" in captured["prompt"]
     assert "directly answer or fulfill the hook" in captured["prompt"]
+
+
+def test_gemini_platform_copy_preserves_model_authored_text():
+    copy_pkg = {
+        "generation_method": "gemini",
+        "body_beats": {
+            "hook": "Black Warrior 1500W Long Range Edition supports longer daily routes.",
+            "proof": "Its published specifications include a 1500W motor, 60Ah battery, and 85-100 mile range.",
+            "cta": "Compare the published range and fit with your actual route.",
+            "hashtags": "#ElectricBike #DailyCommute #EMobility #InfenergyPower",
+        },
+        "cta": "Compare the published range and fit with your actual route.",
+    }
+    posts = {
+        platform: {"utm_url": f"https://example.com/black-warrior?utm_source={platform}"}
+        for platform in ("facebook", "instagram", "linkedin")
+    }
+    components = {
+        "product_id": "BW-1500W-60AH",
+        "product_name": "Black Warrior 1500W Long Range Edition",
+        "benefit_fragment": "supports longer daily routes",
+        "cta": copy_pkg["cta"],
+        "feature_bullets": ["1500W motor", "60Ah battery", "85-100 mile published range"],
+    }
+
+    result = generate_posts._apply_gemini_platform_copy(posts, copy_pkg, components)
+
+    for platform, package in result.items():
+        assert package["final_caption"].startswith(copy_pkg["body_beats"]["hook"])
+        assert copy_pkg["body_beats"]["proof"] in package["final_caption"]
+        assert "emergency kit" not in package["final_caption"].lower()
+        assert package["presentation"]["copy_source"] == "gemini"
 
 
 def test_cost_tracker_records_and_totals():

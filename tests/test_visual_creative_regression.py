@@ -81,11 +81,11 @@ def test_failed_gemini_variants_never_publish_a_reference_photo(tmp_path, monkey
 
     assert visuals["render_engine"] == "mixed"
     assert Path(visuals["facebook"]).is_file()
-    assert "instagram" not in visuals
+    assert Path(visuals["instagram"]).is_file()
     assert "linkedin" not in visuals
     assert visuals["render_engines"] == {
         "facebook": "gemini",
-        "instagram": "failed",
+        "instagram": "gemini_shared_square",
         "linkedin": "failed",
     }
     assert all(
@@ -111,9 +111,11 @@ def test_final_creative_budget_is_exactly_one_image_call_per_platform(tmp_path, 
 
     visuals = social_visuals.generate_visuals({"post_id": "budget"}, {})
 
-    assert visuals["image_provider_call_count"] == 3
-    assert visuals["image_provider_call_budget"] == 3
-    assert all(visuals["visual_generation"][platform]["image_provider_call_count"] == 1 for platform in ("facebook", "instagram", "linkedin"))
+    assert visuals["image_provider_call_count"] == 2
+    assert visuals["image_provider_call_budget"] == 2
+    assert visuals["visual_generation"]["facebook"]["image_provider_call_count"] == 1
+    assert visuals["visual_generation"]["instagram"]["image_provider_call_count"] == 0
+    assert visuals["visual_generation"]["linkedin"]["image_provider_call_count"] == 1
 
 
 def _image(path, size=(1080, 1080)):

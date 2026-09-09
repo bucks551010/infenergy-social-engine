@@ -684,6 +684,26 @@ class PublisherVisualTests(unittest.TestCase):
         self.assertEqual(visuals["image_provider_call_count"], 2)
         self.assertEqual(visuals["image_provider_call_budget"], 2)
 
+    def test_failed_facebook_square_does_not_consume_instagram_image_call(self) -> None:
+        calls = []
+
+        def render(content, platform, plan, output_path):
+            calls.append(platform)
+            if platform == "facebook":
+                return False, "semantic_quality_rejected", {"image_provider_call_count": 1}
+            with open(output_path, "wb") as output_file:
+                output_file.write(platform.encode("ascii"))
+            return True, "", {"image_provider_call_count": 1}
+
+        with tempfile.TemporaryDirectory() as temp_dir, patch("social_visuals.VISUAL_DIR", temp_dir), patch(
+            "social_visuals._generate_gemini_full_creative", side_effect=render
+        ), patch("social_visuals.review_rendered_visual", side_effect=lambda path, platform: {"verdict": "PASS", "platform": platform}):
+            visuals = generate_visuals({"post_id": "failed-shared-square"}, {})
+
+        self.assertEqual(calls, ["facebook", "linkedin"])
+        self.assertEqual(visuals["visual_generation"]["instagram"]["generation_status"], "shared_source_unavailable")
+        self.assertEqual(visuals["image_provider_call_count"], 2)
+
     def test_live_visual_gate_rejects_missing_product_source_and_overlay(self) -> None:
         content = {
             "product_id": "SFT-20K",

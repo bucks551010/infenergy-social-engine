@@ -602,6 +602,29 @@ def test_final_caption_qa_rejects_last_published_powerpulse_copy():
     assert verdict["metrics"]["abstract_public_copy_matches"]
 
 
+def test_final_caption_qa_rejects_truncated_duplicate_product_bullets():
+    caption = (
+        "PowerPulse Pro 200 supports practical backup planning.\n\n"
+        "⚡ Key specs\n"
+        "• PowerPulse Pro 200 keeps compatible devices charged when choos...\n"
+        "• PowerPulse Pro 200 keeps compatible devices charged when choosing betwee...\n\n"
+        "Compare the published capability with your actual devices.\n\n"
+        "👉 Review the verified product details.\n\n"
+        "https://example.com/products/powerpulse\n\n"
+        "#PortablePower #BackupPower #Preparedness #InfenergyPower"
+    )
+
+    verdict = platform_presentation.final_caption_qa(
+        caption,
+        platform="facebook",
+        components=_components(),
+    )
+
+    assert verdict["status"] == "REVISE_PRESENTATION"
+    assert "truncated_public_copy" in verdict["reasons"]
+    assert "duplicate_spec_bullets" in verdict["reasons"]
+
+
 def test_product_sales_repairs_live_preview_fragments_and_long_hashtag():
     components = _components()
     components.update({
@@ -1027,3 +1050,26 @@ def test_water_purifier_copy_never_uses_power_device_language():
         assert not {"#PortablePower", "#BackupPower", "#MobilePower", "#PowerOnTheGo"}.intersection(
             presentation["selected_hashtags"]
         )
+
+
+def test_electric_bike_components_never_use_emergency_kit_language():
+    product = {
+        "id": "BW-1500W-60AH",
+        "name": "Black Warrior 1500W Long Range Edition",
+        "categories": ["Electric Bike"],
+        "metrics": ["1500W motor", "60Ah battery", "85-100 mile published range"],
+        "fact_snippet": "Published speed: 40-45 MPH.",
+    }
+
+    components = generate_posts._build_post_components(
+        "Daily electric mobility",
+        "Compare the route before choosing an e-bike.",
+        "Compare the published specifications with your route.",
+        product,
+        "CONVERSION",
+    )
+
+    assert components["copy_profile"]["role"] == "electric bicycle"
+    assert "route" in components["use_case_line"].lower()
+    assert "emergency kit" not in components["use_case_line"].lower()
+    assert "backup power" not in components["copy_profile"]["benefit"].lower()

@@ -1227,6 +1227,17 @@ def final_caption_qa(
     ))
     actionable_steps = len(re.findall(r"(?m)^\s*\d+\.\s+\S+", caption)) >= 3
     reasons: list[str] = []
+    bullet_lines = [
+        re.sub(r"\s+", " ", line.lstrip("•- ")).strip().lower()
+        for line in caption.splitlines()
+        if line.lstrip().startswith(("•", "-"))
+    ]
+    normalized_bullets = [re.sub(r"[^a-z0-9]+", " ", line).strip() for line in bullet_lines]
+    near_duplicate_bullets = any(
+        left == right or (min(len(left), len(right)) >= 20 and (left.startswith(right) or right.startswith(left)))
+        for index, left in enumerate(normalized_bullets)
+        for right in normalized_bullets[index + 1:]
+    )
     public_prose = "\n".join(
         line for line in caption.splitlines()
         if not line.strip().startswith(("#", "http", "•", "⚡"))
@@ -1245,6 +1256,10 @@ def final_caption_qa(
     )
     if metrics["internal_instruction_leak"]:
         reasons.append("internal_instruction_leak")
+    if re.search(r"\b\w+\.\.\.(?:\s|$)", caption):
+        reasons.append("truncated_public_copy")
+    if near_duplicate_bullets:
+        reasons.append("duplicate_spec_bullets")
     if abstract_matches:
         reasons.append("abstract_public_copy")
     if product_led and not metrics["product_intro_position"]:

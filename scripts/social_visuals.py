@@ -1684,23 +1684,52 @@ def generate_visuals(content: dict[str, Any], visual_plan: dict[str, Any] | None
         file_name = f"{post_id}_{platform}.png"
         file_path = os.path.join(VISUAL_DIR, file_name)
 
-        if platform == "instagram" and render_engines.get("facebook") == "gemini":
-            facebook_path = str(visuals.get("facebook") or "")
-            if facebook_path and os.path.isfile(facebook_path):
+        if platform == "instagram" and "facebook" in visual_generation:
+            facebook_path = os.path.join(VISUAL_DIR, f"{post_id}_facebook.png")
+            if os.path.isfile(facebook_path):
                 shutil.copyfile(facebook_path, file_path)
-                render_engines[platform] = "gemini_shared_square"
+                source_engine = render_engines.get("facebook", "failed")
+                render_engines[platform] = "gemini_shared_square" if source_engine == "gemini" else source_engine
                 product_overlay_applied[platform] = product_overlay_applied.get("facebook", False)
-                visuals[platform] = file_path
-                artifact_reviews[platform] = review_rendered_visual(file_path, platform)
+                artifact_review = review_rendered_visual(file_path, platform) if source_engine == "gemini" else _fallback_creative_review(
+                    content, plan, file_path, platform
+                )
+                if product_specific_source_present and source_engine != "gemini":
+                    identity_review = _product_image_identity_review(content, resolved_override, file_path)
+                    artifact_review["identity_review"] = identity_review
+                    if identity_review["verdict"] != "PASS":
+                        artifact_review["verdict"] = "REGENERATE_VISUAL"
+                        artifact_review["issues"] = list(dict.fromkeys(
+                            list(artifact_review.get("issues") or []) + list(identity_review["issues"])
+                        ))
+                artifact_reviews[platform] = artifact_review
+                if artifact_review.get("verdict") == "PASS":
+                    visuals[platform] = file_path
+                else:
+                    render_engines[platform] = "failed"
+                    product_overlay_applied[platform] = False
                 visual_generation[platform] = {
-                    "generation_status": "shared_artifact_success",
+                    "generation_status": "shared_artifact_success" if artifact_review.get("verdict") == "PASS" else "shared_artifact_rejected",
                     "image_provider_call_count": 0,
                     "source_platform": "facebook",
                     "source_artifact": facebook_path,
+                    "fallback_source": source_engine if source_engine in {"approved_product_photo", "approved_reference_image"} else None,
                     "artifact_path": file_path,
                     "artifact_exists": True,
                 }
-                continue
+            else:
+                render_engines[platform] = "failed"
+                product_overlay_applied[platform] = False
+                artifact_reviews[platform] = review_rendered_visual("", platform)
+                visual_generation[platform] = {
+                    "generation_status": "shared_source_unavailable",
+                    "image_provider_call_count": 0,
+                    "source_platform": "facebook",
+                    "source_artifact": facebook_path,
+                    "artifact_path": "",
+                    "artifact_exists": False,
+                }
+            continue
 
         # Prefer Gemini, then keep publishing viable with the selected product's
         # verified catalog image when the provider is unavailable.

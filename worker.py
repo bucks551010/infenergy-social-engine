@@ -1198,6 +1198,10 @@ def _utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _manual_run_credential(handler: BaseHTTPRequestHandler, params: dict) -> str:
+    return str(handler.headers.get("X-Manual-Run-Token", "") or params.get("token", [""])[0])
+
+
 def _auto_bootstrap_visual_repo() -> dict:
     global VISUAL_REPO_BOOTSTRAP
     try:
@@ -2358,7 +2362,7 @@ class HealthHandler(BaseHTTPRequestHandler):
         if parsed.path == "/run-now":
             token = os.environ.get("MANUAL_RUN_TOKEN", "")
             params = parse_qs(parsed.query)
-            provided = params.get("token", [""])[0]
+            provided = _manual_run_credential(self, params)
             slot = params.get("slot", ["morning"])[0]
             force_live = params.get("live", ["false"])[0].lower() in ("1", "true", "yes")
             force_dry_run = params.get("dry_run", ["false"])[0].lower() in ("1", "true", "yes")

@@ -76,6 +76,13 @@ def test_post_requests_reach_the_existing_endpoint_handler():
     assert calls == ["handled"]
 
 
+def test_manual_run_credential_prefers_log_safe_header():
+    handler = SimpleNamespace(headers={"X-Manual-Run-Token": "header-token"})
+
+    assert worker._manual_run_credential(handler, {"token": ["query-token"]}) == "header-token"
+    assert worker._manual_run_credential(SimpleNamespace(headers={}), {"token": ["query-token"]}) == "query-token"
+
+
 def test_patch_requests_reach_the_intelligence_os_handler(monkeypatch, tmp_path):
     captured = {}
 

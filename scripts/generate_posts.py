@@ -278,8 +278,8 @@ def _route_generate_orchestrator(
                 }
             else:
                 kw["approved_strategy"] = approved_strategy
-    if consumer_root:
-        approved_strategy = kw.get("approved_strategy") if isinstance(kw.get("approved_strategy"), dict) else {}
+    if consumer_root and isinstance(kw.get("approved_strategy"), dict):
+        approved_strategy = kw["approved_strategy"]
         moment = consumer_root["moment"]
         kw["approved_strategy"] = {
             **approved_strategy,
@@ -291,8 +291,8 @@ def _route_generate_orchestrator(
             "lived_moment": moment,
             "consumer_receipt": consumer_root["consumer_receipt"],
         }
-    if recurring_series.get("id") == "infenergy_intervention":
-        approved_strategy = kw.get("approved_strategy") if isinstance(kw.get("approved_strategy"), dict) else {}
+    if recurring_series.get("id") == "infenergy_intervention" and isinstance(kw.get("approved_strategy"), dict):
+        approved_strategy = kw["approved_strategy"]
         kw["approved_strategy"] = {
             **approved_strategy,
             "series_id": recurring_series["id"],

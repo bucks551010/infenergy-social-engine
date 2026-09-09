@@ -162,6 +162,22 @@ def test_incomplete_caller_strategy_falls_back_to_runtime_lock(monkeypatch):
         platform="instagram_feed",
         product_id_override="BW-1500W-60AH",
         approved_strategy={"audience": "commuters", "angle": "long-range confidence"},
+        consumer_root={
+            "root_id": "commuter-range",
+            "moment": {
+                "person": "commuters",
+                "activity": "planning a long ride",
+                "useful_discovery": "match published range to the route",
+                "immediate_action": "compare the route with published range",
+            },
+            "consumer_receipt": "clear range guidance",
+        },
+        recurring_series={
+            "id": "infenergy_intervention",
+            "preferred_format": "product_hero",
+            "story_pattern": "problem_resolution",
+            "originality_dimensions": ["scene"],
+        },
     )
 
     assert result["post_id"] == "social-runtime-lock"

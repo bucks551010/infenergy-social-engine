@@ -146,6 +146,108 @@ def test_preparation_has_two_bounded_daily_windows(monkeypatch):
     assert len(preparation_jobs) == 2
 
 
+def test_budget_blocked_product_run_is_durable_and_idempotent(monkeypatch, tmp_path):
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    monkeypatch.setattr(worker, "budget_snapshot", lambda: {
+        "total": {"remaining": 0},
+        "image": {"remaining": 0},
+        "next_reset_at_utc": "2026-09-10T00:00:00+00:00",
+    })
+
+    kwargs = {
+        "slot": "midday",
+        "force_live": True,
+        "force_dry_run": False,
+        "shadow_mode": False,
+        "platforms_override": "facebook,instagram,linkedin",
+        "duplicate_mode": "strict",
+        "readiness_block_override": "true",
+        "product_id_override": "BW-1500W-60AH",
+        "no_product": False,
+        "funnel_stage_override": "CONVERSION",
+        "pipeline_override": "orchestrator",
+    }
+    accepted, first = worker._start_or_defer_slot(idempotency_key="black-warrior-20260910", **kwargs)
+    accepted_again, second = worker._start_or_defer_slot(idempotency_key="black-warrior-20260910", **kwargs)
+
+    assert accepted is True
+    assert accepted_again is True
+    assert first["status"] == "WAITING_FOR_BUDGET_RESET"
+    assert first["eligible_at_utc"] == "2026-09-10T00:00:00+00:00"
+    assert first["request"]["product_id_override"] == "BW-1500W-60AH"
+    assert second["job_id"] == first["job_id"]
+    assert second["duplicate_request"] is True
+
+
+def test_deferred_run_resumes_once_when_full_workflow_fits(monkeypatch, tmp_path):
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    worker._save_deferred_run_status(
+        job_id="job-1",
+        idempotency_key="black-warrior-20260910",
+        status="WAITING_FOR_BUDGET_RESET",
+        request={
+            "slot": "midday",
+            "force_live": True,
+            "force_dry_run": False,
+            "shadow_mode": False,
+            "platforms_override": "facebook,instagram,linkedin",
+            "duplicate_mode": "strict",
+            "readiness_block_override": "true",
+            "product_id_override": "BW-1500W-60AH",
+            "no_product": False,
+            "funnel_stage_override": "CONVERSION",
+            "pipeline_override": "orchestrator",
+        },
+    )
+    monkeypatch.setattr(worker, "budget_snapshot", lambda: {
+        "total": {"remaining": 8},
+        "image": {"remaining": 2},
+        "next_reset_at_utc": "2026-09-11T00:00:00+00:00",
+    })
+    starts = []
+    monkeypatch.setattr(worker, "_start_slot_thread", lambda **kwargs: starts.append(kwargs) or True)
+
+    result = worker.resume_deferred_run()
+    second = worker.resume_deferred_run()
+
+    assert result["status"] == "RUNNING"
+    assert second["status"] == "RUNNING"
+    assert len(starts) == 1
+    assert starts[0]["deferred_job_id"] == "job-1"
+    assert starts[0]["product_id_override"] == "BW-1500W-60AH"
+
+
+def test_active_deferred_run_cannot_be_overwritten(monkeypatch, tmp_path):
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    worker._save_deferred_run_status(job_id="first", idempotency_key="first-key", status="RUNNING", request={})
+
+    accepted, result = worker._start_or_defer_slot(
+        idempotency_key="second-key", slot="morning", force_live=True, force_dry_run=False,
+        shadow_mode=False, platforms_override="facebook", duplicate_mode="strict",
+        readiness_block_override="true", product_id_override="BW-1500W-60AH", no_product=False,
+        funnel_stage_override="CONVERSION", pipeline_override="orchestrator",
+    )
+
+    assert accepted is False
+    assert result["job_id"] == "first"
+    assert result["conflict"] == "another_durable_run_is_active"
+
+
+def test_stale_running_deferred_job_recovers_after_restart(monkeypatch, tmp_path):
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    monkeypatch.setattr(worker, "RUN_START_LOCK", worker.threading.Lock())
+    worker._save_deferred_run_status(job_id="stale", status="RUNNING", request={})
+    monkeypatch.setattr(worker, "budget_snapshot", lambda: {
+        "total": {"remaining": 0}, "image": {"remaining": 0},
+        "next_reset_at_utc": "2026-09-10T00:00:00+00:00",
+    })
+
+    result = worker.resume_deferred_run(recover_stale=True)
+
+    assert result["status"] == "WAITING_FOR_BUDGET_RESET"
+    assert result["error"] == "recovered_after_process_restart"
+
+
 def test_factory_requires_explicit_autonomous_ai_opt_in(monkeypatch):
     monkeypatch.delenv("RUN_FACTORY_ON_STARTUP", raising=False)
     monkeypatch.setenv("AUTONOMOUS_AI_ENABLED", "true")

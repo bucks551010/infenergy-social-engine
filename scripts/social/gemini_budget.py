@@ -6,7 +6,7 @@ import json
 import os
 import time
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import datetime, time as datetime_time, timedelta, timezone
 from typing import Any
 
 
@@ -69,10 +69,13 @@ def _snapshot(ledger: dict[str, Any], path: str) -> dict[str, Any]:
     total_limit, image_limit = _limits()
     calls = ledger["calls"]
     image_used = sum(1 for call in calls if call.get("kind") == "image")
+    day = datetime.fromisoformat(str(ledger["day"])).date()
+    next_reset = datetime.combine(day + timedelta(days=1), datetime_time.min, tzinfo=timezone.utc)
     return {
         "day": ledger["day"],
         "total": {"used": len(calls), "limit": total_limit, "remaining": max(0, total_limit - len(calls))},
         "image": {"used": image_used, "limit": image_limit, "remaining": max(0, image_limit - image_used)},
+        "next_reset_at_utc": next_reset.isoformat(),
         "ledger_path": os.path.abspath(path),
         "recent_calls": list(reversed(calls[-10:])),
     }
@@ -93,11 +96,13 @@ def preflight_gemini_workflow(*, image_calls: int, reasoning_calls: int = 0) -> 
     total_required = image_calls + reasoning_calls
     if snapshot["image"]["remaining"] < image_calls:
         raise GeminiBudgetExceeded(
-            f"Gemini workflow requires {image_calls} image calls but only {snapshot['image']['remaining']} remain"
+            f"GEMINI_IMAGE_BUDGET_EXHAUSTED: workflow requires {image_calls} image calls but only "
+            f"{snapshot['image']['remaining']} remain; retry_at={snapshot['next_reset_at_utc']}"
         )
     if snapshot["total"]["remaining"] < total_required:
         raise GeminiBudgetExceeded(
-            f"Gemini workflow requires {total_required} calls but only {snapshot['total']['remaining']} remain"
+            f"GEMINI_TOTAL_BUDGET_EXHAUSTED: workflow requires {total_required} calls but only "
+            f"{snapshot['total']['remaining']} remain; retry_at={snapshot['next_reset_at_utc']}"
         )
     return {
         "allowed": True,

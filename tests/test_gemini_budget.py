@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import sys
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -37,9 +38,16 @@ def test_workflow_preflight_blocks_before_consuming_when_repairs_cannot_fit(monk
     monkeypatch.setenv("GEMINI_DAILY_IMAGE_LIMIT", "2")
     reserve_gemini_call("image", "image-model", "existing image")
 
-    with pytest.raises(GeminiBudgetExceeded, match="requires 2 image calls"):
+    expected_reset = datetime.combine(
+        datetime.now(timezone.utc).date() + timedelta(days=1),
+        datetime.min.time(),
+        tzinfo=timezone.utc,
+    ).isoformat()
+    with pytest.raises(GeminiBudgetExceeded, match="GEMINI_IMAGE_BUDGET_EXHAUSTED") as error:
         preflight_gemini_workflow(image_calls=2)
 
+    assert f"retry_at={expected_reset}" in str(error.value)
+    assert budget_snapshot()["next_reset_at_utc"] == expected_reset
     assert budget_snapshot()["image"]["used"] == 1
 
 

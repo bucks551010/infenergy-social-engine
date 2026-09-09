@@ -32,6 +32,8 @@ from social_visuals import review_rendered_visual
 from runtime_config import load_runtime_config, validate_startup_config
 
 RUN_LOCK = threading.Lock()
+RUN_START_LOCK = threading.Lock()
+DEFERRED_RUN_LOCK = threading.Lock()
 LAST_RUN = {
     "status": "idle",
     "slot": None,
@@ -71,6 +73,40 @@ def _data_dir() -> str:
 
 def _monthly_generation_job_path() -> str:
     return os.path.join(_data_dir(), "social", "monthly_generation_job.json")
+
+
+def _deferred_run_path() -> str:
+    return os.path.join(_data_dir(), "social", "deferred_run.json")
+
+
+def _deferred_run_status() -> dict:
+    return _load_json(_deferred_run_path(), {"status": "IDLE"})
+
+
+def _save_deferred_run_status(**updates) -> dict:
+    current = _deferred_run_status()
+    current.update(updates)
+    current["updated_at_utc"] = _utc_now()
+    _safe_write_json(_deferred_run_path(), current)
+    return current
+
+
+def _gemini_workflow_availability() -> dict:
+    snapshot = budget_snapshot()
+    required_images = max(0, int(os.environ.get("GEMINI_SOCIAL_WORKFLOW_IMAGE_CALLS", "2")))
+    required_total = max(required_images, int(os.environ.get("GEMINI_SOCIAL_WORKFLOW_TOTAL_CALLS", "6")))
+    reasons = []
+    if snapshot["image"]["remaining"] < required_images:
+        reasons.append("GEMINI_IMAGE_BUDGET_EXHAUSTED")
+    if snapshot["total"]["remaining"] < required_total:
+        reasons.append("GEMINI_TOTAL_BUDGET_EXHAUSTED")
+    return {
+        "available": not reasons,
+        "reasons": reasons,
+        "required": {"image_calls": required_images, "total_calls": required_total},
+        "eligible_at_utc": snapshot["next_reset_at_utc"] if reasons else _utc_now(),
+        "budget": snapshot,
+    }
 
 
 def _monthly_generation_status() -> dict:
@@ -1194,29 +1230,104 @@ def _start_slot_thread(
     no_product: bool = False,
     funnel_stage_override: str = "",
     pipeline_override: str = "",
+    deferred_job_id: str = "",
 ) -> bool:
-    if RUN_LOCK.locked():
+    if not RUN_START_LOCK.acquire(blocking=False):
         return False
 
+    def execute() -> None:
+        try:
+            run_slot(
+                slot=slot,
+                force_live=force_live,
+                force_dry_run=force_dry_run,
+                shadow_mode=shadow_mode,
+                platforms_override=platforms_override,
+                duplicate_mode=duplicate_mode,
+                readiness_block_override=readiness_block_override,
+                product_id_override=product_id_override,
+                no_product=no_product,
+                funnel_stage_override=funnel_stage_override,
+                pipeline_override=pipeline_override,
+                deferred_job_id=deferred_job_id,
+            )
+        finally:
+            RUN_START_LOCK.release()
+
     thread = threading.Thread(
-        target=run_slot,
-        kwargs={
-            "slot": slot,
-            "force_live": force_live,
-            "force_dry_run": force_dry_run,
-            "shadow_mode": shadow_mode,
-            "platforms_override": platforms_override,
-            "duplicate_mode": duplicate_mode,
-            "readiness_block_override": readiness_block_override,
-            "product_id_override": product_id_override,
-            "no_product": no_product,
-            "funnel_stage_override": funnel_stage_override,
-            "pipeline_override": pipeline_override,
-        },
+        target=execute,
         daemon=True,
     )
-    thread.start()
+    try:
+        thread.start()
+    except BaseException:
+        RUN_START_LOCK.release()
+        raise
     return True
+
+
+def _start_or_defer_slot(*, idempotency_key: str = "", **run_kwargs) -> tuple[bool, dict]:
+    request = {
+        key: run_kwargs[key]
+        for key in (
+            "slot", "force_live", "force_dry_run", "shadow_mode", "platforms_override",
+            "duplicate_mode", "readiness_block_override", "product_id_override", "no_product",
+            "funnel_stage_override", "pipeline_override",
+        )
+    }
+    fingerprint = idempotency_key or hashlib.sha256(
+        json.dumps(request, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+    with DEFERRED_RUN_LOCK:
+        current = _deferred_run_status()
+        active_states = {"WAITING_FOR_BUDGET_RESET", "QUEUED", "RUNNING"}
+        if current.get("idempotency_key") == fingerprint and current.get("status") in active_states:
+            return True, {**current, "duplicate_request": True}
+        if current.get("status") in active_states:
+            return False, {**current, "conflict": "another_durable_run_is_active"}
+
+        availability = _gemini_workflow_availability()
+        job_id = uuid.uuid4().hex
+        status = "QUEUED" if availability["available"] else "WAITING_FOR_BUDGET_RESET"
+        durable = _save_deferred_run_status(
+            job_id=job_id, idempotency_key=fingerprint, status=status, request=request,
+            accepted_at_utc=_utc_now(), eligible_at_utc=availability["eligible_at_utc"],
+            budget_requirements=availability["required"], reasons=availability["reasons"], error=None,
+        )
+        if not availability["available"]:
+            return True, durable
+        if not _start_slot_thread(**request, deferred_job_id=job_id):
+            return False, _save_deferred_run_status(status="WAITING_FOR_WORKER", error="run_lock_busy")
+        return True, _save_deferred_run_status(status="RUNNING", started_at_utc=_utc_now())
+
+
+def resume_deferred_run(*, recover_stale: bool = False) -> dict:
+    with DEFERRED_RUN_LOCK:
+        current = _deferred_run_status()
+        if current.get("status") in {"QUEUED", "RUNNING"}:
+            if recover_stale and not RUN_START_LOCK.locked():
+                current = _save_deferred_run_status(status="WAITING_FOR_BUDGET_RESET", error="recovered_after_process_restart")
+            else:
+                return current
+        if current.get("status") not in {"WAITING_FOR_BUDGET_RESET", "WAITING_FOR_WORKER"}:
+            return current
+        availability = _gemini_workflow_availability()
+        if not availability["available"]:
+            return _save_deferred_run_status(
+                status="WAITING_FOR_BUDGET_RESET", eligible_at_utc=availability["eligible_at_utc"],
+                budget_requirements=availability["required"], reasons=availability["reasons"],
+            )
+        if RUN_START_LOCK.locked():
+            return _save_deferred_run_status(status="WAITING_FOR_WORKER", error="run_lock_busy")
+        request = current.get("request") if isinstance(current.get("request"), dict) else {}
+        required_keys = {"slot", "force_live", "force_dry_run", "shadow_mode", "platforms_override", "duplicate_mode", "readiness_block_override", "product_id_override", "no_product", "funnel_stage_override", "pipeline_override"}
+        if set(request) != required_keys:
+            return _save_deferred_run_status(status="FAILED", error="invalid_deferred_request")
+        job_id = str(current.get("job_id") or "")
+        _save_deferred_run_status(status="QUEUED", started_at_utc=_utc_now(), reasons=[], error=None)
+        if not _start_slot_thread(**request, deferred_job_id=job_id):
+            return _save_deferred_run_status(status="WAITING_FOR_WORKER", error="run_lock_busy")
+        return _save_deferred_run_status(status="RUNNING", error=None)
 
 
 class HealthHandler(BaseHTTPRequestHandler):
@@ -1449,6 +1560,7 @@ class HealthHandler(BaseHTTPRequestHandler):
                 "uptime_seconds": _uptime_seconds(),
                 "last_run": LAST_RUN,
                 "last_dispatch": LAST_DISPATCH,
+                "deferred_run": _deferred_run_status(),
                 "recent_outbox": recent_outbox_activity(_data_dir()),
                 "candidate_pool_depth": _candidate_pool_depth(),
                 "dry_run": os.environ.get("SOCIAL_DRY_RUN", "true"),
@@ -2258,6 +2370,7 @@ class HealthHandler(BaseHTTPRequestHandler):
             no_product = params.get("no_product", ["false"])[0].strip().lower() in ("1", "true", "yes")
             funnel_stage_override = params.get("funnel_stage", [""])[0].strip().upper()
             pipeline_override = params.get("pipeline", [""])[0].strip().lower()
+            idempotency_key = params.get("idempotency_key", [""])[0].strip()[:128]
             if duplicate_mode and duplicate_mode not in ("strict", "exact_only", "allow_all"):
                 duplicate_mode = ""
             if readiness_block_override and readiness_block_override not in ("true", "false", "1", "0", "yes", "no"):
@@ -2289,8 +2402,9 @@ class HealthHandler(BaseHTTPRequestHandler):
                 self.wfile.write(body)
                 return
 
-            started = _start_slot_thread(
-                slot,
+            started, run_request = _start_or_defer_slot(
+                idempotency_key=idempotency_key,
+                slot=slot,
                 force_live=force_live,
                 force_dry_run=force_dry_run,
                 platforms_override=platforms_override,
@@ -2315,7 +2429,8 @@ class HealthHandler(BaseHTTPRequestHandler):
                 "no_product": no_product,
                 "funnel_stage": funnel_stage_override or "auto",
                 "pipeline": pipeline_override or "env_default",
-                "message": "run started" if started else "run already in progress",
+                "run_request": run_request,
+                "message": "run accepted" if started else "run already in progress",
                 "time_utc": _utc_now(),
             }
             body = json.dumps(payload).encode("utf-8")
@@ -2545,8 +2660,14 @@ def run_slot(
     no_product: bool = False,
     funnel_stage_override: str = "",
     pipeline_override: str = "",
+    deferred_job_id: str = "",
 ) -> None:
     with RUN_LOCK:
+        if deferred_job_id:
+            with DEFERRED_RUN_LOCK:
+                current = _deferred_run_status()
+                if current.get("job_id") == deferred_job_id:
+                    _save_deferred_run_status(status="RUNNING", started_at_utc=_utc_now(), error=None)
         LAST_RUN["status"] = "running"
         LAST_RUN["slot"] = slot
         LAST_RUN["started_at_utc"] = _utc_now()
@@ -2686,6 +2807,23 @@ def run_slot(
             elif "CANDIDATE_POOL_RUNTIME_ENABLED" in os.environ:
                 del os.environ["CANDIDATE_POOL_RUNTIME_ENABLED"]
             LAST_RUN["finished_at_utc"] = _utc_now()
+            if deferred_job_id:
+                with DEFERRED_RUN_LOCK:
+                    current = _deferred_run_status()
+                    if current.get("job_id") == deferred_job_id:
+                        error_text = str(LAST_RUN.get("error") or "")
+                        if "GEMINI_" in error_text and "BUDGET" in error_text:
+                            availability = _gemini_workflow_availability()
+                            _save_deferred_run_status(
+                                status="WAITING_FOR_BUDGET_RESET", eligible_at_utc=availability["eligible_at_utc"],
+                                reasons=availability["reasons"], error=error_text,
+                            )
+                        else:
+                            _save_deferred_run_status(
+                                status="COMPLETE" if LAST_RUN.get("status") == "published" else "FAILED",
+                                finished_at_utc=LAST_RUN["finished_at_utc"], outcome_status=LAST_RUN.get("status"),
+                                error=LAST_RUN.get("error"),
+                            )
 
 
 # All times in UTC — currently mapped to Central Time (CT)
@@ -2875,6 +3013,7 @@ def run_delivery_watchdog() -> dict:
 
 def register_scheduled_jobs() -> None:
     schedule.clear()
+    schedule.every().minute.do(resume_deferred_run)
     if os.environ.get("CONTENT_DISPATCH_ENABLED", "true").lower() in {"1", "true", "yes", "on"}:
         schedule.every().day.at(morning_utc).do(_start_dispatch_thread, "morning")
         schedule.every().day.at(midday_utc).do(_start_dispatch_thread, "midday")
@@ -2940,6 +3079,7 @@ def main() -> None:
     if os.environ.get("CONTENT_DISPATCH_ENABLED", "true").lower() in {"1", "true", "yes", "on"}:
         run_delivery_watchdog()
         _start_dispatch_thread("startup_sweep")
+    resume_deferred_run(recover_stale=True)
     if _env_is_true("CONTENT_PREGENERATION_ENABLED", False) and _env_is_true("CONTENT_PREGENERATION_ON_STARTUP", False):
         _start_pregeneration_thread()
 

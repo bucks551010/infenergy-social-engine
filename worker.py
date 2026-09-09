@@ -2755,7 +2755,7 @@ def run_slot(
                 raise RuntimeError(f"run_engine exit={completed.returncode} output_tail={output[-1500:]}")
 
             outcome = _last_run_outcome()
-            if outcome.get("slot") == slot and outcome.get("status") in {"published", "blocked_no_publish", "skipped_no_eligible_platforms"}:
+            if outcome.get("slot") == slot and outcome.get("status") in {"published", "queued_for_durable_dispatch", "blocked_no_publish", "skipped_no_eligible_platforms"}:
                 LAST_RUN["status"] = outcome["status"]
                 LAST_RUN["error"] = str(outcome.get("detail") or "") or None
             else:
@@ -2823,8 +2823,9 @@ def run_slot(
                                 reasons=availability["reasons"], error=error_text,
                             )
                         else:
+                            successful_handoff = LAST_RUN.get("status") in {"published", "queued_for_durable_dispatch"}
                             _save_deferred_run_status(
-                                status="COMPLETE" if LAST_RUN.get("status") == "published" else "FAILED",
+                                status="COMPLETE" if successful_handoff else "FAILED",
                                 finished_at_utc=LAST_RUN["finished_at_utc"], outcome_status=LAST_RUN.get("status"),
                                 error=LAST_RUN.get("error"),
                             )

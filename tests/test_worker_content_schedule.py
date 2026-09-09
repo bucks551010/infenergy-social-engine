@@ -553,6 +553,25 @@ def test_run_slot_decodes_timeout_output_and_records_failure(monkeypatch):
     assert worker.LAST_RUN["error"] == "run_timeout_after_900s"
     assert worker.LAST_RUN["finished_at_utc"]
 
+
+def test_run_slot_recognizes_durable_dispatch_handoff(monkeypatch):
+    monkeypatch.setattr(living_intelligence, "heartbeat", lambda *args, **kwargs: {})
+    monkeypatch.setattr(worker, "_auto_bootstrap_visual_repo", lambda: {})
+    monkeypatch.setattr(worker, "_auto_refresh_meta_if_due", lambda: (False, "not_due"))
+    monkeypatch.setattr(
+        worker.subprocess,
+        "run",
+        lambda *args, **kwargs: SimpleNamespace(returncode=0, stdout='{"status":"QUEUED"}', stderr=""),
+    )
+    monkeypatch.setattr(worker, "_last_run_outcome", lambda: {
+        "slot": "midday", "status": "queued_for_durable_dispatch", "detail": "outbox-1",
+    })
+
+    worker.run_slot("midday", force_live=True, product_id_override="BW-1500W-60AH")
+
+    assert worker.LAST_RUN["status"] == "queued_for_durable_dispatch"
+    assert worker.LAST_RUN["error"] == "outbox-1"
+
 def test_followup_council_candidates_skip_repeated_phase2_enrichment(monkeypatch):
     observed = []
 

@@ -255,8 +255,14 @@ def _route_generate_orchestrator(
     if no_product:
         kw.pop("product_id_override", None)
         council_decision = {"decision": "organic_strategy", "source": "product_free_override"}
-    elif not isinstance(kw.get("approved_strategy"), dict):
-        approved_strategy, council_decision = _living_strategy_for_generation()
+    else:
+        strategy_source = "caller_override"
+        approved_strategy = kw.get("approved_strategy")
+        if not isinstance(approved_strategy, dict):
+            strategy_source = "persisted_council"
+            approved_strategy, council_decision = _living_strategy_for_generation()
+        else:
+            council_decision = {"decision": "strategy_selected", "source": strategy_source}
         if approved_strategy:
             from social.strategy_lock import REQUIRED as REQUIRED_STRATEGY_FIELDS
 
@@ -264,15 +270,14 @@ def _route_generate_orchestrator(
                 field for field in REQUIRED_STRATEGY_FIELDS if not approved_strategy.get(field)
             ]
             if missing_strategy_fields:
+                kw.pop("approved_strategy", None)
                 council_decision = {
                     "decision": "fallback_runtime_lock",
-                    "reason": "persisted_council_strategy_incomplete",
+                    "reason": f"{strategy_source}_strategy_incomplete",
                     "missing_fields": missing_strategy_fields,
                 }
             else:
                 kw["approved_strategy"] = approved_strategy
-    else:
-        council_decision = {"decision": "strategy_selected", "source": "caller_override"}
     if consumer_root:
         approved_strategy = kw.get("approved_strategy") if isinstance(kw.get("approved_strategy"), dict) else {}
         moment = consumer_root["moment"]

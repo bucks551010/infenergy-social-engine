@@ -143,7 +143,7 @@ def test_generate_uses_social_intelligence_when_enabled(monkeypatch):
     assert result["anchored_offering"]["name"] == "Portable power station"
 
 
-def test_incomplete_persisted_strategy_falls_back_to_runtime_lock(monkeypatch):
+def test_incomplete_caller_strategy_falls_back_to_runtime_lock(monkeypatch):
     captured = {}
     expected = {
         "post_id": "social-runtime-lock",
@@ -151,11 +151,6 @@ def test_incomplete_persisted_strategy_falls_back_to_runtime_lock(monkeypatch):
         "visual": {"visual_format": "product_hero"},
         "quality": {"overall": 92},
     }
-    monkeypatch.setattr(
-        generate_posts,
-        "_living_strategy_for_generation",
-        lambda: ({"audience": "commuters", "angle": "long-range confidence"}, {"decision": "strategy_selected"}),
-    )
     monkeypatch.setattr(
         generate_posts,
         "run_social_intelligence",
@@ -166,6 +161,7 @@ def test_incomplete_persisted_strategy_falls_back_to_runtime_lock(monkeypatch):
         "morning",
         platform="instagram_feed",
         product_id_override="BW-1500W-60AH",
+        approved_strategy={"audience": "commuters", "angle": "long-range confidence"},
     )
 
     assert result["post_id"] == "social-runtime-lock"

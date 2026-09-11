@@ -461,6 +461,104 @@ class IntelligenceOS:
             connection.commit()
         return self.get_creative(creative_id)
 
+    def save_composed_creative(
+        self, creative_id: str, updates: dict[str, Any], *, actor: str = "owner",
+    ) -> dict[str, Any]:
+        creative = self.get_creative(creative_id)
+        if not creative.get("package", {}).get("composer"):
+            raise ValueError("creative_is_not_a_composed_post")
+        title = str(updates.get("title") or creative["title"]).strip() or creative["title"]
+        platform_posts = updates.get("platform_posts")
+        if not isinstance(platform_posts, dict) or not platform_posts:
+            raise ValueError("platform_posts_required")
+        package = dict(creative["package"])
+        existing_posts = dict(package.get("platform_posts") or {})
+        for platform in creative["platforms"]:
+            value = platform_posts.get(platform)
+            if not isinstance(value, dict) or not str(value.get("final_caption") or "").strip():
+                raise ValueError(f"final_caption_required:{platform}")
+            existing_posts[platform] = {**dict(existing_posts.get(platform) or {}), "platform": platform, "final_caption": str(value["final_caption"]).strip()}
+        package.update({
+            "title": title,
+            "platform_posts": existing_posts,
+            "fb_caption": str((existing_posts.get("facebook") or {}).get("final_caption") or ""),
+            "ig_caption": str((existing_posts.get("instagram") or {}).get("final_caption") or ""),
+            "li_text": str((existing_posts.get("linkedin") or {}).get("final_caption") or ""),
+        })
+        if creative["status"] == "SCHEDULED":
+            schedule = dict(creative.get("schedule") or {})
+            execution = self.execute_capability(
+                "publication.edit_ready",
+                {
+                    "content_date": str(schedule["content_date"]),
+                    "outbox_id": str(schedule["outbox_id"]),
+                    "changes": {"title": title, "platform_posts": existing_posts},
+                },
+                actor=actor,
+            )
+            if execution.get("status") == "WAITING_APPROVAL":
+                execution = self.approve_and_execute(
+                    str(execution["approval_id"]), actor=actor,
+                    note="Owner saved scheduled copy in Post Composer",
+                )["execution"]
+            if execution.get("status") != "COMPLETED":
+                raise ValueError(f"scheduled_creative_save_failed:{execution.get('status', 'unknown')}")
+        with connect(self.data_dir) as connection:
+            connection.execute(
+                "UPDATE os_creatives SET title=?, package_json=?, updated_at=? WHERE id=?",
+                (title, encode(package), utc_now(), creative_id),
+            )
+            connection.commit()
+        return self.get_creative(creative_id)
+
+    def reschedule_creative(
+        self, creative_id: str, *, scheduled_at: str, slot: str | None = None, actor: str = "owner",
+    ) -> dict[str, Any]:
+        creative = self.get_creative(creative_id)
+        schedule = dict(creative.get("schedule") or {})
+        outbox_id = str(schedule.get("outbox_id") or "")
+        if not outbox_id:
+            raise ValueError("creative_has_not_been_scheduled")
+        execution = self.execute_capability(
+            "publication.reschedule",
+            {"outbox_id": outbox_id, "scheduled_at": scheduled_at, "slot": slot or schedule.get("slot") or "midday"},
+            actor=actor,
+        )
+        if execution.get("status") == "WAITING_APPROVAL":
+            execution = self.approve_and_execute(
+                str(execution["approval_id"]), actor=actor,
+                note="Owner clicked Reschedule in Post Composer",
+            )["execution"]
+        if execution.get("status") != "COMPLETED":
+            raise ValueError(f"creative_reschedule_failed:{execution.get('status', 'unknown')}")
+        result = execution["result"]
+        schedule.update({
+            "content_date": result["content_date"], "scheduled_at": result["scheduled_at"],
+            "slot": result["slot"],
+        })
+        with connect(self.data_dir) as connection:
+            connection.execute(
+                "UPDATE os_creatives SET schedule_json=?, updated_at=? WHERE id=?",
+                (encode(schedule), utc_now(), creative_id),
+            )
+            connection.commit()
+        return {"creative": self.get_creative(creative_id), "execution": execution}
+
+    def publish_creative_now(self, creative_id: str, *, actor: str = "owner") -> dict[str, Any]:
+        creative = self.get_creative(creative_id)
+        outbox_id = str((creative.get("schedule") or {}).get("outbox_id") or "")
+        if not outbox_id:
+            raise ValueError("schedule_the_creative_before_publishing")
+        execution = self.execute_capability(
+            "publication.dispatch", {"outbox_id": outbox_id, "publish_now": True}, actor=actor,
+        )
+        if execution.get("status") == "WAITING_APPROVAL":
+            execution = self.approve_and_execute(
+                str(execution["approval_id"]), actor=actor,
+                note="Owner clicked Publish now in Post Composer",
+            )["execution"]
+        return {"creative": self.get_creative(creative_id), "execution": execution}
+
     def prepare_and_schedule_creative(
         self,
         creative_id: str,

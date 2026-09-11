@@ -946,6 +946,117 @@ def register_core_capabilities(registry: CapabilityRegistry, policies: PolicyEng
             "next_action": "Review the delivered assets; scheduling remains a separate owner-approved action.",
         }
 
+    def creative_post_compose(payload: dict[str, Any], context: ExecutionContext) -> dict[str, Any]:
+        from content_plan_120 import POST_TYPE_LABELS
+        from social import model_router
+
+        post_type = str(payload["post_type"]).strip()
+        if post_type not in POST_TYPE_LABELS:
+            raise ValueError(f"unknown_post_type:{post_type}")
+        copy_provider = str(payload.get("copy_provider") or "gemini").strip().lower()
+        if copy_provider not in {"gemini", DEFAULT_MASTER_MODEL}:
+            raise ValueError("copy_provider_must_be_gemini_or_gpt-5.6-sol")
+        visual_format = str(payload.get("visual_format") or "single_image").strip().lower()
+        if visual_format not in {"single_image", "carousel"}:
+            raise ValueError("visual_format_must_be_single_image_or_carousel")
+        platforms = [str(item).strip().lower() for item in payload.get("platforms", []) if str(item).strip()]
+        if not platforms or any(item not in {"facebook", "instagram", "linkedin"} for item in platforms):
+            raise ValueError("platforms_must_include_supported_platform")
+        brief = str(payload["brief"]).strip()
+        if not brief:
+            raise ValueError("creative_brief_required")
+        slide_count = max(2, min(int(payload.get("slide_count", 6)), 10))
+        copy_prompt = (
+            "Return only one JSON object with string keys title and master_copy, plus a platform_posts object. "
+            "platform_posts must contain exactly the requested platform keys and each value must contain a final_caption string. "
+            "Write finished, original Infenergy social copy grounded only in the supplied brief. Do not invent product facts. "
+            f"Post type: {POST_TYPE_LABELS[post_type]}. Platforms: {', '.join(platforms)}. Brief: {brief}"
+        )
+        if context.dry_run:
+            return {
+                "would_compose": True, "post_type": post_type, "copy_provider": copy_provider,
+                "image_provider": "gemini", "visual_format": visual_format, "platforms": platforms,
+                "production_mutated": False,
+            }
+        if copy_provider == "gemini":
+            authored = model_router.generate_json(
+                "copy_editing", copy_prompt,
+                system_instruction="You are Infenergy's social copywriter. Return strict JSON and no markdown.",
+            )
+            if authored is None:
+                raise RuntimeError(f"gemini_copy_generation_failed:{model_router.last_error() or 'empty_response'}")
+            model = model_router.route_for("copy_editing")
+            provider = "gemini"
+        else:
+            master = CopilotMaster(context.data_dir)
+            if master.model != DEFAULT_MASTER_MODEL:
+                raise ValueError(f"exact_master_model_required:{DEFAULT_MASTER_MODEL}:configured:{master.model}")
+            response = asyncio.run(master.converse(
+                copy_prompt, session_id=new_session_id(),
+                system_message="You are Infenergy's social copywriter. Return strict JSON and no markdown.", tools=[],
+            ))
+            raw = str(response.get("content") or "").strip()
+            if raw.startswith("```"):
+                raw = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw, flags=re.IGNORECASE)
+            authored = json.loads(raw)
+            model = master.model
+            provider = str(response.get("provider") or "github-copilot-sdk")
+        platform_posts = authored.get("platform_posts") if isinstance(authored, dict) else None
+        if not isinstance(platform_posts, dict) or any(
+            not isinstance(platform_posts.get(platform), dict)
+            or not str(platform_posts[platform].get("final_caption") or "").strip()
+            for platform in platforms
+        ):
+            raise ValueError("composer_copy_response_missing_platform_captions")
+        format_instruction = (
+            f"Create an explicitly {slide_count}-card carousel"
+            if visual_format == "carousel"
+            else "Create exactly one single image, not a carousel, not multiple cards"
+        )
+        visual = flagship_creative_produce({
+            "command": (
+                f"{format_instruction} for {platforms[0]}. Post type: {POST_TYPE_LABELS[post_type]}. "
+                f"Creative direction: {brief}. Do not render captions or extra visible text in the image."
+            )
+        }, context)
+        if visual.get("production_status") != "DELIVERED":
+            raise RuntimeError(f"composer_visual_generation_failed:{visual.get('failure') or visual.get('production_status')}")
+        creative_id = str(visual["creative_id"])
+        package = dict(visual["package"])
+        assets = list(visual.get("assets") or [])
+        package.update({
+            "title": str(authored.get("title") or POST_TYPE_LABELS[post_type]).strip(),
+            "master_copy": str(authored.get("master_copy") or "").strip(),
+            "post_type": post_type,
+            "post_type_label": POST_TYPE_LABELS[post_type],
+            "content_type": post_type,
+            "platforms": platforms,
+            "platform_policy": {"platforms": platforms},
+            "routing": {"platforms": platforms},
+            "platform_posts": platform_posts,
+            "fb_caption": str((platform_posts.get("facebook") or {}).get("final_caption") or ""),
+            "ig_caption": str((platform_posts.get("instagram") or {}).get("final_caption") or ""),
+            "li_text": str((platform_posts.get("linkedin") or {}).get("final_caption") or ""),
+            "copy_generation_source": copy_provider,
+            "copy_generation": {"provider": provider, "model": model, "fallback_allowed": False},
+            "image_generation": {"provider": "gemini", "fallback_allowed": False},
+            "composer": {"brief": brief, "visual_format": visual_format, "slide_count": len(assets)},
+        })
+        if visual_format == "single_image" and assets:
+            package["primary_publish_image_url"] = assets[0]
+            package["carousel_assets"] = []
+        with connect(context.data_dir) as connection:
+            connection.execute(
+                "UPDATE os_creatives SET title=?, idea=?, platforms_json=?, slide_count=?, status='DELIVERED', package_json=?, updated_at=? WHERE id=?",
+                (package["title"], brief, encode(platforms), len(assets), encode(package), utc_now(), creative_id),
+            )
+            connection.commit()
+        return {
+            "production_status": "DELIVERED", "creative_id": creative_id, "creative": package,
+            "assets": assets, "copy_provider": copy_provider, "copy_model": model,
+            "image_provider": "gemini", "next_action": "Save edits, schedule, or publish now.",
+        }
+
     def creative_scored_story_reel(payload: dict[str, Any], context: ExecutionContext) -> dict[str, Any]:
         from social.reels import build_scored_story_plan, render_scored_story_reel, technical_qa
 
@@ -1507,6 +1618,7 @@ def register_core_capabilities(registry: CapabilityRegistry, policies: PolicyEng
         Capability("risks.get", "Get risks", "Return ranked, evidence-bearing Infenergy risks and mitigations.", "BUSINESS_INTELLIGENCE", risks_get),
         Capability("creative.score", "Score creative", "Evaluate supplied content with the preserved platform-native quality rubric without generating or publishing anything.", "CREATIVE_STUDIO", creative_score, object_schema({"content": {"type": "object"}, "platforms": {"type": "array"}}, ["content"])),
         Capability("creative.command.produce", "Produce flagship creative from a command", "Own a natural-language Infenergy creative request from intent through canon-aware Entertainment Studio generation, sequence assembly, blocking QA, automatic repair, and finished asset delivery. Never returns a plan as a deliverable.", "CREATIVE_STUDIO", flagship_creative_produce, object_schema({"command": {"type": "string"}}, ["command"]), risk_level="INTERNAL_MUTATION", cost_class="MEDIUM", permission_requirement="AUTONOMOUS"),
+        Capability("creative.post.compose", "Compose image and copy post", "Generate one saved post with owner-selected post type and Gemini or exact gpt-5.6-sol copy, plus a Gemini-backed image. Scheduling and publication remain separate governed actions.", "CREATIVE_STUDIO", creative_post_compose, object_schema({"post_type": {"type": "string"}, "copy_provider": {"type": "string"}, "visual_format": {"type": "string"}, "slide_count": {"type": "integer"}, "brief": {"type": "string"}, "platforms": {"type": "array"}}, ["post_type", "copy_provider", "brief", "platforms"]), risk_level="INTERNAL_MUTATION", cost_class="MEDIUM", permission_requirement="AUTONOMOUS"),
         Capability("creative.carousel.generate", "Generate carousel package", "Author and render a complete platform-safe carousel package with a caller-selected 2-to-10 slide count. This creates draft assets but does not schedule or publish them.", "CREATIVE_STUDIO", creative_carousel_generate, object_schema({"objective": {"type": "string"}, "title": {"type": "string"}, "platform": {"type": "string"}, "platforms": {"type": "array"}, "slide_count": {"type": "integer"}, "product_id": {"type": "string"}, "product": {"type": "object"}, "principle_key": {"type": "string"}, "archetype_key": {"type": "string"}, "supporting_message": {"type": "string"}, "caption": {"type": "string"}, "cta": {"type": "string"}, "pillar": {"type": "string"}, "visual_motif": {"type": "string"}}, ["objective"]), risk_level="INTERNAL_MUTATION", cost_class="MEDIUM", permission_requirement="AUTONOMOUS", supports_rollback=True, rollback_handler=rollback_creative),
         Capability("creative.scored_story_reel.generate", "Render scored story Reel", "Animate an existing ordered carousel into a vertical H.264 story Reel with readable timing, emotional scoring, free local narration, and Instagram-ready media. Facebook and LinkedIn retain carousel assets until their video upload paths are enabled.", "CREATIVE_STUDIO", creative_scored_story_reel, object_schema({"package": {"type": "object"}, "slide_texts": {"type": "array"}, "emotions": {"type": "array"}, "visual_readings": {"type": "array"}, "narration_path": {"type": "string"}, "auto_narration": {"type": "boolean"}, "motion_intensity": {"type": "number"}}, ["package"]), risk_level="INTERNAL_MUTATION", cost_class="LOW", permission_requirement="EXECUTE_WITH_APPROVAL", supports_rollback=True, rollback_handler=rollback_creative),
         Capability("agents.list", "List operational agents", "List every preserved specialist agent and its accepted parameters and aliases.", "OPERATIONS", agents_list),

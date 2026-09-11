@@ -169,6 +169,25 @@ p { line-height: 1.55; }
 .master-transaction-list > article > span, .master-transaction-list > article > small { color: var(--muted); font-size: 10px; }
 .generation-workspace { padding: 22px; margin-bottom: 18px; }
 .post-type-launcher { padding: 20px; margin-bottom: 18px; border-color: #755424; background: linear-gradient(145deg, #172820, #15170f); }
+.post-composer-panel { margin-bottom: 18px; }
+#post-composer-form { display: grid; gap: 15px; }
+.composer-controls { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.composer-controls label, .composer-preview label, .composer-lifecycle label { display: grid; gap: 6px; color: var(--muted); font-size: 10px; font-weight: 800; text-transform: uppercase; }
+.composer-controls select, .composer-controls input, .composer-preview input, .composer-preview textarea, .composer-lifecycle input, .composer-lifecycle select { width: 100%; padding: 10px 11px; color: var(--text); border: 1px solid var(--line); border-radius: 8px; background: #08110f; }
+.composer-platforms { display: flex; gap: 16px; padding: 11px 13px; border: 1px solid var(--line); border-radius: 9px; }
+.composer-platforms legend { padding: 0 6px; color: var(--muted); font-size: 10px; font-weight: 800; text-transform: uppercase; }
+.composer-platforms label { display: flex; align-items: center; gap: 6px; color: #c9d9d5; font-size: 11px; }
+.composer-primary-actions, .composer-lifecycle, .composer-lifecycle > div { display: flex; align-items: end; gap: 9px; }
+.composer-primary-actions span { color: var(--muted); font-size: 10px; }
+.composer-output:not(:empty) { padding-top: 18px; margin-top: 18px; border-top: 1px solid var(--line); }
+.composer-preview { display: grid; grid-template-columns: minmax(220px, 38%) minmax(0, 1fr); gap: 16px; }
+.composer-preview > img { width: 100%; max-height: 540px; object-fit: contain; border: 1px solid var(--line); border-radius: 8px; background: #06100e; }
+.composer-preview > div { display: grid; gap: 10px; }
+.composer-preview textarea { resize: vertical; text-transform: none; }
+.composer-lifecycle { justify-content: space-between; padding-top: 15px; margin-top: 15px; border-top: 1px solid var(--line); }
+.composer-lifecycle button { min-height: 40px; padding: 9px 13px; color: #17130b; font-size: 10px; font-weight: 800; border-radius: 8px; background: var(--accent); }
+.composer-lifecycle button.ghost { color: var(--text); background: transparent; }
+.composer-lifecycle button.danger { color: #fff; background: #7d302b; }
 .launcher-heading { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
 .launcher-heading h2 { font-size: 22px; }
 .launcher-heading p:last-child { margin: 6px 0 0; color: var(--muted); font-size: 11px; }
@@ -502,7 +521,9 @@ p { line-height: 1.55; }
   .view, .panel, .command-grid, .context-stack, .cards, .dashboard-grid, .data-table { width: 100%; max-width: 100%; min-width: 0; }
   .view > .panel { padding: 15px; border-radius: 13px; }
   .context-stack { grid-template-columns: 1fr; }
-  .creative-grid, .creative-options, .creative-schedule, .generation-section, .generation-modes, .generation-controls { grid-template-columns: minmax(0, 1fr); }
+  .creative-grid, .creative-options, .creative-schedule, .generation-section, .generation-modes, .generation-controls, .composer-controls, .composer-preview { grid-template-columns: minmax(0, 1fr); }
+  .composer-primary-actions, .composer-lifecycle { align-items: stretch; flex-direction: column; }
+  .composer-lifecycle > div { flex-wrap: wrap; }
   .generation-hero, .generation-plan-head, .generation-production { align-items: stretch; flex-direction: column; }
   .plan-controls { grid-template-columns: minmax(0, 1fr); }
   .plan-hero { align-items: flex-start; flex-direction: column; }

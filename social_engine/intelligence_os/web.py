@@ -114,6 +114,20 @@ def handle(method: str, path: str, body: dict[str, Any] | None, data_dir: str) -
                 replace_existing=bool(payload.get("replace_existing", False)),
             )
             return _json(200, result)
+        if method in {"POST", "PATCH"} and path.startswith("/api/os/creatives/") and path.endswith("/save-composed"):
+            creative_id = path.split("/")[-2]
+            return _json(200, {"creative": service.save_composed_creative(
+                creative_id, payload, actor=str(payload.get("actor", "owner")),
+            )})
+        if method in {"POST", "PATCH"} and path.startswith("/api/os/creatives/") and path.endswith("/reschedule"):
+            creative_id = path.split("/")[-2]
+            return _json(200, service.reschedule_creative(
+                creative_id, scheduled_at=str(payload["scheduled_at"]),
+                slot=str(payload.get("slot") or "midday"), actor=str(payload.get("actor", "owner")),
+            ))
+        if method == "POST" and path.startswith("/api/os/creatives/") and path.endswith("/publish-now"):
+            creative_id = path.split("/")[-2]
+            return _json(200, service.publish_creative_now(creative_id, actor=str(payload.get("actor", "owner"))))
         if method in {"POST", "PATCH"} and path.startswith("/api/os/creatives/"):
             creative_id = path.rsplit("/", 1)[-1]
             return _json(200, {"creative": service.update_creative(creative_id, payload)})

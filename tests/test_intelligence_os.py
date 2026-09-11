@@ -12,6 +12,7 @@ import pytest
 
 from social_engine.intelligence_os.foundation import bootstrap
 from social_engine.intelligence_os.foundation import heartbeat
+from social_engine.intelligence_os.db import connect, encode
 from social_engine.intelligence_os.intelligence import AutomationService, ResearchIntelligence, classify_source
 from social_engine.intelligence_os.knowledge import WorldModel
 from social_engine.intelligence_os.models import CopilotMaster, MasterModelUnavailable, ModelStatus
@@ -30,6 +31,7 @@ def test_bootstrap_registers_foundation_and_preserves_default_deny(tmp_path):
     assert "social.schedule_job_campaign" in capabilities
     assert "creative.carousel.generate" in capabilities
     assert "creative.command.produce" in capabilities
+    assert "creative.post.compose" in capabilities
     assert "agents.run" in capabilities
     assert "content.plan_120_days" in capabilities
     blocked = service.execute_capability(
@@ -685,6 +687,100 @@ def test_ready_post_editor_uses_registered_type_and_preserves_prior_package(tmp_
     assert edited["post_type_label"] == "Product education"
     assert edited["platform_posts"]["facebook"]["final_caption"] == "Edited caption"
     assert edited["version_history"][0]["package"]["title"] == "Original"
+
+
+def test_post_composer_dry_run_preserves_selected_models_and_type(tmp_path):
+    service = bootstrap(str(tmp_path))
+
+    result = service.execute_capability("creative.post.compose", {
+        "post_type": "product_education",
+        "copy_provider": "gpt-5.6-sol",
+        "visual_format": "single_image",
+        "brief": "Explain the Black Warrior without inventing specifications.",
+        "platforms": ["facebook", "instagram", "linkedin"],
+    }, dry_run=True)
+
+    assert result["status"] == "DRY_RUN_COMPLETE"
+    assert result["result"]["post_type"] == "product_education"
+    assert result["result"]["copy_provider"] == "gpt-5.6-sol"
+    assert result["result"]["image_provider"] == "gemini"
+
+
+def test_composed_creative_copy_can_be_saved_before_scheduling(tmp_path):
+    service = bootstrap(str(tmp_path))
+    creative = service.create_creative(title="Generated post", idea="A useful brief")
+    package = {
+        "composer": {"brief": "A useful brief", "visual_format": "single_image"},
+        "title": "Generated post",
+        "platform_posts": {"facebook": {"final_caption": "Original"}},
+    }
+    with connect(str(tmp_path)) as connection:
+        connection.execute(
+            "UPDATE os_creatives SET status='DELIVERED', platforms_json=?, package_json=? WHERE id=?",
+            (encode(["facebook"]), encode(package), creative["id"]),
+        )
+        connection.commit()
+
+    saved = service.save_composed_creative(creative["id"], {
+        "title": "Owner-edited post",
+        "platform_posts": {"facebook": {"final_caption": "Owner-edited copy"}},
+    })
+
+    assert saved["title"] == "Owner-edited post"
+    assert saved["package"]["platform_posts"]["facebook"]["final_caption"] == "Owner-edited copy"
+    assert saved["package"]["fb_caption"] == "Owner-edited copy"
+
+
+def test_composed_creative_save_endpoint_and_exact_lifecycle_actions(tmp_path, monkeypatch):
+    service = bootstrap(str(tmp_path))
+    creative = service.create_creative(title="Generated post", idea="A useful brief")
+    package = {
+        "composer": {"brief": "A useful brief", "visual_format": "single_image"},
+        "title": "Generated post",
+        "platform_posts": {"facebook": {"final_caption": "Original"}},
+    }
+    schedule = {
+        "content_date": "2026-09-12", "scheduled_at": "2026-09-12T17:00:00+00:00",
+        "slot": "midday", "outbox_id": "composer-outbox",
+    }
+    with connect(str(tmp_path)) as connection:
+        connection.execute(
+            "UPDATE os_creatives SET status='DELIVERED', platforms_json=?, package_json=? WHERE id=?",
+            (encode(["facebook"]), encode(package), creative["id"]),
+        )
+        connection.commit()
+    status, _, response = handle("POST", f"/api/os/creatives/{creative['id']}/save-composed", {
+        "title": "Saved title", "platform_posts": {"facebook": {"final_caption": "Saved caption"}},
+    }, str(tmp_path))
+    assert status == 200
+    assert json.loads(response)["creative"]["package"]["fb_caption"] == "Saved caption"
+    with connect(str(tmp_path)) as connection:
+        connection.execute(
+            "UPDATE os_creatives SET status='SCHEDULED', schedule_json=? WHERE id=?",
+            (encode(schedule), creative["id"]),
+        )
+        connection.commit()
+
+    calls = []
+
+    def execute(capability, arguments, **kwargs):
+        calls.append((capability, arguments))
+        if capability == "publication.reschedule":
+            return {"status": "COMPLETED", "result": {"content_date": "2026-09-13", "scheduled_at": "2026-09-13T18:00:00+00:00", "slot": "evening"}}
+        return {"status": "COMPLETED", "result": {"processed": 1, "published": 1}}
+
+    monkeypatch.setattr(service, "execute_capability", execute)
+    rescheduled = service.reschedule_creative(
+        creative["id"], scheduled_at="2026-09-13T18:00:00+00:00", slot="evening",
+    )
+    published = service.publish_creative_now(creative["id"])
+
+    assert rescheduled["creative"]["schedule"]["content_date"] == "2026-09-13"
+    assert published["execution"]["result"]["published"] == 1
+    assert calls == [
+        ("publication.reschedule", {"outbox_id": "composer-outbox", "scheduled_at": "2026-09-13T18:00:00+00:00", "slot": "evening"}),
+        ("publication.dispatch", {"outbox_id": "composer-outbox", "publish_now": True}),
+    ]
 
 
 def test_creative_idea_persists_and_title_can_be_renamed(tmp_path):
@@ -1482,8 +1578,11 @@ def test_command_center_and_api_are_served(tmp_path):
     assert content_type.startswith("text/html")
     assert b"Infenergy Intelligence OS" in page
     assert b'id="mobile-nav"' in page
-    assert b'app.js?v=27' in page
-    assert b'styles.css?v=19' in page
+    assert b'app.js?v=28' in page
+    assert b'styles.css?v=20' in page
+    assert b'id="post-composer-form"' in page
+    assert b'id="composer-post-type"' in page
+    assert b'id="composer-provider"' in page
     assert b'id="generation-form"' in page
     assert b'data-view="content-plan"' in page
     assert b'id="plan-audience"' in page

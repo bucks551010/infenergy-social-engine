@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Infenergy Intelligence OS</title>
-  <link rel="stylesheet" href="/os/assets/styles.css?v=19">
+  <link rel="stylesheet" href="/os/assets/styles.css?v=20">
 </head>
 <body>
   <section id="login-screen" class="login-screen">
@@ -131,6 +131,21 @@
       </section>
 
       <section id="creative" class="view">
+        <article class="panel post-composer-panel">
+          <div class="panel-title"><div><p class="kicker">Create one finished post</p><h2>Post Composer</h2></div><span id="composer-status" class="badge">New draft</span></div>
+          <form id="post-composer-form">
+            <div class="composer-controls">
+              <label><span>Post type</span><select id="composer-post-type"><option value="current_event">Current event</option><option value="product_education" selected>Product education</option><option value="statement">Brand statement</option><option value="humor">Culture-led humor</option><option value="framework">Planning framework</option><option value="micro_story">Human micro-story</option><option value="explainer">Practical explainer</option><option value="drill">IRL drill</option><option value="myth">Myth-busting</option></select></label>
+              <label><span>Write with</span><select id="composer-provider"><option value="gemini">Gemini</option><option value="gpt-5.6-sol">ChatGPT · gpt-5.6-sol</option></select></label>
+              <label><span>Visual format</span><select id="composer-format"><option value="single_image" selected>Single image</option><option value="carousel">Carousel</option></select></label>
+              <label id="composer-slide-field" hidden><span>Slides</span><input id="composer-slides" type="number" min="2" max="10" value="6"></label>
+            </div>
+            <label class="creative-field"><span>What should this post communicate?</span><textarea id="composer-brief" rows="5" placeholder="Describe the product, audience, message, offer, visual direction, and any facts that must be preserved." required></textarea></label>
+            <fieldset class="composer-platforms"><legend>Publish to</legend><label><input type="checkbox" value="facebook" checked> Facebook</label><label><input type="checkbox" value="instagram" checked> Instagram</label><label><input type="checkbox" value="linkedin" checked> LinkedIn</label></fieldset>
+            <div class="composer-primary-actions"><button id="composer-generate" class="creative-button" type="submit">Generate picture + copy</button><span>Images use Gemini. Copy uses the model selected above.</span></div>
+          </form>
+          <div id="composer-output" class="composer-output"></div>
+        </article>
         <article class="panel post-type-launcher">
           <div class="launcher-heading"><div><p class="kicker">Recommended post type</p><h2>Infenergy: Micro Missions</h2><p>One 1080×1920 Story graphic. Gemini authors the idea, image, and visible copy.</p></div><span>9:16 Story</span></div>
           <div class="launcher-actions" aria-label="Micro Mission workflow">
@@ -243,6 +258,6 @@
   </div>
   <dialog id="content-inspector" class="content-inspector"><div id="content-inspector-body"></div><form method="dialog"><button class="ghost">Close</button></form></dialog>
   <div id="toast" class="toast"></div>
-  <script src="/os/assets/app.js?v=27"></script>
+  <script src="/os/assets/app.js?v=28"></script>
 </body>
 </html>

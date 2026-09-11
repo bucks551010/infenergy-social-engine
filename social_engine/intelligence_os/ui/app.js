@@ -1,4 +1,4 @@
-const state = { data: null, conversationId: null, renderedConversationId: null, jobQuery: '', creatives: [], creativeId: null, creativeSaveTimer: null, generationDays: 30, generationMode: 'AI_DECIDE', generationRequest: null, capabilities: [], transactions: [], masterCapabilityId: null, tiktokAccount: null, contentPlan: null, contentOperations: null, contentFilters: { query: '', platform: '', status: '', content_type: '' }, calendarDate: new Date(new Date().getFullYear(), new Date().getMonth(), 1), token: sessionStorage.getItem('infenergyToken') || '' };
+const state = { data: null, conversationId: null, renderedConversationId: null, jobQuery: '', creatives: [], creativeId: null, composerId: null, creativeSaveTimer: null, generationDays: 30, generationMode: 'AI_DECIDE', generationRequest: null, capabilities: [], transactions: [], masterCapabilityId: null, tiktokAccount: null, contentPlan: null, contentOperations: null, contentFilters: { query: '', platform: '', status: '', content_type: '' }, calendarDate: new Date(new Date().getFullYear(), new Date().getMonth(), 1), token: sessionStorage.getItem('infenergyToken') || '' };
 const $ = (selector) => document.querySelector(selector);
 const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[char]));
 
@@ -161,6 +161,8 @@ function renderCreativeList() {
 
 function renderCreative(creative) {
   state.creativeId = creative?.id || null;
+  state.composerId = null;
+  $('#composer-output').innerHTML = '';
   $('#creative-empty').hidden = Boolean(creative);
   $('#creative-form').hidden = !creative;
   if (!creative) { renderCreativeList(); return; }
@@ -179,7 +181,33 @@ function renderCreative(creative) {
   const slides = creative.package?.carousel_slides || [];
   const copy = creative.package?.platform_posts || {};
   $('#creative-preview').innerHTML = slides.length ? `<div class="section-label">Slide copy</div><div class="slide-copy-grid">${slides.map((slide, index) => `<article><b>${index + 1}/${slides.length}</b><strong>${esc(slide.on_image_headline)}</strong><span>${esc(slide.on_image_subline)}</span></article>`).join('')}</div><div class="section-label spaced">Platform copies</div><div class="platform-copy-grid">${Object.entries(copy).map(([platform, value]) => `<article><strong>${esc(humanize(platform))}</strong><p>${esc(value.final_caption || '')}</p></article>`).join('')}</div>` : '';
+  if (creative.package?.composer) renderPostComposer(creative);
   renderCreativeList();
+}
+
+function composerScheduleValues() {
+  if (!$('#composer-date').value || !$('#composer-time').value) throw new Error('Choose a publication date and time.');
+  const value = new Date(`${$('#composer-date').value}T${$('#composer-time').value}:00`);
+  if (Number.isNaN(value.getTime())) throw new Error('Enter a valid publication date and time.');
+  return { content_date: $('#composer-date').value, scheduled_at: value.toISOString(), slot: $('#composer-slot').value };
+}
+
+function renderPostComposer(creative) {
+  state.composerId = creative.id;
+  const packageValue = creative.package || {};
+  const composer = packageValue.composer || {};
+  const assets = packageValue.carousel_assets || [];
+  const primary = packageValue.primary_publish_image_url || assets[0]?.public_url || Object.values(packageValue.generated_visuals || {})[0] || '';
+  $('#composer-post-type').value = packageValue.post_type || 'product_education';
+  $('#composer-provider').value = packageValue.copy_generation_source || 'gemini';
+  $('#composer-format').value = composer.visual_format || (assets.length > 1 ? 'carousel' : 'single_image');
+  $('#composer-slide-field').hidden = $('#composer-format').value !== 'carousel';
+  $('#composer-slides').value = composer.slide_count || Math.max(assets.length, 2);
+  $('#composer-brief').value = composer.brief || creative.idea || '';
+  document.querySelectorAll('.composer-platforms input').forEach((item) => { item.checked = (creative.platforms || []).includes(item.value); });
+  const schedule = creative.schedule || {};
+  $('#composer-status').textContent = humanize(creative.status || 'DELIVERED');
+  $('#composer-output').innerHTML = `<div class="composer-preview">${primary ? `<img src="${esc(mediaUrl(primary))}" alt="Generated post visual">` : ''}<div><label><span>Title</span><input id="composer-title" value="${esc(packageValue.title || creative.title)}"></label>${Object.entries(packageValue.platform_posts || {}).map(([platform, value]) => `<label><span>${esc(humanize(platform))} copy</span><textarea data-composer-caption="${esc(platform)}" rows="5">${esc(value.final_caption || '')}</textarea></label>`).join('')}</div></div><div class="composer-lifecycle"><div><label><span>Date</span><input id="composer-date" type="date" value="${esc(schedule.content_date || new Date().toISOString().slice(0, 10))}"></label><label><span>Time</span><input id="composer-time" type="time" value="${esc(schedule.scheduled_at ? String(schedule.scheduled_at).slice(11, 16) : '12:30')}"></label><label><span>Slot</span><select id="composer-slot"><option value="morning" ${schedule.slot === 'morning' ? 'selected' : ''}>Morning</option><option value="midday" ${!schedule.slot || schedule.slot === 'midday' ? 'selected' : ''}>Midday</option><option value="evening" ${schedule.slot === 'evening' ? 'selected' : ''}>Evening</option></select></label></div><div><button type="button" class="ghost" data-composer-action="save">Save</button><button type="button" data-composer-action="schedule">${schedule.outbox_id ? 'Reschedule' : 'Schedule'}</button><button type="button" class="danger" data-composer-action="publish">Publish now</button></div></div>`;
 }
 
 async function loadCreatives(preferredId = state.creativeId) {
@@ -706,6 +734,51 @@ $('#new-creative').addEventListener('click', async () => {
     $('#creative-title').select();
     toast('New idea saved');
   } catch (error) { toast(error.message); }
+});
+$('#composer-format').addEventListener('change', () => { $('#composer-slide-field').hidden = $('#composer-format').value !== 'carousel'; });
+$('#post-composer-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const button = $('#composer-generate');
+  const platforms = [...document.querySelectorAll('.composer-platforms input:checked')].map((item) => item.value);
+  if (!platforms.length) return toast('Choose at least one platform');
+  try {
+    button.disabled = true; button.textContent = 'Generating picture + copy…';
+    const execution = await api('/api/os/execute', { method: 'POST', body: JSON.stringify({
+      capability: 'creative.post.compose', operation_id: `post-composer-${Date.now()}`,
+      arguments: { post_type: $('#composer-post-type').value, copy_provider: $('#composer-provider').value, visual_format: $('#composer-format').value, slide_count: Number($('#composer-slides').value || 6), brief: $('#composer-brief').value.trim(), platforms },
+    }) });
+    if (execution.status !== 'COMPLETED') throw new Error(execution.error || `Generation ended with ${execution.status}`);
+    await loadCreatives(execution.result.creative_id);
+    toast('Picture and copy generated and saved');
+  } catch (error) { $('#composer-output').innerHTML = `<div class="inline-alert">${esc(error.message)}</div>`; }
+  finally { button.disabled = false; button.textContent = 'Generate picture + copy'; }
+});
+document.addEventListener('click', async (event) => {
+  const button = event.target.closest('[data-composer-action]');
+  if (!button || !state.composerId) return;
+  const creative = state.creatives.find((item) => item.id === state.composerId);
+  if (!creative) return toast('Reload the saved creative and try again');
+  const action = button.dataset.composerAction;
+  try {
+    button.disabled = true;
+    const platformPosts = Object.fromEntries([...document.querySelectorAll('[data-composer-caption]')].map((item) => [item.dataset.composerCaption, { final_caption: item.value.trim() }]));
+    const saved = await api(`/api/os/creatives/${creative.id}/save-composed`, { method: 'POST', body: JSON.stringify({ title: $('#composer-title').value.trim(), platform_posts: platformPosts }) });
+    const current = saved.creative;
+    if (action === 'save') { await loadCreatives(current.id); toast('Post saved'); return; }
+    const timing = composerScheduleValues();
+    if (action === 'schedule') {
+      const path = current.schedule?.outbox_id ? 'reschedule' : 'schedule';
+      const result = await api(`/api/os/creatives/${current.id}/${path}`, { method: 'POST', body: JSON.stringify(timing) });
+      await loadCreatives(result.creative.id); await loadContentOperations(); toast(path === 'schedule' ? 'Post scheduled' : 'Post rescheduled'); return;
+    }
+    if (!window.confirm(`Publish ${current.title} now to ${(current.platforms || []).map(humanize).join(', ')}?`)) return;
+    if (!current.schedule?.outbox_id) await api(`/api/os/creatives/${current.id}/schedule`, { method: 'POST', body: JSON.stringify(timing) });
+    const result = await api(`/api/os/creatives/${current.id}/publish-now`, { method: 'POST', body: '{}' });
+    await load();
+    const published = Number(result.execution?.result?.published || 0);
+    toast(published ? `Published to ${published} platform${published === 1 ? '' : 's'}` : 'Publish attempt completed; inspect platform receipts');
+  } catch (error) { toast(error.message); }
+  finally { button.disabled = false; }
 });
 document.addEventListener('click', (event) => {
   const button = event.target.closest('[data-micro-mission]');

@@ -959,6 +959,44 @@ def register_core_capabilities(registry: CapabilityRegistry, policies: PolicyEng
         visual_format = str(payload.get("visual_format") or "single_image").strip().lower()
         if visual_format not in {"single_image", "carousel"}:
             raise ValueError("visual_format_must_be_single_image_or_carousel")
+        branded_formats = {
+            "infenergy_micro_mission": {
+                "visual_format": "carousel", "slide_count": 8,
+                "copy_contract": (
+                    "Also return a visible_text object with cover, six story_beats, and finale. "
+                    "Each value must be concise text intended to appear on the image cards."
+                ),
+                "visual_contract": (
+                    "Create an Infenergy Micro Mission as exactly 8 still-image 4:5 carousel cards. "
+                    "Use a cover, six sequential story beats, and a branded finale. Integrate the supplied "
+                    "visible text legibly into each card with top-to-bottom story continuity"
+                ),
+            },
+            "infenergy_storypage": {
+                "visual_format": "single_image", "slide_count": 1,
+                "copy_contract": (
+                    "Also return a visible_text object with headline, panel_lines, and brand_ending. "
+                    "panel_lines must contain 3 to 6 concise strings intended to appear inside the image."
+                ),
+                "visual_contract": (
+                    "Create an Infenergy StoryPage as exactly one 9:16 image with 3 to 6 readable comic panels, "
+                    "a hero panel, mobile-safe integrated text, and a branded ending"
+                ),
+            },
+            "superhero_text_integration": {
+                "visual_format": "single_image", "slide_count": 1,
+                "copy_contract": (
+                    "Also return visible_text as one short, memorable string intended to appear exactly in the image."
+                ),
+                "visual_contract": (
+                    "Create exactly one 4:5 cinematic Infenergy superhero image. Integrate the supplied exact visible "
+                    "text physically and legibly into the scene as intentional typography"
+                ),
+            },
+        }
+        branded_contract = branded_formats.get(post_type)
+        if branded_contract:
+            visual_format = str(branded_contract["visual_format"])
         platforms = [str(item).strip().lower() for item in payload.get("platforms", []) if str(item).strip()]
         if not platforms or any(item not in {"facebook", "instagram", "linkedin"} for item in platforms):
             raise ValueError("platforms_must_include_supported_platform")
@@ -966,16 +1004,22 @@ def register_core_capabilities(registry: CapabilityRegistry, policies: PolicyEng
         if not brief:
             raise ValueError("creative_brief_required")
         slide_count = max(2, min(int(payload.get("slide_count", 6)), 10))
+        if branded_contract:
+            slide_count = int(branded_contract["slide_count"])
         copy_prompt = (
             "Return only one JSON object with string keys title and master_copy, plus a platform_posts object. "
             "platform_posts must contain exactly the requested platform keys and each value must contain a final_caption string. "
             "Write finished, original Infenergy social copy grounded only in the supplied brief. Do not invent product facts. "
+            f"{str(branded_contract.get('copy_contract') or '') if branded_contract else ''} "
             f"Post type: {POST_TYPE_LABELS[post_type]}. Platforms: {', '.join(platforms)}. Brief: {brief}"
         )
         if context.dry_run:
             return {
                 "would_compose": True, "post_type": post_type, "copy_provider": copy_provider,
                 "image_provider": "gemini", "visual_format": visual_format, "platforms": platforms,
+                "slide_count": slide_count,
+                "content_format_identifier": post_type if branded_contract else None,
+                "visible_text_required": bool(branded_contract),
                 "production_mutated": False,
             }
         if copy_provider == "gemini":
@@ -1008,15 +1052,44 @@ def register_core_capabilities(registry: CapabilityRegistry, policies: PolicyEng
             for platform in platforms
         ):
             raise ValueError("composer_copy_response_missing_platform_captions")
-        format_instruction = (
+        visible_text = authored.get("visible_text") if isinstance(authored, dict) else None
+        visible_text_valid = not branded_contract
+        if post_type == "infenergy_micro_mission":
+            visible_text_valid = (
+                isinstance(visible_text, dict)
+                and bool(str(visible_text.get("cover") or "").strip())
+                and bool(str(visible_text.get("finale") or "").strip())
+                and isinstance(visible_text.get("story_beats"), list)
+                and len(visible_text["story_beats"]) == 6
+                and all(str(item).strip() for item in visible_text["story_beats"])
+            )
+        elif post_type == "infenergy_storypage":
+            visible_text_valid = (
+                isinstance(visible_text, dict)
+                and bool(str(visible_text.get("headline") or "").strip())
+                and bool(str(visible_text.get("brand_ending") or "").strip())
+                and isinstance(visible_text.get("panel_lines"), list)
+                and 3 <= len(visible_text["panel_lines"]) <= 6
+                and all(str(item).strip() for item in visible_text["panel_lines"])
+            )
+        elif post_type == "superhero_text_integration":
+            visible_text_valid = isinstance(visible_text, str) and bool(visible_text.strip())
+        if not visible_text_valid:
+            raise ValueError(f"composer_copy_response_invalid_visible_text:{post_type}")
+        format_instruction = str(branded_contract["visual_contract"]) if branded_contract else (
             f"Create an explicitly {slide_count}-card carousel"
             if visual_format == "carousel"
             else "Create exactly one single image, not a carousel, not multiple cards"
         )
+        text_instruction = (
+            f"Exact visible text contract: {json.dumps(visible_text, ensure_ascii=True)}."
+            if branded_contract
+            else "Do not render captions or extra visible text in the image."
+        )
         visual = flagship_creative_produce({
             "command": (
                 f"{format_instruction} for {platforms[0]}. Post type: {POST_TYPE_LABELS[post_type]}. "
-                f"Creative direction: {brief}. Do not render captions or extra visible text in the image."
+                f"Creative direction: {brief}. {text_instruction}"
             )
         }, context)
         if visual.get("production_status") != "DELIVERED":
@@ -1027,6 +1100,7 @@ def register_core_capabilities(registry: CapabilityRegistry, policies: PolicyEng
         package.update({
             "title": str(authored.get("title") or POST_TYPE_LABELS[post_type]).strip(),
             "master_copy": str(authored.get("master_copy") or "").strip(),
+            "visible_text": visible_text,
             "post_type": post_type,
             "post_type_label": POST_TYPE_LABELS[post_type],
             "content_type": post_type,
@@ -1040,7 +1114,10 @@ def register_core_capabilities(registry: CapabilityRegistry, policies: PolicyEng
             "copy_generation_source": copy_provider,
             "copy_generation": {"provider": provider, "model": model, "fallback_allowed": False},
             "image_generation": {"provider": "gemini", "fallback_allowed": False},
-            "composer": {"brief": brief, "visual_format": visual_format, "slide_count": len(assets)},
+            "composer": {
+                "brief": brief, "visual_format": visual_format, "slide_count": len(assets),
+                "content_format_identifier": post_type if branded_contract else None,
+            },
         })
         if visual_format == "single_image" and assets:
             package["primary_publish_image_url"] = assets[0]

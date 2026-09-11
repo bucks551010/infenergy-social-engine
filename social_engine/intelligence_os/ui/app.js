@@ -192,6 +192,21 @@ function composerScheduleValues() {
   return { content_date: $('#composer-date').value, scheduled_at: value.toISOString(), slot: $('#composer-slot').value };
 }
 
+function syncComposerFormat() {
+  const contract = {
+    infenergy_micro_mission: { format: 'carousel', slides: 8 },
+    infenergy_storypage: { format: 'single_image', slides: 1 },
+    superhero_text_integration: { format: 'single_image', slides: 1 },
+  }[$('#composer-post-type').value];
+  $('#composer-format').disabled = Boolean(contract);
+  $('#composer-slides').disabled = Boolean(contract);
+  if (contract) {
+    $('#composer-format').value = contract.format;
+    $('#composer-slides').value = contract.slides;
+  }
+  $('#composer-slide-field').hidden = $('#composer-format').value !== 'carousel';
+}
+
 function renderPostComposer(creative) {
   state.composerId = creative.id;
   const packageValue = creative.package || {};
@@ -201,8 +216,8 @@ function renderPostComposer(creative) {
   $('#composer-post-type').value = packageValue.post_type || 'product_education';
   $('#composer-provider').value = packageValue.copy_generation_source || 'gemini';
   $('#composer-format').value = composer.visual_format || (assets.length > 1 ? 'carousel' : 'single_image');
-  $('#composer-slide-field').hidden = $('#composer-format').value !== 'carousel';
   $('#composer-slides').value = composer.slide_count || Math.max(assets.length, 2);
+  syncComposerFormat();
   $('#composer-brief').value = composer.brief || creative.idea || '';
   document.querySelectorAll('.composer-platforms input').forEach((item) => { item.checked = (creative.platforms || []).includes(item.value); });
   const schedule = creative.schedule || {};
@@ -735,7 +750,8 @@ $('#new-creative').addEventListener('click', async () => {
     toast('New idea saved');
   } catch (error) { toast(error.message); }
 });
-$('#composer-format').addEventListener('change', () => { $('#composer-slide-field').hidden = $('#composer-format').value !== 'carousel'; });
+$('#composer-post-type').addEventListener('change', syncComposerFormat);
+$('#composer-format').addEventListener('change', syncComposerFormat);
 $('#post-composer-form').addEventListener('submit', async (event) => {
   event.preventDefault();
   const button = $('#composer-generate');

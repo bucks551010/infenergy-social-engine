@@ -135,7 +135,7 @@
           <div class="panel-title"><div><p class="kicker">Create one finished post</p><h2>Post Composer</h2></div><span id="composer-status" class="badge">New draft</span></div>
           <form id="post-composer-form">
             <div class="composer-controls">
-              <label><span>Post type</span><select id="composer-post-type"><option value="current_event">Current event</option><option value="product_education" selected>Product education</option><option value="statement">Brand statement</option><option value="humor">Culture-led humor</option><option value="framework">Planning framework</option><option value="micro_story">Human micro-story</option><option value="explainer">Practical explainer</option><option value="drill">IRL drill</option><option value="myth">Myth-busting</option></select></label>
+              <label><span>Post type</span><select id="composer-post-type"><optgroup label="Infenergy stories"><option value="infenergy_micro_mission">Infenergy Micro Mission</option><option value="infenergy_storypage">Infenergy StoryPage</option><option value="superhero_text_integration">Superhero with integrated text</option></optgroup><optgroup label="Editorial posts"><option value="current_event">Current event</option><option value="product_education" selected>Product education</option><option value="statement">Brand statement</option><option value="humor">Culture-led humor</option><option value="framework">Planning framework</option><option value="micro_story">Human micro-story</option><option value="explainer">Practical explainer</option><option value="drill">IRL drill</option><option value="myth">Myth-busting</option></optgroup></select></label>
               <label><span>Write with</span><select id="composer-provider"><option value="gemini">Gemini</option><option value="gpt-5.6-sol">ChatGPT · gpt-5.6-sol</option></select></label>
               <label><span>Visual format</span><select id="composer-format"><option value="single_image" selected>Single image</option><option value="carousel">Carousel</option></select></label>
               <label id="composer-slide-field" hidden><span>Slides</span><input id="composer-slides" type="number" min="2" max="10" value="6"></label>
@@ -147,7 +147,7 @@
           <div id="composer-output" class="composer-output"></div>
         </article>
         <article class="panel post-type-launcher">
-          <div class="launcher-heading"><div><p class="kicker">Recommended post type</p><h2>Infenergy: Micro Missions</h2><p>One 1080×1920 Story graphic. Gemini authors the idea, image, and visible copy.</p></div><span>9:16 Story</span></div>
+          <div class="launcher-heading"><div><p class="kicker">Recommended post type</p><h2>Infenergy: Micro Missions</h2><p>Eight connected 4:5 story cards with generated, integrated visible copy.</p></div><span>8-card story</span></div>
           <div class="launcher-actions" aria-label="Micro Mission workflow">
             <button type="button" data-micro-mission="idea">Ideas</button>
             <button type="button" data-micro-mission="regenerate">Regenerate</button>
@@ -258,6 +258,6 @@
   </div>
   <dialog id="content-inspector" class="content-inspector"><div id="content-inspector-body"></div><form method="dialog"><button class="ghost">Close</button></form></dialog>
   <div id="toast" class="toast"></div>
-  <script src="/os/assets/app.js?v=28"></script>
+  <script src="/os/assets/app.js?v=29"></script>
 </body>
 </html>

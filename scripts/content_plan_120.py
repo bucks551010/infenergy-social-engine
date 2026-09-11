@@ -721,6 +721,9 @@ DAY_STRATEGY = {
 }
 
 POST_TYPE_LABELS = {
+    "infenergy_micro_mission": "Infenergy Micro Mission",
+    "infenergy_storypage": "Infenergy StoryPage",
+    "superhero_text_integration": "Superhero with integrated text",
     "current_event": "Current event / timely response",
     "product_education": "Product education",
     "statement": "Brand statement",

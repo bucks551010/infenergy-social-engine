@@ -706,6 +706,32 @@ def test_post_composer_dry_run_preserves_selected_models_and_type(tmp_path):
     assert result["result"]["image_provider"] == "gemini"
 
 
+@pytest.mark.parametrize(
+    ("post_type", "visual_format", "slide_count"),
+    [
+        ("infenergy_micro_mission", "carousel", 8),
+        ("infenergy_storypage", "single_image", 1),
+        ("superhero_text_integration", "single_image", 1),
+    ],
+)
+def test_post_composer_enforces_branded_story_contracts(tmp_path, post_type, visual_format, slide_count):
+    service = bootstrap(str(tmp_path))
+
+    result = service.execute_capability("creative.post.compose", {
+        "post_type": post_type,
+        "copy_provider": "gemini",
+        "visual_format": "carousel" if visual_format == "single_image" else "single_image",
+        "slide_count": 3,
+        "brief": "Tell a complete product story without inventing specifications.",
+        "platforms": ["instagram"],
+    }, dry_run=True)["result"]
+
+    assert result["content_format_identifier"] == post_type
+    assert result["visual_format"] == visual_format
+    assert result["slide_count"] == slide_count
+    assert result["visible_text_required"] is True
+
+
 def test_composed_creative_copy_can_be_saved_before_scheduling(tmp_path):
     service = bootstrap(str(tmp_path))
     creative = service.create_creative(title="Generated post", idea="A useful brief")
@@ -1578,10 +1604,14 @@ def test_command_center_and_api_are_served(tmp_path):
     assert content_type.startswith("text/html")
     assert b"Infenergy Intelligence OS" in page
     assert b'id="mobile-nav"' in page
-    assert b'app.js?v=28' in page
+    assert b'app.js?v=29' in page
     assert b'styles.css?v=20' in page
     assert b'id="post-composer-form"' in page
     assert b'id="composer-post-type"' in page
+    assert b'value="infenergy_micro_mission"' in page
+    assert b'value="infenergy_storypage"' in page
+    assert b'value="superhero_text_integration"' in page
+    assert b'Eight connected 4:5 story cards' in page
     assert b'id="composer-provider"' in page
     assert b'id="generation-form"' in page
     assert b'data-view="content-plan"' in page

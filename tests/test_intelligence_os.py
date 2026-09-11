@@ -573,6 +573,120 @@ def test_calendar_returns_exact_persisted_scheduled_post(tmp_path):
     assert post["package"]["platform_posts"]["facebook"]["final_caption"] == "Exact Facebook caption."
 
 
+def test_content_operations_separates_upcoming_from_confirmed_history(tmp_path):
+    from content_operations import begin_platform_transaction, complete_platform_transaction
+
+    service = bootstrap(str(tmp_path))
+    service.policies.create_policy(
+        capability="social.schedule",
+        rule="Test autonomous scheduling.",
+        approval_level="AUTONOMOUS",
+        created_by="owner",
+    )
+    future = service.execute_capability("social.schedule", {
+        "content_date": "2026-09-12",
+        "slot": "midday",
+        "scheduled_at": "2026-09-12T17:00:00+00:00",
+        "package": {
+            "post_id": "future-post",
+            "content_type": "product_story",
+            "platforms": ["facebook", "instagram"],
+            "primary_publish_image_url": "https://example.test/shared.png",
+            "media_asset": {"url": "https://example.test/shared.png", "sha256": "shared-sha", "status": "READY"},
+        },
+    })["result"]
+    past = service.execute_capability("social.schedule", {
+        "content_date": "2026-09-08",
+        "slot": "morning",
+        "scheduled_at": "2026-09-08T13:00:00+00:00",
+        "package": {
+            "post_id": "published-post",
+            "content_type": "micro_mission",
+            "platforms": ["facebook"],
+            "primary_publish_image_url": "https://example.test/published.png",
+        },
+    })["result"]
+    begin_platform_transaction(
+        str(tmp_path), outbox_id=past["outbox_id"], platform="facebook", payload={"message": "Published copy"}
+    )
+    complete_platform_transaction(
+        str(tmp_path), outbox_id=past["outbox_id"], platform="facebook",
+        state="CONFIRMED_SUCCESS", external_id="fb-verified-123", provider_response={"id": "fb-verified-123"},
+    )
+
+    status, content_type, response = handle("POST", "/api/os/content-operations", {
+        "now_utc": "2026-09-10T12:00:00+00:00", "upcoming_days": 30, "history_days": 30,
+    }, str(tmp_path))
+    workspace = json.loads(response)
+
+    assert status == 200
+    assert content_type.startswith("application/json")
+    assert [item["outbox_id"] for item in workspace["upcoming"]] == [future["outbox_id"]]
+    assert workspace["upcoming"][0]["prepare_by"] == "2026-09-12T13:00:00+00:00"
+    assert workspace["upcoming"][0]["operationally_visible"] is False
+    assert [item["outbox_id"] for item in workspace["published"]] == [past["outbox_id"]]
+    assert workspace["published"][0]["confirmed_publications"][0]["external_id"] == "fb-verified-123"
+    assert workspace["summary"] == {"upcoming": 1, "published": 1, "media": 3, "needs_attention": 0}
+    assert workspace["facets"]["platforms"] == ["facebook", "instagram"]
+
+
+def test_conversational_remake_uses_exact_master_model_and_preserves_version(tmp_path, monkeypatch):
+    service = bootstrap(str(tmp_path))
+    service.policies.create_policy(
+        capability="publication.master_remake", rule="Test owner-authorized remake.",
+        approval_level="AUTONOMOUS", created_by="owner",
+    )
+    service.policies.create_policy(
+        capability="social.schedule", rule="Test autonomous scheduling.",
+        approval_level="AUTONOMOUS", created_by="owner",
+    )
+    scheduled = service.execute_capability("social.schedule", {
+        "content_date": "2026-09-12", "slot": "midday", "scheduled_at": "2026-09-12T17:00:00+00:00",
+        "package": {"post_id": "remake-me", "title": "Original", "master_copy": "Original copy", "platforms": ["facebook"], "platform_posts": {"facebook": {"final_caption": "Original caption"}}, "primary_publish_image_url": "https://example.test/original.png"},
+    })["result"]
+
+    async def fake_converse(self, prompt, *, session_id, system_message, tools=None):
+        assert self.model == "gpt-5.6-sol"
+        assert "Make it more direct" in prompt
+        return {"content": json.dumps({"title": "Remade", "master_copy": "Direct copy", "platform_posts": {"facebook": {"final_caption": "Direct caption"}}, "creative_direction": "Keep the approved image."}), "model": self.model, "provider": "github-copilot-sdk", "session_id": session_id}
+
+    monkeypatch.setattr(CopilotMaster, "converse", fake_converse)
+    result = service.execute_capability("publication.master_remake", {
+        "content_date": "2026-09-12", "outbox_id": scheduled["outbox_id"], "instruction": "Make it more direct",
+    })
+    status, _, response = handle("POST", "/api/os/content-operations", {"now_utc": "2026-09-10T12:00:00+00:00"}, str(tmp_path))
+    remade = json.loads(response)["upcoming"][0]["package"]
+
+    assert result["status"] == "COMPLETED"
+    assert result["result"]["model"] == "gpt-5.6-sol"
+    assert remade["title"] == "Remade"
+    assert remade["version_history"][0]["package"]["title"] == "Original"
+    assert remade["last_remake"]["model"] == "gpt-5.6-sol"
+
+
+def test_ready_post_editor_uses_registered_type_and_preserves_prior_package(tmp_path):
+    service = bootstrap(str(tmp_path))
+    for capability in ("social.schedule", "publication.edit_ready"):
+        service.policies.create_policy(capability=capability, rule="Test autonomous edit.", approval_level="AUTONOMOUS", created_by="owner")
+    scheduled = service.execute_capability("social.schedule", {
+        "content_date": "2026-09-12", "slot": "midday", "scheduled_at": "2026-09-12T17:00:00+00:00",
+        "package": {"post_id": "edit-me", "title": "Original", "post_type": "statement", "platforms": ["facebook"], "platform_posts": {"facebook": {"final_caption": "Original caption"}}, "primary_publish_image_url": "https://example.test/original.png"},
+    })["result"]
+
+    result = service.execute_capability("publication.edit_ready", {
+        "content_date": "2026-09-12", "outbox_id": scheduled["outbox_id"],
+        "changes": {"title": "Edited", "post_type": "product_education", "platform_posts": {"facebook": {"final_caption": "Edited caption"}}},
+    })
+    _, _, response = handle("POST", "/api/os/content-operations", {"now_utc": "2026-09-10T12:00:00+00:00"}, str(tmp_path))
+    edited = json.loads(response)["upcoming"][0]["package"]
+
+    assert result["status"] == "COMPLETED"
+    assert edited["post_type"] == "product_education"
+    assert edited["post_type_label"] == "Product education"
+    assert edited["platform_posts"]["facebook"]["final_caption"] == "Edited caption"
+    assert edited["version_history"][0]["package"]["title"] == "Original"
+
+
 def test_creative_idea_persists_and_title_can_be_renamed(tmp_path):
     service = bootstrap(str(tmp_path))
     created = service.create_creative(title="Untitled creative")
@@ -1368,12 +1482,12 @@ def test_command_center_and_api_are_served(tmp_path):
     assert content_type.startswith("text/html")
     assert b"Infenergy Intelligence OS" in page
     assert b'id="mobile-nav"' in page
-    assert b'app.js?v=26' in page
+    assert b'app.js?v=27' in page
+    assert b'styles.css?v=19' in page
     assert b'id="generation-form"' in page
     assert b'data-view="content-plan"' in page
     assert b'id="plan-audience"' in page
     assert b'id="plan-image-count">0 images' in page
-    assert b'styles.css?v=18' in page
     assert b'data-view="master"' in page
     assert b'id="master-capabilities"' in page
     assert b'id="master-form"' in page

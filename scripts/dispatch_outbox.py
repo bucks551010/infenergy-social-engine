@@ -555,8 +555,14 @@ def _creative_package_error(package: dict[str, Any], platforms: list[str]) -> st
     return ""
 
 
-def dispatch_due(*, data_dir: str = DATA_DIR, now_utc: str | None = None) -> dict[str, Any]:
-    claimed = claim_due(data_dir, now_utc)
+def dispatch_due(
+    *,
+    data_dir: str = DATA_DIR,
+    now_utc: str | None = None,
+    outbox_id: str | None = None,
+    force: bool = False,
+) -> dict[str, Any]:
+    claimed = claim_due(data_dir, now_utc, outbox_id=outbox_id, force=force)
     if not claimed:
         return {"status": "IDLE", "detail": "no_due_ready_content"}
 
@@ -569,7 +575,7 @@ def dispatch_due(*, data_dir: str = DATA_DIR, now_utc: str | None = None) -> dic
     now = datetime.fromisoformat(now_utc.replace("Z", "+00:00")) if now_utc else datetime.now(timezone.utc)
     if now.tzinfo is None:
         now = now.replace(tzinfo=timezone.utc)
-    due_platforms = [
+    due_platforms = platforms if force else [
         platform for platform in platforms
         if _platform_due_at(package, platform, str(claimed["scheduled_at"])) <= now
     ]

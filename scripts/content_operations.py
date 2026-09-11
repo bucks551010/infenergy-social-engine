@@ -1094,23 +1094,38 @@ def enqueue_durable_package(
     return outbox_id
 
 
-def claim_due(data_dir: str, now_utc: str | None = None) -> dict[str, Any] | None:
+def claim_due(
+    data_dir: str,
+    now_utc: str | None = None,
+    *,
+    outbox_id: str | None = None,
+    force: bool = False,
+) -> dict[str, Any] | None:
     now = now_utc or _now()
     connection = _connect(data_dir)
     try:
         connection.execute("BEGIN IMMEDIATE")
+        target_clause = "AND outbox_id=?" if outbox_id else ""
+        due_clause = "" if force else "AND datetime(scheduled_at) <= datetime(?)"
+        parameters: list[Any] = []
+        if not force:
+            parameters.append(now)
+        parameters.append(now)
+        if outbox_id:
+            parameters.append(outbox_id)
         row = connection.execute(
-            """
+            f"""
             SELECT * FROM content_outbox
                         WHERE (
                             status IN ('READY', 'DUE')
                             OR (status='EXTERNAL_ACTION_REQUIRED' AND last_error='no_routed_platforms')
                             OR (status='RECOVERING' AND last_error='ready_package_has_no_routed_platforms')
-                        ) AND datetime(scheduled_at) <= datetime(?)
+                        ) {due_clause}
                             AND (next_attempt_at IS NULL OR datetime(next_attempt_at) <= datetime(?))
+                            {target_clause}
             ORDER BY datetime(scheduled_at), created_at LIMIT 1
             """,
-                        (now, now),
+            parameters,
         ).fetchone()
         if not row:
             connection.commit()
@@ -1751,6 +1766,212 @@ def scheduled_calendar(
             "days": calendar_days,
             "scheduled_count": sum(len(item["posts"]) for item in calendar_days),
         }
+    finally:
+        connection.close()
+
+
+def content_operations_workspace(
+    data_dir: str,
+    *,
+    now_utc: str | None = None,
+    upcoming_days: int = 30,
+    history_days: int = 30,
+) -> dict[str, Any]:
+    now = datetime.fromisoformat(now_utc or _now())
+    if now.tzinfo is None:
+        now = now.replace(tzinfo=timezone.utc)
+    today = now.date()
+    upcoming_end = today + timedelta(days=max(1, min(int(upcoming_days), 120)))
+    history_start = today - timedelta(days=max(1, min(int(history_days), 365)))
+    connection = _connect(data_dir)
+    try:
+        rows = connection.execute(
+            """
+            SELECT outbox_id, content_id, decision_id, content_date, slot, scheduled_at,
+                   package_json, status, attempt_count, created_at, ready_at, claimed_at,
+                   next_attempt_at, published_at, last_error
+            FROM content_outbox
+            WHERE content_date BETWEEN ? AND ?
+            ORDER BY datetime(scheduled_at), created_at
+            """,
+            (history_start.isoformat(), upcoming_end.isoformat()),
+        ).fetchall()
+        upcoming: list[dict[str, Any]] = []
+        published: list[dict[str, Any]] = []
+        media_by_identity: dict[str, dict[str, Any]] = {}
+        statuses: set[str] = set()
+        platforms: set[str] = set()
+        content_types: set[str] = set()
+        for row in rows:
+            item = dict(row)
+            package = _decode(item.pop("package_json"), {})
+            transactions = []
+            for transaction in connection.execute(
+                """
+                SELECT platform, state, request_key, request_payload_json, external_id,
+                       provider_response_json, attempt_count, last_error, created_at, updated_at
+                FROM platform_transactions WHERE outbox_id=? ORDER BY platform
+                """,
+                (item["outbox_id"],),
+            ).fetchall():
+                record = dict(transaction)
+                record["request_payload"] = _decode(record.pop("request_payload_json"), {})
+                record["provider_response"] = _decode(record.pop("provider_response_json"), {})
+                transactions.append(record)
+                platforms.add(str(record["platform"]))
+            scheduled = datetime.fromisoformat(str(item["scheduled_at"]))
+            if scheduled.tzinfo is None:
+                scheduled = scheduled.replace(tzinfo=timezone.utc)
+            routed_platforms = configured_platforms(package)
+            platforms.update(routed_platforms)
+            content_type = str(package.get("content_type") or package.get("format") or "unspecified")
+            content_types.add(content_type)
+            statuses.add(str(item["status"]))
+            item.update({
+                "package": package,
+                "platforms": routed_platforms,
+                "transactions": transactions,
+                "content_type": content_type,
+                "prepare_by": (scheduled - timedelta(hours=4)).isoformat(),
+                "operationally_visible": now >= scheduled - timedelta(hours=4),
+                "readiness": package.get("publication_readiness") or package.get("readiness") or {},
+                "rejection_reasons": package.get("rejection_reasons") or package.get("qa_failures") or [],
+            })
+            media_candidates = []
+            if package.get("primary_publish_image_url"):
+                media_candidates.append({"url": package["primary_publish_image_url"], "role": "PRIMARY_PUBLISH"})
+            for asset in package.get("carousel_assets") or package.get("assets") or []:
+                media_candidates.append(asset if isinstance(asset, dict) else {"url": asset})
+            if isinstance(package.get("media_asset"), dict):
+                media_candidates.append(package["media_asset"])
+            item["media"] = []
+            for asset in media_candidates:
+                source = str(asset.get("public_url") or asset.get("local_path") or asset.get("path") or asset.get("url") or "")
+                if not source:
+                    continue
+                identity = str(asset.get("sha256") or asset.get("asset_sha256") or source)
+                media = media_by_identity.setdefault(identity, {
+                    "identity": identity,
+                    "source": source,
+                    "sha256": asset.get("sha256") or asset.get("asset_sha256") or "",
+                    "role": asset.get("role") or "CONTENT_ASSET",
+                    "status": asset.get("status") or "STORED",
+                    "outbox_ids": [],
+                })
+                if item["outbox_id"] not in media["outbox_ids"]:
+                    media["outbox_ids"].append(item["outbox_id"])
+                item["media"].append(identity)
+            confirmed = [transaction for transaction in transactions if transaction["state"] == "CONFIRMED_SUCCESS"]
+            if history_start <= date.fromisoformat(str(item["content_date"])) <= today and confirmed:
+                item["confirmed_publications"] = confirmed
+                published.append(item)
+            elif today <= date.fromisoformat(str(item["content_date"])) <= upcoming_end:
+                upcoming.append(item)
+        return {
+            "generated_at": now.isoformat(),
+            "windows": {
+                "upcoming_start": today.isoformat(),
+                "upcoming_end": upcoming_end.isoformat(),
+                "history_start": history_start.isoformat(),
+                "history_end": today.isoformat(),
+                "preparation_hours": 4,
+            },
+            "summary": {
+                "upcoming": len(upcoming),
+                "published": len(published),
+                "media": len(media_by_identity),
+                "needs_attention": sum(1 for item in upcoming if item["last_error"] or item["rejection_reasons"]),
+            },
+            "facets": {
+                "statuses": sorted(statuses),
+                "platforms": sorted(platforms),
+                "content_types": sorted(content_types),
+            },
+            "upcoming": upcoming,
+            "published": sorted(published, key=lambda item: item.get("published_at") or item["scheduled_at"], reverse=True),
+            "media": list(media_by_identity.values()),
+        }
+    finally:
+        connection.close()
+
+
+def reschedule_outbox(
+    data_dir: str,
+    outbox_id: str,
+    *,
+    scheduled_at: str,
+    slot: str | None = None,
+) -> dict[str, Any]:
+    scheduled = datetime.fromisoformat(scheduled_at.replace("Z", "+00:00"))
+    if scheduled.tzinfo is None:
+        raise ValueError("scheduled_at_timezone_required")
+    destination_date = scheduled.date().isoformat()
+    connection = _connect(data_dir)
+    try:
+        connection.execute("BEGIN IMMEDIATE")
+        row = connection.execute(
+            "SELECT outbox_id, content_date, slot, scheduled_at, status FROM content_outbox WHERE outbox_id=?",
+            (outbox_id,),
+        ).fetchone()
+        if not row:
+            raise KeyError(f"outbox_not_found:{outbox_id}")
+        if row["status"] not in {"READY", "HELD"}:
+            raise ValueError(f"outbox_not_reschedulable:{row['status']}")
+        unsafe_transaction = connection.execute(
+            """SELECT 1 FROM platform_transactions WHERE outbox_id=?
+               AND state IN ('REQUEST_SENT', 'CONFIRMED_SUCCESS', 'AMBIGUOUS') LIMIT 1""",
+            (outbox_id,),
+        ).fetchone()
+        if unsafe_transaction:
+            raise ValueError("outbox_has_nonreplaceable_platform_transaction")
+        destination_slot = str(slot or row["slot"]).strip().lower()
+        if destination_slot not in SLOTS:
+            raise ValueError("slot_must_be_morning_midday_or_evening")
+        occupied = connection.execute(
+            "SELECT outbox_id FROM daily_slots WHERE content_date=? AND slot=? AND outbox_id IS NOT NULL AND outbox_id<>?",
+            (destination_date, destination_slot, outbox_id),
+        ).fetchone()
+        if occupied:
+            raise ValueError(f"slot_already_occupied:{destination_date}:{destination_slot}")
+        previous = {
+            "content_date": str(row["content_date"]),
+            "slot": str(row["slot"]),
+            "scheduled_at": str(row["scheduled_at"]),
+        }
+        if previous["content_date"] != destination_date or previous["slot"] != destination_slot:
+            connection.execute(
+                """UPDATE daily_slots SET content_id=NULL, decision_id=NULL, outbox_id=NULL,
+                   status='UNPLANNED', ready_at=NULL, claimed_at=NULL, published_at=NULL,
+                   last_error=NULL, updated_at=? WHERE outbox_id=?""",
+                (_now(), outbox_id),
+            )
+            destination = connection.execute(
+                "SELECT 1 FROM daily_slots WHERE content_date=? AND slot=?",
+                (destination_date, destination_slot),
+            ).fetchone()
+            if not destination:
+                connection.execute(
+                    """INSERT INTO daily_slots
+                       (content_date, slot, scheduled_at, platform_policy_json, status, updated_at)
+                       VALUES (?, ?, ?, '{}', 'UNPLANNED', ?)""",
+                    (destination_date, destination_slot, scheduled.isoformat(), _now()),
+                )
+        connection.execute(
+            "UPDATE content_outbox SET content_date=?, slot=?, scheduled_at=?, next_attempt_at=NULL WHERE outbox_id=?",
+            (destination_date, destination_slot, scheduled.isoformat(), outbox_id),
+        )
+        connection.execute(
+            """UPDATE daily_slots SET scheduled_at=?, content_id=(SELECT content_id FROM content_outbox WHERE outbox_id=?),
+               decision_id=(SELECT decision_id FROM content_outbox WHERE outbox_id=?), outbox_id=?, status=?,
+               ready_at=(SELECT ready_at FROM content_outbox WHERE outbox_id=?), last_error=(SELECT last_error FROM content_outbox WHERE outbox_id=?),
+               updated_at=? WHERE content_date=? AND slot=?""",
+            (scheduled.isoformat(), outbox_id, outbox_id, outbox_id, row["status"], outbox_id, outbox_id, _now(), destination_date, destination_slot),
+        )
+        connection.commit()
+        return {"outbox_id": outbox_id, "content_date": destination_date, "slot": destination_slot, "scheduled_at": scheduled.isoformat(), "previous": previous}
+    except Exception:
+        connection.rollback()
+        raise
     finally:
         connection.close()
 

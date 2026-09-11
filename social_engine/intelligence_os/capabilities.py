@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+import json
 import os
 import re
 import sys
@@ -15,7 +17,7 @@ from .db import connect, encode, utc_now
 from .governance import PolicyEngine
 from .intelligence import AutomationService, ResearchIntelligence
 from .knowledge import ResearchService, StrategyService, WorldModel
-from .models import CopilotMaster
+from .models import DEFAULT_MASTER_MODEL, CopilotMaster, new_session_id
 from .operations import AttentionService, JobService
 from .registry import Capability, CapabilityRegistry, ExecutionContext
 
@@ -1040,12 +1042,14 @@ def register_core_capabilities(registry: CapabilityRegistry, policies: PolicyEng
             raise KeyError(f"content_decision_not_found:{payload['decision_id']}")
         return result
 
-    def publication_dispatch(_: dict[str, Any], context: ExecutionContext) -> dict[str, Any]:
+    def publication_dispatch(payload: dict[str, Any], context: ExecutionContext) -> dict[str, Any]:
         from dispatch_outbox import dispatch_due
+        outbox_id = str(payload.get("outbox_id") or "").strip() or None
+        publish_now = bool(payload.get("publish_now", False))
         if context.dry_run:
             from content_operations import operations_readiness
-            return {"would_dispatch_due": True, "readiness": operations_readiness(context.data_dir), "production_mutated": False}
-        return dispatch_due(data_dir=context.data_dir)
+            return {"would_dispatch_due": True, "outbox_id": outbox_id, "publish_now": publish_now, "readiness": operations_readiness(context.data_dir), "production_mutated": False}
+        return dispatch_due(data_dir=context.data_dir, outbox_id=outbox_id, force=publish_now)
     def publication_prepare_next(_: dict[str, Any], context: ExecutionContext) -> dict[str, Any]:
         from dispatch_outbox import pregenerate_upcoming
         if context.dry_run:
@@ -1304,6 +1308,119 @@ def register_core_capabilities(registry: CapabilityRegistry, policies: PolicyEng
         hold_outbox(context.data_dir, outbox_id, reason)
         return {"status": "HELD", "outbox_id": outbox_id, "reason": reason}
 
+    def publication_reschedule(payload: dict[str, Any], context: ExecutionContext) -> dict[str, Any]:
+        from content_operations import reschedule_outbox
+
+        outbox_id = str(payload["outbox_id"])
+        scheduled_at = str(payload["scheduled_at"])
+        slot = str(payload.get("slot") or "").strip() or None
+        if context.dry_run:
+            return {"would_reschedule": outbox_id, "scheduled_at": scheduled_at, "slot": slot, "production_mutated": False}
+        result = reschedule_outbox(context.data_dir, outbox_id, scheduled_at=scheduled_at, slot=slot)
+        return {**result, "status": "RESCHEDULED", "_rollback": {"outbox_id": outbox_id, **result["previous"]}}
+
+    def publication_master_remake(payload: dict[str, Any], context: ExecutionContext) -> dict[str, Any]:
+        from content_operations import daily_index, update_ready_package
+
+        outbox_id = str(payload["outbox_id"])
+        content_date = str(payload["content_date"])
+        instruction = str(payload["instruction"]).strip()
+        index = daily_index(context.data_dir, content_date)
+        outbox = next((item for detail in index.get("details", []) for item in detail.get("outbox", []) if str(item.get("outbox_id")) == outbox_id), None)
+        if not outbox:
+            raise KeyError(f"outbox_not_found_for_date:{content_date}:{outbox_id}")
+        if outbox.get("status") != "READY":
+            raise ValueError(f"outbox_not_ready_for_remake:{outbox.get('status')}")
+        master = CopilotMaster(context.data_dir)
+        if master.model != DEFAULT_MASTER_MODEL:
+            raise ValueError(f"exact_master_model_required:{DEFAULT_MASTER_MODEL}:configured:{master.model}")
+        package = dict(outbox.get("package") or {})
+        if context.dry_run:
+            return {"would_remake": outbox_id, "instruction": instruction, "model": master.model, "production_mutated": False}
+        response = asyncio.run(master.converse(
+            "Return only a JSON object with keys title, master_copy, platform_posts, and creative_direction. "
+            "Preserve factual claims and platform keys. Each platform_posts value must contain final_caption. "
+            f"Owner instruction: {instruction}\nCurrent package: {json.dumps(package, ensure_ascii=True)}",
+            session_id=new_session_id(),
+            system_message="You are the Infenergy post editor. Edit only the requested content. Return strict JSON with no markdown.",
+            tools=[],
+        ))
+        raw = str(response.get("content") or "").strip()
+        if raw.startswith("```"):
+            raw = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw, flags=re.IGNORECASE)
+        remake = json.loads(raw)
+        if not isinstance(remake, dict) or not isinstance(remake.get("platform_posts"), dict):
+            raise ValueError("master_remake_invalid_response")
+        prior = {key: value for key, value in package.items() if key != "version_history"}
+        history = list(package.get("version_history") or [])
+        history.append({"version": len(history) + 1, "replaced_at": utc_now(), "model": master.model, "instruction": instruction, "package": prior})
+        package.update({key: remake[key] for key in ("title", "master_copy", "platform_posts", "creative_direction") if key in remake})
+        package["version_history"] = history
+        package["last_remake"] = {"model": master.model, "provider": response.get("provider"), "instruction": instruction, "created_at": utc_now()}
+        if not update_ready_package(context.data_dir, outbox_id, package):
+            raise RuntimeError("outbox_changed_before_master_remake")
+        return {"status": "REMADE", "outbox_id": outbox_id, "model": master.model, "version": len(history)}
+
+    def publication_edit_ready(payload: dict[str, Any], context: ExecutionContext) -> dict[str, Any]:
+        from content_operations import daily_index, update_ready_package
+        from content_plan_120 import POST_TYPE_LABELS
+
+        outbox_id = str(payload["outbox_id"])
+        content_date = str(payload["content_date"])
+        changes = dict(payload["changes"])
+        allowed = {"title", "master_copy", "post_type", "platform_posts"}
+        unexpected = sorted(set(changes) - allowed)
+        if unexpected:
+            raise ValueError(f"unsupported_edit_fields:{','.join(unexpected)}")
+        post_type = str(changes.get("post_type") or "").strip()
+        if post_type and post_type not in POST_TYPE_LABELS:
+            raise ValueError(f"unknown_post_type:{post_type}")
+        platform_posts = changes.get("platform_posts")
+        if platform_posts is not None:
+            if not isinstance(platform_posts, dict) or any(platform not in {"facebook", "instagram", "linkedin"} for platform in platform_posts):
+                raise ValueError("platform_posts_must_use_supported_platforms")
+            for value in platform_posts.values():
+                if not isinstance(value, dict) or not isinstance(value.get("final_caption"), str):
+                    raise ValueError("platform_post_final_caption_required")
+        index = daily_index(context.data_dir, content_date)
+        outbox = next((item for detail in index.get("details", []) for item in detail.get("outbox", []) if str(item.get("outbox_id")) == outbox_id), None)
+        if not outbox:
+            raise KeyError(f"outbox_not_found_for_date:{content_date}:{outbox_id}")
+        if outbox.get("status") != "READY":
+            raise ValueError(f"outbox_not_ready_for_edit:{outbox.get('status')}")
+        if context.dry_run:
+            return {"would_edit": outbox_id, "fields": sorted(changes), "production_mutated": False}
+        package = dict(outbox.get("package") or {})
+        prior = {key: value for key, value in package.items() if key != "version_history"}
+        history = list(package.get("version_history") or [])
+        history.append({"version": len(history) + 1, "replaced_at": utc_now(), "actor": context.actor, "reason": "owner_direct_edit", "package": prior})
+        for field in ("title", "master_copy"):
+            if field in changes:
+                package[field] = str(changes[field])
+        if post_type:
+            package["post_type"] = post_type
+            package["post_type_label"] = POST_TYPE_LABELS[post_type]
+            package["content_type"] = post_type
+        if platform_posts is not None:
+            existing_posts = dict(package.get("platform_posts") or {})
+            for platform, value in platform_posts.items():
+                existing = dict(existing_posts.get(platform) or {})
+                existing.update(value)
+                existing_posts[platform] = existing
+            package["platform_posts"] = existing_posts
+        package["version_history"] = history
+        if not update_ready_package(context.data_dir, outbox_id, package):
+            raise RuntimeError("outbox_changed_before_owner_edit")
+        return {"status": "EDITED", "outbox_id": outbox_id, "version": len(history), "fields": sorted(changes)}
+
+    def rollback_publication_reschedule(data: dict[str, Any], context: ExecutionContext) -> dict[str, Any]:
+        from content_operations import reschedule_outbox
+
+        result = reschedule_outbox(
+            context.data_dir, str(data["outbox_id"]), scheduled_at=str(data["scheduled_at"]), slot=str(data["slot"]),
+        )
+        return {"status": "ROLLED_BACK", **result}
+
     def publication_delete(payload: dict[str, Any], context: ExecutionContext) -> dict[str, Any]:
         import importlib
 
@@ -1399,8 +1516,11 @@ def register_core_capabilities(registry: CapabilityRegistry, policies: PolicyEng
         Capability("publication.correct_ready", "Correct ready publication", "Re-render and update one READY or externally blocked outbox package while preserving immutable confirmed platform publications. This does not publish or delete anything.", "SOCIAL", publication_correct_ready, object_schema({"content_date": {"type": "string"}, "outbox_id": {"type": "string"}, "reason": {"type": "string"}}, ["content_date", "outbox_id"]), risk_level="INTERNAL_MUTATION", permission_requirement="EXECUTE_WITH_APPROVAL", supports_rollback=False),
         Capability("publication.republish", "Republish corrected publication", "Create a new all-platform publication transaction from an existing package, regenerate strict Gemini copy and visuals, and preserve all previous provider records.", "SOCIAL", publication_republish, object_schema({"content_date": {"type": "string"}, "outbox_id": {"type": "string"}, "reason": {"type": "string"}}, ["content_date", "outbox_id"]), risk_level="INTERNAL_MUTATION", cost_class="MEDIUM", permission_requirement="EXECUTE_WITH_APPROVAL", supports_rollback=False),
         Capability("publication.hold", "Hold publication", "Prevent one ready publication package from being claimed or dispatched without deleting its audit history.", "SOCIAL", publication_hold, object_schema({"outbox_id": {"type": "string"}, "reason": {"type": "string"}}, ["outbox_id"]), risk_level="INTERNAL_MUTATION", permission_requirement="EXECUTE_WITH_APPROVAL", supports_rollback=False),
+        Capability("publication.reschedule", "Reschedule publication", "Atomically move one unclaimed publication package to a new date, time, and optional slot without changing its creative or history.", "SOCIAL", publication_reschedule, object_schema({"outbox_id": {"type": "string"}, "scheduled_at": {"type": "string"}, "slot": {"type": "string"}}, ["outbox_id", "scheduled_at"]), risk_level="INTERNAL_MUTATION", permission_requirement="EXECUTE_WITH_APPROVAL", supports_rollback=True, rollback_handler=rollback_publication_reschedule),
+        Capability("publication.master_remake", "Conversational post remake", "Edit one READY post from an owner instruction with exactly gpt-5.6-sol, preserving the prior package as immutable version history and never silently substituting a model.", "SOCIAL", publication_master_remake, object_schema({"content_date": {"type": "string"}, "outbox_id": {"type": "string"}, "instruction": {"type": "string"}}, ["content_date", "outbox_id", "instruction"]), risk_level="INTERNAL_MUTATION", cost_class="MEDIUM", permission_requirement="EXECUTE_WITH_APPROVAL", supports_rollback=False),
+        Capability("publication.edit_ready", "Edit ready publication", "Version and update only owner-editable copy or a registry-backed post type on one READY package; preserve media, routing, canon, and transaction evidence.", "SOCIAL", publication_edit_ready, object_schema({"content_date": {"type": "string"}, "outbox_id": {"type": "string"}, "changes": {"type": "object"}}, ["content_date", "outbox_id", "changes"]), risk_level="INTERNAL_MUTATION", permission_requirement="EXECUTE_WITH_APPROVAL", supports_rollback=False),
         Capability("publication.prepare_next", "Prepare next publication", "Generate and validate strict Gemini copy and visuals for the next eligible READY package without publishing it.", "SOCIAL", publication_prepare_next, object_schema({}), risk_level="INTERNAL_MUTATION", cost_class="MEDIUM", permission_requirement="EXECUTE_WITH_APPROVAL", supports_rollback=False),
-        Capability("publication.dispatch", "Dispatch due publications", "Dispatch due approved outbox packages through preserved idempotent platform publishers; preview safely with dry run.", "SOCIAL", publication_dispatch, object_schema({}), risk_level="EXTERNAL_IRREVERSIBLE", cost_class="MEDIUM", permission_requirement="EXECUTE_WITH_APPROVAL", supports_rollback=False),
+        Capability("publication.dispatch", "Dispatch due publications", "Dispatch due approved outbox packages through preserved idempotent platform publishers; optionally target one exact outbox for approved publish-now; preview safely with dry run.", "SOCIAL", publication_dispatch, object_schema({"outbox_id": {"type": "string"}, "publish_now": {"type": "boolean"}}), risk_level="EXTERNAL_IRREVERSIBLE", cost_class="MEDIUM", permission_requirement="EXECUTE_WITH_APPROVAL", supports_rollback=False),
         Capability("publication.delete", "Delete exact publication", "Delete one exact platform publication by immutable provider ID after owner approval.", "SOCIAL", publication_delete, object_schema({"platform": {"type": "string"}, "post_id": {"type": "string"}}, ["platform", "post_id"]), risk_level="EXTERNAL_IRREVERSIBLE", permission_requirement="EXECUTE_WITH_APPROVAL", supports_rollback=False),
         Capability("brand.positioning.get", "Get brand positioning", "Return owner-first identity, purpose, worldview, competitive position, and voice constraints with preserved source hierarchy.", "BRAND", brand_positioning),
         Capability("products.match", "Match products to intent", "Rank evidence-eligible catalog products against an audience archetype and topic without changing inventory.", "PRODUCTS", product_match, object_schema({"topic": {"type": "string"}, "archetype": {"type": "string"}, "limit": {"type": "integer"}})),

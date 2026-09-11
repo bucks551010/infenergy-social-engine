@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Infenergy Intelligence OS</title>
-  <link rel="stylesheet" href="/os/assets/styles.css?v=18">
+  <link rel="stylesheet" href="/os/assets/styles.css?v=19">
 </head>
 <body>
   <section id="login-screen" class="login-screen">
@@ -31,6 +31,9 @@
         <button data-view="research">Research</button>
         <button data-view="automations">Automations</button>
         <button data-view="content-plan">120-Day Plan</button>
+        <button data-view="upcoming-content">Upcoming Content</button>
+        <button data-view="published-content">Published Content</button>
+        <button data-view="media-library">Media Library</button>
         <button data-view="social">Social</button>
         <button data-view="strategy">Strategy</button>
         <button data-view="activity">Activity</button>
@@ -48,6 +51,9 @@
           <option value="research">Research</option>
           <option value="automations">Automations</option>
           <option value="content-plan">120-Day Plan</option>
+          <option value="upcoming-content">Upcoming Content</option>
+          <option value="published-content">Published Content</option>
+          <option value="media-library">Media Library</option>
           <option value="social">Social</option>
           <option value="strategy">Strategy</option>
           <option value="activity">Activity</option>
@@ -204,6 +210,24 @@
         </article>
         <div id="plan-weeks" class="plan-weeks"></div>
       </section>
+      <section id="upcoming-content" class="view content-operations-view">
+        <div id="content-operations-metrics" class="metric-grid"></div>
+        <article class="panel content-operations-panel">
+          <div class="panel-title"><div><p class="kicker">Today through the next 30 days</p><h2>Upcoming content inventory</h2></div><span id="upcoming-window" class="badge"></span></div>
+          <div class="content-filters" data-content-filters><input type="search" data-content-filter="query" placeholder="Search copy, product, ID, or date" aria-label="Search upcoming content"><select data-content-filter="platform" aria-label="Filter by platform"><option value="">All platforms</option></select><select data-content-filter="status" aria-label="Filter by status"><option value="">All statuses</option></select><select data-content-filter="content_type" aria-label="Filter by content type"><option value="">All content types</option></select><button type="button" class="ghost" data-content-reset>Reset</button></div>
+          <div id="upcoming-content-list" class="content-records"></div>
+        </article>
+      </section>
+      <section id="published-content" class="view content-operations-view">
+        <article class="panel content-operations-panel">
+          <div class="panel-title"><div><p class="kicker">Confirmed platform receipts only</p><h2>Published content history</h2></div><span id="published-window" class="badge"></span></div>
+          <div class="content-filters" data-content-filters><input type="search" data-content-filter="query" placeholder="Search copy, external ID, product, or date" aria-label="Search published content"><select data-content-filter="platform" aria-label="Filter by platform"><option value="">All platforms</option></select><select data-content-filter="status" aria-label="Filter by status"><option value="">All statuses</option></select><select data-content-filter="content_type" aria-label="Filter by content type"><option value="">All content types</option></select><button type="button" class="ghost" data-content-reset>Reset</button></div>
+          <div id="published-content-list" class="content-records"></div>
+        </article>
+      </section>
+      <section id="media-library" class="view content-operations-view">
+        <article class="panel content-operations-panel"><div class="panel-title"><div><p class="kicker">Deduplicated production assets</p><h2>Media Library</h2></div><span id="media-count" class="badge">0 assets</span></div><div id="media-library-grid" class="media-library-grid"></div></article>
+      </section>
       <section id="social" class="view">
         <article class="panel"><div class="panel-title"><h2>Social operations</h2></div><div id="tiktok-connection"></div><div id="social-content" class="cards"></div></article>
         <article class="panel social-calendar-panel">
@@ -217,7 +241,8 @@
       <section id="permissions" class="view"><article class="panel"><div class="panel-title"><h2>Owner control</h2></div><div id="permissions-content" class="cards"></div></article></section>
     </main>
   </div>
+  <dialog id="content-inspector" class="content-inspector"><div id="content-inspector-body"></div><form method="dialog"><button class="ghost">Close</button></form></dialog>
   <div id="toast" class="toast"></div>
-  <script src="/os/assets/app.js?v=26"></script>
+  <script src="/os/assets/app.js?v=27"></script>
 </body>
 </html>

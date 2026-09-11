@@ -122,6 +122,15 @@ def handle(method: str, path: str, body: dict[str, Any] | None, data_dir: str) -
             return _json(200, {"conversation": service.archive_conversation(conversation_id)})
         if method == "GET" and path == "/api/os/transactions":
             return _json(200, {"transactions": service.transactions.list()})
+        if method == "POST" and path == "/api/os/content-operations":
+            from content_operations import content_operations_workspace
+
+            return _json(200, content_operations_workspace(
+                data_dir,
+                now_utc=payload.get("now_utc"),
+                upcoming_days=int(payload.get("upcoming_days", 30)),
+                history_days=int(payload.get("history_days", 30)),
+            ))
         if method == "POST" and path == "/api/os/calendar":
             from content_operations import scheduled_calendar
 

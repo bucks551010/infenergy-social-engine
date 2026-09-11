@@ -410,6 +410,48 @@ p { line-height: 1.55; }
 .calendar-slides span b { color: var(--accent); }
 .calendar-slides small { color: var(--muted); }
 .calendar-post details code { display: block; color: #79aaa0; font-size: 7px; overflow-wrap: anywhere; }
+.content-operations-panel { padding: 20px; }
+.content-filters { display: grid; grid-template-columns: minmax(240px, 1fr) repeat(3, minmax(130px, .45fr)) auto; gap: 8px; margin-bottom: 16px; }
+.content-filters input, .content-filters select { min-height: 40px; padding: 9px 11px; outline: 0; color: var(--text); border: 1px solid var(--line); border-radius: 8px; background: #08110f; }
+.content-filters input:focus, .content-filters select:focus { border-color: #4a6d64; }
+.content-records { border-top: 1px solid var(--line); }
+.content-record { display: grid; grid-template-columns: 86px minmax(280px, 1fr) minmax(180px, .45fr); gap: 18px; align-items: start; padding: 16px 8px; border-bottom: 1px solid var(--line); }
+.content-record:hover { background: #14231f88; }
+.content-record-date, .content-record-evidence { display: grid; gap: 4px; }
+.content-record-date b { font-size: 15px; }
+.content-record-date span, .content-record-meta span, .content-record-evidence span, .media-library-item small { color: var(--muted); font-size: 9px; }
+.content-record-meta, .content-platforms { display: flex; flex-wrap: wrap; gap: 7px; align-items: center; }
+.content-record-main h3 { margin: 8px 0 4px; font-size: 14px; }
+.content-record-main > p { display: -webkit-box; max-width: 760px; margin: 0 0 9px; overflow: hidden; color: #bdd0cb; font-size: 10px; white-space: pre-wrap; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.content-platforms span { padding: 3px 6px; color: #bce1d7; font-size: 8px; border: 1px solid #315048; border-radius: 4px; }
+.content-record-actions { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 11px; }
+.content-record-actions button { padding: 6px 8px; color: var(--text); font-size: 9px; border: 1px solid var(--line); border-radius: 6px; background: #172a26; }
+.content-record-actions button:hover { border-color: var(--accent); }
+.content-record-actions button.danger { color: #ffd0cb; border-color: #673a37; background: #2d1917; }
+.content-record-evidence { gap: 8px; justify-items: start; }
+.content-record-evidence span { display: grid; gap: 3px; }
+.content-record-evidence b { color: var(--text); font-size: 9px; }
+.content-record-evidence code, .media-library-item code { color: #79aaa0; font-size: 8px; overflow-wrap: anywhere; }
+.content-record-evidence .ghost { padding: 7px 9px; }
+.media-library-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 12px; }
+.media-library-item { overflow: hidden; border: 1px solid var(--line); border-radius: 8px; background: #091310; }
+.media-library-item img { display: block; width: 100%; aspect-ratio: 1; object-fit: cover; background: #06100e; }
+.media-library-item > div { display: grid; gap: 7px; padding: 11px; }
+.media-library-item > div > div { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.media-download { width: fit-content; color: var(--green); font-size: 10px; font-weight: 800; }
+.content-inspector { width: min(780px, calc(100vw - 32px)); max-height: calc(100vh - 40px); padding: 20px; overflow: auto; color: var(--text); border: 1px solid var(--line); border-radius: 10px; background: #0b1715; box-shadow: var(--shadow); }
+.content-inspector::backdrop { background: #020706cc; backdrop-filter: blur(4px); }
+.content-inspector header { display: flex; align-items: start; justify-content: space-between; gap: 18px; }
+.content-inspector header h2 { font-size: 21px; }
+.content-inspector dl { display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 8px 14px; margin: 18px 0; padding: 14px; border: 1px solid var(--line); }
+.content-inspector dt { color: var(--muted); font-size: 9px; font-weight: 800; text-transform: uppercase; }
+.content-inspector dd { margin: 0; font-size: 11px; }
+.content-inspector pre { max-height: 180px; margin: 0; overflow: auto; white-space: pre-wrap; }
+.inspector-captions section, .inspector-transactions section { padding: 12px 0; border-top: 1px solid var(--line); }
+.inspector-captions p { color: #c9d9d5; font-size: 11px; white-space: pre-wrap; }
+.inspector-transactions section { display: grid; grid-template-columns: auto 110px minmax(0, 1fr); gap: 10px; align-items: center; }
+.inspector-transactions code, .inspector-transactions small { color: var(--muted); font-size: 9px; overflow-wrap: anywhere; }
+.content-inspector > form { display: flex; justify-content: flex-end; margin-top: 16px; }
 .slot-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
 .slot-card { min-height: 190px; border-top: 3px solid var(--muted); } .slot-card.good { border-top-color: var(--green); } .slot-card.warn { border-top-color: var(--yellow); } .slot-card.bad { border-top-color: var(--red); }
 .slot-time { font-size: 11px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
@@ -441,6 +483,7 @@ p { line-height: 1.55; }
   .master-grid { grid-template-columns: 320px minmax(0, 1fr); }
   .creative-options, .creative-schedule { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .plan-controls { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .content-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .metric-grid { grid-template-columns: repeat(3, 1fr); } .provider-grid { grid-template-columns: repeat(2, 1fr); }
 }
 @media (max-width: 780px) {
@@ -505,6 +548,10 @@ p { line-height: 1.55; }
   .calendar-toolbar { align-items: flex-start; flex-direction: column; }
   .calendar-actions { width: 100%; }
   .calendar-actions .ghost { flex: 1; }
+  .content-filters, .content-record { grid-template-columns: minmax(0, 1fr); }
+  .content-record { gap: 10px; }
+  .content-record-date { grid-auto-flow: column; justify-content: start; align-items: baseline; }
+  .inspector-transactions section { grid-template-columns: minmax(0, 1fr); }
 }
 @media (max-width: 430px) {
   .metric-grid, .social-summary, .confidence-grid { grid-template-columns: minmax(0, 1fr); }

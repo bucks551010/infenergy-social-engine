@@ -19,6 +19,7 @@ from content_operations import (  # noqa: E402
     complete_ai_attempt,
     classify_backlog,
     content_detail,
+    content_operations_workspace,
     create_council_session,
     daily_status,
     daily_markdown,
@@ -30,6 +31,7 @@ from content_operations import (  # noqa: E402
     operations_readiness,
     reconcile_ready_inventory,
     reconcile_stale_claims,
+    reschedule_outbox,
     reserve_ai_attempt,
     today_schedule,
     upcoming_ready_packages,
@@ -143,6 +145,49 @@ def test_pregeneration_updates_only_unclaimed_ready_package(tmp_path):
     claimed = claim_due(data_dir, "2026-08-19T13:00:01+00:00")
     assert claimed["package"]["generation"] == "complete"
     assert update_ready_package(data_dir, outbox_id, {"content_id": "overwritten"}) is False
+
+
+def test_claim_due_can_target_one_future_outbox_for_approved_publish_now(tmp_path):
+    data_dir = str(tmp_path)
+    day = "2026-08-20"
+    ensure_daily_slots(data_dir, day, _schedule(day), {"platforms": ["facebook"]})
+    decision_id = create_council_session(data_dir, content_date=day, slot="morning", blackboard={"content_job": "TEACH"})
+    target = mark_ready(
+        data_dir, content_date=day, slot="morning", scheduled_at=_schedule(day)["morning"],
+        decision_id=decision_id, package={
+            "content_id": "target",
+            "routing": {"platforms": ["facebook"]},
+            "platform_posts": {"facebook": {"final_caption": "Ready copy"}},
+            "primary_publish_image_url": "https://example.test/ready.png",
+        },
+    )
+
+    assert claim_due(data_dir, "2026-08-19T00:00:00+00:00") is None
+    claimed = claim_due(data_dir, "2026-08-19T00:00:00+00:00", outbox_id=target, force=True)
+
+    assert claimed["outbox_id"] == target
+    assert claimed["status"] == "CLAIMED"
+
+
+def test_reschedule_outbox_moves_ready_package_and_daily_slot_atomically(tmp_path):
+    data_dir = str(tmp_path)
+    first_day = "2026-08-20"
+    second_day = "2026-08-21"
+    ensure_daily_slots(data_dir, first_day, _schedule(first_day), {"platforms": ["facebook"]})
+    decision_id = create_council_session(data_dir, content_date=first_day, slot="morning", blackboard={"content_job": "TEACH"})
+    outbox_id = mark_ready(
+        data_dir, content_date=first_day, slot="morning", scheduled_at=_schedule(first_day)["morning"],
+        decision_id=decision_id, package={"content_id": "move-me", "routing": {"platforms": ["facebook"]}, "platform_posts": {"facebook": {"final_caption": "Ready copy"}}, "primary_publish_image_url": "https://example.test/ready.png"},
+    )
+
+    result = reschedule_outbox(data_dir, outbox_id, scheduled_at=f"{second_day}T17:30:00+00:00", slot="midday")
+
+    assert result["previous"] == {"content_date": first_day, "slot": "morning", "scheduled_at": _schedule(first_day)["morning"]}
+    moved = content_operations_workspace(data_dir, now_utc="2026-08-20T00:00:00+00:00")["upcoming"][0]
+    assert moved["content_date"] == second_day
+    assert moved["slot"] == "midday"
+    assert moved["scheduled_at"] == f"{second_day}T17:30:00+00:00"
+    assert daily_status(data_dir, first_day)["slots"][0]["status"] == "UNPLANNED"
 
 
 def test_platform_transaction_states_are_idempotent_and_persistent(tmp_path):

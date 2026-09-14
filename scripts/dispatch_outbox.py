@@ -499,8 +499,11 @@ def _prepare_gemini_assets(package: dict[str, Any], data_dir: str) -> dict[str, 
 
 def pregenerate_upcoming(*, data_dir: str = DATA_DIR) -> dict[str, Any]:
     lead_minutes = load_runtime_config().preparation_lead_time_minutes
-    before_utc = (datetime.now(timezone.utc) + timedelta(minutes=lead_minutes)).isoformat()
-    rows = upcoming_ready_packages(data_dir, before_utc=before_utc, limit=100)
+    now_utc = datetime.now(timezone.utc)
+    before_utc = (now_utc + timedelta(minutes=lead_minutes)).isoformat()
+    stale_grace_hours = max(0, int(os.environ.get("CONTENT_PREGENERATION_STALE_GRACE_HOURS", "6")))
+    after_utc = (now_utc - timedelta(hours=stale_grace_hours)).isoformat()
+    rows = upcoming_ready_packages(data_dir, before_utc=before_utc, after_utc=after_utc, limit=100)
     news_before_utc = datetime.now(timezone.utc) + timedelta(hours=24)
     for row in rows:
         package = row["package"]

@@ -308,6 +308,21 @@ def init_content_operations(data_dir: str) -> str:
         connection.execute(
             "UPDATE content_outbox SET correlation_id=COALESCE(correlation_id, outbox_id) WHERE correlation_id IS NULL"
         )
+        legacy_rows = connection.execute(
+            """
+            SELECT outbox_id FROM content_outbox
+            WHERE status='READY' AND lifecycle_state='DRAFT'
+                AND reason_code='LEGACY_STATE_IMPORTED'
+            """
+        ).fetchall()
+        for row in legacy_rows:
+            _record_transition(
+                connection,
+                outbox_id=str(row["outbox_id"]),
+                destination=PackageState.PREPARATION_REQUIRED.value,
+                reason_code="LEGACY_READY_REQUIRES_PREPARATION",
+                actor="content_operations.init_content_operations",
+            )
         connection.commit()
         return get_db_path(data_dir)
     finally:
@@ -580,10 +595,36 @@ def publishing_metrics(data_dir: str, *, now_utc: str | None = None) -> dict[str
                  AND datetime(COALESCE(claimed_at, ready_at, created_at)) < datetime(?, '-30 minutes')""",
             (now,),
         ).fetchone()[0])
+        legacy_drafts = int(connection.execute(
+            "SELECT COUNT(*) FROM content_outbox WHERE status='READY' AND lifecycle_state='DRAFT'"
+        ).fetchone()[0])
+        last_success = connection.execute(
+            "SELECT MAX(updated_at) FROM platform_transactions WHERE state='CONFIRMED_SUCCESS'"
+        ).fetchone()[0]
+        hours_since_success = None
+        if last_success:
+            try:
+                current = datetime.fromisoformat(now.replace("Z", "+00:00"))
+                confirmed = datetime.fromisoformat(str(last_success).replace("Z", "+00:00"))
+                hours_since_success = max(0.0, (current - confirmed).total_seconds() / 3600)
+            except ValueError:
+                hours_since_success = None
+        issues = []
+        if legacy_drafts:
+            issues.append("LEGACY_READY_STUCK_IN_DRAFT")
+        if stuck:
+            issues.append("STUCK_TRANSIENT_PACKAGE")
+        if overdue and (hours_since_success is None or hours_since_success >= 36):
+            issues.append("NO_CONFIRMED_PUBLICATION_36H")
         return {
+            "automation_status": "DEGRADED" if issues else "HEALTHY",
+            "automation_issues": issues,
             "package_states": states,
             "past_scheduled_time": overdue,
             "stuck_transient_states": stuck,
+            "legacy_ready_drafts": legacy_drafts,
+            "last_confirmed_success_at": last_success,
+            "hours_since_confirmed_success": round(hours_since_success, 1) if hours_since_success is not None else None,
             "platform_transactions": deliveries,
         }
     finally:
@@ -1121,6 +1162,7 @@ def claim_due(
                             OR (status='EXTERNAL_ACTION_REQUIRED' AND last_error='no_routed_platforms')
                             OR (status='RECOVERING' AND last_error='ready_package_has_no_routed_platforms')
                         ) {due_clause}
+                            AND lifecycle_state IN ('READY_TO_DISPATCH', 'PARTIALLY_PUBLISHED', 'FAILED_DELIVERY')
                             AND (next_attempt_at IS NULL OR datetime(next_attempt_at) <= datetime(?))
                             {target_clause}
             ORDER BY datetime(scheduled_at), created_at LIMIT 1
@@ -1131,13 +1173,6 @@ def claim_due(
             connection.commit()
             return None
         claimed_at = now
-        if str(row["lifecycle_state"] or "") not in {
-            PackageState.READY_TO_DISPATCH.value,
-            PackageState.PARTIALLY_PUBLISHED.value,
-            PackageState.FAILED_DELIVERY.value,
-        }:
-            connection.commit()
-            return None
         attempt_id = uuid.uuid4().hex
         changed = connection.execute(
             """
@@ -1207,17 +1242,25 @@ def upcoming_ready_packages(
     data_dir: str,
     *,
     before_utc: str,
+    after_utc: str | None = None,
     limit: int = 1,
 ) -> list[dict[str, Any]]:
     connection = _connect(data_dir)
     try:
+        after_clause = "AND datetime(scheduled_at) >= datetime(?)" if after_utc else ""
+        parameters: list[Any] = [before_utc]
+        if after_utc:
+            parameters.append(after_utc)
+        parameters.append(max(1, limit))
         rows = connection.execute(
-            """
+            f"""
             SELECT outbox_id, scheduled_at, package_json FROM content_outbox
             WHERE status='READY' AND datetime(scheduled_at) <= datetime(?)
+                {after_clause}
+                AND lifecycle_state IN ('PREPARATION_REQUIRED', 'QA_REJECTED', 'READY_TO_DISPATCH')
             ORDER BY datetime(scheduled_at), created_at LIMIT ?
             """,
-            (before_utc, max(1, limit)),
+            parameters,
         ).fetchall()
         return [
             {

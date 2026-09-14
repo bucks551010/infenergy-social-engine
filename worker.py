@@ -1503,15 +1503,16 @@ class HealthHandler(BaseHTTPRequestHandler):
 
         if parsed.path in ("/", "/health", "/healthz"):
             startup = validate_startup_config()
+            publishing = publishing_metrics(_data_dir())
             payload = {
-                "status": "ok" if startup["status"] == "READY" else "degraded",
+                "status": "ok" if startup["status"] == "READY" and publishing["automation_status"] == "HEALTHY" else "degraded",
                 "service": "infenergy-social-engine",
                 "time_utc": _utc_now(),
                 "uptime_seconds": _uptime_seconds(),
                 "gemini_budget": budget_snapshot(),
                 "deployment": startup["config"],
                 "startup_validation": {key: startup[key] for key in ("status", "blockers", "warnings", "evaluated_at")},
-                "publishing": publishing_metrics(_data_dir()),
+                "publishing": publishing,
                 "media": {
                     "public_directory": os.path.abspath(os.path.join(_data_dir(), "public_media")),
                     "working_directory": os.path.abspath(os.path.join(_data_dir(), "generated_visuals")),
@@ -3071,6 +3072,7 @@ def main() -> None:
     if os.environ.get("AUTONOMOUS_AI_ENABLED", "false").lower() in {"1", "true", "yes", "on"}:
         run_intelligence_enrichment()
 
+    init_content_operations(_data_dir())
     growth_schedule_result = apply_growth_schedule_to_ready_inventory(_data_dir())
     print(f"Growth schedule applied: {growth_schedule_result['updated']} ready packages")
 

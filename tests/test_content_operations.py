@@ -29,6 +29,7 @@ from content_operations import (  # noqa: E402
     mark_ready,
     mark_slot_external_action,
     operations_readiness,
+    publishing_metrics,
     reconcile_ready_inventory,
     reconcile_stale_claims,
     reschedule_outbox,
@@ -145,6 +146,106 @@ def test_pregeneration_updates_only_unclaimed_ready_package(tmp_path):
     claimed = claim_due(data_dir, "2026-08-19T13:00:01+00:00")
     assert claimed["package"]["generation"] == "complete"
     assert update_ready_package(data_dir, outbox_id, {"content_id": "overwritten"}) is False
+
+
+def test_initialization_migrates_legacy_ready_draft_to_preparation_required(tmp_path):
+    day = "2026-08-19"
+    data_dir = str(tmp_path)
+    ensure_daily_slots(data_dir, day, _schedule(day), {"mode": "owner_schedule"})
+    decision_id = create_council_session(
+        data_dir, content_date=day, slot="morning", blackboard={"content_job": "TEACH"},
+    )
+    outbox_id = mark_ready(
+        data_dir, content_date=day, slot="morning", scheduled_at=_schedule(day)["morning"],
+        decision_id=decision_id,
+        package={"content_id": "legacy", "routing": {"platforms": ["facebook"]}},
+    )
+    connection = sqlite3.connect(os.path.join(data_dir, "inventory.db"))
+    connection.execute(
+        "UPDATE content_outbox SET lifecycle_state='DRAFT', reason_code='LEGACY_STATE_IMPORTED' WHERE outbox_id=?",
+        (outbox_id,),
+    )
+    connection.commit()
+    connection.close()
+
+    init_content_operations(data_dir)
+
+    connection = sqlite3.connect(os.path.join(data_dir, "inventory.db"))
+    row = connection.execute(
+        "SELECT lifecycle_state, reason_code FROM content_outbox WHERE outbox_id=?", (outbox_id,),
+    ).fetchone()
+    transition = connection.execute(
+        "SELECT source_state, destination_state, reason_code FROM package_transitions WHERE outbox_id=? ORDER BY created_at DESC LIMIT 1",
+        (outbox_id,),
+    ).fetchone()
+    connection.close()
+    assert row == ("PREPARATION_REQUIRED", "LEGACY_READY_REQUIRES_PREPARATION")
+    assert transition == ("DRAFT", "PREPARATION_REQUIRED", "LEGACY_READY_REQUIRES_PREPARATION")
+
+
+def test_publishing_metrics_report_stalled_automation(tmp_path):
+    day = "2026-08-19"
+    data_dir = str(tmp_path)
+    ensure_daily_slots(data_dir, day, _schedule(day), {"mode": "owner_schedule"})
+    decision_id = create_council_session(
+        data_dir, content_date=day, slot="morning", blackboard={"content_job": "TEACH"},
+    )
+    outbox_id = mark_ready(
+        data_dir, content_date=day, slot="morning", scheduled_at=_schedule(day)["morning"],
+        decision_id=decision_id,
+        package={"content_id": "stalled", "routing": {"platforms": ["facebook"]}},
+    )
+    connection = sqlite3.connect(os.path.join(data_dir, "inventory.db"))
+    connection.execute(
+        "UPDATE content_outbox SET lifecycle_state='DRAFT', reason_code='LEGACY_STATE_IMPORTED' WHERE outbox_id=?",
+        (outbox_id,),
+    )
+    connection.commit()
+    connection.close()
+
+    metrics = publishing_metrics(data_dir, now_utc="2026-08-21T13:00:00+00:00")
+
+    assert metrics["automation_status"] == "DEGRADED"
+    assert metrics["legacy_ready_drafts"] == 1
+    assert metrics["automation_issues"] == [
+        "LEGACY_READY_STUCK_IN_DRAFT", "NO_CONFIRMED_PUBLICATION_36H",
+    ]
+
+
+def test_unprepared_older_row_does_not_block_dispatchable_claim(tmp_path):
+    day = "2026-08-19"
+    data_dir = str(tmp_path)
+    ensure_daily_slots(data_dir, day, _schedule(day), {"mode": "owner_schedule"})
+    older_decision = create_council_session(
+        data_dir, content_date=day, slot="morning", blackboard={"content_job": "TEACH"},
+    )
+    older_id = mark_ready(
+        data_dir, content_date=day, slot="morning", scheduled_at=_schedule(day)["morning"],
+        decision_id=older_decision,
+        package={"content_id": "older", "routing": {"platforms": ["facebook"]}},
+    )
+    ready_decision = create_council_session(
+        data_dir, content_date=day, slot="midday", blackboard={"content_job": "TEACH"},
+    )
+    ready_id = mark_ready(
+        data_dir, content_date=day, slot="midday", scheduled_at=_schedule(day)["midday"],
+        decision_id=ready_decision,
+        package={
+            "content_id": "ready", "routing": {"platforms": ["facebook"]},
+            "platform_posts": {"facebook": {"final_caption": "Ready copy"}},
+            "primary_publish_image_url": "https://example.test/ready.png",
+        },
+    )
+    connection = sqlite3.connect(os.path.join(data_dir, "inventory.db"))
+    connection.execute(
+        "UPDATE content_outbox SET lifecycle_state='PREPARATION_REQUIRED' WHERE outbox_id=?", (older_id,),
+    )
+    connection.commit()
+    connection.close()
+
+    claimed = claim_due(data_dir, "2026-08-19T17:00:01+00:00")
+
+    assert claimed and claimed["outbox_id"] == ready_id
 
 
 def test_claim_due_can_target_one_future_outbox_for_approved_publish_now(tmp_path):

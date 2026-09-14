@@ -365,9 +365,12 @@ def test_main_runs_due_sweep_immediately_on_startup(monkeypatch):
     monkeypatch.setattr(worker, "_load_meta_runtime_from_state", lambda: (False, "not_configured"))
     monkeypatch.setattr(worker, "_auto_bootstrap_visual_repo", lambda: {"status": "ok", "summary": {}})
     monkeypatch.setattr(worker, "run_intelligence_enrichment", lambda: None)
+    monkeypatch.setattr(worker, "init_content_operations", lambda *_: None)
+    monkeypatch.setattr(worker, "apply_growth_schedule_to_ready_inventory", lambda *_: {"updated": 0})
+    monkeypatch.setattr(worker, "resume_deferred_run", lambda **kwargs: None)
     monkeypatch.setattr(worker, "run_delivery_watchdog", lambda: startup_order.append("watchdog"))
     monkeypatch.setattr(worker, "_start_dispatch_thread", lambda slot: (startup_order.append("dispatch"), dispatches.append(slot)))
-    monkeypatch.setattr(worker, "_start_pregeneration_thread", lambda: (startup_order.append("pregeneration"), pregenerations.append("started")))
+    monkeypatch.setattr(worker, "pregenerate_scheduled_content", lambda: (startup_order.append("pregeneration"), pregenerations.append("started")))
     monkeypatch.setattr(worker.schedule, "run_pending", lambda: (_ for _ in ()).throw(KeyboardInterrupt))
 
     try:
@@ -377,7 +380,7 @@ def test_main_runs_due_sweep_immediately_on_startup(monkeypatch):
 
     assert dispatches == ["startup_sweep"]
     assert pregenerations == ["started"]
-    assert startup_order == ["watchdog", "dispatch", "pregeneration"]
+    assert startup_order == ["pregeneration", "watchdog", "dispatch"]
 
 
 def test_dispatch_sweep_records_publication_result(monkeypatch):

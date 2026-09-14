@@ -3083,12 +3083,12 @@ def main() -> None:
     print("Meta refresh endpoint: /refresh-meta?token=... (uses META_REFRESH_TOKEN or MANUAL_RUN_TOKEN)")
     print("Waiting for next scheduled run...\n")
 
+    resume_deferred_run(recover_stale=True)
+    if _env_is_true("CONTENT_PREGENERATION_ENABLED", False) and _env_is_true("CONTENT_PREGENERATION_ON_STARTUP", False):
+        pregenerate_scheduled_content()
     if os.environ.get("CONTENT_DISPATCH_ENABLED", "true").lower() in {"1", "true", "yes", "on"}:
         run_delivery_watchdog()
         _start_dispatch_thread("startup_sweep")
-    resume_deferred_run(recover_stale=True)
-    if _env_is_true("CONTENT_PREGENERATION_ENABLED", False) and _env_is_true("CONTENT_PREGENERATION_ON_STARTUP", False):
-        _start_pregeneration_thread()
 
     if os.environ.get("RUN_FACTORY_ON_STARTUP", "false").lower() in {"1", "true", "yes", "on"}:
         _start_factory_thread()

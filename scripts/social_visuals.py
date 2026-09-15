@@ -1290,7 +1290,10 @@ def _generate_gemini_full_creative(
         contents: Any = [prompt, *reference_parts] if reference_parts else prompt
         repair_attempts = max(0, min(int(os.environ.get("GEMINI_IMAGE_REPAIR_ATTEMPTS", "0")), 5))
         max_generation_attempts = repair_attempts + 1
-        preflight_gemini_workflow(image_calls=max_generation_attempts)
+        preflight_gemini_workflow(
+            image_calls=max_generation_attempts,
+            reasoning_calls=max_generation_attempts,
+        )
         metadata["image_provider_call_count"] = 0
         candidate_has_typography = not v5_text_forward
         typography_prompt = ""

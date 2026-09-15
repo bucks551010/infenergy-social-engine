@@ -324,6 +324,138 @@ def test_pregeneration_retries_transient_failed_preparation(tmp_path, monkeypatc
     assert (PackageState.PREPARATION_REQUIRED.value, "PREPARATION_RETRY_SCHEDULED") in transitions
 
 
+def test_pregeneration_hydrates_and_persists_existing_product_approval(tmp_path, monkeypatch):
+    data_dir = str(tmp_path)
+    outbox_id = _ready_package(data_dir, ["facebook"])
+    connection = sqlite3.connect(get_db_path(data_dir))
+    package = json.loads(connection.execute(
+        "SELECT package_json FROM content_outbox WHERE outbox_id=?", (outbox_id,)
+    ).fetchone()[0])
+    package.update({
+        "product_id": "PRODUCT-01",
+        "product_image_url": "https://example.test/product.png",
+        "gemini_generation": {
+            "provider": "gemini",
+            "strict_provider": True,
+            "fallback_allowed": False,
+            "required_image_count": 1,
+            "prompts": [{}],
+        },
+    })
+    connection.execute(
+        "UPDATE content_outbox SET package_json=?, scheduled_at=?, lifecycle_state='PREPARATION_REQUIRED' WHERE outbox_id=?",
+        (json.dumps(package), datetime.now(timezone.utc).isoformat(), outbox_id),
+    )
+    connection.commit()
+    connection.close()
+    approval = {
+        "product_id": "PRODUCT-01",
+        "source_url": "https://example.test/product.png",
+        "sha256": "approved-digest",
+    }
+    monkeypatch.setattr(dispatch_outbox, "build_product_image_approval", Mock(return_value=approval))
+    prepare_assets = Mock(side_effect=lambda prepared, _: prepared)
+    monkeypatch.setattr(dispatch_outbox, "_prepare_gemini_assets", prepare_assets)
+    monkeypatch.setattr(dispatch_outbox, "evaluate_outbox_readiness", lambda *_, **__: {
+        "ready": True,
+        "state": PackageState.READY_TO_DISPATCH.value,
+        "reason_codes": [],
+    })
+
+    result = dispatch_outbox.pregenerate_upcoming(data_dir=data_dir)
+
+    assert result == {"status": "PREGENERATED", "outbox_id": outbox_id}
+    assert prepare_assets.call_args.args[0]["product_image_approval"] == approval
+    connection = sqlite3.connect(get_db_path(data_dir))
+    persisted = json.loads(connection.execute(
+        "SELECT package_json FROM content_outbox WHERE outbox_id=?", (outbox_id,)
+    ).fetchone()[0])
+    connection.close()
+    assert persisted["product_image_approval"] == approval
+
+
+def test_pregeneration_blocks_product_when_approval_cannot_be_hydrated(tmp_path, monkeypatch):
+    data_dir = str(tmp_path)
+    outbox_id = _ready_package(data_dir, ["facebook"])
+    connection = sqlite3.connect(get_db_path(data_dir))
+    package = json.loads(connection.execute(
+        "SELECT package_json FROM content_outbox WHERE outbox_id=?", (outbox_id,)
+    ).fetchone()[0])
+    package.update({
+        "product_id": "PRODUCT-01",
+        "product_image_url": "https://example.test/unavailable.png",
+        "gemini_generation": {
+            "provider": "gemini",
+            "strict_provider": True,
+            "fallback_allowed": False,
+            "required_image_count": 1,
+            "prompts": [{}],
+        },
+    })
+    connection.execute(
+        "UPDATE content_outbox SET package_json=?, scheduled_at=?, lifecycle_state='PREPARATION_REQUIRED' WHERE outbox_id=?",
+        (json.dumps(package), datetime.now(timezone.utc).isoformat(), outbox_id),
+    )
+    connection.commit()
+    connection.close()
+    monkeypatch.setattr(dispatch_outbox, "build_product_image_approval", Mock(return_value={}))
+    prepare_assets = Mock()
+    monkeypatch.setattr(dispatch_outbox, "_prepare_gemini_assets", prepare_assets)
+
+    result = dispatch_outbox.pregenerate_upcoming(data_dir=data_dir)
+
+    assert result["status"] == PackageState.FAILED_PREPARATION.value
+    assert result["error"] == "RuntimeError:product_reference_identity_not_approved"
+    prepare_assets.assert_not_called()
+
+
+def test_pregeneration_persists_completed_copy_before_image_failure(tmp_path, monkeypatch):
+    data_dir = str(tmp_path)
+    outbox_id = _ready_package(data_dir, ["facebook"])
+    connection = sqlite3.connect(get_db_path(data_dir))
+    package = json.loads(connection.execute(
+        "SELECT package_json FROM content_outbox WHERE outbox_id=?", (outbox_id,)
+    ).fetchone()[0])
+    package.update({
+        "gemini_copy": {"provider": "gemini", "strict_provider": True, "fallback_allowed": False, "status": "PENDING"},
+        "gemini_generation": {
+            "provider": "gemini",
+            "strict_provider": True,
+            "fallback_allowed": False,
+            "required_image_count": 1,
+            "prompts": [{}],
+        },
+    })
+    connection.execute(
+        "UPDATE content_outbox SET package_json=?, scheduled_at=?, lifecycle_state='PREPARATION_REQUIRED' WHERE outbox_id=?",
+        (json.dumps(package), datetime.now(timezone.utc).isoformat(), outbox_id),
+    )
+    connection.commit()
+    connection.close()
+
+    def complete_copy(prepared, _):
+        prepared["gemini_copy"].update({
+            "status": "COMPLETE",
+            "model_output_sha256": "copy-digest",
+            "qa": {"clarity": "PASS"},
+        })
+        return prepared
+
+    monkeypatch.setattr(dispatch_outbox, "_prepare_gemini_copy", complete_copy)
+    monkeypatch.setattr(dispatch_outbox, "_prepare_gemini_assets", Mock(side_effect=RuntimeError("image provider error")))
+
+    result = dispatch_outbox.pregenerate_upcoming(data_dir=data_dir)
+
+    assert result["status"] == PackageState.FAILED_PREPARATION.value
+    connection = sqlite3.connect(get_db_path(data_dir))
+    persisted = json.loads(connection.execute(
+        "SELECT package_json FROM content_outbox WHERE outbox_id=?", (outbox_id,)
+    ).fetchone()[0])
+    connection.close()
+    assert persisted["gemini_copy"]["status"] == "COMPLETE"
+    assert persisted["gemini_copy"]["model_output_sha256"] == "copy-digest"
+
+
 def test_daily_package_publishes_each_platform_at_its_own_growth_window(tmp_path):
     data_dir = str(tmp_path)
     outbox_id = _ready_package(data_dir, ["facebook", "instagram", "linkedin"])

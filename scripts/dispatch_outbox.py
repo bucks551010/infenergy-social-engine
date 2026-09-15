@@ -14,7 +14,7 @@ import publish_instagram
 import publish_linkedin
 from platform_publishing import get_status as get_platform_status
 from social import model_router
-from social_visuals import generate_strict_gemini_image, review_rendered_visual
+from social_visuals import build_product_image_approval, generate_strict_gemini_image, review_rendered_visual
 from build_monthly_content import _captions, _gemini_generation_plan, _load_current_news
 from content_operations import (
     PLATFORMS,
@@ -224,6 +224,16 @@ def _gemini_copy_ready(package: dict[str, Any]) -> bool:
         and bool(copy_plan.get("model_output_sha256"))
         and (copy_plan.get("qa") or {}).get("clarity") == "PASS"
     )
+
+
+def _hydrate_product_image_approval(package: dict[str, Any]) -> dict[str, Any]:
+    if not str(package.get("product_id") or "").strip():
+        return package
+    approval = build_product_image_approval(package, str(package.get("product_image_url") or "").strip())
+    if not approval:
+        raise RuntimeError("product_reference_identity_not_approved")
+    package["product_image_approval"] = approval
+    return package
 
 
 def _prepare_gemini_copy(package: dict[str, Any], data_dir: str = DATA_DIR) -> dict[str, Any]:
@@ -528,8 +538,15 @@ def pregenerate_upcoming(*, data_dir: str = DATA_DIR) -> dict[str, Any]:
                     actor="dispatch_outbox.pregenerate",
                 )
             transition_package(data_dir, outbox_id, PackageState.PREPARING.value, "PREPARATION_WINDOW_OPEN", actor="dispatch_outbox.pregenerate")
+            existing_approval = package.get("product_image_approval")
+            package = _hydrate_product_image_approval(package)
+            if package.get("product_image_approval") != existing_approval and not update_ready_package(data_dir, outbox_id, package):
+                return {"status": "DEFERRED", "outbox_id": outbox_id, "detail": "package_no_longer_ready"}
             if copy_plan.get("strict_provider") is True:
+                copy_was_ready = _gemini_copy_ready(package)
                 package = _prepare_gemini_copy(package, data_dir)
+                if not copy_was_ready and not update_ready_package(data_dir, outbox_id, package):
+                    return {"status": "DEFERRED", "outbox_id": outbox_id, "detail": "package_no_longer_ready"}
             prepared = _prepare_gemini_assets(package, data_dir)
             if not update_ready_package(data_dir, outbox_id, prepared):
                 return {"status": "DEFERRED", "outbox_id": outbox_id, "detail": "package_no_longer_ready"}

@@ -23,6 +23,7 @@ from content_operations import archive_candidate, cancel_unpublished_inventory, 
 from agents.learning_context import load_operational_learning
 from inventory_db import get_db_path
 from social.carousel_director import OFFICIAL_LOGO_URL, normalize_slide_dicts
+from social_visuals import build_product_image_approval
 from posting_schedule import first_scheduled_at, growth_schedule
 from consumer_life import assess_copy_fidelity, validate_consumer_receipt
 
@@ -934,6 +935,9 @@ def _package(knowledge: dict[str, Any], thought: dict[str, Any], content_date: s
         "quality_warnings": [],
         "publish_decision": {"decision": "publish", "publishable": True, "reasons": [], "source": "canonical_company_truth"},
     }
+    product_image_approval = build_product_image_approval(package, package["product_image_url"])
+    if product_image_approval:
+        package["product_image_approval"] = product_image_approval
     if package.get("consumer_root"):
         consumer_qa = validate_consumer_receipt(package)
         copy_fidelity = {"passed": True, "checks": {}, "missing": [], "status": "PENDING_GEMINI"} if is_plan_120 else assess_copy_fidelity(package)

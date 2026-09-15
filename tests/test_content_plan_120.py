@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+from unittest.mock import patch
 
 from PIL import Image
 
@@ -102,6 +103,38 @@ def test_consumer_root_reaches_monthly_outbox_package(tmp_path):
     assert package["gemini_generation"]["strict_provider"] is True
     assert package["gemini_generation"]["required_image_count"] >= 1
     assert package["gemini_generation"]["prompts"]
+
+
+def test_product_package_carries_immutable_image_approval(tmp_path):
+    _write_profiles(tmp_path)
+    product_id = "PRODUCT-01"
+    image_url = "https://example.com/product.png"
+    product_dir = tmp_path / "product_briefs"
+    product_dir.mkdir(parents=True)
+    (product_dir / f"{product_id}.json").write_text(json.dumps({
+        "product_id": product_id,
+        "name": "Product One",
+        "source_image_url": image_url,
+        "verified_facts": ["10,000mAh battery capacity"],
+        "visual_direction": "Show the exact product powering a phone during an outage.",
+    }), encoding="utf-8")
+    entry = build_120_day_plan(data_dir=str(tmp_path), start_date="2026-09-15", days=1)["entries"][0]
+    thought = _plan_entry_thought(entry)
+    thought["product_id"] = product_id
+    approval = {"product_id": product_id, "source_url": image_url, "sha256": "approved-digest"}
+
+    with patch("build_monthly_content.build_product_image_approval", return_value=approval) as build_approval:
+        package = _package(
+            {"knowledge_id": "test-knowledge", "schema_version": "test.v1", "agent_specializations": {}},
+            thought,
+            "2026-09-15",
+            0,
+            str(tmp_path),
+            defer_images=True,
+        )
+
+    assert package["product_image_approval"] == approval
+    build_approval.assert_called_once_with(package, image_url)
 
 
 def test_company_voice_package_uses_strict_gemini_generation_contract(tmp_path):

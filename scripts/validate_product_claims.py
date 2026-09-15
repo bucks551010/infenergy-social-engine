@@ -107,7 +107,12 @@ def validate_generated_content(content: dict[str, Any]) -> ValidationResult:
     product_name = str(content.get("product_name", "")).strip()
     product_metrics = {str(x).strip().lower() for x in (content.get("product_metrics", []) or []) if str(x).strip()}
     product_facts = str(content.get("product_facts", "") or "")
-    verified_product_text = f"{product_name} {product_facts}".lower()
+    verified_facts = content.get("product_verified_facts") or []
+    if isinstance(verified_facts, str):
+        verified_facts = [verified_facts]
+    verified_product_text = " ".join(
+        [product_name, product_facts, *(str(fact) for fact in verified_facts if str(fact).strip())]
+    ).lower()
     product_price = str(content.get("product_price", "") or "").strip()
     product_sale_price = str(content.get("product_sale_price", "") or "").strip()
     product_url = str(content.get("product_url", "") or content.get("destination_url", "")).strip()

@@ -67,6 +67,25 @@ class PhaseSevenEightTests(unittest.TestCase):
 
         self.assertTrue(result["passed"], result["errors"])
 
+    def test_claim_validator_uses_canonical_verified_facts(self) -> None:
+        content = {
+            "product_name": "PowerCharge Pro",
+            "product_verified_facts": ["10,000mAh battery capacity"],
+            "product_url": "https://example.com/powercharge-pro",
+            "product_in_stock": "1",
+            "fb_caption": "The Infenergy 10,000mAh battery keeps a phone charged.",
+            "ig_caption": "Connect the Infenergy 10,000mAh battery before travel.",
+            "li_text": "Infenergy provides a verified 10,000mAh battery capacity.",
+        }
+
+        verified = validate_generated_content(content)
+        content["fb_caption"] += " It is not a 20,000mAh battery."
+        invented = validate_generated_content(content)
+
+        self.assertTrue(verified["passed"], verified["errors"])
+        self.assertFalse(invented["passed"])
+        self.assertIn("capacity_not_verified:20,000mah", invented["errors"])
+
     def test_claim_validator_rejects_foreign_product_subject(self) -> None:
         content = {
             "product_name": "Wosfer Portable Electric Water Filter & Purifier",

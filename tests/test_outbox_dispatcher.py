@@ -4,7 +4,7 @@ import json
 import os
 import sqlite3
 import sys
-from datetime import date
+from datetime import date, datetime, timezone
 from unittest.mock import Mock, patch
 
 _REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -23,7 +23,9 @@ from content_operations import (  # noqa: E402
     reconcile_confirmed_transactions,
     reconcile_ready_inventory,
     recent_outbox_activity,
+    transition_package,
 )
+from publication_contract import PackageState  # noqa: E402
 
 
 def _ready_package(data_dir: str, platforms: list[str], slot: str = "morning") -> str:
@@ -276,6 +278,50 @@ def test_strict_generation_missing_assets_never_runs_generation_during_dispatch(
         data_dir=data_dir, now_utc="2026-08-19T13:00:02+00:00", limit=25,
     )
     assert second["processed"] == 0
+
+
+def test_pregeneration_retries_transient_failed_preparation(tmp_path, monkeypatch):
+    data_dir = str(tmp_path)
+    outbox_id = _ready_package(data_dir, ["facebook"])
+    connection = sqlite3.connect(get_db_path(data_dir))
+    package = json.loads(connection.execute(
+        "SELECT package_json FROM content_outbox WHERE outbox_id=?", (outbox_id,)
+    ).fetchone()[0])
+    package["gemini_generation"] = {
+        "provider": "gemini",
+        "strict_provider": True,
+        "fallback_allowed": False,
+        "required_image_count": 1,
+        "prompts": [{}],
+    }
+    connection.execute(
+        "UPDATE content_outbox SET package_json=?, scheduled_at=?, lifecycle_state='PREPARATION_REQUIRED' WHERE outbox_id=?",
+        (json.dumps(package), datetime.now(timezone.utc).isoformat(), outbox_id),
+    )
+    connection.commit()
+    connection.close()
+    monkeypatch.setattr(dispatch_outbox, "_prepare_gemini_assets", Mock(side_effect=RuntimeError("temporary provider error")))
+
+    first = dispatch_outbox.pregenerate_upcoming(data_dir=data_dir)
+
+    assert first["status"] == PackageState.FAILED_PREPARATION.value
+    monkeypatch.setattr(dispatch_outbox, "_prepare_gemini_assets", lambda package, _: package)
+    monkeypatch.setattr(dispatch_outbox, "evaluate_outbox_readiness", lambda *_, **__: {
+        "ready": True,
+        "state": PackageState.READY_TO_DISPATCH.value,
+        "reason_codes": [],
+    })
+
+    second = dispatch_outbox.pregenerate_upcoming(data_dir=data_dir)
+
+    assert second == {"status": "PREGENERATED", "outbox_id": outbox_id}
+    connection = sqlite3.connect(get_db_path(data_dir))
+    transitions = connection.execute(
+        "SELECT destination_state, reason_code FROM package_transitions WHERE outbox_id=? ORDER BY transition_id",
+        (outbox_id,),
+    ).fetchall()
+    connection.close()
+    assert (PackageState.PREPARATION_REQUIRED.value, "PREPARATION_RETRY_SCHEDULED") in transitions
 
 
 def test_daily_package_publishes_each_platform_at_its_own_growth_window(tmp_path):

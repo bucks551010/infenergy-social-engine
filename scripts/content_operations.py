@@ -1254,10 +1254,10 @@ def upcoming_ready_packages(
         parameters.append(max(1, limit))
         rows = connection.execute(
             f"""
-            SELECT outbox_id, scheduled_at, package_json FROM content_outbox
+            SELECT outbox_id, scheduled_at, lifecycle_state, package_json FROM content_outbox
             WHERE status='READY' AND datetime(scheduled_at) <= datetime(?)
                 {after_clause}
-                AND lifecycle_state IN ('PREPARATION_REQUIRED', 'QA_REJECTED', 'READY_TO_DISPATCH')
+                AND lifecycle_state IN ('PREPARATION_REQUIRED', 'QA_REJECTED', 'READY_TO_DISPATCH', 'FAILED_PREPARATION')
             ORDER BY datetime(scheduled_at), created_at LIMIT ?
             """,
             parameters,
@@ -1266,6 +1266,7 @@ def upcoming_ready_packages(
             {
                 "outbox_id": str(row["outbox_id"]),
                 "scheduled_at": str(row["scheduled_at"]),
+                "lifecycle_state": str(row["lifecycle_state"]),
                 "package": _decode(row["package_json"], {}),
             }
             for row in rows

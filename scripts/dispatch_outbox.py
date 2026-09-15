@@ -519,6 +519,14 @@ def pregenerate_upcoming(*, data_dir: str = DATA_DIR) -> dict[str, Any]:
             continue
         outbox_id = str(row["outbox_id"])
         try:
+            if row.get("lifecycle_state") == PackageState.FAILED_PREPARATION.value:
+                transition_package(
+                    data_dir,
+                    outbox_id,
+                    PackageState.PREPARATION_REQUIRED.value,
+                    "PREPARATION_RETRY_SCHEDULED",
+                    actor="dispatch_outbox.pregenerate",
+                )
             transition_package(data_dir, outbox_id, PackageState.PREPARING.value, "PREPARATION_WINDOW_OPEN", actor="dispatch_outbox.pregenerate")
             if copy_plan.get("strict_provider") is True:
                 package = _prepare_gemini_copy(package, data_dir)

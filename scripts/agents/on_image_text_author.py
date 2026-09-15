@@ -30,7 +30,7 @@ def author(brief: dict[str, Any]) -> dict[str, Any]:
         "Create the complete final public copy and exact on-image message for one Infenergy social post. "
         "Return one JSON object with exactly these keys: statement, expansion, action, image_scene, visible_text, platform_captions. "
         "visible_text must contain headline, infenergy_line, resolution_line. platform_captions must contain facebook, instagram, linkedin. "
-        "Make each platform caption native, concise, non-repetitive, human, and specific to the consumer moment. Every caption must plainly name the real situation or problem, the action a person should take, the useful outcome, and Infenergy's concrete role. "
+        "Make each platform caption native, concise, non-repetitive, human, and specific to the consumer moment. Every caption must plainly name the real situation or problem, the action a person should take, the useful outcome, and Infenergy's concrete role. Each of the three platform captions must include the exact standalone word Infenergy. "
         "image_scene must name a specific person, place, activity, power interruption, and visible product use that resolves the moment. "
         "Reject empty tabletop, isolated desk, packshot, generic workspace, and product-only compositions. The product must be actively used by a person in a credible scene. "
         "The visible headline must be five words or fewer and 36 characters or fewer. The other visible lines must be seven words or fewer and 48 characters or fewer. "
@@ -80,6 +80,13 @@ def author(brief: dict[str, Any]) -> dict[str, Any]:
         raise RuntimeError("gemini_copy_generic_headline")
     if any(len(str(captions[platform])) > 5000 for platform in ("facebook", "instagram", "linkedin")):
         raise RuntimeError("gemini_copy_caption_too_long")
+    missing_brand = [
+        platform
+        for platform in ("facebook", "instagram", "linkedin")
+        if "infenergy" not in re.sub(r"[^a-z0-9 ]+", " ", str(captions[platform]).lower()).split()
+    ]
+    if missing_brand:
+        raise RuntimeError(f"gemini_copy_infenergy_role_missing:{','.join(missing_brand)}")
     return result
 
 

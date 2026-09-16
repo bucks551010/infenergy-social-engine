@@ -456,6 +456,64 @@ def test_pregeneration_persists_completed_copy_before_image_failure(tmp_path, mo
     assert persisted["gemini_copy"]["model_output_sha256"] == "copy-digest"
 
 
+def test_budget_blocked_pregeneration_waits_then_retries_when_full_workflow_fits(monkeypatch):
+    package = {
+        "gemini_copy": {"provider": "gemini", "strict_provider": True, "fallback_allowed": False, "status": "PENDING"},
+        "gemini_generation": {
+            "provider": "gemini", "strict_provider": True, "fallback_allowed": False,
+            "required_image_count": 1, "prompts": [{}],
+        },
+    }
+    transitions = []
+    preflights = []
+    monkeypatch.setattr(dispatch_outbox, "upcoming_ready_packages", lambda *_, **__: [{
+        "outbox_id": "budget-1", "scheduled_at": "2026-09-15T12:00:00+00:00",
+        "lifecycle_state": PackageState.BLOCKED_BUDGET.value, "package": package,
+    }])
+    monkeypatch.setattr(dispatch_outbox, "transition_package", lambda *args, **kwargs: transitions.append((args, kwargs)))
+    monkeypatch.setattr(dispatch_outbox, "preflight_gemini_workflow", lambda **kwargs: preflights.append(kwargs))
+    monkeypatch.setattr(dispatch_outbox, "_prepare_gemini_copy", lambda prepared, _: prepared)
+    monkeypatch.setattr(dispatch_outbox, "_prepare_gemini_assets", lambda prepared, _: prepared)
+    monkeypatch.setattr(dispatch_outbox, "update_ready_package", lambda *args: True)
+    monkeypatch.setattr(dispatch_outbox, "evaluate_outbox_readiness", lambda *_, **__: {
+        "ready": True, "state": PackageState.READY_TO_DISPATCH.value, "reason_codes": [],
+    })
+
+    result = dispatch_outbox.pregenerate_upcoming(data_dir="unused")
+
+    assert result == {"status": "PREGENERATED", "outbox_id": "budget-1"}
+    assert preflights == [{"image_calls": 1, "reasoning_calls": 2}]
+    assert transitions[0][0][2:4] == (PackageState.PREPARATION_REQUIRED.value, "BUDGET_CAPACITY_RESTORED")
+
+
+def test_budget_blocked_pregeneration_does_not_retry_before_capacity_returns(monkeypatch):
+    package = {
+        "gemini_generation": {
+            "provider": "gemini", "strict_provider": True, "fallback_allowed": False,
+            "required_image_count": 1, "prompts": [{}],
+        },
+    }
+    transitions = []
+    prepare_assets = Mock()
+    monkeypatch.setattr(dispatch_outbox, "upcoming_ready_packages", lambda *_, **__: [{
+        "outbox_id": "budget-1", "scheduled_at": "2026-09-15T12:00:00+00:00",
+        "lifecycle_state": PackageState.BLOCKED_BUDGET.value, "package": package,
+    }])
+    monkeypatch.setattr(
+        dispatch_outbox,
+        "preflight_gemini_workflow",
+        Mock(side_effect=dispatch_outbox.GeminiBudgetExceeded("daily budget exhausted")),
+    )
+    monkeypatch.setattr(dispatch_outbox, "transition_package", lambda *args, **kwargs: transitions.append((args, kwargs)))
+    monkeypatch.setattr(dispatch_outbox, "_prepare_gemini_assets", prepare_assets)
+
+    result = dispatch_outbox.pregenerate_upcoming(data_dir="unused")
+
+    assert result == {"status": "IDLE", "detail": "no_upcoming_gemini_assets_needed"}
+    assert transitions == []
+    prepare_assets.assert_not_called()
+
+
 def test_daily_package_publishes_each_platform_at_its_own_growth_window(tmp_path):
     data_dir = str(tmp_path)
     outbox_id = _ready_package(data_dir, ["facebook", "instagram", "linkedin"])

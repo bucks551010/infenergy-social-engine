@@ -1247,7 +1247,7 @@ def upcoming_ready_packages(
 ) -> list[dict[str, Any]]:
     connection = _connect(data_dir)
     try:
-        after_clause = "AND datetime(scheduled_at) >= datetime(?)" if after_utc else ""
+        after_clause = "AND (datetime(scheduled_at) >= datetime(?) OR lifecycle_state='BLOCKED_BUDGET')" if after_utc else ""
         parameters: list[Any] = [before_utc]
         if after_utc:
             parameters.append(after_utc)
@@ -1257,7 +1257,7 @@ def upcoming_ready_packages(
             SELECT outbox_id, scheduled_at, lifecycle_state, package_json FROM content_outbox
             WHERE status='READY' AND datetime(scheduled_at) <= datetime(?)
                 {after_clause}
-                AND lifecycle_state IN ('PREPARATION_REQUIRED', 'QA_REJECTED', 'READY_TO_DISPATCH', 'FAILED_PREPARATION')
+                AND lifecycle_state IN ('PREPARATION_REQUIRED', 'QA_REJECTED', 'READY_TO_DISPATCH', 'FAILED_PREPARATION', 'BLOCKED_BUDGET')
             ORDER BY datetime(scheduled_at), created_at LIMIT ?
             """,
             parameters,

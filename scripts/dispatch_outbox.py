@@ -36,6 +36,7 @@ from content_operations import (
 )
 from publication_contract import PackageState
 from runtime_config import load_runtime_config
+from social.gemini_budget import GeminiBudgetExceeded, preflight_gemini_workflow
 
 DATA_DIR = os.environ.get("DATA_DIR", os.path.join(os.path.dirname(__file__), "..", "data"))
 FORBIDDEN_PUBLIC_LABELS = ("POV:", "FIELD TRUTH")
@@ -529,12 +530,21 @@ def pregenerate_upcoming(*, data_dir: str = DATA_DIR) -> dict[str, Any]:
             continue
         outbox_id = str(row["outbox_id"])
         try:
-            if row.get("lifecycle_state") == PackageState.FAILED_PREPARATION.value:
+            lifecycle_state = row.get("lifecycle_state")
+            if lifecycle_state == PackageState.BLOCKED_BUDGET.value:
+                attempts_per_image = max(0, min(int(os.environ.get("GEMINI_IMAGE_REPAIR_ATTEMPTS", "0")), 5)) + 1
+                image_calls = required_count * attempts_per_image
+                reasoning_calls = image_calls + (0 if _gemini_copy_ready(package) else 1)
+                try:
+                    preflight_gemini_workflow(image_calls=image_calls, reasoning_calls=reasoning_calls)
+                except GeminiBudgetExceeded:
+                    continue
+            if lifecycle_state in {PackageState.FAILED_PREPARATION.value, PackageState.BLOCKED_BUDGET.value}:
                 transition_package(
                     data_dir,
                     outbox_id,
                     PackageState.PREPARATION_REQUIRED.value,
-                    "PREPARATION_RETRY_SCHEDULED",
+                    "BUDGET_CAPACITY_RESTORED" if lifecycle_state == PackageState.BLOCKED_BUDGET.value else "PREPARATION_RETRY_SCHEDULED",
                     actor="dispatch_outbox.pregenerate",
                 )
             transition_package(data_dir, outbox_id, PackageState.PREPARING.value, "PREPARATION_WINDOW_OPEN", actor="dispatch_outbox.pregenerate")

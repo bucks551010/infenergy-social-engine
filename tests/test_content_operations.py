@@ -38,6 +38,7 @@ from content_operations import (  # noqa: E402
     upcoming_ready_packages,
     update_ready_package,
 )
+from publication_contract import PackageState  # noqa: E402
 
 
 def _schedule(day: str) -> dict[str, str]:
@@ -146,6 +147,35 @@ def test_pregeneration_updates_only_unclaimed_ready_package(tmp_path):
     claimed = claim_due(data_dir, "2026-08-19T13:00:01+00:00")
     assert claimed["package"]["generation"] == "complete"
     assert update_ready_package(data_dir, outbox_id, {"content_id": "overwritten"}) is False
+
+
+def test_budget_blocked_package_bypasses_stale_preparation_cutoff(tmp_path):
+    day = "2026-08-19"
+    data_dir = str(tmp_path)
+    ensure_daily_slots(data_dir, day, _schedule(day), {"mode": "owner_schedule"})
+    decision_id = create_council_session(
+        data_dir, content_date=day, slot="morning", blackboard={"content_job": "TEACH"},
+    )
+    outbox_id = mark_ready(
+        data_dir, content_date=day, slot="morning", scheduled_at=_schedule(day)["morning"],
+        decision_id=decision_id,
+        package={"content_id": "budget-retry", "routing": {"platforms": ["facebook"]}},
+    )
+    connection = sqlite3.connect(os.path.join(data_dir, "inventory.db"))
+    connection.execute(
+        "UPDATE content_outbox SET lifecycle_state='BLOCKED_BUDGET' WHERE outbox_id=?", (outbox_id,),
+    )
+    connection.commit()
+    connection.close()
+
+    rows = upcoming_ready_packages(
+        data_dir,
+        before_utc="2026-08-20T00:00:00+00:00",
+        after_utc="2026-08-19T20:00:00+00:00",
+    )
+
+    assert [row["outbox_id"] for row in rows] == [outbox_id]
+    assert rows[0]["lifecycle_state"] == PackageState.BLOCKED_BUDGET.value
 
 
 def test_initialization_migrates_legacy_ready_draft_to_preparation_required(tmp_path):
